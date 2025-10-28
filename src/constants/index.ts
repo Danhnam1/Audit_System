@@ -27,4 +27,7 @@ export const API_ENDPOINTS = {
   // Define API endpoints
 };
 
+// Export status colors
+export * from './statusColors';
+
 export {};

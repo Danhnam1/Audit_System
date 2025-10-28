@@ -6,11 +6,31 @@ import { ProtectedRoute } from "../components";
 
 // Lazy load all pages
 const LoginPage = lazy(() => import("../pages/Auth/LoginPage"));
-const AdminWelcome = lazy(() => import("../pages/Admin/Welcome"));
-const SQAStaffWelcome = lazy(() => import("../pages/SQAStaff/Welcome"));
-const SQAHeadWelcome = lazy(() => import("../pages/SQAHead/Welcome"));
+
+// Admin pages
+const AdminDashboard = lazy(() => import("../pages/Admin/Dashboard"));
+const AdminUserManagement = lazy(() => import("../pages/Admin/UserManagement"));
+const AdminDepartmentManagement = lazy(() => import("../pages/Admin/DepartmentManagement"));
+const AdminBackupRestore = lazy(() => import("../pages/Admin/BackupRestore"));
+
+// SQA Staff pages
+const SQAStaffDashboard = lazy(() => import("../pages/SQAStaff/Dashboard"));
+const SQAStaffAuditPlanning = lazy(() => import("../pages/SQAStaff/AuditPlanning"));
+const SQAStaffFindingManagement = lazy(() => import("../pages/SQAStaff/FindingManagement"));
+const SQAStaffReports = lazy(() => import("../pages/SQAStaff/Reports"));
+const SQAStaffRequests = lazy(() => import("../pages/SQAStaff/Requests"));
+
+// SQA Head pages
+const SQAHeadDashboard = lazy(() => import("../pages/SQAHead/Dashboard"));
+const SQAHeadAuditReview = lazy(() => import("../pages/SQAHead/AuditReview"));
+
+// Department Staff (placeholder - using Dashboard for now)
 const DepartmentStaffWelcome = lazy(() => import("../pages/DepartmentStaff/Welcome"));
+
+// Department Head (placeholder - using Dashboard for now)
 const DepartmentHeadWelcome = lazy(() => import("../pages/DepartmentHead/Welcome"));
+
+// Director (placeholder - using Dashboard for now)
 const DirectorWelcome = lazy(() => import("../pages/Director/Welcome"));
 
 
@@ -52,31 +72,101 @@ export function AppRoutes() {
                 }
             />
 
-            {/* Protected routes - Each role can only access their own dashboard */}
+            {/* Protected routes - Admin */}
             <Route
                 path={ROUTES.ADMIN}
                 element={
                     <ProtectedRoute allowedRoles={["Admin"]}>
-                        <AdminWelcome />
+                        <AdminDashboard />
                     </ProtectedRoute>
                 }
             />
+            <Route
+                path="/admin/users"
+                element={
+                    <ProtectedRoute allowedRoles={["Admin"]}>
+                        <AdminUserManagement />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/admin/departments"
+                element={
+                    <ProtectedRoute allowedRoles={["Admin"]}>
+                        <AdminDepartmentManagement />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/admin/backup"
+                element={
+                    <ProtectedRoute allowedRoles={["Admin"]}>
+                        <AdminBackupRestore />
+                    </ProtectedRoute>
+                }
+            />
+
+            {/* Protected routes - SQA Staff */}
             <Route
                 path={ROUTES.SQA_STAFF}
                 element={
                     <ProtectedRoute allowedRoles={["SQAStaff"]}>
-                        <SQAStaffWelcome />
+                        <SQAStaffDashboard />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path={ROUTES.SQA_HEAD}
+                path="/sqa-staff/planning"
                 element={
-                    <ProtectedRoute allowedRoles={["SQAHead"]}>
-                        <SQAHeadWelcome />
+                    <ProtectedRoute allowedRoles={["SQAStaff"]}>
+                        <SQAStaffAuditPlanning />
                     </ProtectedRoute>
                 }
             />
+            <Route
+                path="/sqa-staff/findings"
+                element={
+                    <ProtectedRoute allowedRoles={["SQAStaff"]}>
+                        <SQAStaffFindingManagement />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/sqa-staff/reports"
+                element={
+                    <ProtectedRoute allowedRoles={["SQAStaff"]}>
+                        <SQAStaffReports />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/sqa-staff/requests"
+                element={
+                    <ProtectedRoute allowedRoles={["SQAStaff"]}>
+                        <SQAStaffRequests />
+                    </ProtectedRoute>
+                }
+            />
+
+            {/* Protected routes - SQA Head */}
+            <Route
+                path={ROUTES.SQA_HEAD}
+                element={
+                    <ProtectedRoute allowedRoles={["SQAHead"]}>
+                        <SQAHeadDashboard />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/sqa-head/audit-review"
+                element={
+                    <ProtectedRoute allowedRoles={["SQAHead"]}>
+                        <SQAHeadAuditReview />
+                    </ProtectedRoute>
+                }
+            />
+
+            {/* Protected routes - Department Staff (placeholder) */}
             <Route
                 path={ROUTES.DEPARTMENT_STAFF}
                 element={
@@ -85,6 +175,8 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
+
+            {/* Protected routes - Department Head (placeholder) */}
             <Route
                 path={ROUTES.DEPARTMENT_HEAD}
                 element={
@@ -93,6 +185,8 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
+
+            {/* Protected routes - Director (placeholder) */}
             <Route
                 path={ROUTES.DIRECTOR}
                 element={
