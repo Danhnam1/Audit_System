@@ -1,4 +1,4 @@
-import { MainLayout, DashboardIcon, UsersIcon, DepartmentIcon, BackupIcon, ChartBarIcon } from '../../../layouts';
+import { MainLayout, DepartmentIcon, UsersIcon, ChartBarIcon } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState } from 'react';
 import { StatCard } from '../../../components';
@@ -8,12 +8,6 @@ const AdminDepartmentManagement = () => {
   const { user } = useAuth();
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  const menuItems = [
-    { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
-    { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
-    { icon: <DepartmentIcon />, label: 'Department Management', path: '/admin/departments' },
-    { icon: <BackupIcon />, label: 'Backup & Restore', path: '/admin/backup' },
-  ];
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -118,7 +112,7 @@ const AdminDepartmentManagement = () => {
   };
 
   return (
-    <MainLayout menuItems={menuItems} user={layoutUser}>
+    <MainLayout user={layoutUser}>
       {/* Header */}
       <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
         <div className="px-6 py-4 flex items-center justify-between">

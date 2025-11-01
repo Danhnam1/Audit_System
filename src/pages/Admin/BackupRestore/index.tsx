@@ -1,4 +1,4 @@
-import { MainLayout, DashboardIcon, UsersIcon, DepartmentIcon, BackupIcon } from '../../../layouts';
+import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState } from 'react';
 import { getStatusColor } from '../../../constants';
@@ -8,12 +8,6 @@ const AdminBackupRestore = () => {
   const [backupProgress, setBackupProgress] = useState(0);
   const [isBackingUp, setIsBackingUp] = useState(false);
 
-  const menuItems = [
-    { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
-    { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
-    { icon: <DepartmentIcon />, label: 'Department Management', path: '/admin/departments' },
-    { icon: <BackupIcon />, label: 'Backup & Restore', path: '/admin/backup' },
-  ];
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -109,7 +103,7 @@ const AdminBackupRestore = () => {
   };
 
   return (
-    <MainLayout menuItems={menuItems} user={layoutUser}>
+    <MainLayout user={layoutUser}>
       {/* Header */}
       <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
         <div className="px-6 py-4">

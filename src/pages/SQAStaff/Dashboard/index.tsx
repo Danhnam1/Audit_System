@@ -1,4 +1,4 @@
-import { MainLayout, DashboardIcon, AuditIcon, DocumentIcon, ReportsIcon, RequestIcon } from '../../../layouts';
+import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getStatusColor, getPriorityColor } from '../../../constants';
 import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../components';
@@ -6,13 +6,6 @@ import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../co
 const SQAStaffDashboard = () => {
   const { user } = useAuth();
 
-  const menuItems = [
-    { icon: <DashboardIcon />, label: 'Dashboard', path: '/sqa-staff' },
-    { icon: <AuditIcon />, label: 'Audit Planning', path: '/sqa-staff/planning' },
-    { icon: <DocumentIcon />, label: 'Finding Management', path: '/sqa-staff/findings' },
-    { icon: <ReportsIcon />, label: 'Reports', path: '/sqa-staff/reports', badge: '3' },
-    { icon: <RequestIcon />, label: 'Requests', path: '/sqa-staff/requests', badge: '5' },
-  ];
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -104,7 +97,7 @@ const SQAStaffDashboard = () => {
   ];
 
   return (
-    <MainLayout menuItems={menuItems} user={layoutUser}>
+    <MainLayout user={layoutUser}>
       <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
         <div className="px-6 py-4">
           <h1 className="text-2xl font-semibold text-primary-600">SQA Staff Dashboard</h1>

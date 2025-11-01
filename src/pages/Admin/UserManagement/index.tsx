@@ -1,4 +1,4 @@
-import { MainLayout, DashboardIcon, UsersIcon, DepartmentIcon, BackupIcon, SettingsIcon } from '../../../layouts';
+import { MainLayout, UsersIcon, SettingsIcon } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState } from 'react';
 import { StatCard } from '../../../components';
@@ -10,12 +10,6 @@ const AdminUserManagement = () => {
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
 
-  const menuItems = [
-    { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
-    { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
-    { icon: <DepartmentIcon />, label: 'Department Management', path: '/admin/departments' },
-    { icon: <BackupIcon />, label: 'Backup & Restore', path: '/admin/backup' },
-  ];
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -120,7 +114,7 @@ const AdminUserManagement = () => {
   };
 
   return (
-    <MainLayout menuItems={menuItems} user={layoutUser}>
+    <MainLayout user={layoutUser}>
       {/* Header */}
       <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
         <div className="px-6 py-4 flex items-center justify-between">

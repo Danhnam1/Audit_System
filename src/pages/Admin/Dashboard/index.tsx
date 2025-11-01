@@ -1,16 +1,10 @@
-import { MainLayout, DashboardIcon, UsersIcon, SettingsIcon } from '../../../layouts';
+import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { StatCard } from '../../../components';
 
 const AdminDashboard = () => {
   const { user } = useAuth();
 
-  const menuItems = [
-    { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
-    { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
-    { icon: <SettingsIcon />, label: 'Department Management', path: '/admin/departments' },
-    { icon: <SettingsIcon />, label: 'Backup & Restore', path: '/admin/backup' },
-  ];
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -39,7 +33,7 @@ const AdminDashboard = () => {
   };
 
   return (
-    <MainLayout menuItems={menuItems} user={layoutUser}>
+    <MainLayout user={layoutUser}>
       <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
         <div className="px-6 py-4">
           <h1 className="text-2xl font-semibold text-primary-600">Administrator Dashboard</h1>

@@ -1,14 +1,9 @@
 import type { ReactNode } from 'react';
 import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
-import {
-  UsersIcon,
-  SettingsIcon,
-  DashboardIcon,
-  AuditIcon,
-  ReportsIcon,
-  DatabaseIcon,
-} from './icons.tsx';
+import './icons.tsx';
+import { useAuth } from '../contexts';
+import { getRoleMenu } from '../helpers/roleMenus';
 
 export interface Team {
   id: string;
@@ -55,50 +50,17 @@ export const MainLayout = ({
     </div>
   );
 
-  // Default menu items
-  const defaultMenuItems: SidebarMenuItem[] = [
-    {
-      icon: <DashboardIcon />,
-      label: 'Dashboard',
-      path: '/admin',
-      badge: '5',
-    },
-    {
-      icon: <UsersIcon />,
-      label: 'User Management',
-      path: '/admin/users',
-    },
-    {
-      icon: <AuditIcon />,
-      label: 'Audit Logs',
-      path: '/admin/audit-logs',
-      badge: '12',
-    },
-    {
-      icon: <ReportsIcon />,
-      label: 'Reports',
-      path: '/admin/reports',
-      badge: '20+',
-    },
-    {
-      icon: <DatabaseIcon />,
-      label: 'Database',
-      path: '/admin/database',
-    },
-    {
-      icon: <SettingsIcon />,
-      label: 'Settings',
-      path: '/admin/settings',
-    },
-  ];
+  // Default menu handled by role-based helper. If caller passes `menuItems`, that will be used instead.
+  const { user: authUser } = useAuth();
+  const role = authUser?.role;
+  const defaultMenuItems: SidebarMenuItem[] = getRoleMenu(role);
+  // Debug: log menu items for roles that reported missing items
+  if (role === 'Admin' || role === 'SQAHead') {
+    // eslint-disable-next-line no-console
+    console.debug('[MainLayout] role:', role, 'menuItems:', defaultMenuItems);
+  }
 
-  // Default teams
-  const defaultTeams: Team[] = [
-    { id: '1', name: 'IT Department', initial: 'IT' },
-    { id: '2', name: 'HR Department', initial: 'HR' },
-    { id: '3', name: 'Finance', initial: 'F' },
-  ];
-
+ 
   // Default user
   const defaultUser: User = {
     name: 'User',
@@ -109,9 +71,8 @@ export const MainLayout = ({
     <div className="flex h-screen w-screen overflow-hidden bg-gray-50">
       {showSidebar && (
         <Sidebar
-          logo={logo || defaultLogo}
+          // logo={logo || defaultLogo}
           menuItems={menuItems || defaultMenuItems}
-          teams={teams || defaultTeams}
           user={user || defaultUser}
           theme={sidebarTheme}
         />

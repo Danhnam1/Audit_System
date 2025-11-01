@@ -1,4 +1,4 @@
-import { MainLayout, DashboardIcon, AuditIcon, DocumentIcon, QualityIcon, ClockIcon, ChartBarIcon } from '../../../layouts';
+import { MainLayout, ClockIcon, AuditIcon, ChartBarIcon } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState } from 'react';
 import { StatCard } from '../../../components';
@@ -8,12 +8,6 @@ const SQAHeadAuditReview = () => {
   const { user } = useAuth();
   const [selectedAudit, setSelectedAudit] = useState<string | null>(null);
 
-  const menuItems = [
-    { icon: <DashboardIcon />, label: 'Dashboard', path: '/sqa-head' },
-    { icon: <AuditIcon />, label: 'Audit Review', path: '/sqa-head/audit-review', badge: '5' },
-    { icon: <DocumentIcon />, label: 'Report Review', path: '/sqa-head/report-review', badge: '3' },
-    { icon: <QualityIcon />, label: 'CAPA Review', path: '/sqa-head/capa-review', badge: '7' },
-  ];
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -80,7 +74,7 @@ const SQAHeadAuditReview = () => {
   const selectedAuditData = pendingAudits.find(a => a.id === selectedAudit);
 
   return (
-    <MainLayout menuItems={menuItems} user={layoutUser}>
+    <MainLayout user={layoutUser}>
       <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
         <div className="px-6 py-4">
           <h1 className="text-2xl font-semibold text-primary-600">Audit Review</h1>

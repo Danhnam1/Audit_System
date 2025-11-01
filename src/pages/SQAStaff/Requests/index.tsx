@@ -1,4 +1,4 @@
-import { MainLayout, DashboardIcon, AuditIcon, DocumentIcon, ReportsIcon, RequestIcon } from '../../../layouts';
+import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState } from 'react';
 import { StatCard } from '../../../components';
@@ -10,13 +10,7 @@ const SQAStaffRequests = () => {
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  const menuItems = [
-    { icon: <DashboardIcon />, label: 'Dashboard', path: '/sqa-staff' },
-    { icon: <AuditIcon />, label: 'Audit Planning', path: '/sqa-staff/planning' },
-    { icon: <DocumentIcon />, label: 'Finding Management', path: '/sqa-staff/findings' },
-    { icon: <ReportsIcon />, label: 'Reports', path: '/sqa-staff/reports', badge: '3' },
-    { icon: <RequestIcon />, label: 'Requests', path: '/sqa-staff/requests', badge: '5' },
-  ];
+  // menuItems are now provided centrally by MainLayout (role-based). Remove per-page menu definitions.
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -101,7 +95,7 @@ const SQAStaffRequests = () => {
   };
 
   return (
-    <MainLayout menuItems={menuItems} user={layoutUser}>
+    <MainLayout user={layoutUser}>
       {/* Header */}
       <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
         <div className="px-6 py-4">
