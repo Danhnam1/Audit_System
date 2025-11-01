@@ -13,6 +13,16 @@ export const Navigation = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo/Brand Section */}
           <div className="flex items-center gap-3">
+            {/* Mobile hamburger to toggle sidebar */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('ams:toggle-sidebar'))}
+              className="mr-1 md:hidden p-2 rounded-md hover:bg-gray-100"
+              aria-label="Toggle menu"
+            >
+              <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
             <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-sky-600 to-sky-700 rounded-lg">
               <svg
                 className="w-5 h-5 sm:w-6 sm:h-6 text-white"

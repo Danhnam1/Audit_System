@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
 import './icons.tsx';
@@ -33,7 +34,6 @@ export const MainLayout = ({
   children,
   logo,
   menuItems,
-  teams,
   user,
   sidebarTheme,
   showSidebar = true,
@@ -66,16 +66,60 @@ export const MainLayout = ({
     name: 'User',
     avatar: undefined,
   };
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setIsMobileSidebarOpen((v) => !v);
+    window.addEventListener('ams:toggle-sidebar', handler as EventListener);
+    return () => window.removeEventListener('ams:toggle-sidebar', handler as EventListener);
+  }, []);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gray-50">
       {showSidebar && (
-        <Sidebar
-          // logo={logo || defaultLogo}
-          menuItems={menuItems || defaultMenuItems}
-          user={user || defaultUser}
-          theme={sidebarTheme}
-        />
+        <>
+          {/* Desktop sidebar */}
+          <div className="hidden md:block">
+            <Sidebar
+              logo={logo || defaultLogo}
+              menuItems={menuItems || defaultMenuItems}
+              user={user || defaultUser}
+              theme={sidebarTheme}
+            />
+          </div>
+
+          {/* Mobile sidebar (off-canvas) */}
+          <div className={`md:hidden fixed inset-0 z-40 ${isMobileSidebarOpen ? '' : 'pointer-events-none'}`}>
+            {/* Backdrop */}
+            <div
+              className={`fixed inset-0 bg-black/40 transition-opacity ${isMobileSidebarOpen ? 'opacity-100' : 'opacity-0'}`}
+              onClick={() => setIsMobileSidebarOpen(false)}
+            />
+
+            {/* Panel */}
+            <div className={`fixed top-0 left-0 bottom-0 w-64 bg-white border-r border-gray-200 transform transition-transform ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+              <div className="h-full flex flex-col">
+                <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                  <div>{logo || defaultLogo}</div>
+                  <button onClick={() => setIsMobileSidebarOpen(false)} className="p-2 rounded-md hover:bg-gray-100">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  <Sidebar
+                    logo={undefined}
+                    menuItems={menuItems || defaultMenuItems}
+                    user={user || defaultUser}
+                    theme={sidebarTheme}
+                    className="h-full"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
       <main className="flex-1 overflow-y-auto w-full">
         <div className="p-4 sm:p-6 lg:p-8">
