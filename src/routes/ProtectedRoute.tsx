@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
-import { useAuth } from '../contexts';
+import useAuthStore from '../store/useAuthStore';
 import type { UserRole } from '../types';
 
 interface ProtectedRouteProps {
@@ -9,7 +9,9 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, user, isLoading } = useAuth();
+  const { token, user, loading } = useAuthStore();
+  const isAuthenticated = !!token;
+  const isLoading = loading;
 
   if (isLoading) {
     return (
@@ -26,9 +28,12 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+  // Get role from user.role or user.roleName
+  const userRole = (user?.role || user?.roleName) as UserRole | undefined;
+
+  if (allowedRoles && userRole && !allowedRoles.includes(userRole)) {
     // Redirect to their appropriate dashboard
-    return <Navigate to={getRoleHomePath(user.role)} replace />;
+    return <Navigate to={getRoleHomePath(userRole)} replace />;
   }
 
   return <>{children}</>;
