@@ -97,7 +97,7 @@ const DirectorWelcome = () => {
                 <div className="flex-1">
                   <h3 className="font-semibold text-red-900 mb-2">🔴 Audit Plan Q1/2026 - Khoa Phi công</h3>
                   <p className="text-sm text-gray-700 mb-2">
-                    Đã được SQA Head duyệt | 2 ngày trước
+                    Đã được Lead Auditor duyệt | 2 ngày trước
                   </p>
                   <p className="text-xs text-gray-600">
                     Cần Director phê duyệt để tiến hành audit theo timeline
@@ -234,7 +234,7 @@ const DirectorWelcome = () => {
           <div className="space-y-3">
             <div className="p-4 bg-red-50 border-l-4 border-red-500 rounded">
               <p className="text-sm text-gray-700">
-                • Khoa Tiếp viên: 3 Major findings chưa đóng (>30 ngày)
+                • Khoa Tiếp viên: 3 Major findings chưa đóng (&gt;30 ngày)
               </p>
             </div>
             <div className="p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded">

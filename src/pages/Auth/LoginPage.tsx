@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useAuth } from '../../contexts';
 
+
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -24,11 +25,11 @@ export default function LoginPage() {
 
   const demoCredentials = [
     { role: 'Admin', username: 'admin', password: 'admin123' },
-    { role: 'SQA Staff', username: 'sqa', password: 'sqa123' },
-    { role: 'SQA Head', username: 'sqahead', password: 'sqahead123' },
+    { role: 'Auditor', username: 'sqa', password: 'sqa123' },
+    { role: 'Lead Auditor', username: 'sqahead', password: 'sqahead123' },
 
-    { role: 'Department Staff', username: 'deptstaff', password: 'dept123' },
-    { role: 'Department Head', username: 'depthead', password: 'head123' },
+    { role: 'CAPA Owner', username: 'deptstaff', password: 'dept123' },
+    { role: 'Auditee Owner', username: 'depthead', password: 'head123' },
     { role: 'Director', username: 'director', password: 'director123' },
 
   ];
@@ -63,25 +64,18 @@ export default function LoginPage() {
               <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
                 {/* Header */}
                 <div className="text-center mb-6 sm:mb-8">
-                  <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full mb-3 sm:mb-4">
-                    <svg
-                      className="w-7 h-7 sm:w-8 sm:h-8 text-white"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                      />
-                    </svg>
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full overflow-hidden">
+                    <img
+                      src="/icon/logo.png"
+                      alt="AMS Logo"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">
-                    Welcome Back
+
+                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-600 mb-2">
+                    AMS
                   </h1>
-                  <p className="text-sm sm:text-base text-gray-600">Sign in to your AMS account</p>
+                  <p className="text-sm sm:text-base text-gray-600">Đăng nhập hệ thống</p>
                 </div>
 
                 {/* Error Message */}
@@ -173,7 +167,7 @@ export default function LoginPage() {
                         Signing in...
                       </span>
                     ) : (
-                      'Sign In'
+                      'Login'
                     )}
                   </button>
                 </form>

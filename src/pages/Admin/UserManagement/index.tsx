@@ -18,7 +18,7 @@ const AdminUserManagement = () => {
       id: 'USR-001',
       fullName: 'John Smith',
       email: 'john.smith@aviation.edu',
-      role: 'SQA Staff',
+  role: 'Auditor',
       department: 'Quality Assurance',
       status: 'Active',
       lastLogin: '2025-10-25 09:30',
@@ -28,7 +28,7 @@ const AdminUserManagement = () => {
       id: 'USR-002',
       fullName: 'Sarah Johnson',
       email: 'sarah.j@aviation.edu',
-      role: 'SQA Head',
+  role: 'Lead Auditor',
       department: 'Quality Assurance',
       status: 'Active',
       lastLogin: '2025-10-25 08:15',
@@ -38,7 +38,7 @@ const AdminUserManagement = () => {
       id: 'USR-003',
       fullName: 'Mike Chen',
       email: 'mike.chen@aviation.edu',
-      role: 'Department Head',
+  role: 'Auditee Owner',
       department: 'Flight Operations',
       status: 'Active',
       lastLogin: '2025-10-24 16:45',
@@ -48,7 +48,7 @@ const AdminUserManagement = () => {
       id: 'USR-004',
       fullName: 'Emily Davis',
       email: 'emily.d@aviation.edu',
-      role: 'Department Staff',
+  role: 'CAPA Owner',
       department: 'Maintenance',
       status: 'Active',
       lastLogin: '2025-10-25 07:00',
@@ -68,7 +68,7 @@ const AdminUserManagement = () => {
       id: 'USR-006',
       fullName: 'Lisa Anderson',
       email: 'lisa.a@aviation.edu',
-      role: 'Department Staff',
+  role: 'CAPA Owner',
       department: 'Training',
       status: 'Inactive',
       lastLogin: '2025-09-30 14:20',
@@ -78,7 +78,7 @@ const AdminUserManagement = () => {
       id: 'USR-007',
       fullName: 'David Martinez',
       email: 'david.m@aviation.edu',
-      role: 'SQA Staff',
+  role: 'Auditor',
       department: 'Quality Assurance',
       status: 'Active',
       lastLogin: '2025-10-25 08:45',
@@ -88,10 +88,10 @@ const AdminUserManagement = () => {
 
   const getRoleColor = (role: string) => {
     const colors: Record<string, string> = {
-      'SQA Staff': 'bg-primary-100 text-primary-700',
-      'SQA Head': 'bg-primary-200 text-primary-800',
-      'Department Head': 'bg-teal-100 text-teal-700',
-      'Department Staff': 'bg-gray-100 text-gray-700',
+      'Auditor': 'bg-primary-100 text-primary-700',
+      'Lead Auditor': 'bg-primary-200 text-primary-800',
+      'Auditee Owner': 'bg-teal-100 text-teal-700',
+      'CAPA Owner': 'bg-gray-100 text-gray-700',
       'Director': 'bg-primary-300 text-primary-900',
       'Admin': 'bg-primary-200 text-primary-800',
     };
@@ -168,10 +168,10 @@ const AdminUserManagement = () => {
                   <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
                     <option>Select Role</option>
                     <option>Admin</option>
-                    <option>SQA Head</option>
-                    <option>SQA Staff</option>
-                    <option>Department Head</option>
-                    <option>Department Staff</option>
+                    <option>Lead Auditor</option>
+                    <option>Auditor</option>
+                    <option>Auditee Owner</option>
+                    <option>CAPA Owner</option>
                     <option>Director</option>
                   </select>
                 </div>
@@ -233,10 +233,10 @@ const AdminUserManagement = () => {
               >
                 <option value="all">All Roles</option>
                 <option value="Admin">Admin</option>
-                <option value="SQA Head">SQA Head</option>
-                <option value="SQA Staff">SQA Staff</option>
-                <option value="Department Head">Department Head</option>
-                <option value="Department Staff">Department Staff</option>
+                <option value="Lead Auditor">Lead Auditor</option>
+                <option value="Auditor">Auditor</option>
+                <option value="Auditee Owner">Auditee Owner</option>
+                <option value="CAPA Owner">CAPA Owner</option>
                 <option value="Director">Director</option>
               </select>
             </div>
