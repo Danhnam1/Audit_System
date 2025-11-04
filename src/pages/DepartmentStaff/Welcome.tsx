@@ -1,91 +1,180 @@
 import { useAuth } from '../../contexts';
+import { MainLayout } from '../../layouts';
 
 const DepartmentStaffWelcome = () => {
   const { user } = useAuth();
 
   return (
-    <div className="fixed inset-0 w-full h-full bg-gradient-to-br from-sky-600 to-sky-700 overflow-y-auto">
-      <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8">
-        <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 lg:p-12 w-full max-w-4xl">
-          <div className="text-center">
-            <div className="mb-6">
-              <div className="inline-flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 bg-sky-100 rounded-full mb-4">
-                <svg className="w-10 h-10 sm:w-12 sm:h-12 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+    <MainLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-sky-600 to-sky-700 rounded-lg p-6 sm:p-8 text-white">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold">Welcome, {user?.fullName}!</h1>
+          <p className="mt-2 text-sky-100 text-base sm:text-lg">Department Staff Dashboard</p>
+          <p className="mt-4 text-xs sm:text-sm text-sky-200">
+            You are logged in as <span className="font-semibold">{user?.role}</span>
+          </p>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Tasks</p>
+                <p className="mt-2 text-3xl font-semibold text-gray-900">5</p>
+              </div>
+              <div className="w-12 h-12 bg-sky-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-sky-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                 </svg>
               </div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">Welcome, {user?.fullName}!</h1>
-              <p className="text-lg sm:text-xl text-gray-600 mb-2">Department Staff Portal</p>
-              <p className="text-sm text-gray-500">Role: <span className="font-semibold text-sky-700">{user?.role}</span></p>
             </div>
-            
-            <div className="border-t border-gray-200 my-6"></div>
-            
-            <p className="text-gray-700 mb-8 text-base sm:text-lg">
-              Manage your department's daily operations and tasks.
-            </p>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 text-left">
-              <div className="bg-gradient-to-br from-sky-50 to-sky-100 p-5 sm:p-6 rounded-xl border border-sky-300 hover:shadow-lg transition-all duration-200 cursor-pointer group">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-10 h-10 bg-sky-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sky-900 mb-1 text-base sm:text-lg">Task Management</h3>
-                    <p className="text-sm text-gray-700">Manage your assigned tasks</p>
-                  </div>
-                </div>
-              </div>
+          </div>
 
-              <div className="bg-gradient-to-br from-sky-50 to-sky-100 p-5 sm:p-6 rounded-xl border border-sky-300 hover:shadow-lg transition-all duration-200 cursor-pointer group">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-10 h-10 bg-sky-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sky-900 mb-1 text-base sm:text-lg">Documentation</h3>
-                    <p className="text-sm text-gray-700">Submit and review documents</p>
-                  </div>
-                </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">In Progress</p>
+                <p className="mt-2 text-3xl font-semibold text-gray-900">2</p>
               </div>
-
-              <div className="bg-gradient-to-br from-sky-50 to-sky-100 p-5 sm:p-6 rounded-xl border border-sky-300 hover:shadow-lg transition-all duration-200 cursor-pointer group">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-10 h-10 bg-sky-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sky-900 mb-1 text-base sm:text-lg">Schedule</h3>
-                    <p className="text-sm text-gray-700">View your work schedule</p>
-                  </div>
-                </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
+            </div>
+          </div>
 
-              <div className="bg-gradient-to-br from-sky-50 to-sky-100 p-5 sm:p-6 rounded-xl border border-sky-300 hover:shadow-lg transition-all duration-200 cursor-pointer group">
-                <div className="flex items-start gap-3">
-                  <div className="flex-shrink-0 w-10 h-10 bg-sky-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sky-900 mb-1 text-base sm:text-lg">Performance</h3>
-                    <p className="text-sm text-gray-700">Track your performance</p>
-                  </div>
-                </div>
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Pending Review</p>
+                <p className="mt-2 text-3xl font-semibold text-gray-900">1</p>
+              </div>
+              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Completed</p>
+                <p className="mt-2 text-3xl font-semibold text-green-600">2</p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Notifications */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">🔔 Notifications</h2>
+          <div className="space-y-3">
+            <div className="p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
+              <p className="text-sm text-gray-700">
+                • Bạn được giao 1 nhiệm vụ mới từ Head - <span className="text-blue-600 font-medium cursor-pointer hover:underline">Xem ngay</span>
+              </p>
+            </div>
+            <div className="p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded">
+              <p className="text-sm text-gray-700">
+                • Finding #007 đang chờ bạn upload minh chứng
+              </p>
+            </div>
+            <div className="p-4 bg-orange-50 border-l-4 border-orange-500 rounded">
+              <p className="text-sm text-gray-700">
+                • Reminder: #005 sắp đến deadline (1 ngày)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Tasks List */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">📋 Tasks to Complete</h2>
+          <div className="space-y-3">
+            <div className="p-4 border border-red-300 rounded-lg bg-red-50">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-red-600 font-semibold">#007</span>
+                    <span className="text-sm text-gray-700">Thu thập medical cert</span>
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">Đang làm</span>
+                  </div>
+                  <p className="text-xs text-gray-600">Còn 3 ngày</p>
+                </div>
+                <button className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700">
+                  Xem
+                </button>
+              </div>
+            </div>
+            <div className="p-4 border border-yellow-300 rounded-lg bg-yellow-50">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-yellow-600 font-semibold">#005</span>
+                    <span className="text-sm text-gray-700">Cập nhật training record</span>
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">Đang làm</span>
+                  </div>
+                  <p className="text-xs text-gray-600">Còn 1 ngày</p>
+                </div>
+                <button className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700">
+                  Xem
+                </button>
+              </div>
+            </div>
+            <div className="p-4 border border-gray-300 rounded-lg bg-gray-50">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-gray-600 font-semibold">#012</span>
+                    <span className="text-sm text-gray-700">Scan hồ sơ học viên</span>
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">Chờ duyệt</span>
+                  </div>
+                  <p className="text-xs text-gray-600">Còn 5 ngày</p>
+                </div>
+                <button className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700">
+                  Xem
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Completed Tasks */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">✅ Recently Completed</h2>
+          <div className="space-y-2">
+            <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded">
+              <p className="text-sm text-gray-700">
+                • #003 - Cập nhật checklist <span className="text-green-600 font-medium">(Đã đóng)</span>
+              </p>
+            </div>
+            <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded">
+              <p className="text-sm text-gray-700">
+                • #008 - Upload ảnh simulator <span className="text-green-600 font-medium">(Đã duyệt)</span>
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 text-sm font-medium">
+              Xem tất cả
+            </button>
+            <button className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium">
+              Lịch sử công việc
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </MainLayout>
   );
 };
 
