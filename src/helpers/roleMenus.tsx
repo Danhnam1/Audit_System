@@ -1,4 +1,5 @@
 import type { SidebarMenuItem } from '../components/Sidebar';
+import { ROUTES } from '../constants';
 import {
   UsersIcon,
   SettingsIcon,
@@ -16,8 +17,16 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
     { icon: <ReportsIcon />, label: 'Reports', path: '/reports' },
   ];
 
-  switch (role) {
-    case 'Admin':
+  // Normalize role - remove spaces and convert to lowercase for comparison
+  const normalizedRole = role?.toLowerCase().replace(/\s+/g, '') || '';
+  
+  console.log('=== getRoleMenu Debug ===');
+  console.log('Original role:', role);
+  console.log('Normalized role:', normalizedRole);
+
+  // Check by normalized role first, then by exact match
+  switch (normalizedRole) {
+    case 'admin':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
         { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
@@ -27,46 +36,46 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <SettingsIcon />, label: 'Settings', path: '/admin/settings' },
       ];
 
-    case 'SQAHead':
+    case 'Lead Auditor':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: '/sqa-head' },
-        { icon: <AuditIcon />, label: 'Audit Review', path: '/sqa-head/review' },
-        { icon: <ReportsIcon />, label: 'Reports', path: '/sqa-head/reports' },
-        { icon: <UsersIcon />, label: 'Team', path: '/sqa-head/team' },
+        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.LEAD_AUDITOR },
+        { icon: <AuditIcon />, label: 'Audit Review', path: `${ROUTES.LEAD_AUDITOR}/audit-review` },
+        { icon: <ReportsIcon />, label: 'Reports', path: `${ROUTES.LEAD_AUDITOR}/reports` },
+        { icon: <UsersIcon />, label: 'Team', path: `${ROUTES.LEAD_AUDITOR}/team` },
       ];
 
-    case 'SQAStaff':
+    case 'Auditor':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: '/sqa-staff' },
-        { icon: <AuditIcon />, label: 'Audit Planning', path: '/sqa-staff/planning' },
-        { icon: <DashboardIcon />, label: 'Finding Management', path: '/sqa-staff/findings' },
-        { icon: <ReportsIcon />, label: 'Reports', path: '/sqa-staff/reports' },
-        { icon: <DashboardIcon />, label: 'Requests', path: '/sqa-staff/requests' },
+        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITOR },
+        { icon: <AuditIcon />, label: 'Audit Planning', path: `${ROUTES.AUDITOR}/planning` },
+        { icon: <DashboardIcon />, label: 'Finding Management', path: `${ROUTES.AUDITOR}/findings` },
+        { icon: <ReportsIcon />, label: 'Reports', path: `${ROUTES.AUDITOR}/reports` },
+        { icon: <DashboardIcon />, label: 'Requests', path: `${ROUTES.AUDITOR}/requests` },
       ];
 
-    case 'DepartmentHead':
+    case 'AuditeeOwner':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: '/department-head' },
-        { icon: <AuditIcon />, label: 'Audit Plans', path: '/department-head/audit-plans' },
-        { icon: <UsersIcon />, label: 'Task Management', path: '/department-head/assign-tasks' },
-        { icon: <AuditIcon />, label: 'Review Evidence', path: '/department-head/review-evidence' },
-        { icon: <ReportsIcon />, label: 'Findings Progress', path: '/department-head/findings' },
-       
+        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITEE_OWNER },
+        { icon: <AuditIcon />, label: 'Audit Plans', path: `${ROUTES.AUDITEE_OWNER}/audit-plans` },
+        { icon: <UsersIcon />, label: 'Task Management', path: `${ROUTES.AUDITEE_OWNER}/assign-tasks` },
+        { icon: <AuditIcon />, label: 'Review Evidence', path: `${ROUTES.AUDITEE_OWNER}/review-evidence` },
+        { icon: <ReportsIcon />, label: 'Findings Progress', path: `${ROUTES.AUDITEE_OWNER}/findings` },
       ];
 
-    case 'DepartmentStaff':
+    case 'CAPAOwner':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: '/department-staff' },
-        { icon: <DashboardIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
-        { icon: <DashboardIcon />, label: 'Review Audit Results', path: '/director/review-results' },
+        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.CAPA_OWNER },
+        { icon: <DashboardIcon />, label: 'Tasks', path: `${ROUTES.CAPA_OWNER}/tasks` },
+        { icon: <DashboardIcon />, label: 'Progress', path: `${ROUTES.CAPA_OWNER}/progress` },
       ];
 
-    case 'Director':
+    case "Director":
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: '/director' },
+        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.DIRECTOR },
       ];
 
     default:
+      console.warn('No menu found for role:', role, '- Using base menu');
       return base;
   }
 };

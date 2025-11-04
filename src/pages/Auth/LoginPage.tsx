@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import authService from '../../hooks/auth'
 import useAuthStore from '../../store/useAuthStore'
 
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -13,7 +14,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const navigate = useNavigate()
-  const { setToken, setUser, setRememberMe: setRememberMeStore } = useAuthStore()
+  const { setToken, setUser, setRememberMe: setRememberMeStore, setRole } = useAuthStore()
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -30,10 +31,7 @@ export default function LoginPage() {
       console.log('=====================')
       
       // Handle different response structures
-      // Backend returns user data directly in response (not in response.data)
-      // Case 1: response itself is the user data (current backend behavior)
-      // Case 2: response.data contains user info (standard axios pattern)
-      // Case 3: response.data.data contains user info (nested)
+
       const userData = (response as any).token 
         ? response  // Backend returns data directly
         : ((response.data as any)?.data || response.data)  // Standard axios wrapper
@@ -41,8 +39,11 @@ export default function LoginPage() {
       if (userData) {
         // Store token and user data
         const token = userData.token || response.data?.token || ''
+        const userRole = userData.role || userData.roleName;
+        
         setToken(token)
         setUser(userData)
+        setRole(userRole) // Save role to persist
         setRememberMeStore(rememberMe)
 
         // Log for debugging
@@ -50,9 +51,10 @@ export default function LoginPage() {
         console.log('Token:', token)
         console.log('Role:', userData.role)
         console.log('RoleName:', userData.roleName)
+        console.log('Setting role to store:', userRole)
 
         // Navigate based on role - API returns "role" not "roleName"
-        const roleName = (userData.role || userData.roleName)?.toLowerCase()
+        const roleName = userRole?.toLowerCase().replace(/\s+/g, '')
         
         console.log('Navigating with role:', roleName)
         
@@ -61,19 +63,19 @@ export default function LoginPage() {
             console.log('Navigating to: /admin/users')
             navigate('/admin/users')
             break
-          case 'sqahead':
+          case 'leadauditor':
             console.log('Navigating to: /sqahead/dashboard')
             navigate('/sqahead/dashboard')
             break
-          case 'sqastaff':
+          case 'auditor':
             console.log('Navigating to: /sqastaff/dashboard')
             navigate('/sqastaff/dashboard')
             break
-          case 'departmenthead':
+          case 'auditeeowner':
             console.log('Navigating to: /departmenthead/dashboard')
             navigate('/departmenthead/dashboard')
             break
-          case 'departmentstaff':
+          case 'capaowner':
             console.log('Navigating to: /departmentstaff/dashboard')
             navigate('/departmentstaff/dashboard')
             break
@@ -102,12 +104,12 @@ export default function LoginPage() {
   }
 
   const demoCredentials = [
-    { role: 'Admin', email: 'admin@ams.com', password: 'admin123' },
-    { role: 'SQA Staff', email: 'sqastaff@ams.com', password: 'sqa123' },
-    { role: 'SQA Head', email: 'sqahead@ams.com', password: 'sqahead123' },
-    { role: 'Department Staff', email: 'deptstaff@ams.com', password: 'dept123' },
-    { role: 'Department Head', email: 'depthead@ams.com', password: 'head123' },
-    { role: 'Director', email: 'director@ams.com', password: 'director123' },
+    { role: 'Admin', email: 'voduy@gmail.com', password: '123456' },
+    { role: 'Auditor', email: 'auditor@ams.com', password: 'auditor123' },
+    { role: 'Lead Auditor', email: 'leadauditor@ams.com', password: 'lead123' },
+    { role: 'CAPA Owner', email: 'capaowner@ams.com', password: 'capa123' },
+    { role: 'Auditee Owner', email: 'auditeeowner@ams.com', password: 'auditee123' },
+    { role: 'Director', email: 'voduy123@gmail.com', password: '123456' },
   ]
 
   const quickLogin = (email: string, password: string) => {
@@ -140,25 +142,18 @@ export default function LoginPage() {
               <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
                 {/* Header */}
                 <div className="text-center mb-6 sm:mb-8">
-                  <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full mb-3 sm:mb-4">
-                    <svg
-                      className="w-7 h-7 sm:w-8 sm:h-8 text-white"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                      />
-                    </svg>
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full overflow-hidden">
+                    <img
+                      src="/icon/logo.png"
+                      alt="AMS Logo"
+                      className="w-full h-full object-contain"
+                    />
                   </div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">
-                    Welcome Back
+
+                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-600 mb-2">
+                    AMS
                   </h1>
-                  <p className="text-sm sm:text-base text-gray-600">Sign in to your AMS account</p>
+                  <p className="text-sm sm:text-base text-gray-600">Đăng nhập hệ thống</p>
                 </div>
 
                 {/* Error Message */}

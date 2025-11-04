@@ -31,7 +31,7 @@ const ReviewAuditPlans = () => {
       scope: 'Document Control, Training Records, Internal Audit Process',
       startDate: '2024-11-20',
       endDate: '2024-11-25',
-      submittedBy: 'Nguyễn Văn A (SQA Head)',
+  submittedBy: 'Nguyễn Văn A (Lead Auditor)',
       submittedDate: '2024-11-01',
       status: 'Pending Review',
       objectives: [
@@ -49,7 +49,7 @@ const ReviewAuditPlans = () => {
       scope: 'Access Control, Data Protection, Security Policies',
       startDate: '2024-11-15',
       endDate: '2024-11-18',
-      submittedBy: 'Nguyễn Văn A (SQA Head)',
+  submittedBy: 'Nguyễn Văn A (Lead Auditor)',
       submittedDate: '2024-10-28',
       status: 'Pending Review',
       objectives: [
@@ -67,7 +67,7 @@ const ReviewAuditPlans = () => {
       scope: 'Financial Controls, Reporting Procedures',
       startDate: '2024-10-20',
       endDate: '2024-10-25',
-      submittedBy: 'Nguyễn Văn A (SQA Head)',
+  submittedBy: 'Nguyễn Văn A (Lead Auditor)',
       submittedDate: '2024-10-15',
       status: 'Approved',
       objectives: [
@@ -108,7 +108,7 @@ const ReviewAuditPlans = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Review Audit Plans</h1>
-            <p className="text-gray-600 mt-1">Review plans approved by SQA Head</p>
+            <p className="text-gray-600 mt-1">Review plans approved by Lead Auditor</p>
           </div>
           <button
             onClick={() => navigate('/director')}

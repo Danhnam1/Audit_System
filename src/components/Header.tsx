@@ -1,7 +1,15 @@
-import { useAuth } from "../contexts";
+import { useNavigate } from "react-router-dom";
+import useAuthStore from "../store/useAuthStore";
 
 export const Navigation = () => {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { token, user, logout } = useAuthStore();
+  const navigate = useNavigate();
+  const isAuthenticated = !!token;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   if (!isAuthenticated) {
     return null; // Don't show navigation when not logged in
@@ -80,7 +88,7 @@ export const Navigation = () => {
 
             {/* Logout Button */}
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-3 sm:px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium shadow-md hover:shadow-lg flex items-center gap-2"
             >
               <svg

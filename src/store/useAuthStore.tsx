@@ -13,11 +13,9 @@ interface AuthState {
   user: ProfileResponse | null
   token: string | null
   rememberMe: boolean
-  rememberPhone: string | null
   setUser: (user: User | undefined) => void
   setToken: (token: string | null) => void
   setRememberMe: (value: boolean) => void
-  setRememberPhone: (phone: string | null) => void
   isLoggingIn: boolean
   logout: () => Promise<void>
   refreshToken: () => Promise<RefreshResponse | null>
@@ -41,16 +39,23 @@ const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       rememberMe: false,
-      rememberPhone: null,
       balance: undefined,
       loading: true,
       setLoading: value => set({ loading: value }),
-      setUser: user => set({ user }),
-      setToken: token => set({ token }),
+      setUser: user => {
+        console.log('[AuthStore] Setting user:', user);
+        set({ user });
+      },
+      setToken: token => {
+        console.log('[AuthStore] Setting token:', token ? 'exists' : 'null');
+        set({ token });
+      },
       setRememberMe: rememberMe => set({ rememberMe }),
-      setRememberPhone: rememberPhone => set({ rememberPhone }),
       role: undefined,
-      setRole: role => set({ role }),
+      setRole: role => {
+        console.log('[AuthStore] Setting role:', role);
+        set({ role });
+      },
       isLoggingIn: false,
       isGlobalLoading: true,
       setIsGlobalLoading: value => set({ isGlobalLoading: value }),
@@ -128,7 +133,42 @@ const useAuthStore = create<AuthState>()(
 
     {
       name: 'auth-storage',
-      partialize: state => ({ token: state.token, rememberMe: state.rememberMe, rememberPhone: state.rememberPhone })
+      version: 1, // Add version to clear old cache
+      partialize: state => {
+        console.log('[AuthStore] Saving to localStorage:', {
+          hasToken: !!state.token,
+          hasUser: !!state.user,
+          hasRole: !!state.role,
+          user: state.user
+        });
+        return {
+          token: state.token, 
+          user: state.user, 
+          rememberMe: state.rememberMe, 
+          role: state.role
+        };
+      },
+      onRehydrateStorage: () => {
+        console.log('[AuthStore] Starting hydration from localStorage...');
+        return (state, error) => {
+          if (error) {
+            console.error('[AuthStore] Hydration error:', error);
+          } else {
+            console.log('[AuthStore] Hydration complete:', {
+              hasToken: !!state?.token,
+              hasUser: !!state?.user,
+              hasRole: !!state?.role,
+              user: state?.user,
+              token: state?.token ? 'exists' : 'null'
+            });
+            
+            // Set loading to false after hydration
+            if (state) {
+              state.setLoading(false);
+            }
+          }
+        };
+      }
     }
   )
 )

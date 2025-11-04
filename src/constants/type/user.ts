@@ -26,7 +26,7 @@ export type ChangePassPayload = {
 export type RegisterPayload = Expand<
     Pick<User, 'fullName' | 'email' | 'deptId' | 'roleName'> & {
         password: string
-        wallet_password: string
+        
     }
 >
 

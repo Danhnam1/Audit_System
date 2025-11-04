@@ -43,10 +43,10 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
 function getRoleHomePath(role: UserRole): string {
   const rolePathMap: Record<UserRole, string> = {
     Admin: '/admin',
-    SQAStaff: '/sqa-staff',
-    SQAHead: '/sqa-head',
-    DepartmentStaff: '/department-staff',
-    DepartmentHead: '/department-head',
+    "Auditor": '/auditor',
+    "Lead Auditor": '/lead-auditor',
+    "CAPAOwner": '/capa-owner',
+    "AuditeeOwner": '/auditee-owner',
     Director: '/director',
   };
   return rolePathMap[role] || '/';

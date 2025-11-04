@@ -4,6 +4,7 @@ import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
 import './icons.tsx';
 import { useAuth } from '../contexts';
+import useAuthStore from '../store/useAuthStore';
 import { getRoleMenu } from '../helpers/roleMenus';
 
 export interface Team {
@@ -51,12 +52,18 @@ export const MainLayout = ({
   );
 
   // Default menu handled by role-based helper. If caller passes `menuItems`, that will be used instead.
-  const { user: authUser } = useAuth();
-  const role = authUser?.role;
+  const { user: authUser } = useAuthStore();
+  // Get role from either 'role' or 'roleName' field
+  const role = authUser?.role || (authUser as any)?.roleName;
+  
+  console.log('=== MainLayout Debug ===');
+  console.log('Auth User:', authUser);
+  console.log('Role:', role);
+  
   const defaultMenuItems: SidebarMenuItem[] = getRoleMenu(role);
+  
   // Debug: log menu items for roles that reported missing items
-  if (role === 'Admin' || role === 'SQAHead') {
-    // eslint-disable-next-line no-console
+  if (role === 'Admin' || role === 'Lead Auditor') {
     console.debug('[MainLayout] role:', role, 'menuItems:', defaultMenuItems);
   }
 

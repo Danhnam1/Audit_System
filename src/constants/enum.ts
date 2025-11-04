@@ -1,14 +1,15 @@
-export enum RequestStatus {
-  UNAUTHORIZED = 401,
-  TOKEN_EXPIRATION = 400,
-  NOT_FOUND = 404,
-  UNPROCESSABLE_CONTENT = 429,
-  UNPROCESSABLE_CONTENT_422 = 422,
-  SUCCESS = 200,
-  SUCCESS_AND_TIME_OUT = 202,
-  VERIFY_CODE_EXPIRED = 442
-}
-export enum ResetPassType {
-  LOGIN = 'login',
-  WALLET = 'wallet'
-}
+export const RequestStatus = {
+  UNAUTHORIZED: 401,
+  TOKEN_EXPIRATION: 400,
+  NOT_FOUND: 404,
+  UNPROCESSABLE_CONTENT: 429,
+  UNPROCESSABLE_CONTENT_422: 422,
+  SUCCESS: 200,
+  SUCCESS_AND_TIME_OUT: 202,
+  VERIFY_CODE_EXPIRED: 442
+} as const
+
+export const ResetPassType = {
+  LOGIN: 'login',
+  WALLET: 'wallet'
+} as const

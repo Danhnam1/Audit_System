@@ -1,10 +1,10 @@
 // Authentication types
 export type UserRole = 
   | 'Admin'
-  | 'SQAStaff'
-  | 'SQAHead'
-  | 'DepartmentStaff'
-  | 'DepartmentHead'
+  | 'Auditor'
+  | 'Lead Auditor'
+  | 'CAPAOwner'
+  | 'AuditeeOwner'
   | 'Director';
 
 export interface User {
