@@ -75,7 +75,7 @@ const Dashboard = () => {
               </div>
               <h3 className="text-xl font-semibold text-gray-800">Review Audit Plan</h3>
             </div>
-            <p className="text-gray-600 mb-3">View plans approved by SQA Head and approve or reject them</p>
+            <p className="text-gray-600 mb-3">View plans approved by Lead Auditor and approve or reject them</p>
             <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
               <span className="text-sm text-gray-500">Pending Review</span>
               <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium">3</span>

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useAuth } from '../../contexts';
-import logo from '../../../public/icon/logo.png';
 
 
 export default function LoginPage() {
@@ -26,11 +25,11 @@ export default function LoginPage() {
 
   const demoCredentials = [
     { role: 'Admin', username: 'admin', password: 'admin123' },
-    { role: 'SQA Staff', username: 'sqa', password: 'sqa123' },
-    { role: 'SQA Head', username: 'sqahead', password: 'sqahead123' },
+    { role: 'Auditor', username: 'sqa', password: 'sqa123' },
+    { role: 'Lead Auditor', username: 'sqahead', password: 'sqahead123' },
 
-    { role: 'Department Staff', username: 'deptstaff', password: 'dept123' },
-    { role: 'Department Head', username: 'depthead', password: 'head123' },
+    { role: 'CAPA Owner', username: 'deptstaff', password: 'dept123' },
+    { role: 'Auditee Owner', username: 'depthead', password: 'head123' },
     { role: 'Director', username: 'director', password: 'director123' },
 
   ];

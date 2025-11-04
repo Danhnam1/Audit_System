@@ -55,8 +55,7 @@ export const MainLayout = ({
   const role = authUser?.role;
   const defaultMenuItems: SidebarMenuItem[] = getRoleMenu(role);
   // Debug: log menu items for roles that reported missing items
-  if (role === 'Admin' || role === 'SQAHead') {
-    // eslint-disable-next-line no-console
+  if (role === 'Admin' || role === 'Lead Auditor') {
     console.debug('[MainLayout] role:', role, 'menuItems:', defaultMenuItems);
   }
 

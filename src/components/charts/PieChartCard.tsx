@@ -1,5 +1,6 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import type { PieLabelRenderProps } from 'recharts';
 
 interface PieData {
   name: string;
@@ -33,7 +34,11 @@ export const PieChartCard: React.FC<PieChartCardProps> = ({
             cx="50%"
             cy="50%"
             labelLine={false}
-            label={(entry: any) => `${entry.name}: ${((entry.value / total) * 100).toFixed(0)}%`}
+            label={(entry: PieLabelRenderProps) => {
+              const name = (entry && entry.name) ? String(entry.name) : '';
+              const value = typeof entry?.value === 'number' ? entry.value : 0;
+              return `${name}: ${((value / total) * 100).toFixed(0)}%`;
+            }}
             outerRadius={100}
             fill="#8884d8"
             dataKey="value"

@@ -20,32 +20,32 @@ const MOCK_USERS = [
     username: 'sqa',
     password: 'sqa123',
     email: 'sqa@ams.com',
-    role: 'SQAStaff' as const,
-    fullName: 'SQA Staff User',
+    role: 'Auditor' as const,
+    fullName: 'Auditor User',
   },
   {
     id: '3',
     username: 'sqahead',
     password: 'sqahead123',
     email: 'sqahead@ams.com',
-    role: 'SQAHead' as const,
-    fullName: 'SQA Head User',
+    role: 'Lead Auditor' as const,
+    fullName: 'Lead Auditor User',
   },
   {
     id: '4',
     username: 'deptstaff',
     password: 'dept123',
     email: 'deptstaff@ams.com',
-    role: 'DepartmentStaff' as const,
-    fullName: 'Department Staff User',
+    role: 'CAPAOwner' as const,
+    fullName: 'CAPA Owner User',
   },
   {
     id: '5',
     username: 'depthead',
     password: 'head123',
     email: 'depthead@ams.com',
-    role: 'DepartmentHead' as const,
-    fullName: 'Department Head User',
+    role: 'AuditeeOwner' as const,
+    fullName: 'Auditee Owner User',
   },
   {
     id: '6',
@@ -85,9 +85,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         throw new Error('Invalid username or password');
       }
 
-      // Remove password from user object
-      const { password, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
+  // Remove password from user object
+  const { password: _password, ...userWithoutPassword } = foundUser;
+  // ensure unused var doesn't trigger lint
+  void _password;
+  setUser(userWithoutPassword);
     } catch (error) {
       setIsLoading(false);
       throw error;
@@ -111,6 +113,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
