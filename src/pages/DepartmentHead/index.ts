@@ -1,1 +1,10 @@
-export { default as Welcome } from './Welcome.tsx';
+export { default as DepartmentHeadWelcome } from './Welcome';
+export { default as AuditPlans } from './auditplan/AuditPlans';
+export { default as AuditPlanDetail } from './auditplan/AuditPlanDetail';
+export { default as AuditPlanConfirm } from './auditplan/AuditPlanConfirm';
+export { default as AssignTasks } from './taskasign/AssignTasks';
+export { default as FindingsList } from './findings/FindingsList';
+export { default as AssignStaff } from './taskasign/AssignStaff';
+export { default as ReviewEvidence } from './ReviewEvidence';
+export { default as EvidenceDetail } from './EvidenceDetail';
+export { default as FindingsProgress } from './findings/FindingsProgress';

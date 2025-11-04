@@ -8,6 +8,7 @@ import {
   DatabaseIcon,
 } from '../layouts/icons';
 
+
 // Return default menu items per role. Pages can still override by passing menuItems to MainLayout.
 export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
   const base: SidebarMenuItem[] = [
@@ -46,20 +47,23 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
     case 'DepartmentHead':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: '/department-head' },
-        { icon: <UsersIcon />, label: 'Departments', path: '/department-head/departments' },
-        { icon: <ReportsIcon />, label: 'Reports', path: '/department-head/reports' },
+        { icon: <AuditIcon />, label: 'Audit Plans', path: '/department-head/audit-plans' },
+        { icon: <UsersIcon />, label: 'Task Management', path: '/department-head/assign-tasks' },
+        { icon: <AuditIcon />, label: 'Review Evidence', path: '/department-head/review-evidence' },
+        { icon: <ReportsIcon />, label: 'Findings Progress', path: '/department-head/findings' },
+       
       ];
 
     case 'DepartmentStaff':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: '/department-staff' },
-        { icon: <ReportsIcon />, label: 'Reports', path: '/department-staff/reports' },
+        { icon: <DashboardIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
+        { icon: <DashboardIcon />, label: 'Review Audit Results', path: '/director/review-results' },
       ];
 
     case 'Director':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: '/director' },
-        { icon: <ReportsIcon />, label: 'Approvals', path: '/director/approvals' },
       ];
 
     default:

@@ -88,58 +88,173 @@ const DirectorWelcome = () => {
           </div>
         </div>
 
-        {/* Recent Activity Table */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Recent Reports</h2>
+        {/* Urgent Decisions */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">🔔 Decisions Required</h2>
+          <div className="space-y-4">
+            <div className="p-5 bg-red-50 border-l-4 border-red-500 rounded-lg">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-red-900 mb-2">🔴 Audit Plan Q1/2026 - Khoa Phi công</h3>
+                  <p className="text-sm text-gray-700 mb-2">
+                    Đã được SQA Head duyệt | 2 ngày trước
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    Cần Director phê duyệt để tiến hành audit theo timeline
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 font-medium">
+                    Phê duyệt
+                  </button>
+                  <button className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 font-medium">
+                    Yêu cầu điều chỉnh
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="p-5 bg-yellow-50 border-l-4 border-yellow-500 rounded-lg">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-yellow-900 mb-2">🟡 Kết quả Audit Q3/2025 - Khoa Kỹ thuật</h3>
+                  <p className="text-sm text-gray-700 mb-2">
+                    Đã hoàn tất, chờ Director duyệt | 1 ngày trước
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    Tất cả findings đã được verify và đóng
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 font-medium">
+                    Phê duyệt
+                  </button>
+                  <button className="px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300 font-medium">
+                    Xem báo cáo
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left text-gray-500">
-              <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3">Department</th>
-                  <th scope="col" className="px-6 py-3">Report Type</th>
-                  <th scope="col" className="px-6 py-3">Submitted By</th>
-                  <th scope="col" className="px-6 py-3">Date</th>
-                  <th scope="col" className="px-6 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="bg-white border-b hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-gray-900">IT Department</td>
-                  <td className="px-6 py-4">Security Audit</td>
-                  <td className="px-6 py-4">John Doe</td>
-                  <td className="px-6 py-4">Today</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 text-xs font-medium text-orange-700 bg-orange-100 rounded-full">
-                      Pending Review
-                    </span>
-                  </td>
-                </tr>
-                <tr className="bg-white border-b hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-gray-900">HR Department</td>
-                  <td className="px-6 py-4">Compliance Report</td>
-                  <td className="px-6 py-4">Jane Smith</td>
-                  <td className="px-6 py-4">Yesterday</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full">
-                      Approved
-                    </span>
-                  </td>
-                </tr>
-                <tr className="bg-white border-b hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-gray-900">Finance</td>
-                  <td className="px-6 py-4">Financial Audit</td>
-                  <td className="px-6 py-4">Bob Johnson</td>
-                  <td className="px-6 py-4">2 days ago</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 text-xs font-medium text-green-700 bg-green-100 rounded-full">
-                      Approved
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+        </div>
+
+        {/* Compliance Trend */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">📈 Compliance Trend (12 months)</h2>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="relative h-48 flex items-end justify-between gap-2">
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-500 rounded-t" style={{ height: '65%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">N</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-500 rounded-t" style={{ height: '70%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">D</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-500 rounded-t" style={{ height: '75%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">J</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-500 rounded-t" style={{ height: '80%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">F</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-500 rounded-t" style={{ height: '85%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">M</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-500 rounded-t" style={{ height: '88%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">A</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-500 rounded-t" style={{ height: '90%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">M</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-600 rounded-t" style={{ height: '87%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">J</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-600 rounded-t" style={{ height: '92%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">J</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-600 rounded-t" style={{ height: '95%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">A</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-600 rounded-t" style={{ height: '93%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">S</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <div className="w-full bg-gray-200 rounded-t h-32 flex items-end">
+                  <div className="w-full bg-sky-600 rounded-t" style={{ height: '87.5%' }}></div>
+                </div>
+                <span className="text-xs text-gray-600 mt-2">O</span>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center justify-center gap-4 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-sky-600 rounded"></div>
+                <span>Actual: 87.5%</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 border-2 border-gray-400 border-dashed"></div>
+                <span>Target: 90%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Risk Alerts */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">⚠️ Risk Alerts</h2>
+          <div className="space-y-3">
+            <div className="p-4 bg-red-50 border-l-4 border-red-500 rounded">
+              <p className="text-sm text-gray-700">
+                • Khoa Tiếp viên: 3 Major findings chưa đóng (>30 ngày)
+              </p>
+            </div>
+            <div className="p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded">
+              <p className="text-sm text-gray-700">
+                • Budget Audit vượt 15% so với kế hoạch Q4
+              </p>
+            </div>
+            <div className="p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
+              <p className="text-sm text-gray-700">
+                • Sắp đến đợt Audit CAAV định kỳ (45 ngày nữa)
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 text-sm font-medium">
+              📊 Xem báo cáo đầy đủ
+            </button>
+            <button className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium">
+              📧 Gửi báo cáo Board
+            </button>
           </div>
         </div>
       </div>
