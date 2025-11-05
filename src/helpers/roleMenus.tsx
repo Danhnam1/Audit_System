@@ -29,6 +29,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
     case 'admin':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
+        { icon: <UsersIcon />, label: 'Department Management', path: '/admin/departments' },
         { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
         { icon: <AuditIcon />, label: 'Audit Logs', path: '/admin/audit-logs' },
         { icon: <ReportsIcon />, label: 'Reports', path: '/admin/reports' },
@@ -36,7 +37,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <SettingsIcon />, label: 'Settings', path: '/admin/settings' },
       ];
 
-    case 'Lead Auditor':
+    case 'leadauditor':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.LEAD_AUDITOR },
         { icon: <AuditIcon />, label: 'Audit Review', path: `${ROUTES.LEAD_AUDITOR}/audit-review` },
@@ -44,7 +45,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <UsersIcon />, label: 'Team', path: `${ROUTES.LEAD_AUDITOR}/team` },
       ];
 
-    case 'Auditor':
+    case 'auditor':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITOR },
         { icon: <AuditIcon />, label: 'Audit Planning', path: `${ROUTES.AUDITOR}/planning` },
@@ -53,7 +54,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <DashboardIcon />, label: 'Requests', path: `${ROUTES.AUDITOR}/requests` },
       ];
 
-    case 'AuditeeOwner':
+    case 'auditeeowner':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITEE_OWNER },
         { icon: <AuditIcon />, label: 'Audit Plans', path: `${ROUTES.AUDITEE_OWNER}/audit-plans` },
@@ -62,14 +63,14 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <ReportsIcon />, label: 'Findings Progress', path: `${ROUTES.AUDITEE_OWNER}/findings` },
       ];
 
-    case 'CAPAOwner':
+    case 'capaowner':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.CAPA_OWNER },
         { icon: <DashboardIcon />, label: 'Tasks', path: `${ROUTES.CAPA_OWNER}/tasks` },
         { icon: <DashboardIcon />, label: 'Progress', path: `${ROUTES.CAPA_OWNER}/progress` },
       ];
 
-    case "Director":
+    case 'director':
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.DIRECTOR },
       ];

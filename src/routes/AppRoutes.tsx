@@ -62,21 +62,23 @@ export function AppRoutes() {
     const getDefaultRoute = () => {
         if (!user) return ROUTES.LOGIN;
 
+        // Use normalized keys (lowercase, no spaces) to be tolerant of different role string formats
         const roleRouteMap: Record<string, string> = {
-            Admin: ROUTES.ADMIN,
-            "Auditor": ROUTES.AUDITOR,
-            "Lead Auditor": ROUTES.LEAD_AUDITOR,
-            "CAPAOwner": ROUTES.CAPA_OWNER,
-            "AuditeeOwner": ROUTES.AUDITEE_OWNER,
-            Director: ROUTES.DIRECTOR,
+            admin: ROUTES.ADMIN,
+            auditor: ROUTES.AUDITOR,
+            leadauditor: ROUTES.LEAD_AUDITOR,
+            capaowner: ROUTES.CAPA_OWNER,
+            auditeeowner: ROUTES.AUDITEE_OWNER,
+            director: ROUTES.DIRECTOR,
         };
 
         // Debug log để xem user role
         console.log('Current user:', user);
-        const userRole = user?.role || user?.roleName || '';
-        console.log('Redirecting to:', roleRouteMap[userRole] || ROUTES.LOGIN);
+        const rawRole = (user?.role || user?.roleName || '');
+        const normalized = String(rawRole).toLowerCase().replace(/\s+/g, '');
+        console.log('Original role:', rawRole, '\nNormalized role:', normalized);
 
-        return roleRouteMap[userRole] || ROUTES.LOGIN;
+        return roleRouteMap[normalized] || ROUTES.LOGIN;
     };
 
     return (

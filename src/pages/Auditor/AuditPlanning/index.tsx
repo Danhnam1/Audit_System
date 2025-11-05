@@ -1,7 +1,9 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getStatusColor, getBadgeVariant } from '../../../constants';
+import { getChecklistTemplates, getChecklistItemsByTemplate } from '../../../api/checklists';
+import { createAudit } from '../../../api/audits';
 
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
@@ -53,6 +55,28 @@ const SQAStaffAuditPlanning = () => {
   const removeScope = (code: string) => {
     setSelectedScopes((prev) => prev.filter((c) => c !== code));
   };
+
+  // Checklist templates fetched from API
+  const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [templateItems, setTemplateItems] = useState<any[]>([]);
+  // Minimal plan form state to send new audit to API
+  const [title, setTitle] = useState<string>('');
+  const [goal, setGoal] = useState<string>('');
+  const [periodFrom, setPeriodFrom] = useState<string>('');
+  const [periodTo, setPeriodTo] = useState<string>('');
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await getChecklistTemplates();
+        setChecklistTemplates(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Failed to load checklist templates', err);
+      }
+    };
+    load();
+  }, []);
 
   // menuItems are now provided centrally by MainLayout (role-based). Remove per-page menu definitions.
 
@@ -191,20 +215,20 @@ const SQAStaffAuditPlanning = () => {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Title *</label>
-                      <input type="text" placeholder="Enter audit plan title" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+                      <input value={title} onChange={(e) => setTitle(e.target.value)} type="text" placeholder="Enter audit plan title" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Goal (context)</label>
-                      <textarea rows={3} placeholder="Describe the goal and context of this audit..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"></textarea>
+                      <textarea value={goal} onChange={(e) => setGoal(e.target.value)} rows={3} placeholder="Describe the goal and context of this audit..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"></textarea>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Period - From</label>
-                        <input type="date" placeholder="dd/mm/yyyy" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+                        <input value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} type="date" placeholder="dd/mm/yyyy" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Period - To</label>
-                        <input type="date" placeholder="dd/mm/yyyy" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
+                        <input value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} type="date" placeholder="dd/mm/yyyy" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
                       </div>
                     </div>
                     <div>
@@ -335,12 +359,44 @@ const SQAStaffAuditPlanning = () => {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Select Checklist Set</label>
-                      <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                        <option>Published Checklist </option>
-                        <option>Safety Audit Checklist v2.0</option>
-                        <option>Maintenance Quality Checklist v1.5</option>
-                        <option>Training Compliance Checklist v3.0</option>
+                      <select
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        value={selectedTemplateId || ''}
+                        onChange={async (e) => {
+                          const id = e.target.value || null;
+                          setSelectedTemplateId(id);
+                          if (id) {
+                            try {
+                              const items = await getChecklistItemsByTemplate(id);
+                              setTemplateItems(Array.isArray(items) ? items : []);
+                            } catch (err) {
+                              console.error('Failed to load checklist items for template', id, err);
+                              setTemplateItems([]);
+                            }
+                          } else {
+                            setTemplateItems([]);
+                          }
+                        }}
+                      >
+                        <option value="">Published Checklist</option>
+                        {checklistTemplates.map((t: any) => (
+                          <option key={t.templateId || t.templateID || t.id || t.code} value={t.templateId || t.templateID || t.id || t.code}>
+                            {t.name || t.title || t.code || `Template ${t.templateId || t.id}`}
+                          </option>
+                        ))}
                       </select>
+                      {selectedTemplateId && (
+                        <div className="mt-2 text-sm text-gray-600">
+                          Items: {templateItems.length}
+                          {templateItems.length > 0 && (
+                            <ul className="list-disc ml-5 mt-2 max-h-40 overflow-y-auto">
+                              {templateItems.map((it: any) => (
+                                <li key={it.itemId || it.itemID || it.id || it.questionText}>{it.questionText || it.item || it.title || JSON.stringify(it).slice(0,40)}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
                     </div>
                     
                     <div>
@@ -457,7 +513,50 @@ const SQAStaffAuditPlanning = () => {
                       <button className="border-2 border-gray-400 text-gray-700 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150">
                         Save Draft
                       </button>
-                      <button className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">
+                      <button onClick={async () => {
+                        // Client-side validation
+                        if (!title.trim()) {
+                          alert('Vui lòng nhập tiêu đề (Title) cho kế hoạch.');
+                          setCurrentStep(1);
+                          return;
+                        }
+                        if (!periodFrom || !periodTo) {
+                          alert('Vui lòng chọn ngày bắt đầu và kết thúc.');
+                          setCurrentStep(1);
+                          return;
+                        }
+
+                        // Build minimal payload and call API
+                        const payload: any = {
+                          title: title || 'Untitled Plan',
+                          type: level || 'Unknown',
+                          scope: selectedScopes.join(','),
+                          templateId: selectedTemplateId || undefined,
+                          startDate: periodFrom ? new Date(periodFrom).toISOString() : undefined,
+                          endDate: periodTo ? new Date(periodTo).toISOString() : undefined,
+                          status: 'Draft',
+                          isPublished: false,
+                          objective: goal || '',
+                        };
+
+                        console.debug('Creating audit with payload:', payload);
+
+                        try {
+                          const resp = await createAudit(payload);
+                          // show simple feedback
+                          alert('Audit plan created: ' + (resp?.auditId || JSON.stringify(resp)));
+                        } catch (err: any) {
+                          // Try to show server-provided error details if available
+                          const serverMsg = err?.response?.data || err?.response || err?.message || err;
+                          console.error('Create audit failed', err, serverMsg);
+                          try {
+                            const pretty = typeof serverMsg === 'object' ? JSON.stringify(serverMsg, null, 2) : String(serverMsg);
+                            alert('Failed to create audit plan. Server response:\n' + pretty);
+                          } catch (e) {
+                            alert('Failed to create audit plan: ' + (err?.message || err));
+                          }
+                        }
+                      }} className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">
                         Submit Plan →
                       </button>
                     </>

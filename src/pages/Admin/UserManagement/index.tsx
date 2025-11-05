@@ -1,9 +1,10 @@
 import { MainLayout, UsersIcon, SettingsIcon } from '../../../layouts';
 import  useAuthStore  from '../../../store/useAuthStore';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StatCard } from '../../../components';
-import { getStatusColor } from '../../../constants';
 import authService from '../../../hooks/auth';
+import { apiClient } from '../../../hooks/axios';
+import { getDepartments } from '../../../api/departments';
 
 interface CreateUserForm {
   fullName: string;
@@ -13,13 +14,41 @@ interface CreateUserForm {
   deptId: string | null;
 }
 
+interface ApiUser {
+  $id?: string;
+  userId?: string;
+  email?: string;
+  fullName?: string;
+  roleName?: string;
+  deptId?: string | null;
+  isActive?: boolean;
+  createdAt?: string | null;
+  lastLogin?: string | null;
+}
+
+interface UIUser {
+  userId: string;
+  fullName: string;
+  email: string;
+  role: string;
+  department?: string;
+  deptId?: number | string | null;
+  status: string;
+  lastLogin?: string;
+  createdDate?: string | null;
+}
+
 const AdminUserManagement = () => {
   
   const { user } = useAuthStore();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [users, setUsers] = useState<UIUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [departments, setDepartments] = useState<Array<{deptId?: number | string; name?: string}>>([]);
   const [filterRole, setFilterRole] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('Active');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -53,13 +82,16 @@ const AdminUserManagement = () => {
       setError('Email không hợp lệ');
       return false;
     }
-    if (!formData.password) {
-      setError('Vui lòng nhập mật khẩu');
-      return false;
-    }
-    if (formData.password.length < 6) {
-      setError('Mật khẩu phải có ít nhất 6 ký tự');
-      return false;
+    // For edit mode, password is optional; only validate on create
+    if (!editingUserId) {
+      if (!formData.password) {
+        setError('Vui lòng nhập mật khẩu');
+        return false;
+      }
+      if (formData.password.length < 6) {
+        setError('Mật khẩu phải có ít nhất 6 ký tự');
+        return false;
+      }
     }
     if (!formData.role) {
       setError('Vui lòng chọn vai trò');
@@ -84,6 +116,31 @@ const AdminUserManagement = () => {
     setSuccess('');
 
     try {
+      // If editingUserId is set, perform update (PUT) instead of register
+      if (editingUserId) {
+        const updatePayload = {
+          fullName: formData.fullName,
+          roleName: formData.role,
+          deptId: formData.deptId ? Number(formData.deptId) : 0,
+          isActive: true,
+          status: 'Active'
+        }
+
+        await apiClient.put(`/admin/AdminUsers/${editingUserId}`, updatePayload)
+
+        setSuccess('Cập nhật người dùng thành công!')
+        // refresh list and reset
+        await fetchUsers()
+        setEditingUserId(null)
+        setFormData({ fullName: '', email: '', password: '', role: '', deptId: null })
+        setTimeout(() => {
+          setShowCreateForm(false)
+          setSuccess('')
+        }, 2000)
+
+        return
+      }
+
       const response = await authService.register({
         fullName: formData.fullName,
         email: formData.email,
@@ -103,6 +160,7 @@ const AdminUserManagement = () => {
       
       // If we reach here without error, registration was successful
       // The API call didn't throw, so it succeeded
+      await fetchUsers()
       setSuccess('Tạo người dùng thành công!');
       
       // Reset form
@@ -142,78 +200,108 @@ const AdminUserManagement = () => {
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const users = [
-    {
-      id: 'USR-001',
-      fullName: 'John Smith',
-      email: 'john.smith@aviation.edu',
-  role: 'Auditor',
-      department: 'Quality Assurance',
-      status: 'Active',
-      lastLogin: '2025-10-25 09:30',
-      createdDate: '2025-01-15',
-    },
-    {
-      id: 'USR-002',
-      fullName: 'Sarah Johnson',
-      email: 'sarah.j@aviation.edu',
-  role: 'Lead Auditor',
-      department: 'Quality Assurance',
-      status: 'Active',
-      lastLogin: '2025-10-25 08:15',
-      createdDate: '2025-01-20',
-    },
-    {
-      id: 'USR-003',
-      fullName: 'Mike Chen',
-      email: 'mike.chen@aviation.edu',
-  role: 'Auditee Owner',
-      department: 'Flight Operations',
-      status: 'Active',
-      lastLogin: '2025-10-24 16:45',
-      createdDate: '2025-02-10',
-    },
-    {
-      id: 'USR-004',
-      fullName: 'Emily Davis',
-      email: 'emily.d@aviation.edu',
-  role: 'CAPA Owner',
-      department: 'Maintenance',
-      status: 'Active',
-      lastLogin: '2025-10-25 07:00',
-      createdDate: '2025-03-05',
-    },
-    {
-      id: 'USR-005',
-      fullName: 'Robert Wilson',
-      email: 'robert.w@aviation.edu',
-      role: 'Director',
-      department: 'Executive',
-      status: 'Active',
-      lastLogin: '2025-10-25 10:00',
-      createdDate: '2025-01-10',
-    },
-    {
-      id: 'USR-006',
-      fullName: 'Lisa Anderson',
-      email: 'lisa.a@aviation.edu',
-  role: 'CAPA Owner',
-      department: 'Training',
-      status: 'Inactive',
-      lastLogin: '2025-09-30 14:20',
-      createdDate: '2025-02-28',
-    },
-    {
-      id: 'USR-007',
-      fullName: 'David Martinez',
-      email: 'david.m@aviation.edu',
-  role: 'Auditor',
-      department: 'Quality Assurance',
-      status: 'Active',
-      lastLogin: '2025-10-25 08:45',
-      createdDate: '2025-04-12',
-    },
-  ];
+  // Fetch users from backend (extracted so it can be reused after mutations)
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      // Fetch departments first so we can map deptId -> name
+      let deptMap: Record<string, string> = {}
+      try {
+        const depts: any = await getDepartments()
+        const deptArr = (depts || []).map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
+        setDepartments(deptArr)
+        deptArr.forEach((d: any) => {
+          if (d.deptId != null) deptMap[String(d.deptId)] = d.name || '—'
+        })
+      } catch (err) {
+        // ignore dept fetch errors, we'll show raw id
+        console.warn('Failed to fetch departments', err)
+      }
+
+      const res: any = await apiClient.get('/admin/AdminUsers');
+
+      // Backend returns an envelope with $values
+      const values: ApiUser[] = res?.$values || res?.values || res?.data || [];
+
+      const mapped: UIUser[] = (values || []).map(v => {
+        const roleNormalized = String(v.roleName || '').toLowerCase().replace(/\s+/g, '')
+        const deptIdVal = v.deptId ?? null
+        // Only show department name when the user's role is Auditee Owner
+        const departmentName = (roleNormalized === 'auditeeowner' && deptIdVal != null)
+          ? (deptMap[String(deptIdVal)] || String(deptIdVal))
+          : '—'
+
+        return {
+          userId: v.userId || '',
+          fullName: v.fullName || 'N/A',
+          email: v.email || 'N/A',
+          role: v.roleName || 'N/A',
+          deptId: deptIdVal,
+          department: departmentName,
+          status: v.isActive ? 'Active' : 'Inactive',
+          lastLogin: v.lastLogin || 'Never',
+          createdDate: v.createdAt || null,
+        }
+      })
+
+      setUsers(mapped)
+    } catch (err: any) {
+      console.error('Failed to load admin users', err)
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchUsers()
+  }, [])
+
+  // Helper to convert display role to select option value used in the form
+  const convertRoleToOption = (roleDisplay: string) => {
+    switch (roleDisplay) {
+      case 'Lead Auditor':
+        return 'LeadAuditor'
+      case 'Auditee Owner':
+        return 'AuditeeOwner'
+      case 'CAPA Owner':
+        return 'CAPAOwner'
+      default:
+        return roleDisplay
+    }
+  }
+
+  const handleEdit = (u: UIUser) => {
+    setFormData({
+      fullName: u.fullName,
+      email: u.email,
+      password: '',
+      role: convertRoleToOption(u.role),
+      deptId: u.deptId != null ? String(u.deptId) : null,
+    })
+    setEditingUserId(u.userId)
+    setShowCreateForm(true)
+    setError('')
+    setSuccess('')
+  }
+
+  const handleDelete = async (id: string) => {
+    const confirmed = window.confirm('Bạn có chắc muốn xóa người dùng này?')
+    if (!confirmed) return
+
+    try {
+      await apiClient.delete(`/admin/AdminUsers/${id}`)
+      setSuccess('Xóa người dùng thành công!')
+      // Refresh list
+      fetchUsers()
+      // Hide inactive users by default so the deleted (now inactive) user disappears
+      setFilterStatus('Active')
+      // clear success after 2s
+      setTimeout(() => setSuccess(''), 2000)
+    } catch (err: any) {
+      console.error('Delete user failed', err)
+      setError(err?.message || 'Xóa người dùng thất bại')
+    }
+  }
 
   const getRoleColor = (role: string) => {
     const colors: Record<string, string> = {
@@ -261,6 +349,11 @@ const AdminUserManagement = () => {
       </div>
 
       <div className="px-6 pb-6 space-y-6">
+        {loadingUsers && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg">
+            Đang tải danh sách người dùng...
+          </div>
+        )}
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard title="Total Users" value={stats.total.toString()} icon={<UsersIcon />} variant="primary" />
@@ -272,7 +365,7 @@ const AdminUserManagement = () => {
         {/* Create User Form */}
         {showCreateForm && (
           <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <h2 className="text-lg font-semibold text-primary-600 mb-4">Create New User</h2>
+            <h2 className="text-lg font-semibold text-primary-600 mb-4">{editingUserId ? 'Edit User' : 'Create New User'}</h2>
             
             {/* Error Message */}
             {error && (
@@ -342,40 +435,38 @@ const AdminUserManagement = () => {
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     >
                       <option value="">No Department</option>
-                      <option value="1">Quality Assurance</option>
-                      <option value="2">Flight Operations</option>
-                      <option value="3">Maintenance</option>
-                      <option value="4">Training</option>
-                      <option value="5">Safety</option>
-                      <option value="6">Ground Operations</option>
-                      <option value="7">Executive</option>
+                      {departments.map(d => (
+                        <option key={String(d.deptId)} value={String(d.deptId)}>{d.name}</option>
+                      ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                    <input
-                      type="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      placeholder="Enter password (min 6 characters)"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      required
-                      minLength={6}
-                    />
-                  </div>
+                  {!editingUserId && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                      <input
+                        type="password"
+                        name="password"
+                        value={formData.password}
+                        onChange={handleInputChange}
+                        placeholder="Enter password (min 6 characters)"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        required
+                        minLength={6}
+                      />
+                    </div>
+                  )}
                 
                 </div>
 
                 <div className="flex gap-3 pt-2">
-                  <button 
+                <button 
                     type="submit"
                     disabled={isSubmitting}
                     className={`bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
                       isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >
-                    {isSubmitting ? 'Creating...' : 'Create User'}
+                    {isSubmitting ? (editingUserId ? 'Saving...' : 'Creating...') : (editingUserId ? 'Save Changes' : 'Create User')}
                   </button>
                   <button 
                     type="button"
@@ -410,7 +501,7 @@ const AdminUserManagement = () => {
                 <option value="Director">Director</option>
               </select>
             </div>
-            <div>
+            {/* <div>
               <label className="text-sm font-medium text-gray-700 mr-2">Status:</label>
               <select 
                 value={filterStatus}
@@ -422,7 +513,7 @@ const AdminUserManagement = () => {
                 <option value="Inactive">Inactive</option>
                 <option value="Suspended">Suspended</option>
               </select>
-            </div>
+            </div> */}
             <span className="text-sm text-gray-600">
               Showing {filteredUsers.length} of {users.length} user(s)
             </span>
@@ -439,21 +530,20 @@ const AdminUserManagement = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">User ID</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Email</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Role</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Last Login</th>
+                  {/* <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th> */}
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredUsers.map((usr) => (
-                  <tr key={usr.id} className="hover:bg-gray-50 transition-colors">
+                {filteredUsers.map((usr, idx) => (
+                  <tr key={usr.userId || idx} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-primary-600">{usr.id}</span>
+                      <span className="text-sm font-medium text-primary-600">{idx + 1}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -474,27 +564,29 @@ const AdminUserManagement = () => {
                     <td className="px-6 py-4">
                       <span className="text-sm text-gray-700">{usr.department}</span>
                     </td>
-                    <td className="px-6 py-4">
+                    {/* <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(usr.status)}`}>
                         {usr.status}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm text-gray-600">{usr.lastLogin}</span>
-                    </td>
+                    </td> */}
+                    
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex gap-2">
-                        <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">
+                        <button
+                          onClick={() => handleEdit(usr)}
+                          className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                        >
                           Edit
                         </button>
                         <span className="text-gray-300">|</span>
-                        <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">
-                          Reset Password
+                        <button
+                          onClick={() => handleDelete(usr.userId)}
+                          className="text-red-600 hover:text-red-700 text-sm font-medium"
+                        >
+                          Delete
                         </button>
                         <span className="text-gray-300">|</span>
-                        <button className="text-gray-700 hover:text-gray-900 text-sm font-medium">
-                          {usr.status === 'Active' ? 'Deactivate' : 'Activate'}
-                        </button>
+                        
                       </div>
                     </td>
                   </tr>

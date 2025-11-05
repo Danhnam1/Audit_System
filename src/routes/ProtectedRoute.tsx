@@ -29,11 +29,19 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   }
 
   // Get role from user.role or user.roleName
-  const userRole = (user?.role || user?.roleName) as UserRole | undefined;
+  const rawRole = (user?.role || user?.roleName) as string | undefined;
+  const userRole = rawRole ? (rawRole as UserRole) : undefined;
 
-  if (allowedRoles && userRole && !allowedRoles.includes(userRole)) {
-    // Redirect to their appropriate dashboard
-    return <Navigate to={getRoleHomePath(userRole)} replace />;
+  if (allowedRoles && userRole) {
+    // Normalize both allowedRoles and user role for tolerant comparison
+    const normalize = (r?: string) => String(r || '').toLowerCase().replace(/\s+/g, '');
+    const normalizedUser = normalize(userRole);
+    const normalizedAllowed = allowedRoles.map(normalize);
+
+    if (!normalizedAllowed.includes(normalizedUser)) {
+      // Redirect to their appropriate dashboard
+      return <Navigate to={getRoleHomePath(userRole)} replace />;
+    }
   }
 
   return <>{children}</>;
