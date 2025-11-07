@@ -94,10 +94,18 @@ export default function LoginPage() {
     } catch (err: any) {
       console.error('=== LOGIN ERROR ===')
       console.error('Error:', err)
-      console.error('Error response:', err.response)
-      console.error('Error message:', err.message)
+      // Guarded access because err may be undefined or not an AxiosError
+      const resp = err?.response
+      const msg = err?.message
+      console.error('Error response:', resp)
+      console.error('Error message:', msg)
       console.error('==================')
-      setError(err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.')
+      const serverMsg = resp?.data?.message || resp?.data || msg
+      setError(
+        typeof serverMsg === 'string'
+          ? serverMsg
+          : 'Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.'
+      )
     } finally {
       setIsLoading(false)
     }

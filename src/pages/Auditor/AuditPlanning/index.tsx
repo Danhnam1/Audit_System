@@ -2,8 +2,13 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { getStatusColor, getBadgeVariant } from '../../../constants';
-import { getChecklistTemplates, getChecklistItemsByTemplate } from '../../../api/checklists';
-import { createAudit } from '../../../api/audits';
+import { getChecklistTemplates } from '../../../api/checklists';
+import { createAudit, addAuditScopeDepartment } from '../../../api/audits';
+import { getAuditCriteria } from '../../../api/auditCriteria';
+import { addCriterionToAudit } from '../../../api/auditCriteriaMap';
+import { getAdminUsers } from '../../../api/adminUsers';
+import { addTeamMember } from '../../../api/auditTeam';
+import { getDepartments } from '../../../api/departments';
 
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
@@ -37,29 +42,47 @@ const SQAStaffAuditPlanning = () => {
 
   const [selectedPlan, setSelectedPlan] = useState<AuditPlan | null>(null);
   const [showTeamModal, setShowTeamModal] = useState(false);
-  const [level, setLevel] = useState<string>('faculty');
-  const [faculty, setFaculty] = useState<string>('cabin-crew');
-  const [courseQuery, setCourseQuery] = useState<string>('');
-  const [selectedScopes, setSelectedScopes] = useState<string[]>([
-    'CC-REC-1025',
-    'CC-DGR-1125',
-    'CC-REC-1125',
-  ]);
+  const [level, setLevel] = useState<string>('academy');
+  // legacy faculty field removed in new Level design
+  // Departments for Department level scope
+  const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('');
 
-  const addScope = (code: string) => {
-    const v = (code || '').trim().toUpperCase();
-    if (!v) return;
-    setSelectedScopes((prev) => (prev.includes(v) ? prev : [...prev, v]));
-  };
+  useEffect(() => {
+    // Lazy-load departments when the user selects Department level
+    const loadDepts = async () => {
+      try {
+        const res: any = await getDepartments();
+        const list = (res || []).map((d: any) => ({
+          deptId: d.deptId ?? d.$id ?? d.id,
+          name: d.name || d.code || '—',
+        }));
+        setDepartments(list);
+      } catch (err) {
+        console.error('Failed to load departments', err);
+      }
+    };
+    if (level === 'department' && departments.length === 0) {
+      loadDepts();
+    }
+  }, [level]);
+  // Standards (Audit Criteria) fetched from API
+  const [criteria, setCriteria] = useState<any[]>([]);
+  const [selectedCriteriaIds, setSelectedCriteriaIds] = useState<string[]>([]);
+  // Team selections
+  const [leadOptions, setLeadOptions] = useState<any[]>([]);
+  const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
+  const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
+  const [selectedLeadId, setSelectedLeadId] = useState<string>('');
+  const [selectedAuditorIds, setSelectedAuditorIds] = useState<string[]>([]);
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string>('');
 
-  const removeScope = (code: string) => {
-    setSelectedScopes((prev) => prev.filter((c) => c !== code));
-  };
+  // legacy course scope chips removed with simplified scope design
 
   // Checklist templates fetched from API
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const [templateItems, setTemplateItems] = useState<any[]>([]);
+  
   // Minimal plan form state to send new audit to API
   const [title, setTitle] = useState<string>('');
   const [goal, setGoal] = useState<string>('');
@@ -71,6 +94,26 @@ const SQAStaffAuditPlanning = () => {
       try {
         const data = await getChecklistTemplates();
         setChecklistTemplates(Array.isArray(data) ? data : []);
+        // Load standards (audit criteria)
+        try {
+          const crit = await getAuditCriteria();
+          setCriteria(Array.isArray(crit) ? crit : []);
+        } catch (e) {
+          console.error('Failed to load audit criteria', e);
+        }
+        // Load users for team selects
+        try {
+          const users = await getAdminUsers();
+          const norm = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, '')
+          const leads = (users || []).filter((u: any) => norm(u.roleName) === 'leadauditor')
+          const auditors = (users || []).filter((u: any) => norm(u.roleName) === 'auditor')
+          const owners = (users || []).filter((u: any) => norm(u.roleName) === 'auditeeowner')
+          setLeadOptions(leads)
+          setAuditorOptions(auditors)
+          setOwnerOptions(owners)
+        } catch (e) {
+          console.error('Failed to load users for team', e);
+        }
       } catch (err) {
         console.error('Failed to load checklist templates', err);
       }
@@ -246,25 +289,28 @@ const SQAStaffAuditPlanning = () => {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Level *</label>
                       <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" value={level} onChange={(e) => setLevel(e.target.value)}>
-                        <option value="academy">Academy</option>
-                        <option value="faculty">Faculty</option>
+                        <option value="academy">Entire Aviation Academy</option>
                         <option value="department">Department</option>
-                        <option value="course">Course</option>
                       </select>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Faculty/Unit *</label>
-                      <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" value={faculty} onChange={(e) => setFaculty(e.target.value)}>
-                        <option value="cabin-crew">Cabin Crew</option>
-                        <option value="pilot">Pilot</option>
-                        <option value="maintenance">Maintenance</option>
-                        <option value="ground-operations">Ground Operations</option>
-                        <option value="others">Others</option>
-                      </select>
-                    </div>
+                    {level === 'department' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Department *</label>
+                        <select
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          value={selectedDeptId}
+                          onChange={(e) => setSelectedDeptId(e.target.value)}
+                        >
+                          <option value="">Select department</option>
+                          {departments.map((d) => (
+                            <option key={String(d.deptId)} value={String(d.deptId)}>{d.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
-                    <div>
+                    {/* <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Delivery: </label>
                       <div className="flex flex-wrap gap-3">
                         <label className="flex items-center gap-2">
@@ -284,35 +330,42 @@ const SQAStaffAuditPlanning = () => {
                           <span className="text-sm text-gray-700">OJT</span>
                         </label>
                       </div>
-                    </div>
+                    </div> */}
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Standards:</label>
-                      <div className="flex flex-wrap gap-3">
-                        <label className="flex items-center gap-2">
-                          <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" defaultChecked />
-                          <span className="text-sm text-gray-700">CAAV</span>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                          <span className="text-sm text-gray-700">EASA</span>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                          <span className="text-sm text-gray-700">ICAO</span>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                          <span className="text-sm text-gray-700">IATA DGR</span>
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                          <span className="text-sm text-gray-700">SOP</span>
-                        </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {criteria.length === 0 && (
+                          <p className="text-sm text-gray-500">No standards available.</p>
+                        )}
+                        {criteria.map((c: any) => {
+                          const id = c.criteriaId || c.id || c.$id
+                          const label = c.name || c.referenceCode || id
+                          const checked = selectedCriteriaIds.includes(String(id))
+                          return (
+                            <label key={String(id)} className="flex items-center gap-2 bg-gray-50 rounded border border-gray-200 px-3 py-2">
+                              <input
+                                type="checkbox"
+                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                checked={checked}
+                                onChange={(e) => {
+                                  const val = String(id)
+                                  setSelectedCriteriaIds((prev) => e.target.checked ? [...prev, val] : prev.filter((x) => x !== val))
+                                }}
+                              />
+                              <span className="text-sm text-gray-700">
+                                {label}
+                                {c.referenceCode && (
+                                  <span className="ml-2 text-xs text-gray-500">({c.referenceCode})</span>
+                                )}
+                              </span>
+                            </label>
+                          )
+                        })}
                       </div>
                     </div>
 
-                    <div>
+                    {/* <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Course filter: type code and press Enter to add</label>
                       <input
                         type="text"
@@ -329,9 +382,9 @@ const SQAStaffAuditPlanning = () => {
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       />
                       <p className="text-xs text-gray-500 mt-1">Avoid duplicates; entries are auto uppercased.</p>
-                    </div>
+                    </div> */}
 
-                    <div>
+                    {/* <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Selected Scope chips ({selectedScopes.length})</label>
                       <div className="flex flex-wrap gap-2">
                         {selectedScopes.map((code) => (
@@ -343,7 +396,7 @@ const SQAStaffAuditPlanning = () => {
                           </span>
                         ))}
                       </div>
-                    </div>
+                    </div> */}
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Out-of-scope (optional):</label>
@@ -365,17 +418,6 @@ const SQAStaffAuditPlanning = () => {
                         onChange={async (e) => {
                           const id = e.target.value || null;
                           setSelectedTemplateId(id);
-                          if (id) {
-                            try {
-                              const items = await getChecklistItemsByTemplate(id);
-                              setTemplateItems(Array.isArray(items) ? items : []);
-                            } catch (err) {
-                              console.error('Failed to load checklist items for template', id, err);
-                              setTemplateItems([]);
-                            }
-                          } else {
-                            setTemplateItems([]);
-                          }
                         }}
                       >
                         <option value="">Published Checklist</option>
@@ -385,18 +427,7 @@ const SQAStaffAuditPlanning = () => {
                           </option>
                         ))}
                       </select>
-                      {selectedTemplateId && (
-                        <div className="mt-2 text-sm text-gray-600">
-                          Items: {templateItems.length}
-                          {templateItems.length > 0 && (
-                            <ul className="list-disc ml-5 mt-2 max-h-40 overflow-y-auto">
-                              {templateItems.map((it: any) => (
-                                <li key={it.itemId || it.itemID || it.id || it.questionText}>{it.questionText || it.item || it.title || JSON.stringify(it).slice(0,40)}</li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      )}
+                      
                     </div>
                     
                     <div>
@@ -413,29 +444,44 @@ const SQAStaffAuditPlanning = () => {
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Audit Lead (Lead Auditor)</label>
-                      <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                        <option>Select user </option>
-                        <option>Sarah Johnson (Lead Auditor)</option>
-                        <option>Mike Chen (Lead Auditor)</option>
+                      <select
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        value={selectedLeadId}
+                        onChange={(e) => setSelectedLeadId(e.target.value)}
+                      >
+                        <option value="">Select user</option>
+                        {leadOptions.map((u: any) => (
+                          <option key={u.userId} value={u.userId}>{u.fullName} ({u.email})</option>
+                        ))}
                       </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Auditors (Auditor)</label>
-                      <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                        <option>Multi-select </option>
-                        <option>John Smith (Auditor)</option>
-                        <option>David Martinez (Auditor)</option>
-                        <option>Emily Davis (Auditor)</option>
+                      <select
+                        multiple
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 min-h-24"
+                        value={selectedAuditorIds}
+                        onChange={(e) => {
+                          const opts = Array.from(e.target.selectedOptions).map(o => o.value)
+                          setSelectedAuditorIds(opts)
+                        }}
+                      >
+                        {auditorOptions.map((u: any) => (
+                          <option key={u.userId} value={u.userId}>{u.fullName} ({u.email})</option>
+                        ))}
                       </select>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Auditee Owner(s)</label>
-                      <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                        <option>Select Auditee Owner </option>
-                        <option>Flight Operations - Mike Chen</option>
-                        <option>Maintenance - David Martinez</option>
-                        <option>Training - Emily Davis</option>
-                        <option>Safety - Robert Wilson</option>
+                      <select
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        value={selectedOwnerId}
+                        onChange={(e) => setSelectedOwnerId(e.target.value)}
+                      >
+                        <option value="">Select Auditee Owner</option>
+                        {ownerOptions.map((u: any) => (
+                          <option key={u.userId} value={u.userId}>{u.fullName} ({u.email})</option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -530,7 +576,6 @@ const SQAStaffAuditPlanning = () => {
                         const payload: any = {
                           title: title || 'Untitled Plan',
                           type: level || 'Unknown',
-                          scope: selectedScopes.join(','),
                           templateId: selectedTemplateId || undefined,
                           startDate: periodFrom ? new Date(periodFrom).toISOString() : undefined,
                           endDate: periodTo ? new Date(periodTo).toISOString() : undefined,
@@ -543,8 +588,41 @@ const SQAStaffAuditPlanning = () => {
 
                         try {
                           const resp = await createAudit(payload);
+                          const newAuditId = resp?.auditId || resp?.id || resp;
+                          // If scoped by department, attach department to audit
+                          if (level === 'department' && selectedDeptId) {
+                            try {
+                              await addAuditScopeDepartment(String(newAuditId), Number(selectedDeptId));
+                            } catch (scopeErr) {
+                              console.error('Attach department to audit failed', scopeErr);
+                            }
+                          }
+                          // Map selected standards to this audit
+                          if (Array.isArray(selectedCriteriaIds) && selectedCriteriaIds.length > 0) {
+                            try {
+                              await Promise.all(selectedCriteriaIds.map((cid) => addCriterionToAudit(String(newAuditId), String(cid))));
+                            } catch (critErr) {
+                              console.error('Attach criteria to audit failed', critErr);
+                            }
+                          }
+                          // Add team members
+                          try {
+                            const calls: Promise<any>[] = []
+                            if (selectedLeadId) {
+                              calls.push(addTeamMember({ auditId: String(newAuditId), userId: selectedLeadId, roleInTeam: 'LeadAuditor', isLead: true }))
+                            }
+                            selectedAuditorIds.forEach((uid) => {
+                              calls.push(addTeamMember({ auditId: String(newAuditId), userId: uid, roleInTeam: 'Auditor', isLead: false }))
+                            })
+                            if (selectedOwnerId) {
+                              calls.push(addTeamMember({ auditId: String(newAuditId), userId: selectedOwnerId, roleInTeam: 'AuditeeOwner', isLead: false }))
+                            }
+                            if (calls.length) await Promise.allSettled(calls)
+                          } catch (teamErr) {
+                            console.error('Attach team failed', teamErr)
+                          }
                           // show simple feedback
-                          alert('Audit plan created: ' + (resp?.auditId || JSON.stringify(resp)));
+                          alert('Audit plan created: ' + String(newAuditId));
                         } catch (err: any) {
                           // Try to show server-provided error details if available
                           const serverMsg = err?.response?.data || err?.response || err?.message || err;
@@ -611,13 +689,13 @@ const SQAStaffAuditPlanning = () => {
                     <td className="px-6 py-4">
                       <p className="text-sm font-medium text-gray-900">{plan.domain}</p>
                       <p className="text-xs text-gray-500">{plan.organizationLevel}</p>
-                      <div className="flex gap-1 mt-1">
+                      {/* <div className="flex gap-1 mt-1">
                         {plan.deliveryMode.map((mode, i) => (
                           <span key={i} className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded">
                             {mode}
                           </span>
                         ))}
-                      </div>
+                      </div> */}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-xs space-y-1">
@@ -715,14 +793,14 @@ const SQAStaffAuditPlanning = () => {
                       <p className="text-xs text-gray-600 mb-1">Domain/Area</p>
                       <p className="text-sm font-medium text-gray-900">{selectedPlan.domain}</p>
                     </div>
-                    <div>
+                    {/* <div>
                       <p className="text-xs text-gray-600 mb-2">Delivery Mode</p>
                       <div className="flex gap-2 flex-wrap">
                         {selectedPlan.deliveryMode.map((mode: string, i: number) => (
                           <span key={i} className={`px-3 py-1 text-xs rounded-full font-medium ${getBadgeVariant('primary-medium')}`}>{mode}</span>
                         ))}
                       </div>
-                    </div>
+                    </div> */}
                     <div>
                       <p className="text-xs text-gray-600 mb-2">Standards</p>
                       <div className="flex gap-2 flex-wrap">

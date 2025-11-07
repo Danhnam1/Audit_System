@@ -129,7 +129,11 @@ function setupInterceptors(apiClient: AxiosInstance) {
         queryClient.removeQueries({ queryKey: [QueryKeys.PROFILE] })
       }
 
-      return Promise.reject(error.response?.data)
+      // Important: reject the original error object so callers can inspect
+      // network errors (where response may be undefined, e.g., CORS/preflight).
+      // Previously this returned `error.response?.data`, which could be undefined
+      // and caused consumers to crash when accessing `err.response`.
+      return Promise.reject(error)
     }
   )
 }
