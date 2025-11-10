@@ -3,10 +3,17 @@ import { apiClient } from '../hooks/axios'
 export interface AuditCriteriaMapPayload {
   auditId: string
   criteriaId: string
+  status?: string // Optional status field
 }
 
 export const addCriterionToAudit = async (auditId: string, criteriaId: string) => {
-  return apiClient.post('/AuditCriteriaMap', { auditId, criteriaId } as AuditCriteriaMapPayload)
+  // Based on Swagger, this might be a POST endpoint with auditId and criteriaId
+  const payload: AuditCriteriaMapPayload = { 
+    auditId, 
+    criteriaId,
+    status: 'Active' // Default status if backend requires
+  };
+  return apiClient.post('/AuditCriteriaMap', payload);
 }
 
 export const getCriteriaForAudit = async (auditId: string) => {

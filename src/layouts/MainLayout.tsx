@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
 import './icons.tsx';
-import { useAuth } from '../contexts';
 import useAuthStore from '../store/useAuthStore';
 import { getRoleMenu } from '../helpers/roleMenus';
 

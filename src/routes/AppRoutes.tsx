@@ -23,6 +23,7 @@ const SQAStaffRequests = lazy(() => import("../pages/Auditor/Requests"));
 // Lead Auditor pages (formerly SQA Head)
 const SQAHeadDashboard = lazy(() => import("../pages/LeadAuditor/Dashboard"));
 const SQAHeadAuditReview = lazy(() => import("../pages/LeadAuditor/AuditReview"));
+const SQAHeadTeam = lazy(() => import("../pages/LeadAuditor/Team"));
 
 // CAPA Owner pages (formerly Department Staff)
 const DepartmentStaffDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard"));
@@ -185,6 +186,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <SQAHeadAuditReview />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/team"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <SQAHeadTeam />
                     </ProtectedRoute>
                 }
             />

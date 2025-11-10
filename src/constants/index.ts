@@ -30,4 +30,7 @@ export const API_ENDPOINTS = {
 // Export status colors
 export * from './statusColors';
 
+// Export audit constants
+export * from './audit';
+
 export {};
