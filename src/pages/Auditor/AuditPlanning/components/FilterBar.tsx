@@ -82,9 +82,9 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <option value="">All Status</option>
             <option value="Draft">Draft</option>
             <option value="Published">Published</option>
-            <option value="In Progress">In Progress</option>
+            <option value="Pending">Pending</option>
             <option value="Completed">Completed</option>
-            <option value="Inactive">Inactive</option>
+            <option value="Rejected">Rejected</option>
           </select>
         </div>
       </div>
