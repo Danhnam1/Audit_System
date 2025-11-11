@@ -16,6 +16,7 @@ const AdminBackupRestore = lazy(() => import("../pages/Admin/BackupRestore"));
 // Auditor pages
 const SQAStaffDashboard = lazy(() => import("../pages/Auditor/Dashboard"));
 const SQAStaffAuditPlanning = lazy(() => import("../pages/Auditor/AuditPlanning"));
+const SQAStaffAuditTeam = lazy(() => import("../pages/Auditor/AuditTeam"));
 const SQAStaffFindingManagement = lazy(() => import("../pages/Auditor/FindingManagement"));
 const SQAStaffReports = lazy(() => import("../pages/Auditor/Reports"));
 const SQAStaffRequests = lazy(() => import("../pages/Auditor/Requests"));
@@ -144,6 +145,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
                         <SQAStaffAuditPlanning />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditor/team"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffAuditTeam />
                     </ProtectedRoute>
                 }
             />

@@ -14,4 +14,4 @@ export const debounce = <T extends (...args: unknown[]) => unknown>(
   };
 };
 
-export {};
+export * from './normalize';
