@@ -13,7 +13,7 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
 
   // Filter audit plans based on filter criteria
   const filteredPlans = useMemo(() => {
-    return existingPlans.filter((plan: any) => {
+    const filtered = existingPlans.filter((plan: any) => {
       // Department filter
       if (filterDepartment) {
         const deptArray = plan.scopeDepartments || [];
@@ -51,6 +51,22 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
       }
 
       return true;
+    });
+
+    // Sort: Inactive plans go to bottom
+    return filtered.sort((a: any, b: any) => {
+      const statusA = a.status || 'Draft';
+      const statusB = b.status || 'Draft';
+      
+      // If A is Inactive and B is not, A goes down
+      if (statusA === 'Inactive' && statusB !== 'Inactive') return 1;
+      // If B is Inactive and A is not, B goes down
+      if (statusB === 'Inactive' && statusA !== 'Inactive') return -1;
+      
+      // Otherwise maintain original order (or sort by created date descending)
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA; // Newest first
     });
   }, [existingPlans, filterDepartment, filterDateFrom, filterDateTo, filterStatus]);
 
