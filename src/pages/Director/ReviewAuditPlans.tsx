@@ -1,9 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { approvePlan, getAuditPlanById, rejectPlanContent } from '../../api/audits';
+import { normalizePlanDetails, unwrap } from '../../utils/normalize';
+import { getDepartments } from '../../api/departments';
+import { getAuditCriteria } from '../../api/auditCriteria';
+import { getAdminUsers } from '../../api/adminUsers';
+import { getPlansWithDepartments } from '../../services/auditPlanning.service';
+import { getStatusColor, getBadgeVariant } from '../../constants';
+import { PlanDetailsModal } from '../Auditor/AuditPlanning/components/PlanDetailsModal';
+import { getDepartmentName } from '../../helpers/auditPlanHelpers';
 import { MainLayout } from '../../layouts';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '../../components';
+import { createNotification } from '../../api/notifications';
+import { extractDueDate, getRecipientsForApproval } from '../../helpers/notificationRecipients';
+import { getAuditPlanById as fetchFullPlan } from '../../api/audits';
 
 interface AuditPlan {
-  id: number;
+  id: string; // use string to preserve GUIDs
   planId: string;
   title: string;
   department: string;
@@ -12,7 +25,7 @@ interface AuditPlan {
   endDate: string;
   submittedBy: string;
   submittedDate: string;
-  status: 'Pending Review' | 'Approved' | 'Rejected';
+  status: string; // backend can return PendingDirectorApproval | PendingReview | Approved | Rejected
   objectives: string[];
   auditTeam: string[];
 }
@@ -21,10 +34,10 @@ const ReviewAuditPlans = () => {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<'All' | 'Pending Review' | 'Approved' | 'Rejected'>('All');
 
-  // Mock data
-  const auditPlans: AuditPlan[] = [
+  // Mock data (kept as fallback)
+  const initialPlans: AuditPlan[] = [
     {
-      id: 1,
+      id: '1',
       planId: 'AP-2024-001',
       title: 'ISO 9001:2015 Quality Management System Audit',
       department: 'IT Department',
@@ -42,7 +55,7 @@ const ReviewAuditPlans = () => {
       auditTeam: ['Trần Thị B', 'Lê Văn C', 'Phạm Thị D'],
     },
     {
-      id: 2,
+      id: '2',
       planId: 'AP-2024-002',
       title: 'Information Security Management Audit',
       department: 'HR Department',
@@ -60,7 +73,7 @@ const ReviewAuditPlans = () => {
       auditTeam: ['Hoàng Văn E', 'Nguyễn Thị F'],
     },
     {
-      id: 3,
+      id: '3',
       planId: 'AP-2024-003',
       title: 'Process Improvement Audit',
       department: 'Finance Department',
@@ -79,27 +92,233 @@ const ReviewAuditPlans = () => {
     },
   ];
 
-  const filteredPlans = filter === 'All' ? auditPlans : auditPlans.filter(plan => plan.status === filter);
+  const [auditPlans, setAuditPlans] = useState<AuditPlan[]>(initialPlans);
+  const [selectedDetails, setSelectedDetails] = useState<any | null>(null);
+  const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
+  const [criteriaList, setCriteriaList] = useState<any[]>([]);
+  const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
+  // loading currently unused; reserved for future spinner
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Approved': return 'bg-green-100 text-green-800';
-      case 'Rejected': return 'bg-red-100 text-red-800';
-      case 'Pending Review': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+  const filteredPlans = filter === 'All'
+    ? auditPlans
+    : auditPlans.filter((plan) => {
+        const s = String(plan.status || '').toLowerCase();
+        if (filter === 'Pending Review') {
+          return s === 'pendingdirectorapproval' || s === 'pending director approval' || s === 'pendingreview' || s === 'pending review';
+        }
+        if (filter === 'Approved') return s === 'approved' || s === 'approve';
+        if (filter === 'Rejected') return s === 'rejected';
+        return false;
+      });
+
+  const [processingIdStr, setProcessingIdStr] = useState<string | null>(null);
+
+  // Fetch plans from backend (prefer plans that were forwarded to Director)
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const [plansRes, deptRes, critRes, usersRes] = await Promise.all([
+          getPlansWithDepartments(),
+          getDepartments(),
+          getAuditCriteria(),
+          getAdminUsers(),
+        ]);
+
+        // Build departments map for id->name lookup
+        const deptList = Array.isArray(deptRes)
+          ? deptRes.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
+          : [];
+        const deptMap = deptList.reduce((acc: any, d: any) => {
+          const name = d.name || d.deptName || d.code || String(d.deptId ?? d.$id ?? d.id ?? '');
+          const keys = [d.deptId, d.$id, d.id, Number(d.deptId)].filter((k) => k !== undefined && k !== null);
+          keys.forEach((k: any) => (acc[String(k)] = name));
+          return acc;
+        }, {} as Record<string, string>);
+
+        const usersArr = Array.isArray(usersRes) ? usersRes : [];
+        const userMap = usersArr.reduce((acc: any, u: any) => {
+          const keys = [u.userId, u.id, u.$id, u.email, u.fullName]
+            .filter(Boolean)
+            .map((k: any) => String(k).toLowerCase());
+          keys.forEach((k: string) => (acc[k] = u));
+          return acc;
+        }, {} as any);
+
+        const plansList = Array.isArray(plansRes) ? plansRes : [];
+  const mapped: AuditPlan[] = plansList.map((p: any) => {
+          const scopeArr = unwrap(p.scopeDepartments || p.scope || p.scopeDepartment);
+          const deptNames = (scopeArr || [])
+            .map((d: any) => d.deptName || deptMap[String(d.deptId ?? d.id ?? d.$id ?? d.departmentId)] || d.name)
+            .filter(Boolean);
+
+          let department = deptNames.length ? deptNames.join(', ') : '—';
+          if (department === '—' && p.department) {
+            department = deptMap[String(p.department)] || String(p.department);
+          }
+
+          // Resolve submitter similarly to Lead Auditor page
+          let createdByUser = p.createdByUser;
+          if (createdByUser && typeof createdByUser === 'string') {
+            const lu = userMap[String(createdByUser).toLowerCase()];
+            createdByUser = lu || { fullName: createdByUser };
+          }
+          if (!createdByUser) {
+            const candidate = p.createdBy || p.submittedBy || p.submittedByUser || p.ownerId || p.createdByUserId;
+            if (candidate) {
+              const lu = userMap[String(candidate).toLowerCase()];
+              createdByUser = lu || { fullName: String(candidate) };
+            }
+          }
+          let submittedBy = (createdByUser && createdByUser.fullName) || p.submittedBy || p.createdBy || 'Unknown';
+
+          return {
+            id: String(p.auditId ?? p.id ?? p.$id ?? ''),
+            planId: String(p.auditId ?? p.id ?? p.$id ?? ''),
+            title: p.title || p.name || 'Untitled',
+            department,
+            scope: p.scope || '—',
+            startDate: p.startDate || p.periodFrom || '',
+            endDate: p.endDate || p.periodTo || '',
+            submittedBy,
+            submittedDate: p.createdAt || p.submittedAt || '',
+            status: String(p.status || p.auditStatus || 'Pending Review') as any,
+            objectives: p.objective ? [String(p.objective)] : Array.isArray(p.objectives) ? p.objectives : [],
+            auditTeam: Array.isArray(p.auditTeams)
+              ? p.auditTeams.map((t: any) => t.fullName || t.name || String(t))
+              : p.auditTeams && Array.isArray(p.auditTeams?.values)
+              ? p.auditTeams.values.map((t: any) => t.fullName || t.name)
+              : [],
+          };
+        });
+
+        // Keep plans visible after actions: include PendingDirectorApproval + Approved + Rejected
+        const directorRelevant = mapped.filter((m) => {
+          const s = String(m.status || '').toLowerCase();
+          return (
+            s === 'pendingdirectorapproval' ||
+            s === 'pending director approval' ||
+            s === 'approved' ||
+            s === 'approve' || // backend may send 'Approve'
+            s === 'rejected'
+          );
+        });
+
+        if (mounted) setAuditPlans(directorRelevant);
+        if (mounted) {
+          setDepartments(deptList);
+          setCriteriaList(Array.isArray(critRes) ? critRes : []);
+          const owners = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditee'));
+          setOwnerOptions(owners);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch plans for Director page, using mock data', err);
+      } finally {
+        // no-op
+      }
+    };
+
+    void load();
+    return () => { mounted = false };
+  }, []);
+
+  const handleApprovePlan = async (planId: string) => {
+    if (!window.confirm('Approve this audit plan?')) return;
+    try {
+      setProcessingIdStr(planId);
+      // Call backend API to approve. Send optional comment if needed.
+      await approvePlan(String(planId), { comment: 'Approved by Director' });
+
+      // Update local UI
+      setAuditPlans((prev) => prev.map((p) => (String(p.planId) === String(planId) ? { ...p, status: 'Approved' } : p)));
+      // Fetch full plan to derive recipients & due date
+      try {
+        const full = await fetchFullPlan(String(planId));
+        const usersArr = await getAdminUsers();
+        const recipients = getRecipientsForApproval(full, usersArr);
+        const { dueDate } = extractDueDate(full);
+        const title = 'Kế hoạch được phê duyệt';
+        const baseMsg = `Kế hoạch kiểm toán '${full?.title || planId}' đã được Giám đốc phê duyệt.`;
+        const dueMsg = dueDate ? ` Hạn chuẩn bị bằng chứng: ${new Date(dueDate).toLocaleDateString()}.` : '';
+        await Promise.all(
+          recipients.map(r =>
+            createNotification({
+              userId: r.userId,
+              title,
+              message: baseMsg + dueMsg,
+              entityType: 'AuditPlan',
+              entityId: String(planId),
+              category: r.reason,
+              status: 'Sent',
+            }).catch(() => null)
+          )
+        );
+      } catch (notifyErr) {
+        console.warn('Notification dispatch failed (non-blocking):', notifyErr);
+      }
+      alert('✅ Plan approved successfully.');
+    } catch (err: any) {
+      console.error('Failed to approve plan', err);
+      const serverMsg = err?.response?.data || err?.message || String(err);
+      try {
+        const pretty = typeof serverMsg === 'object' ? JSON.stringify(serverMsg, null, 2) : String(serverMsg);
+        alert('Failed to approve plan. Server response:\n' + pretty);
+      } catch {
+        alert('Failed to approve plan: ' + (err?.message || String(err)));
+      }
+    } finally {
+      setProcessingIdStr(null);
     }
   };
 
-  const handleViewDetail = (planId: number) => {
-    navigate(`/director/review-plans/${planId}`);
+  const handleRejectPlan = async (planId: string, comment?: string) => {
+    try {
+      await rejectPlanContent(String(planId), { comment });
+      setAuditPlans(prev => prev.map(p => (String(p.planId) === String(planId) ? { ...p, status: 'Rejected' } : p)));
+      alert('✅ Plan rejected.');
+    } catch (err: any) {
+      console.error('Failed to reject plan', err);
+      alert('Reject failed: ' + (err?.response?.data?.message || err?.message || String(err)));
+    }
   };
+
+  const openDetails = async (plan: AuditPlan) => {
+    try {
+      const raw = await getAuditPlanById(String(plan.planId));
+      const normalized = normalizePlanDetails(raw, { departments, criteriaList, users: ownerOptions });
+      setSelectedDetails(normalized);
+    } catch (err) {
+      console.warn('Failed to load full details, using mapped summary', err);
+      // Fallback: basic shape from list
+      setSelectedDetails({
+        ...plan,
+        auditId: plan.planId,
+        scopeDepartments: { values: [] },
+        criteria: { values: [] },
+        auditTeams: { values: [] },
+        schedules: { values: [] },
+        createdByUser: { fullName: plan.submittedBy, email: '', roleName: 'Unknown' },
+        status: plan.status,
+      });
+    }
+  };
+
+  // Using imported getStatusColor from constants; remove local implementation
 
   const stats = {
     total: auditPlans.length,
-    pending: auditPlans.filter(p => p.status === 'Pending Review').length,
-    approved: auditPlans.filter(p => p.status === 'Approved').length,
-    rejected: auditPlans.filter(p => p.status === 'Rejected').length,
+    pending: auditPlans.filter((p) => {
+      const s = String(p.status || '').toLowerCase();
+      return s === 'pendingdirectorapproval' || s === 'pending director approval' || s === 'pendingreview' || s === 'pending review';
+    }).length,
+    approved: auditPlans.filter((p) => {
+      const s = String(p.status || '').toLowerCase();
+      return s === 'approved' || s === 'approve';
+    }).length,
+    rejected: auditPlans.filter((p) => String(p.status || '').toLowerCase() === 'rejected').length,
   };
+
+  // Optionally show simple loading indicator (not rendered yet) — keep variable to avoid unused warning
 
   return (
     <MainLayout>
@@ -110,12 +329,9 @@ const ReviewAuditPlans = () => {
             <h1 className="text-2xl font-bold text-gray-800">Review Audit Plans</h1>
             <p className="text-gray-600 mt-1">Review plans approved by Lead Auditor</p>
           </div>
-          <button
-            onClick={() => navigate('/director')}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
+          <Button variant="secondary" onClick={() => navigate('/director')}>
             Back to Dashboard
-          </button>
+          </Button>
         </div>
 
         {/* Stats Cards */}
@@ -180,17 +396,14 @@ const ReviewAuditPlans = () => {
         {/* Filters */}
         <div className="flex flex-wrap gap-2">
           {(['All', 'Pending Review', 'Approved', 'Rejected'] as const).map((status) => (
-            <button
+            <Button
               key={status}
+              size="sm"
+              variant={filter === status ? 'primary' : 'secondary'}
               onClick={() => setFilter(status)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === status
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
             >
               {status}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -239,22 +452,32 @@ const ReviewAuditPlans = () => {
                   </div>
 
                   <div className="flex gap-3 pt-4 border-t border-gray-200">
-                    <button
-                      onClick={() => handleViewDetail(plan.id)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                    >
+                    <Button onClick={() => openDetails(plan)} size="sm">
                       View Details
-                    </button>
-                    {plan.status === 'Pending Review' && (
+                    </Button>
+                    {String(plan.status).toLowerCase() === 'pendingdirectorapproval' || String(plan.status).toLowerCase() === 'pending director approval' ? (
                       <>
-                        <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
-                          Approve
-                        </button>
-                        <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">
+                        <Button
+                          size="sm"
+                          variant="success"
+                          onClick={() => handleApprovePlan(plan.planId)}
+                          isLoading={processingIdStr === plan.planId}
+                          disabled={processingIdStr === plan.planId}
+                        >
+                          {processingIdStr === plan.planId ? 'Approving...' : 'Approve'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => {
+                            const c = window.prompt('Nhập lý do từ chối (tùy chọn):') || '';
+                            handleRejectPlan(plan.planId, c);
+                          }}
+                        >
                           Reject
-                        </button>
+                        </Button>
                       </>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -262,6 +485,57 @@ const ReviewAuditPlans = () => {
           )}
         </div>
       </div>
+      {selectedDetails && (
+        <PlanDetailsModal
+          showModal={true}
+          selectedPlanDetails={selectedDetails}
+          onClose={() => setSelectedDetails(null)}
+          // Director actions
+          onApprove={async (id, comment) => {
+            await approvePlan(String(id), { comment });
+            // Refresh local list state
+            setAuditPlans(prev => prev.map(p => (String(p.planId) === String(id) ? { ...p, status: 'Approved' } : p)));
+            // Fire notifications similarly
+            try {
+              const full = await fetchFullPlan(String(id));
+              const usersArr = await getAdminUsers();
+              const recipients = getRecipientsForApproval(full, usersArr);
+              const { dueDate } = extractDueDate(full);
+              const title = 'Kế hoạch được phê duyệt';
+              const baseMsg = `Kế hoạch kiểm toán '${full?.title || id}' đã được Giám đốc phê duyệt.`;
+              const dueMsg = dueDate ? ` Hạn chuẩn bị bằng chứng: ${new Date(dueDate).toLocaleDateString()}.` : '';
+              await Promise.all(
+                recipients.map(r =>
+                  createNotification({
+                    userId: r.userId,
+                    title,
+                    message: baseMsg + dueMsg,
+                    entityType: 'AuditPlan',
+                    entityId: String(id),
+                    category: r.reason,
+                    status: 'Sent',
+                  }).catch(() => null)
+                )
+              );
+            } catch (notifyErr) {
+              console.warn('Notification dispatch failed (modal) (non-blocking):', notifyErr);
+            }
+            alert('✅ Approved.');
+            setSelectedDetails(null);
+          }}
+          onRejectPlan={async (id, comment) => {
+            await rejectPlanContent(String(id), { comment });
+            setAuditPlans(prev => prev.map(p => (String(p.planId) === String(id) ? { ...p, status: 'Rejected' } : p)));
+            alert('✅ Rejected.');
+            setSelectedDetails(null);
+          }}
+          getCriterionName={(id: any) => String(id)}
+          getDepartmentName={(id: any) => getDepartmentName(id, departments)}
+          getStatusColor={getStatusColor}
+          getBadgeVariant={getBadgeVariant}
+          ownerOptions={ownerOptions}
+        />
+      )}
     </MainLayout>
   );
 };

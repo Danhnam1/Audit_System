@@ -1,6 +1,6 @@
 import type { AuditPlanDetails, AuditCriteriaItem, AuditTeamMember, ScopeDepartment } from '../types/auditPlan';
 
-const unwrap = <T = any>(payload: any): T[] => {
+export const unwrap = <T = any>(payload: any): T[] => {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload as T[];
   if (Array.isArray(payload?.$values)) return payload.$values as T[];

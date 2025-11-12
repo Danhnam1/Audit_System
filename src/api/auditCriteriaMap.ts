@@ -1,4 +1,5 @@
 import { apiClient } from '../hooks/axios'
+import { unwrap } from '../utils/normalize'
 
 export interface AuditCriteriaMapPayload {
   auditId: string
@@ -18,7 +19,7 @@ export const addCriterionToAudit = async (auditId: string, criteriaId: string) =
 
 export const getCriteriaForAudit = async (auditId: string) => {
   const res: any = await apiClient.get(`/AuditCriteriaMap/audit/${auditId}`)
-  const values = res?.$values || res?.values || res || []
+  const values = unwrap(res)
   return values
 }
 

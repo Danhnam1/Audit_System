@@ -7,6 +7,7 @@
 // Status color mapping using primary colors
 export const STATUS_COLORS = {
   // Completed/Success States - Xanh lục/Teal (Positive outcomes)
+  'Approve': 'bg-teal-500 text-white',
   'Approved': 'bg-teal-500 text-white',
   'Resolved': 'bg-green-600 text-white',
   'Verified': 'bg-teal-400 text-white',
@@ -25,10 +26,16 @@ export const STATUS_COLORS = {
   'Under Review': 'bg-primary-200 text-primary-800',
   'UnderReview': 'bg-primary-200 text-primary-800',
   'Pending Review': 'bg-primary-200 text-primary-800',
+  'PendingReview': 'bg-primary-200 text-primary-800',
   
   // Pending/Waiting States - Primary rất nhạt
   'Pending': 'bg-primary-100 text-primary-700',
   'Submitted': 'bg-primary-100 text-primary-700',
+  // Director/Lead review specific pending states
+  'PendingDirectorApproval': 'bg-primary-200 text-primary-800',
+  'Pending Director Approval': 'bg-primary-200 text-primary-800',
+  'PendingLeadApproval': 'bg-primary-200 text-primary-800',
+  'Pending Lead Approval': 'bg-primary-200 text-primary-800',
   
   // Draft/Initial States - Xám nhạt
   'Draft': 'bg-gray-200 text-gray-700',
@@ -95,8 +102,8 @@ export type BadgeVariantType = keyof typeof BADGE_VARIANTS;
 // Workflow Stage Groups (for filtering and logic)
 export const STATUS_GROUPS = {
   INITIAL: ['Draft', 'Pending', 'Registered', 'Submitted', 'Open'],
-  PROCESSING: ['Under Review', 'UnderReview', 'Pending Review', 'In Progress', 'InProgress', 'Validated'],
-  SUCCESS: ['Approved', 'Verified', 'Resolved', 'Distributed', 'Closed'],
+  PROCESSING: ['Under Review', 'UnderReview', 'Pending Review', 'PendingReview', 'In Progress', 'InProgress', 'Validated', 'PendingDirectorApproval', 'Pending Director Approval', 'PendingLeadApproval', 'Pending Lead Approval'],
+  SUCCESS: ['Approve', 'Approved', 'Verified', 'Resolved', 'Distributed', 'Closed'],
   NEGATIVE: ['Rejected', 'Cancelled'],
   SPECIAL: ['Reopened', 'Overdue'],
 } as const;

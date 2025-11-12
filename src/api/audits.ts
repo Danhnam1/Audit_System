@@ -31,12 +31,12 @@ export const getAuditPlanById = async (auditId: string): Promise<any> => {
     // Fallback: Get from list and filter
     console.warn('AuditPlan endpoint failed, falling back to list filtering');
     const allPlans = await apiClient.get('/Audits') as any;
-    let plans = allPlans;
-    if (allPlans?.$values) plans = allPlans.$values;
-    else if (allPlans?.values) plans = allPlans.values;
-    
-    const plan = Array.isArray(plans) 
-      ? plans.find((p: any) => p.auditId === auditId || p.id === auditId)
+    // reuse unwrap helper to normalize $values/values wrappers
+    const { unwrap } = await import('../utils/normalize');
+    const plansArr = unwrap(allPlans);
+
+    const plan = Array.isArray(plansArr) 
+      ? plansArr.find((p: any) => p.auditId === auditId || p.id === auditId)
       : null;
     
     if (!plan) {
@@ -55,6 +55,29 @@ export const updateAuditPlan = async (auditId: string, payload: any): Promise<an
 // Delete audit plan
 export const deleteAuditPlan = async (auditId: string): Promise<any> => {
   return apiClient.delete(`/Audits/${auditId}`) as any;
+};
+
+// Submit audit plan to Lead Auditor (change status from Draft -> Pending/ PendingReview)
+export const submitToLeadAuditor = async (auditId: string): Promise<any> => {
+  return apiClient.post(`/Audits/${auditId}/submit-to-lead-auditor`) as any;
+};
+
+// Reject plan content (Lead Auditor or Director can post a comment)
+export const rejectPlanContent = async (auditId: string, payload: { comment?: string } = {}): Promise<any> => {
+  // Ensure comment is always a string (sending empty string if undefined)
+  // Include auditId in the body as some backends expect it there
+  const body = { auditId, comment: payload.comment ?? '' };
+  return apiClient.post(`/Audits/${auditId}/reject-plan-content`, body) as any;
+};
+
+// Approve plan (Director approves plan)
+export const approvePlan = async (auditId: string, payload: { comment?: string } = {}): Promise<any> => {
+  return apiClient.post(`/Audits/${auditId}/approve-plan`, payload) as any;
+};
+
+// Approve and forward to director (Lead Auditor forwards to Director)
+export const approveForwardDirector = async (auditId: string, payload: { comment?: string } = {}): Promise<any> => {
+  return apiClient.post(`/Audits/${auditId}/approve-forward-director`, payload) as any;
 };
 
 export default {

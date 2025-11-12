@@ -1,4 +1,5 @@
 import { apiClient } from '../hooks/axios'
+import { unwrap } from '../utils/normalize'
 
 export interface AdminUserDto {
   $id?: string
@@ -14,7 +15,7 @@ export interface AdminUserDto {
 
 export const getAdminUsers = async (): Promise<AdminUserDto[]> => {
   const res: any = await apiClient.get('/admin/AdminUsers')
-  const values: AdminUserDto[] = res?.$values || res?.values || res?.data || []
+  const values: AdminUserDto[] = unwrap(res?.$values || res?.values || res?.data || res)
   return values
 }
 

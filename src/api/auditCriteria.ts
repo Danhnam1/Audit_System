@@ -1,4 +1,5 @@
 import { apiClient } from '../hooks/axios'
+import { unwrap } from '../utils/normalize'
 
 export interface AuditCriterionDto {
   $id?: string
@@ -13,7 +14,7 @@ export interface AuditCriterionDto {
 
 export const getAuditCriteria = async (): Promise<AuditCriterionDto[]> => {
   const res: any = await apiClient.get('/AuditCriterion')
-  const values: AuditCriterionDto[] = res?.$values || res?.values || res || []
+  const values: AuditCriterionDto[] = unwrap(res)
   return values
 }
 

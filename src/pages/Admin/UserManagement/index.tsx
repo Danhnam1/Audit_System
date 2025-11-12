@@ -218,10 +218,9 @@ const AdminUserManagement = () => {
         console.warn('Failed to fetch departments', err)
       }
 
-      const res: any = await apiClient.get('/admin/AdminUsers');
-
-      // Backend returns an envelope with $values
-      const values: ApiUser[] = res?.$values || res?.values || res?.data || [];
+  // Use centralized API helper which normalizes envelopes
+  const { getAdminUsers } = await import('../../../api/adminUsers');
+  const values: ApiUser[] = (await getAdminUsers()) as any;
 
       const mapped: UIUser[] = (values || []).map(v => {
         const roleNormalized = String(v.roleName || '').toLowerCase().replace(/\s+/g, '')

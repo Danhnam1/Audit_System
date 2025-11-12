@@ -11,9 +11,9 @@ import { addTeamMember } from '../../../api/auditTeam';
 import { getDepartments } from '../../../api/departments';
 import { addAuditSchedule } from '../../../api/auditSchedule';
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
-import { getAuditPlans, getAuditPlanById, updateAuditPlan, deleteAuditPlan } from '../../../api/audits';
+import { getAuditPlans, getAuditPlanById, updateAuditPlan, deleteAuditPlan, submitToLeadAuditor } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
-import { normalizePlanDetails } from '../../../utils/normalize';
+import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
 
 // Import custom hooks
 import { useAuditPlanForm } from '../../../hooks/useAuditPlanForm';
@@ -243,7 +243,7 @@ const SQAStaffAuditPlanning = () => {
       } catch (apiError) {
         console.warn('⚠️ Full details API failed, using basic data from table:', apiError);
         
-        const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
+  const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
         
         if (!planFromTable) {
           throw new Error('Plan not found in table. Backend API /AuditPlan/{id} is also returning 500 error.');
@@ -310,19 +310,19 @@ const SQAStaffAuditPlanning = () => {
           ...rawDetails,
           scopeDepartments: {
             ...rawDetails.scopeDepartments,
-            values: rawDetails.scopeDepartments?.$values || rawDetails.scopeDepartments?.values || []
+            values: unwrap(rawDetails.scopeDepartments)
           },
           criteria: {
             ...rawDetails.criteria,
-            values: rawDetails.criteria?.$values || rawDetails.criteria?.values || []
+            values: unwrap(rawDetails.criteria)
           },
           auditTeams: {
             ...rawDetails.auditTeams,
-            values: rawDetails.auditTeams?.$values || rawDetails.auditTeams?.values || []
+            values: unwrap(rawDetails.auditTeams)
           },
           schedules: {
             ...rawDetails.schedules,
-            values: rawDetails.schedules?.$values || rawDetails.schedules?.values || []
+            values: unwrap(rawDetails.schedules)
           }
         };
       } catch (apiError) {
@@ -330,7 +330,7 @@ const SQAStaffAuditPlanning = () => {
         console.warn('⚠️ Full details API failed, falling back to table data for edit:', apiError);
 
         const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
-        const planFromTableAny = planFromTable as any;
+  const planFromTableAny = planFromTable as any;
 
         if (!planFromTable) {
           console.error('❌ Plan not found in table and detailed API failed:', apiError);
@@ -341,10 +341,10 @@ const SQAStaffAuditPlanning = () => {
         // Build a basic editable shape from table row
         details = {
           ...planFromTableAny,
-          scopeDepartments: { values: planFromTableAny.scopeDepartments?.$values || planFromTableAny.scopeDepartments?.values || planFromTableAny.scopeDepartments || [] },
-          criteria: { values: planFromTableAny.criteria?.$values || planFromTableAny.criteria?.values || planFromTableAny.criteria || [] },
-          auditTeams: { values: planFromTableAny.auditTeams?.$values || planFromTableAny.auditTeams?.values || planFromTableAny.auditTeams || [] },
-          schedules: { values: planFromTableAny.schedules?.$values || planFromTableAny.schedules?.values || planFromTableAny.schedules || [] },
+          scopeDepartments: { values: unwrap(planFromTableAny.scopeDepartments) },
+          criteria: { values: unwrap(planFromTableAny.criteria) },
+          auditTeams: { values: unwrap(planFromTableAny.auditTeams) },
+          schedules: { values: unwrap(planFromTableAny.schedules) },
         };
       }
 
@@ -355,6 +355,26 @@ const SQAStaffAuditPlanning = () => {
     } catch (error) {
       console.error('❌ Failed to load plan for editing', error);
       alert('⚠️ Cannot load plan for editing\n\nError: ' + (error as any)?.message);
+    }
+  };
+
+  // Handler: Submit plan to Lead Auditor (status change Draft -> Pending)
+  const handleSubmitToLead = async (auditId: string) => {
+    try {
+      await submitToLeadAuditor(auditId);
+
+      // Refresh plans list to reflect new status
+      try {
+        const merged = await getPlansWithDepartments();
+        setExistingPlans(merged);
+      } catch (refreshErr) {
+        console.error('Failed to refresh plans after submit', refreshErr);
+      }
+
+      alert('✅ Submitted to Lead Auditor successfully.');
+    } catch (err: any) {
+      console.error('❌ Failed to submit to Lead Auditor', err);
+      alert('Failed to submit to Lead Auditor: ' + (err?.response?.data?.message || err?.message || String(err)));
     }
   };
 
@@ -521,14 +541,7 @@ const SQAStaffAuditPlanning = () => {
       // Refresh plans list
       try {
         const response = await getAuditPlans();
-        let plans = response;
-        if (response?.$values) {
-          plans = response.$values;
-        } else if (response?.values) {
-          plans = response.values;
-        }
-        
-        const planArray = Array.isArray(plans) ? plans : [];
+        const planArray = unwrap(response);
         setExistingPlans(planArray);
       } catch (refreshErr) {
         console.error('❌ Failed to refresh plans list', refreshErr);
@@ -786,6 +799,7 @@ const SQAStaffAuditPlanning = () => {
               selectedPlanDetails={selectedPlanDetails}
               onClose={() => setShowDetailsModal(false)}
               onEdit={handleEditPlan}
+              onSubmitToLead={handleSubmitToLead}
               getCriterionName={(id: string) => getCriterionName(id, criteria)}
               getDepartmentName={(id: string | number) => getDepartmentName(id, departments)}
               getStatusColor={getStatusColor}

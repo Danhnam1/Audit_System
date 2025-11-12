@@ -1,4 +1,5 @@
 import { apiClient } from '../hooks/axios'
+import { unwrap } from '../utils/normalize'
 
 export interface DepartmentDto {
   $id?: string
@@ -10,7 +11,7 @@ export interface DepartmentDto {
 
 export const getDepartments = async (): Promise<DepartmentDto[]> => {
   const res: any = await apiClient.get('/admin/AdminDepartments')
-  const values: DepartmentDto[] = res?.$values || res?.values || res?.data || []
+  const values: DepartmentDto[] = unwrap(res?.$values || res?.values || res?.data || res)
   return values
 }
 

@@ -7,7 +7,14 @@ interface PlanDetailsModalProps {
   showModal: boolean;
   selectedPlanDetails: any;
   onClose: () => void;
-  onEdit: (auditId: string) => void;
+  onEdit?: (auditId: string) => void;
+  onSubmitToLead?: (auditId: string) => Promise<void>;
+  // Optional callbacks for Lead Auditor actions
+  onForwardToDirector?: (auditId: string, comment?: string) => Promise<void>;
+  onRejectPlan?: (auditId: string, comment?: string) => Promise<void>;
+  onRequestRevision?: (auditId: string, comment?: string) => Promise<void>;
+  // Optional callback for Director approval
+  onApprove?: (auditId: string, comment?: string) => Promise<void>;
   getCriterionName: (criterionId: string) => string;
   getDepartmentName: (deptId: string | number) => string;
   getStatusColor: (status: string) => string;
@@ -21,6 +28,11 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   selectedPlanDetails,
   onClose,
   onEdit,
+  onSubmitToLead,
+  onForwardToDirector,
+  onRejectPlan,
+  onRequestRevision,
+  onApprove,
   getCriterionName,
   getDepartmentName,
   getStatusColor,
@@ -30,15 +42,15 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 }) => {
   if (!showModal || !selectedPlanDetails) return null;
 
+  const [reviewComments, setReviewComments] = React.useState('');
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-gradient-primary px-6 py-5 border-b border-sky-500">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-xl font-bold text-white flex items-center">
-                📄 Full Audit Plan Details
-              </h3>
+              <h3 className="text-xl font-bold text-white flex items-center">📄 Full Audit Plan Details</h3>
               <p className="text-sm text-sky-100 mt-1">
                 <span className="font-semibold">ID:</span> {selectedPlanDetails.auditId}
               </p>
@@ -321,6 +333,18 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
         </div>
 
+        {/* Review comments area for Lead Auditor actions */}
+        <div className="px-6 pb-6">
+          <h4 className="text-sm font-semibold text-gray-700 mb-2">Review Comments (Optional)</h4>
+          <textarea
+            value={reviewComments}
+            onChange={(e) => setReviewComments(e.target.value)}
+            rows={4}
+            placeholder="Add any comments or feedback for the Auditor..."
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          ></textarea>
+        </div>
+
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-300 flex justify-center gap-3">
           <button
             onClick={onClose}
@@ -328,15 +352,109 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           >
             Close
           </button>
-          <button
-            onClick={() => {
-              onClose();
-              onEdit(selectedPlanDetails.auditId);
-            }}
-            className="px-8 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors shadow-sm"
-          >
-            Edit Plan
-          </button>
+
+          {onForwardToDirector && (
+            <button
+              onClick={async () => {
+                try {
+                  await onForwardToDirector(selectedPlanDetails.auditId, reviewComments);
+                  onClose();
+                } catch (err) {
+                  console.error('Forward to director failed', err);
+                  alert('Failed to forward to Director: ' + (err as any)?.message || String(err));
+                }
+              }}
+              className="px-8 py-2 bg-teal-500 hover:bg-teal-600 text-white font-medium rounded-lg transition-colors shadow-sm"
+            >
+              Forward to Director
+            </button>
+          )}
+
+          {onRequestRevision && (
+            <button
+              onClick={async () => {
+                try {
+                  await onRequestRevision(selectedPlanDetails.auditId, reviewComments);
+                  onClose();
+                } catch (err) {
+                  console.error('Request revision failed', err);
+                  alert('Failed to request revision: ' + (err as any)?.message || String(err));
+                }
+              }}
+              className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+            >
+              Request Revision
+            </button>
+          )}
+
+          {onRejectPlan && (
+            <button
+              onClick={async () => {
+                if (!reviewComments) {
+                  if (!window.confirm('Reject without comment?')) return;
+                }
+                try {
+                  await onRejectPlan(selectedPlanDetails.auditId, reviewComments);
+                  onClose();
+                } catch (err) {
+                  console.error('Reject failed', err);
+                  alert('Failed to reject: ' + (err as any)?.message || String(err));
+                }
+              }}
+              className="px-8 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+            >
+              Reject
+            </button>
+          )}
+
+          {onApprove && (
+            <button
+              onClick={async () => {
+                try {
+                  await onApprove(selectedPlanDetails.auditId, reviewComments);
+                  onClose();
+                } catch (err) {
+                  console.error('Approve failed', err);
+                  alert('Failed to approve: ' + (err as any)?.message || String(err));
+                }
+              }}
+              className="px-8 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+            >
+              Approve
+            </button>
+          )}
+
+          {/* If the plan is still Draft, allow submitting to Lead Auditor */}
+          {selectedPlanDetails.status === 'Draft' && onSubmitToLead && (
+            <button
+              onClick={async () => {
+                if (!window.confirm('Submit this plan to Lead Auditor?')) return;
+                try {
+                  await onSubmitToLead(selectedPlanDetails.auditId);
+                  // close modal after submit
+                  onClose();
+                } catch (err) {
+                  console.error('Failed to submit to lead auditor', err);
+                  alert('Failed to submit to Lead Auditor: ' + (err as any)?.message || String(err));
+                }
+              }}
+              className="px-8 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+            >
+              Submit to Lead Auditor
+            </button>
+          )}
+
+          {onEdit && (
+            <button
+              onClick={() => {
+                onClose();
+                onEdit(selectedPlanDetails.auditId);
+              }}
+              className="px-8 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+            >
+              Edit Plan
+            </button>
+          )}
         </div>
       </div>
     </div>

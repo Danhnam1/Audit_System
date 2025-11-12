@@ -1,4 +1,5 @@
 import { apiClient } from '../hooks/axios'
+import { unwrap } from '../utils/normalize'
 
 export interface AuditTeamPayload {
   auditId: string
@@ -13,7 +14,7 @@ export const addTeamMember = async (payload: AuditTeamPayload) => {
 
 export const getAuditTeam = async () => {
   const res: any = await apiClient.get('/AuditTeam')
-  const values = res?.$values || res?.values || res || []
+  const values = unwrap(res)
   return values
 }
 

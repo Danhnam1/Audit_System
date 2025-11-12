@@ -1,77 +1,180 @@
 import { MainLayout, ClockIcon, AuditIcon, ChartBarIcon } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StatCard } from '../../../components';
-import { getPriorityColor } from '../../../constants/statusColors';
+import AuditReviewList from './components/AuditReviewList';
+// PlanReviewPanel previously provided inline actions; we removed inline panel to avoid duplicate UI with modal
+// import PlanReviewPanel from './components/PlanReviewPanel';
+import { getAuditPlanById, approveForwardDirector, rejectPlanContent } from '../../../api/audits';
+import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
+import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
+import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
+import { getStatusColor, getBadgeVariant } from '../../../constants';
+import { getDepartments } from '../../../api/departments';
+import { getDepartmentName } from '../../../helpers/auditPlanHelpers';
+import { getAuditCriteria } from '../../../api/auditCriteria';
+import { getAdminUsers } from '../../../api/adminUsers';
 
 const SQAHeadAuditReview = () => {
   const { user } = useAuth();
-  const [selectedAudit, setSelectedAudit] = useState<string | null>(null);
-
+  const [selectedPlanFull, setSelectedPlanFull] = useState<any | null>(null);
+  const [plans, setPlans] = useState<any[]>([]);
+  const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
+  const [criteriaList, setCriteriaList] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const pendingAudits = [
-    {
-      id: 'AUD-2025-001',
-      title: 'Annual Safety Audit',
-      department: 'Safety',
-      scope: 'Full Audit',
-      submittedBy: 'John Smith',
-      submittedDate: '2025-10-22',
-      findings: 5,
-      priority: 'High',
-      objective: 'Comprehensive review of safety protocols and equipment maintenance in accordance with ICAO standards.',
-      schedule: { start: '2025-11-01', end: '2025-11-15' },
-    },
-    {
-      id: 'AUD-2025-002',
-      title: 'Maintenance Quality Check',
-      department: 'Maintenance',
-      scope: 'Process Audit',
-      submittedBy: 'Sarah Johnson',
-      submittedDate: '2025-10-20',
-      findings: 8,
-      priority: 'Medium',
-      objective: 'Verify compliance with maintenance procedures and tool calibration standards per AS9100D requirements.',
-      schedule: { start: '2025-10-28', end: '2025-11-10' },
-    },
-    {
-      id: 'AUD-2025-003',
-      title: 'Training Compliance Review',
-      department: 'Training',
-      scope: 'Compliance Audit',
-      submittedBy: 'Mike Chen',
-      submittedDate: '2025-10-18',
-      findings: 3,
-      priority: 'Low',
-      objective: 'Ensure all training records and certifications meet regulatory requirements and are up to date.',
-      schedule: { start: '2025-10-25', end: '2025-11-05' },
-    },
-  ];
+  const loadPlans = async () => {
+    setLoading(true);
+    try {
+  // fetch plans, admin users and departments in parallel
+  const [resPlans, adminUsers, deptsRes, critRes] = await Promise.all([getPlansWithDepartments(), getAdminUsers(), getDepartments(), getAuditCriteria()]);
 
-  const handleApprove = (auditId: string) => {
-    alert(`Audit ${auditId} approved!`);
-    setSelectedAudit(null);
-  };
+  // normalize list wrapper variations (array | { $values: [] } | { values: [] })
+  let list: any = unwrap(resPlans);
 
-  const handleReject = (auditId: string) => {
-    const reason = prompt('Please provide rejection reason:');
-    if (reason) {
-      alert(`Audit ${auditId} rejected. Reason: ${reason}`);
-      setSelectedAudit(null);
+      // Filter plans that are pending review (backend may set 'PendingReview' or similar)
+      const pending = list.filter((p: any) => {
+        const s = String(p.status || '').toLowerCase();
+        return s.includes('pending') || s.includes('submitted');
+      });
+      // normalize departments list from API
+      const deptList = Array.isArray(deptsRes)
+        ? deptsRes.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
+        : [];
+      setDepartments(deptList);
+
+      // Normalize each plan for display in the list: derive department names if possible
+      // Build deptMap with multiple possible id keys so lookups by numeric id or $id both work
+      const deptMap = (Array.isArray(deptList) ? deptList : []).reduce((acc: any, d: any) => {
+        const name = d.name || d.deptName || d.code || String(d.deptId ?? d.$id ?? d.id ?? '');
+        const keys = [d.deptId, d.$id, d.id].filter(Boolean);
+        keys.forEach((k: any) => {
+          acc[String(k)] = name;
+        });
+        // also index by the stringified numeric deptId if present
+        if (d.deptId !== undefined && d.deptId !== null) {
+          acc[String(Number(d.deptId))] = name;
+        }
+        return acc;
+      }, {} as any);
+
+      // build user map from adminUsers so we can resolve submitter/creator names
+      const users = Array.isArray(adminUsers) ? adminUsers : [];
+      const userMap = users.reduce((acc: any, u: any) => {
+        const keys = [u.userId, u.id, u.$id, u.email, u.fullName].filter(Boolean).map((k: any) => String(k).toLowerCase());
+        keys.forEach((k: string) => (acc[k] = u));
+        return acc;
+      }, {} as any);
+
+      const normalizeForList = (p: any) => {
+        const scopeArr = unwrap(p.scopeDepartments || p.scope || p.scopeDepartment);
+        const deptNames = (scopeArr || [])
+          .map((d: any) => d.deptName || deptMap[String(d.deptId ?? d.id ?? d.$id ?? d.departmentId ?? d.deptCode)] || d.deptId || d.id || d.$id || d.departmentId || d.deptCode || d.name || String(d))
+          .filter(Boolean);
+
+        let finalDeptNames = deptNames.length > 0 ? deptNames : [];
+        if (finalDeptNames.length === 0 && p.department) {
+          // p.department might be an id; try to resolve using deptMap
+          const lookup = deptMap[String(p.department)];
+          if (lookup) finalDeptNames = [lookup];
+          else finalDeptNames = [p.department];
+        }
+
+        // no debug logs; keep fallback behavior
+
+        // Resolve createdBy/submittedBy to a user object (fullName) when possible
+        let createdByUser = p.createdByUser;
+        // If createdByUser is a primitive id/string, try to look up
+        if (createdByUser && typeof createdByUser === 'string') {
+          const lookup = userMap[String(createdByUser).toLowerCase()];
+          if (lookup) createdByUser = lookup;
+          else createdByUser = { fullName: createdByUser };
+        }
+        // If no createdByUser, try p.createdBy or p.submittedBy or p.submittedByUser
+        if (!createdByUser) {
+          const candidate = p.createdBy || p.submittedBy || p.submittedByUser;
+          if (candidate) {
+            const lookup = userMap[String(candidate).toLowerCase()];
+            createdByUser = lookup || { fullName: String(candidate) };
+          }
+        }
+
+        return {
+          ...p,
+          department: finalDeptNames.length > 0 ? finalDeptNames.join(', ') : 'N/A',
+          scopeDepartments: scopeArr,
+          createdByUser,
+        };
+      };
+
+      const pendingNormalized = pending.map(normalizeForList);
+      setPlans(pendingNormalized);
+      setOwnerOptions(Array.isArray(adminUsers) ? adminUsers : []);
+      setCriteriaList(Array.isArray(critRes) ? critRes : []);
+    } catch (err) {
+      console.error('Failed to load audit plans for review', err);
+      setPlans([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleRequestRevision = (auditId: string) => {
-    const comments = prompt('Please provide revision comments:');
-    if (comments) {
-      alert(`Revision requested for ${auditId}. Comments: ${comments}`);
-      setSelectedAudit(null);
+  useEffect(() => {
+    void loadPlans();
+  }, []);
+
+  const handleForwardToDirector = async (auditId: string, comment?: string) => {
+    try {
+      await approveForwardDirector(auditId, { comment });
+      await loadPlans();
+  alert('✅ Plan forwarded to Director successfully.');
+  setSelectedPlanFull(null);
+    } catch (err: any) {
+      console.error('Failed to forward to director', err);
+      alert('Failed to forward to Director: ' + (err?.response?.data?.message || err?.message || String(err)));
     }
   };
 
-  const selectedAuditData = pendingAudits.find(a => a.id === selectedAudit);
+  const handleReject = async (auditId: string, comment?: string) => {
+    try {
+      await rejectPlanContent(auditId, { comment });
+      await loadPlans();
+  alert('✅ Plan rejected successfully.');
+  setSelectedPlanFull(null);
+    } catch (err: any) {
+      // Log full error for debugging
+      console.error('Failed to reject plan', err);
+      const status = err?.response?.status;
+      const data = err?.response?.data;
+      // Show more detailed error info to help debug server 500 responses
+      alert(
+        `Failed to reject plan. HTTP ${status || ''}\n` +
+          (data ? JSON.stringify(data, null, 2) : (err?.message || String(err)))
+      );
+    }
+  };
+
+  const handleSelectPlan = async (auditId: string) => {
+    setLoading(true);
+    try {
+      const details = await getAuditPlanById(auditId);
+      const normalized = normalizePlanDetails(details, { departments: departments || [], criteriaList: criteriaList || [], users: ownerOptions || [] });
+
+      setSelectedPlanFull(normalized);
+
+      // update plans list with department name derived from normalized details
+  const deptNames = ((normalized.scopeDepartments?.values || []) as any).map((d: any) => d.deptName || d.name).filter(Boolean);
+      setPlans(prev => prev.map(p => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
+    } catch (err) {
+      console.error('Failed to load plan details', err);
+      alert('Không thể tải chi tiết kế hoạch. Vui lòng thử lại.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <MainLayout user={layoutUser}>
@@ -84,113 +187,35 @@ const SQAHeadAuditReview = () => {
 
       <div className="px-6 pb-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatCard title="Pending Review" value={pendingAudits.length.toString()} icon={<ClockIcon />} variant="primary-light" />
-          <StatCard title="High Priority" value={pendingAudits.filter(a => a.priority === 'High').length.toString()} icon={<AuditIcon />} variant="primary-dark" />
-          <StatCard title="Total Findings" value={pendingAudits.reduce((sum, a) => sum + a.findings, 0).toString()} icon={<ChartBarIcon />} variant="primary" />
+          <StatCard title="Pending Review" value={plans.length.toString()} icon={<ClockIcon />} variant="primary-light" />
+          <StatCard title="High Priority" value={plans.filter(a => a.priority === 'High').length.toString()} icon={<AuditIcon />} variant="primary-dark" />
+          <StatCard title="Total Plans" value={(plans.length).toString()} icon={<ChartBarIcon />} variant="primary" />
         </div>
 
-        {!selectedAudit ? (
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-              <h2 className="text-lg font-semibold text-white">Pending Audit Plans</h2>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit ID</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Title</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Priority</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Findings</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Submitted By</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Submitted</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {pendingAudits.map((audit) => (
-                    <tr key={audit.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-medium text-primary-600">{audit.id}</span></td>
-                      <td className="px-6 py-4"><span className="text-sm font-medium text-gray-900">{audit.title}</span></td>
-                      <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-700">{audit.department}</span></td>
-                      <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getPriorityColor(audit.priority)}`}>{audit.priority}</span></td>
-                      <td className="px-6 py-4 text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary-100 text-primary-700 text-sm font-semibold">{audit.findings}</span></td>
-                      <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-700">{audit.submittedBy}</span></td>
-                      <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-600">{audit.submittedDate}</span></td>
-                      <td className="px-6 py-4 whitespace-nowrap"><button onClick={() => setSelectedAudit(audit.id)} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150">Review</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {!selectedPlanFull ? (
+          <div>
+            <AuditReviewList plans={plans} onSelect={(id) => void handleSelectPlan(id)} getDepartmentName={(id:any)=> getDepartmentName(id, departments)} />
+            {loading && <p className="text-sm text-gray-500 mt-2">Loading...</p>}
           </div>
         ) : (
-          selectedAuditData && (
-            <div className="space-y-6">
-              <button onClick={() => setSelectedAudit(null)} className="text-primary-600 hover:text-primary-700 font-medium flex items-center gap-2">← Back to List</button>
-
-              <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-                <div className="flex items-start justify-between mb-6">
-                  <div>
-                    <h2 className="text-2xl font-semibold text-primary-600">{selectedAuditData.title}</h2>
-                    <p className="text-gray-600 text-sm mt-1">Audit ID: {selectedAuditData.id}</p>
-                  </div>
-                  <span className={`px-4 py-2 rounded-lg text-sm font-semibold border ${getPriorityColor(selectedAuditData.priority)}`}>{selectedAuditData.priority} Priority</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Department</h3>
-                    <p className="text-gray-900">{selectedAuditData.department}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Audit Scope</h3>
-                    <p className="text-gray-900">{selectedAuditData.scope}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Submitted By</h3>
-                    <p className="text-gray-900">{selectedAuditData.submittedBy}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">Submitted Date</h3>
-                    <p className="text-gray-900">{selectedAuditData.submittedDate}</p>
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-200 pt-6 mb-6">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Objective</h3>
-                  <p className="text-gray-700 leading-relaxed">{selectedAuditData.objective}</p>
-                </div>
-
-                <div className="border-t border-gray-200 pt-6 mb-6">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Schedule</h3>
-                  <div className="flex gap-6">
-                    <div><span className="text-sm text-gray-600">Start Date:</span><span className="ml-2 text-gray-900 font-medium">{selectedAuditData.schedule.start}</span></div>
-                    <div><span className="text-sm text-gray-600">End Date:</span><span className="ml-2 text-gray-900 font-medium">{selectedAuditData.schedule.end}</span></div>
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-200 pt-6 mb-6">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Expected Findings</h3>
-                  <div className="flex items-center gap-2"><span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary-100 text-primary-700 text-lg font-bold">{selectedAuditData.findings}</span><span className="text-gray-600">findings expected based on initial assessment</span></div>
-                </div>
-
-                <div className="border-t border-gray-200 pt-6 mb-6">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Review Comments (Optional)</h3>
-                  <textarea rows={4} placeholder="Add any comments or feedback for the Auditor..." className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"></textarea>
-                </div>
-
-                <div className="flex gap-3 pt-4 border-t border-gray-200">
-                  <button onClick={() => handleApprove(selectedAuditData.id)} className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">Approve</button>
-                  <button onClick={() => handleRequestRevision(selectedAuditData.id)} className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">Request Revision</button>
-                  <button onClick={() => handleReject(selectedAuditData.id)} className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">Reject</button>
-                  <button onClick={() => setSelectedAudit(null)} className="border-2 border-gray-400 text-gray-700 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150">Cancel</button>
-                </div>
-              </div>
-            </div>
-          )
+          <>
+            {/* Show the auditor modal UI so Lead Auditor sees identical details */}
+            <PlanDetailsModal
+              showModal={true}
+              selectedPlanDetails={selectedPlanFull}
+              onClose={() => setSelectedPlanFull(null)}
+              // Lead Auditor should NOT be able to edit the plan here, so we do NOT pass onEdit
+              onForwardToDirector={handleForwardToDirector}
+              onRejectPlan={handleReject}
+              // Request Revision is intentionally not provided so it will be handled via Reject
+              getCriterionName={(id: any) => String(id)}
+              getDepartmentName={(id: any) => getDepartmentName(id, departments)}
+              getStatusColor={getStatusColor}
+              getBadgeVariant={getBadgeVariant}
+              ownerOptions={ownerOptions}
+            />
+            {/* Inline review panel removed to avoid duplicate UI behind the modal. Actions are available in the modal. */}
+          </>
         )}
       </div>
     </MainLayout>

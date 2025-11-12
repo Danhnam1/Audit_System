@@ -118,10 +118,27 @@ function setupInterceptors(apiClient: AxiosInstance) {
         } finally {
           isRefreshing = false
         }
-      } else if (
-        (error.response?.status === RequestStatus.UNAUTHORIZED || error.response?.status === RequestStatus.NOT_FOUND)
-   
-      ) {
+      } else if (error.response?.status === RequestStatus.NOT_FOUND) {
+        // 404 responses should not automatically log the user out.
+        // Log details for debugging and allow callers to handle the error.
+        try {
+          console.warn('API 404 Not Found:', {
+            url: originalRequest?.url || originalRequest?.baseURL,
+            method: originalRequest?.method,
+            status: error.response?.status,
+            data: error.response?.data,
+          });
+        } catch (logErr) {
+          // ignore logging errors
+        }
+      } else if (error.response?.status === RequestStatus.UNAUTHORIZED) {
+        // Clear auth state when server returns 401 Unauthorized.
+        console.warn('API 401 Unauthorized - clearing auth state', {
+          url: originalRequest?.url,
+          method: originalRequest?.method,
+          status: error.response?.status,
+          data: error.response?.data,
+        });
         useAuthStore.getState().setToken(null)
         useAuthStore.getState().setLoading(false)
         useAuthStore.getState().setIsGlobalLoading(false)
