@@ -23,7 +23,16 @@ export const getChecklistItemsByTemplate = async (templateId: string) => {
   return unwrapArray(res.data);
 };
 
+export const getAuditChecklistItems = async (auditId: string) => {
+  const res = await apiClient.get(`/AuditChecklistItems/audit/${auditId}`);
+  console.log('getAuditChecklistItems raw response:', res.data); // Debug log
+  const unwrapped = unwrapArray(res.data);
+  console.log('getAuditChecklistItems unwrapped:', unwrapped); // Debug log
+  return unwrapped;
+};
+
 export default {
   getChecklistTemplates,
   getChecklistItemsByTemplate,
+  getAuditChecklistItems,
 };

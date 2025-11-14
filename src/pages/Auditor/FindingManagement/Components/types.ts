@@ -21,6 +21,7 @@ export type ChecklistItem = {
   result: ResultType;
   remarks: string;
   evidence?: File | null;
+  apiData?: any; // Store original API data for finding creation
 };
 
 export type FindingDraft = {

@@ -1,131 +1,68 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { StatCard } from '../../../components';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   FindingList,
-  StartExecution,
-  CreateFindingModal,
   InterviewObservationModal,
   ImmediateActionModal,
 } from './Components';
 import type {
-  ChecklistTemplate,
-  ChecklistItem,
-  FindingDraft,
-  ResultType,
   InterviewLog,
   ImmediateAction,
   FindingRecord,
 } from './Components/types';
+import { useAuditFindings } from '../../../hooks/useAuditFindings';
+import { getFindings } from '../../../api/findings';
 
 const SQAStaffFindingManagement = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [selectedAudit, setSelectedAudit] = useState('all');
-
+  const [findings, setFindings] = useState<FindingRecord[]>([]);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const audits = [
-    { id: 'AUD-2025-001', title: 'Annual Safety Audit' },
-    { id: 'AUD-2025-002', title: 'Maintenance Quality Check' },
-    { id: 'AUD-2025-003', title: 'Training Compliance Review' },
-  ];
+  // Use the audit findings hook to get audit plans
+  const {
+    loading: loadingAudits,
+    error: auditsError,
+    auditPlans,
+    fetchAuditPlans,
+  } = useAuditFindings();
 
-  // Types moved to ./types
+  // Load audit plans and findings on mount
+  useEffect(() => {
+    fetchAuditPlans();
+    loadFindings();
+  }, [fetchAuditPlans]);
 
-  const initialFindings: FindingRecord[] = [
-    {
-      id: 'FND-001',
-      auditId: 'AUD-2025-001',
-      title: 'Missing Safety Training Records',
-      severity: 'High',
-      category: 'Documentation',
-      description: 'Safety training certificates for 5 pilots not found in system',
-      status: 'Open',
-      reportedDate: '2025-10-22',
-      dueDate: '2025-11-15',
-    },
-    {
-      id: 'FND-002',
-      auditId: 'AUD-2025-001',
-      title: 'Non-compliant Fire Extinguisher Placement',
-      severity: 'Medium',
-      category: 'Safety Equipment',
-      description: 'Fire extinguishers in Hangar B not positioned per ISO standards',
-      status: 'In Progress',
-      reportedDate: '2025-10-21',
-      dueDate: '2025-11-10',
-    },
-    {
-      id: 'FND-003',
-      auditId: 'AUD-2025-002',
-      title: 'Outdated Maintenance Manual Version',
-      severity: 'Low',
-      category: 'Documentation',
-      description: 'Maintenance team using manual version 2.1 instead of 3.0',
-      status: 'Resolved',
-      reportedDate: '2025-10-18',
-      dueDate: '2025-11-05',
-    },
-    {
-      id: 'FND-004',
-      auditId: 'AUD-2025-002',
-      title: 'Incomplete Tool Calibration Records',
-      severity: 'High',
-      category: 'Process',
-      description: '12 tools missing calibration certificates from last quarter',
-      status: 'Open',
-      reportedDate: '2025-10-17',
-      dueDate: '2025-11-12',
-    },
-  ];
+  // Load findings from API
+  const loadFindings = async () => {
+    try {
+      const data = await getFindings();
+      
+      // Transform API findings to match FindingRecord format
+      const transformedFindings: FindingRecord[] = (Array.isArray(data) ? data : []).map((f: any) => ({
+        id: f.findingId || f.id,
+        auditId: f.auditId,
+        title: f.title,
+        severity: f.severity || 'Medium',
+        category: f.category || 'General',
+        description: f.description,
+        status: f.status || 'Open',
+        reportedDate: f.createdAt ? new Date(f.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+        dueDate: f.deadline ? new Date(f.deadline).toISOString().slice(0, 10) : '',
+      }));
+      
+      setFindings(transformedFindings);
+    } catch (error) {
+      console.error('Error loading findings:', error);
+    }
+  };
 
-  const [findings, setFindings] = useState<FindingRecord[]>(initialFindings);
-
-  // -------- Checklist & Execution Flow --------
-  // Types moved to ./types
-
-  // Mock checklist templates
-  const checklistTemplates: ChecklistTemplate[] = [
-    {
-      id: 'CL-001',
-      code: 'GS-ANNUAL-2025',
-      name: 'Ground Service Annual Audit',
-      auditType: 'Annual Safety Audit',
-      department: 'Ground Operations',
-      totalItems: 5,
-      createdDate: '2025-01-15',
-      status: 'Active',
-    },
-    {
-      id: 'CL-002',
-      code: 'MNT-Q1-2025',
-      name: 'Maintenance Quality Check Q1',
-      auditType: 'Maintenance Quality Check',
-      department: 'Maintenance',
-      totalItems: 15,
-      createdDate: '2025-02-01',
-      status: 'Active',
-    },
-    {
-      id: 'CL-003',
-      code: 'TRN-COMP-2025',
-      name: 'Training Compliance Review',
-      auditType: 'Training Compliance Review',
-      department: 'Training',
-      totalItems: 5,
-      createdDate: '2025-03-10',
-      status: 'Active',
-    },
-  ];
-
-  const [viewMode, setViewMode] = useState<'list' | 'execute'>('list');
-  const [selectedChecklist, setSelectedChecklist] = useState<ChecklistTemplate | null>(null);
-  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
-  const [findingDrafts, setFindingDrafts] = useState<FindingDraft[]>([]);
-  const [showFindingModal, setShowFindingModal] = useState(false);
-  const [currentItemForFinding, setCurrentItemForFinding] = useState<ChecklistItem | null>(null);
+  // -------- Interview & Immediate Action --------
 
   // New features - Interview/Observation Logger, Immediate Action, Daily Wrap-up
   // Types moved to ./types
@@ -134,7 +71,6 @@ const SQAStaffFindingManagement = () => {
   const [immediateActions, setImmediateActions] = useState<ImmediateAction[]>([]);
   const [showInterviewModal, setShowInterviewModal] = useState(false);
   const [showImmediateActionModal, setShowImmediateActionModal] = useState(false);
-  const [showDailyWrapUp, setShowDailyWrapUp] = useState(false);
   const [currentFindingForIA, setCurrentFindingForIA] = useState<FindingRecord | null>(null);
   const [currentFindingForInterview, setCurrentFindingForInterview] = useState<FindingRecord | null>(null);
 
@@ -154,152 +90,11 @@ const SQAStaffFindingManagement = () => {
     dueDateTime: '',
   });
 
-  // Form state for creating finding
-  const [newFinding, setNewFinding] = useState<FindingDraft>({
-    checklistItemId: 0,
-    findingType: 'Major',
-    title: '',
-    description: '',
-    rootCause: '',
-  });
+  // No form state needed - handled in detail page
 
-  const initChecklistItems = (): ChecklistItem[] => ([
-    {
-      id: 1,
-      item: 'Ground staff wear proper uniform and ID badge',
-      standardRef: 'SOP-GS-01',
-      category: 'Safety / Appearance',
-      criticality: 'Medium',
-      result: null,
-      remarks: '',
-    },
-    {
-      id: 2,
-      item: 'Check-in counter clean and properly labeled',
-      standardRef: 'SOP-GS-02',
-      category: 'Facility',
-      criticality: 'Low',
-      result: null,
-      remarks: '',
-    },
-    {
-      id: 3,
-      item: 'SOP documents displayed at work area',
-      standardRef: 'SOP-GS-03',
-      category: 'Documentation',
-      criticality: 'Low',
-      result: null,
-      remarks: '',
-    },
-    {
-      id: 4,
-      item: 'Emergency equipment accessible and labeled',
-      standardRef: 'SOP-GS-04',
-      category: 'Safety Equipment',
-      criticality: 'High',
-      result: null,
-      remarks: '',
-    },
-    {
-      id: 5,
-      item: 'Fire extinguisher inspection up to date',
-      standardRef: 'SOP-GS-05',
-      category: 'Safety Equipment',
-      criticality: 'High',
-      result: null,
-      remarks: '',
-    },
-  ]);
-
-  const openChecklist = (template: ChecklistTemplate) => {
-    setSelectedChecklist(template);
-    setChecklist(initChecklistItems());
-    setFindingDrafts([]);
-    setViewMode('execute');
-  };
-
-  const closeChecklist = () => {
-    setViewMode('list');
-    setSelectedChecklist(null);
-    setChecklist([]);
-    setFindingDrafts([]);
-  };
-
-  const setItemResult = (id: number, result: ResultType) => {
-    setChecklist(prev => prev.map(it => it.id === id ? { ...it, result } : it));
-  };
-
-  const setItemRemarks = (id: number, remarks: string) => {
-    setChecklist(prev => prev.map(it => it.id === id ? { ...it, remarks } : it));
-  };
-
-  const openFindingModal = (item: ChecklistItem) => {
-    setCurrentItemForFinding(item);
-    setNewFinding({
-      checklistItemId: item.id,
-      findingType: 'Major',
-      title: `Non-compliance: ${item.item}`,
-      description: '',
-      rootCause: '',
-    });
-    setShowFindingModal(true);
-  };
-
-  const closeFindingModal = () => {
-    setShowFindingModal(false);
-    setCurrentItemForFinding(null);
-  };
-
-  const saveFinding = () => {
-    if (!newFinding.description.trim()) {
-      alert('Please enter finding description');
-      return;
-    }
-    setFindingDrafts(prev => [...prev, { ...newFinding }]);
-    // Auto-mark item as Non-compliant
-    setItemResult(newFinding.checklistItemId, 'Non-compliant');
-    closeFindingModal();
-    alert('Finding created successfully!');
-  };
-
-  const submitExecution = () => {
-    const unchecked = checklist.filter(it => !it.result);
-    if (unchecked.length > 0) {
-      alert(`Please complete all checklist items. ${unchecked.length} item(s) remaining.`);
-      return;
-    }
-    
-    // Here you will call API to submit
-    // For now, add findings to main list
-    const created = findingDrafts.map((draft, idx) => {
-      const item = checklist.find(it => it.id === draft.checklistItemId);
-      const nextNum = findings.length + idx + 1;
-      const id = `FND-${String(nextNum).padStart(3, '0')}`;
-      const today = new Date();
-      const addDays = (d: number) => {
-        const dt = new Date(today);
-        dt.setDate(dt.getDate() + d);
-        return dt.toISOString().slice(0,10);
-      };
-      return {
-        id,
-        auditId: selectedAudit === 'all' ? selectedChecklist?.id || 'AUD-UNKNOWN' : selectedAudit,
-        title: draft.title,
-        severity: item?.criticality || 'Medium' as 'Low' | 'Medium' | 'High',
-        category: item?.category || 'General',
-        description: draft.description,
-        status: 'Open' as const,
-        reportedDate: today.toISOString().slice(0,10),
-        dueDate: addDays(14),
-      };
-    });
-    
-    if (created.length > 0) {
-      setFindings(prev => [...prev, ...created]);
-    }
-    
-    alert(`Execution submitted! ${created.length} finding(s) created.`);
-    closeChecklist();
+  const openChecklist = (auditPlan: any) => {
+    // Navigate to detail page for execution
+    navigate(`/auditor/findings/${auditPlan.auditId}`);
   };
 
   // New feature handlers
@@ -378,56 +173,14 @@ const SQAStaffFindingManagement = () => {
     alert('Immediate Action created successfully!');
   };
 
-  const generateDailyWrapUp = () => {
-    const today = new Date().toISOString().slice(0, 10);
-    // Get ALL findings created today (from main findings list, not just drafts)
-    const todayFindings = findings.filter(f => f.reportedDate === today);
-    const majorCount = todayFindings.filter(f => f.severity === 'High').length;
-    const todayIA = immediateActions.filter(ia => ia.createdDate === today);
-    const todayInterviews = interviewLogs.filter(log => log.date === today);
-
-    return {
-      date: today,
-      itemsChecked: checklist.filter(it => it.result).length,
-      totalItems: checklist.length,
-      findings: todayFindings.length,
-      majorFindings: majorCount,
-      immediateActions: todayIA.length,
-      interviewsObservations: todayInterviews.length,
-    };
-  };
-
-
   // Using imported functions from constants
-  // Severity uses Priority colors - now returns border class with primary colors
   const getSeverityColor = (severity: string) => {
-    // Map severity to priority colors using primary system
     const severityMap: Record<string, string> = {
       'High': 'bg-primary-900 text-white border border-primary-900',
       'Medium': 'bg-primary-600 text-white border border-primary-600',
       'Low': 'bg-primary-300 text-primary-900 border border-primary-300',
     };
     return severityMap[severity] || 'bg-gray-100 text-gray-700 border border-gray-300';
-  };
-
-  // Criticality badge colors using primary theme
-  const getCriticalityColor = (criticality: string) => {
-    const criticalityMap: Record<string, string> = {
-      'High': 'bg-primary-900 text-white',
-      'Medium': 'bg-primary-600 text-white',
-      'Low': 'bg-primary-200 text-primary-800',
-    };
-    return criticalityMap[criticality] || 'bg-gray-100 text-gray-700';
-  };
-
-  // Finding Type badge colors using primary theme
-  const getFindingTypeColor = (type: string) => {
-    const typeMap: Record<string, string> = {
-      'Major': 'bg-primary-900 text-white',
-      'Minor': 'bg-primary-600 text-white',
-      'Observation': 'bg-primary-300 text-primary-900',
-    };
-    return typeMap[type] || 'bg-gray-100 text-gray-700';
   };
 
   const filteredFindings = selectedAudit === 'all' 
@@ -496,52 +249,93 @@ const SQAStaffFindingManagement = () => {
           />
         </div>
 
-        {/* VIEW MODE: Execute Checklist */}
-        {viewMode === 'execute' && selectedChecklist && (
-          <StartExecution
-            selectedChecklist={selectedChecklist}
-            checklist={checklist}
-            findingDrafts={findingDrafts}
-            showDailyWrapUp={showDailyWrapUp}
-            setShowDailyWrapUp={setShowDailyWrapUp}
-            immediateActions={immediateActions}
-            generateDailyWrapUp={generateDailyWrapUp}
-            setItemResult={setItemResult}
-            setItemRemarks={setItemRemarks}
-            openFindingModal={openFindingModal}
-            closeChecklist={closeChecklist}
-            submitExecution={submitExecution}
-            getCriticalityColor={getCriticalityColor}
-            getFindingTypeColor={getFindingTypeColor}
-          />
+        {/* Loading State */}
+        {loadingAudits && (
+          <div className="bg-white rounded-xl border border-primary-100 shadow-md p-8 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading audit plans...</p>
+          </div>
         )}
-
-        {/* VIEW MODE: List Checklists */}
-        {viewMode === 'list' && (
-          <FindingList
-            checklistTemplates={checklistTemplates}
-            openChecklist={openChecklist}
-            audits={audits}
-            selectedAudit={selectedAudit}
-            setSelectedAudit={setSelectedAudit}
-            filteredFindings={filteredFindings}
-            getSeverityColor={getSeverityColor}
-            onOpenInterview={openInterviewModal}
-            onOpenImmediateAction={openImmediateActionModal}
-          />
+        
+        {/* Error State */}
+        {auditsError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+            <p className="text-red-700">Error loading audits: {auditsError}</p>
+            <button
+              onClick={() => fetchAuditPlans()}
+              className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+            >
+              Retry
+            </button>
+          </div>
         )}
-
-        {/* CREATE FINDING MODAL */}
-        {showFindingModal && (
-          <CreateFindingModal
-            visible={showFindingModal}
-            currentItemForFinding={currentItemForFinding}
-            newFinding={newFinding}
-            setNewFinding={setNewFinding}
-            onClose={closeFindingModal}
-            onSave={saveFinding}
-            getCriticalityColor={getCriticalityColor}
-          />
+        
+        {/* Audit Plans & Findings List */}
+        {!loadingAudits && !auditsError && (
+          <div className="space-y-6">
+            {/* Available Audit Plans for Execution */}
+            <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+              <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
+                <h2 className="text-lg font-semibold text-white">Available Audit Plans</h2>
+                <p className="text-sm text-white opacity-90 mt-1">Select an audit plan to start checklist execution</p>
+              </div>
+              
+              <div className="p-6">
+                {auditPlans.length === 0 ? (
+                  <div className="text-center py-8">
+                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-gray-500 font-medium">No audit plans available</p>
+                    <p className="text-sm text-gray-400 mt-1">Audit plans will appear here when created</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {auditPlans.map((plan) => (
+                      <div
+                        key={plan.auditId}
+                        className="border border-gray-200 rounded-lg p-4 hover:border-primary-400 hover:shadow-md transition-all cursor-pointer"
+                        onClick={() => openChecklist(plan)}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <h3 className="font-semibold text-gray-900 text-sm">
+                            {plan.title || plan.name || 'Untitled Audit'}
+                          </h3>
+                          <span className="text-xs px-2 py-1 rounded bg-primary-100 text-primary-700">
+                            {plan.status || 'Active'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 mb-2">
+                          {plan.auditId}
+                        </p>
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span>{plan.departmentName || plan.department || 'N/A'}</span>
+                          <button
+                            className="px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700 text-xs font-medium"
+                          >
+                            Start Audit
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Existing Findings List */}
+            <FindingList
+              checklistTemplates={[]}
+              openChecklist={openChecklist}
+              audits={auditPlans.map(p => ({ id: p.auditId, title: p.title || p.name || 'Untitled' }))}
+              selectedAudit={selectedAudit}
+              setSelectedAudit={setSelectedAudit}
+              filteredFindings={filteredFindings}
+              getSeverityColor={getSeverityColor}
+              onOpenInterview={openInterviewModal}
+              onOpenImmediateAction={openImmediateActionModal}
+            />
+          </div>
         )}
 
         {/* Interview / Observation Logger Modal */}
