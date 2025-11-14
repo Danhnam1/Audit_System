@@ -80,6 +80,19 @@ export const approveForwardDirector = async (auditId: string, payload: { comment
   return apiClient.post(`/Audits/${auditId}/approve-forward-director`, payload) as any;
 };
 
+// Charts: findings by month (line), severity distribution (pie), by department (bar)
+export const getAuditChartLine = async (auditId: string): Promise<any> => {
+  return apiClient.get(`/Audits/${auditId}/chart/line`) as any;
+};
+
+export const getAuditChartPie = async (auditId: string): Promise<any> => {
+  return apiClient.get(`/Audits/${auditId}/chart/pie`) as any;
+};
+
+export const getAuditChartBar = async (auditId: string): Promise<any> => {
+  return apiClient.get(`/Audits/${auditId}/chart/bar`) as any;
+};
+
 export default {
   createAudit,
   addAuditScopeDepartment,
@@ -88,4 +101,7 @@ export default {
   getAuditPlanById,
   updateAuditPlan,
   deleteAuditPlan,
+  getAuditChartLine,
+  getAuditChartPie,
+  getAuditChartBar,
 };

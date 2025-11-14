@@ -1,48 +1,95 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
+import { useEffect, useMemo, useState } from 'react';
 import { getStatusColor } from '../../../constants';
-import { StatCard, AreaChartCard, LineChartCard, BarChartCard } from '../../../components';
+import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../components';
+import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar } from '../../../api/audits';
+import { unwrap } from '../../../utils/normalize';
 
 const SQAStaffReports = () => {
   const { user } = useAuth();
 
-
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const reportsByMonth = [
-    { month: 'Jan', draft: 8, final: 12, approved: 10 },
-    { month: 'Feb', draft: 6, final: 14, approved: 12 },
-    { month: 'Mar', draft: 9, final: 16, approved: 14 },
-    { month: 'Apr', draft: 7, final: 11, approved: 9 },
-    { month: 'May', draft: 10, final: 18, approved: 16 },
-    { month: 'Jun', draft: 8, final: 15, approved: 13 },
-    { month: 'Jul', draft: 11, final: 17, approved: 15 },
-    { month: 'Aug', draft: 9, final: 19, approved: 17 },
-    { month: 'Sep', draft: 12, final: 20, approved: 18 },
-    { month: 'Oct', draft: 7, final: 14, approved: 12 },
-  ];
+  // Audit list and selected audit
+  const [audits, setAudits] = useState<any[]>([]);
+  const [selectedAuditId, setSelectedAuditId] = useState<string>('');
+  const [loadingCharts, setLoadingCharts] = useState(false);
 
-  const findingsVsCapas = [
-    { month: 'Jan', findings: 45, capas: 38 },
-    { month: 'Feb', findings: 52, capas: 44 },
-    { month: 'Mar', findings: 48, capas: 40 },
-    { month: 'Apr', findings: 39, capas: 33 },
-    { month: 'May', findings: 61, capas: 52 },
-    { month: 'Jun', findings: 55, capas: 47 },
-    { month: 'Jul', findings: 58, capas: 50 },
-    { month: 'Aug', findings: 63, capas: 54 },
-    { month: 'Sep', findings: 67, capas: 58 },
-    { month: 'Oct', findings: 42, capas: 36 },
-  ];
+  // Chart datasets
+  const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
+  const [pieData, setPieData] = useState<Array<{ name: string; value: number; color: string }>>([]);
+  const [barData, setBarData] = useState<Array<{ department: string; count: number }>>([]);
 
-  const reportsByType = [
-    { type: 'Safety', count: 45 },
-    { type: 'Maintenance', count: 38 },
-    { type: 'Training', count: 31 },
-    { type: 'Operations', count: 29 },
-    { type: 'Security', count: 25 },
-    { type: 'Compliance', count: 42 },
-  ];
+  // Severity colors
+  const severityColor = (sev: string) => {
+    const k = String(sev || '').toLowerCase();
+    if (k.includes('critical') || k.includes('high')) return '#ef4444';
+    if (k.includes('major') || k.includes('medium')) return '#f59e0b';
+    return '#3b82f6'; // minor/low default
+  };
+
+  // Load audits list
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await getAuditPlans();
+        const arr = unwrap(res);
+        setAudits(arr);
+        const firstId = arr?.[0]?.auditId || arr?.[0]?.id || arr?.[0]?.$id || '';
+        if (firstId) setSelectedAuditId(String(firstId));
+      } catch (err) {
+        console.error('Failed to load audits for Reports', err);
+      }
+    };
+    load();
+  }, []);
+
+  // Load charts when audit changes
+  useEffect(() => {
+    const loadCharts = async () => {
+      if (!selectedAuditId) return;
+      setLoadingCharts(true);
+      try {
+        const [lineRes, pieRes, barRes] = await Promise.all([
+          getAuditChartLine(selectedAuditId),
+          getAuditChartPie(selectedAuditId),
+          getAuditChartBar(selectedAuditId),
+        ]);
+
+        const lineVals = unwrap(lineRes).map((it: any) => {
+          const m = String(it.month || it.label || '');
+          // Try to convert YYYY-MM to short month
+          let monLabel = m;
+          try {
+            const d = new Date(m.length === 7 ? m + '-01' : m);
+            monLabel = d.toLocaleString('en-US', { month: 'short' });
+          } catch {}
+          return { month: monLabel, count: Number(it.count || 0) };
+        });
+        setLineData(lineVals);
+
+        const pieVals = unwrap(pieRes).map((it: any) => ({
+          name: it.severity || it.label || 'N/A',
+          value: Number(it.count || 0),
+          color: severityColor(String(it.severity || it.label || '')),
+        }));
+        setPieData(pieVals);
+
+        const barVals = unwrap(barRes).map((it: any) => ({
+          department: it.department || it.label || '—',
+          count: Number(it.count || 0),
+        }));
+        setBarData(barVals);
+      } catch (err) {
+        console.error('Failed to load charts', err);
+        setLineData([]); setPieData([]); setBarData([]);
+      } finally {
+        setLoadingCharts(false);
+      }
+    };
+    loadCharts();
+  }, [selectedAuditId]);
 
   const reports = [
     { id: 'RPT-2025-001', auditId: 'AUD-2025-001', title: 'Annual Safety Audit - Final Report', type: 'Final Report', status: 'Pending Review', createdDate: '2025-10-22', findings: 5, capas: 3 },
@@ -78,12 +125,41 @@ const SQAStaffReports = () => {
           <StatCard title="Approved" value={reports.filter(r => r.status === 'Approved').length} icon={<svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} variant="primary-dark" />
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <AreaChartCard title="Report Status Timeline (2025)" data={reportsByMonth} xAxisKey="month" areas={[{ dataKey: 'approved', stroke: '#0369a1', fill: '#0369a1', name: 'Approved', stackId: '1' }, { dataKey: 'final', stroke: '#38bdf8', fill: '#38bdf8', name: 'Final', stackId: '1' }, { dataKey: 'draft', stroke: '#bae6fd', fill: '#bae6fd', name: 'Draft', stackId: '1' }]} />
-          <LineChartCard title="Findings vs CAPAs Trend" data={findingsVsCapas} xAxisKey="month" lines={[{ dataKey: 'findings', stroke: '#0369a1', name: 'Findings' }, { dataKey: 'capas', stroke: '#38bdf8', name: 'CAPAs' }]} />
+        {/* Audit selector */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700">Audit:</label>
+            <select
+              value={selectedAuditId}
+              onChange={(e) => setSelectedAuditId(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              {audits.map((a: any) => (
+                <option key={String(a.auditId || a.id || a.$id)} value={String(a.auditId || a.id || a.$id)}>
+                  {a.title || a.name || String(a.auditId || a.id)}
+                </option>
+              ))}
+            </select>
+            {loadingCharts && <span className="text-xs text-gray-500">Đang tải biểu đồ...</span>}
+          </div>
         </div>
 
-        <BarChartCard title="Reports by Audit Type" data={reportsByType} xAxisKey="type" bars={[{ dataKey: 'count', fill: '#0369a1', name: 'Total Reports' }]} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <LineChartCard
+            title="Findings theo tháng"
+            data={lineData}
+            xAxisKey="month"
+            lines={[{ dataKey: 'count', stroke: '#0369a1', name: 'Findings' }]}
+          />
+          <PieChartCard title="Mức độ Findings (theo tháng)" data={pieData} />
+        </div>
+
+        <BarChartCard
+          title="Số Findings theo phòng ban (theo tháng)"
+          data={barData}
+          xAxisKey="department"
+          bars={[{ dataKey: 'count', fill: '#0369a1', name: 'Findings' }]}
+        />
 
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
