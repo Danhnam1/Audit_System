@@ -93,6 +93,17 @@ export const getAuditChartBar = async (auditId: string): Promise<any> => {
   return apiClient.get(`/Audits/${auditId}/chart/bar`) as any;
 };
 
+// Summary of findings for an audit
+export const getAuditSummary = async (auditId: string): Promise<any> => {
+  return apiClient.get(`/Audits/Summary/${auditId}`) as any;
+};
+
+// Export dashboard/report PDF for an audit
+export const exportAuditPdf = async (auditId: string): Promise<Blob> => {
+  // Ensure we receive a Blob
+  return apiClient.get(`/Audits/ExportPdf/${auditId}`, { responseType: 'blob' } as any) as any;
+};
+
 export default {
   createAudit,
   addAuditScopeDepartment,
@@ -104,4 +115,6 @@ export default {
   getAuditChartLine,
   getAuditChartPie,
   getAuditChartBar,
+  getAuditSummary,
+  exportAuditPdf,
 };
