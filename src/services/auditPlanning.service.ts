@@ -23,11 +23,22 @@ export const getPlansWithDepartments = async (): Promise<AuditPlan[]> => {
   const scopeDeps = unwrap<any>(scopeDepsResponse);
 
   const merged: AuditPlan[] = plans.map((plan: any) => {
-    const planScopeDeps = scopeDeps.filter((sd: any) => String(sd.auditId) === String(plan.auditId || plan.id));
+    const planId = String(plan.auditId || plan.id);
+    const planScopeDepsRaw = scopeDeps.filter((sd: any) => String(sd.auditId) === planId);
+    const planScopeDeps = planScopeDepsRaw.map((sd: any) => {
+      const deptId = sd.deptId ?? sd.departmentId ?? sd.deptCode ?? sd.id ?? sd.$id ?? sd.department;
+      const deptName = sd.deptName || sd.name || sd.departmentName || sd.code || undefined;
+      return { deptId, deptName };
+    }).filter((sd: any) => sd.deptId != null);
+
+    const normalizedDeptIds: string[] = (planScopeDeps || []).map((sd: any) => String(sd.deptId));
+
     return {
       ...plan,
       scopeDepartments: planScopeDeps,
-    } as AuditPlan;
+      // attach normalized ids to assist client filters
+      normalizedDeptIds,
+    } as any as AuditPlan;
   });
 
   return merged;

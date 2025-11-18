@@ -1,9 +1,12 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { getStatusColor } from '../../../constants';
 import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../components';
-import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf } from '../../../api/audits';
+import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit } from '../../../api/audits';
+import { getDepartments } from '../../../api/departments';
+import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
+import { uploadAuditDocument } from '../../../api/auditDocuments';
 import { unwrap } from '../../../utils/normalize';
 
 const SQAStaffReports = () => {
@@ -16,37 +19,73 @@ const SQAStaffReports = () => {
   const [selectedAuditId, setSelectedAuditId] = useState<string>('');
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [summary, setSummary] = useState<any | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const summaryRef = useRef<HTMLDivElement | null>(null);
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitMsg, setSubmitMsg] = useState<string | null>(null);
+  const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
   const [pieData, setPieData] = useState<Array<{ name: string; value: number; color: string }>>([]);
   const [barData, setBarData] = useState<Array<{ department: string; count: number }>>([]);
+  const [findingsMap, setFindingsMap] = useState<Record<string, number>>({});
 
   // Derived datasets for summary rendering
-  const severityEntries = useMemo(() => Object.entries(summary?.severityBreakdown || {}), [summary]);
+  const severityEntries = useMemo(() => {
+    const obj = summary?.severityBreakdown || {};
+    return Object.entries(obj).filter(([k]) => k && !String(k).startsWith('$'));
+  }, [summary]);
   const severityTotal = useMemo(
     () => severityEntries.reduce((acc, [, v]) => acc + (Number(v as any) || 0), 0),
     [severityEntries]
   );
   const deptRows = useMemo(() => unwrap(summary?.byDepartment), [summary]);
   const rootCauseRows = useMemo(() => unwrap(summary?.byRootCause), [summary]);
-  const findingsRows = useMemo(() => unwrap(summary?.findings), [summary]);
   const [search, setSearch] = useState('');
-  const filteredFindings = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return findingsRows;
-    return findingsRows.filter((f: any) => {
-      const hay = [
-        f?.title,
-        f?.description,
-        f?.severity,
-        f?.status,
-        f?.createdByUser?.fullName,
-        String(f?.deptId)
-      ].join(' ').toLowerCase();
-      return hay.includes(q);
+  const monthsFindings = useMemo(() => {
+    const raw = unwrap(summary?.findingsByMonth);
+    return raw.map((m: any, idx: number) => {
+      const mNum = Number(m?.month ?? m?.monthNumber ?? 0);
+      const label = isNaN(mNum) || mNum < 1 || mNum > 12
+        ? String(m?.month || m?.label || `Month ${idx + 1}`)
+        : new Date(2000, mNum - 1, 1).toLocaleString('vi-VN', { month: 'long' });
+      return {
+        key: `${mNum || idx}`,
+        monthNum: mNum,
+        label,
+        total: Number(m?.total ?? 0),
+        open: Number(m?.open ?? 0),
+        closed: Number(m?.closed ?? 0),
+        overdue: Number(m?.overdue ?? 0),
+        items: unwrap(m?.findings),
+      };
     });
-  }, [findingsRows, search]);
+  }, [summary]);
+
+  const filteredMonths = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return monthsFindings;
+    return monthsFindings
+      .map((m) => ({
+        ...m,
+        items: m.items.filter((f: any) => {
+          const hay = [
+            f?.title,
+            f?.description,
+            f?.severity,
+            f?.status,
+            f?.createdByUser?.fullName,
+            String(f?.deptId),
+          ].join(' ').toLowerCase();
+          return hay.includes(q);
+        }),
+      }))
+      .filter((m) => m.items.length > 0);
+  }, [monthsFindings, search]);
 
   // Severity colors
   const severityColor = (sev: string) => {
@@ -56,21 +95,38 @@ const SQAStaffReports = () => {
     return '#3b82f6'; // minor/low default
   };
 
-  // Load audits list
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await getAuditPlans();
-        const arr = unwrap(res);
-        setAudits(arr);
-        const firstId = arr?.[0]?.auditId || arr?.[0]?.id || arr?.[0]?.$id || '';
-        if (firstId) setSelectedAuditId(String(firstId));
-      } catch (err) {
-        console.error('Failed to load audits for Reports', err);
+  // Load audits list (submitted + approved) and departments
+  const reloadReports = useCallback(async () => {
+    try {
+      const [res, depts] = await Promise.all([getAuditPlans(), getDepartments()]);
+      const arr = unwrap(res);
+      const isVisibleStatus = (s: any) => {
+        const v = String(s || '').toLowerCase().replace(/\s+/g, '');
+        return v.includes('submitted') || v.includes('completed') || v.includes('approve');
+      };
+      const filtered = (Array.isArray(arr) ? arr : []).filter((a: any) =>
+        isVisibleStatus(a.status || a.state || a.approvalStatus)
+      );
+      setAudits(filtered);
+      // normalize departments list from API
+      const deptList = Array.isArray(depts)
+        ? depts.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
+        : [];
+      setDepartments(deptList);
+      const firstId = filtered?.[0]?.auditId || filtered?.[0]?.id || filtered?.[0]?.$id || '';
+      if (firstId) setSelectedAuditId(String(firstId));
+      else {
+        setSelectedAuditId('');
+        setShowSummary(false);
       }
-    };
-    load();
+    } catch (err) {
+      console.error('Failed to load audits for Reports', err);
+    }
   }, []);
+
+  useEffect(() => {
+    reloadReports();
+  }, [reloadReports]);
 
   // Load charts when audit changes
   useEffect(() => {
@@ -125,6 +181,10 @@ const SQAStaffReports = () => {
       try {
         const sum = await getAuditSummary(selectedAuditId);
         setSummary(sum);
+        const total = Number((sum as any)?.totalFindings ?? 0);
+        if (!isNaN(total)) {
+          setFindingsMap((prev) => ({ ...prev, [String(selectedAuditId)]: total }));
+        }
       } catch (err) {
         console.error('Failed to load summary', err);
         setSummary(null);
@@ -132,6 +192,93 @@ const SQAStaffReports = () => {
     };
     loadSummary();
   }, [selectedAuditId]);
+
+  // Backfill findings for all audits so the table shows counts
+  useEffect(() => {
+    const fillAllFindings = async () => {
+      const ids = (Array.isArray(audits) ? audits : [])
+        .map((a: any) => String(a.auditId || a.id || a.$id || ''))
+        .filter(Boolean);
+      const missing = ids.filter((id) => findingsMap[id] == null);
+      if (missing.length === 0) return;
+      let cancelled = false;
+      try {
+        const results = await Promise.allSettled(missing.map((id) => getAuditSummary(id)));
+        if (cancelled) return;
+        const patch: Record<string, number> = {};
+        results.forEach((res, i) => {
+          if (res.status === 'fulfilled') {
+            const s: any = res.value;
+            const total = Number(s?.totalFindings ?? s?.total ?? 0);
+            if (!isNaN(total)) patch[missing[i]] = total;
+          }
+        });
+        if (Object.keys(patch).length) {
+          setFindingsMap((prev) => ({ ...prev, ...patch }));
+        }
+      } catch (e) {
+        // ignore; table can fallback to existing fields
+      }
+      return () => {
+        cancelled = true;
+      };
+    };
+    fillAllFindings();
+  }, [audits]);
+
+  // Smooth scroll to summary when shown or audit changes while visible
+  useEffect(() => {
+    if (showSummary) {
+      requestAnimationFrame(() => {
+        summaryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }, [showSummary, selectedAuditId]);
+
+  const isCompletedStatus = (s: any) => {
+    const v = String(s || '').toLowerCase();
+    return v.includes('completed') || v.includes('approve');
+  };
+  const isRejectedStatus = (s: any) => {
+    const v = String(s || '').toLowerCase();
+    return v.includes('reject');
+  };
+  const isSubmittedStatus = (s: any) => {
+    const v = String(s || '').toLowerCase().replace(/\s+/g, '');
+    return v.includes('submit');
+  };
+
+  const selectedAuditRow = useMemo(() => {
+    const sid = String(selectedAuditId || '');
+    return (audits || []).find((a: any) => String(a.auditId || a.id || a.$id) === sid);
+  }, [audits, selectedAuditId]);
+
+  const canExportSelected = useMemo(() => {
+    const st = selectedAuditRow?.status || selectedAuditRow?.state || selectedAuditRow?.approvalStatus;
+    return isCompletedStatus(st);
+  }, [selectedAuditRow]);
+
+  const handleSubmitToLead = async () => {
+    if (!selectedAuditId) return;
+    try {
+      setSubmitLoading(true);
+      setSubmitMsg(null);
+      await submitAudit(selectedAuditId);
+      setSubmitMsg('Sent to Lead Auditor successfully.');
+      // Cập nhật trạng thái local để disable nút ngay lập tức
+      setAudits((prev) =>
+        (Array.isArray(prev) ? prev : []).map((a: any) => {
+          const id = String(a.auditId || a.id || a.$id);
+          return id === String(selectedAuditId) ? { ...a, status: 'Submitted' } : a;
+        })
+      );
+    } catch (err: any) {
+      console.error('Submit to Lead Auditor failed', err);
+      setSubmitMsg('Gửi thất bại. Vui lòng thử lại.');
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
 
   const handleExportPdf = async () => {
     if (!selectedAuditId) return;
@@ -152,11 +299,45 @@ const SQAStaffReports = () => {
     }
   };
 
-  const reports = [
-    { id: 'RPT-2025-001', auditId: 'AUD-2025-001', title: 'Annual Safety Audit - Final Report', type: 'Final Report', status: 'Pending Review', createdDate: '2025-10-22', findings: 5, capas: 3 },
-    { id: 'RPT-2025-002', auditId: 'AUD-2025-002', title: 'Maintenance Quality Check - Draft', type: 'Draft Report', status: 'In Progress', createdDate: '2025-10-20', findings: 8, capas: 5 },
-    { id: 'RPT-2025-003', auditId: 'AUD-2025-003', title: 'Training Compliance Review - Final Report', type: 'Final Report', status: 'Approved', createdDate: '2025-10-15', findings: 3, capas: 2 },
-  ];
+  const onClickUpload = () => {
+    setUploadMsg(null);
+    fileInputRef.current?.click();
+  };
+
+  const onFileSelected: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f || !selectedAuditId) return;
+    try {
+      setUploadLoading(true);
+      setUploadMsg(null);
+      await uploadAuditDocument(selectedAuditId, f);
+      setUploadMsg('Tải lên báo cáo đã ký thành công.');
+      e.target.value = '';
+    } catch (err) {
+      console.error('Upload signed report failed', err);
+      setUploadMsg('Tải lên thất bại. Vui lòng thử lại.');
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  // Build table rows from backend audits list
+  const reportRows = useMemo(() => {
+    const arr = Array.isArray(audits) ? audits : [];
+    return arr.map((a: any, idx: number) => {
+      const id = String(a.auditId || a.id || a.$id || `audit_${idx}`);
+      const title = a.title || a.name || `Audit ${idx + 1}`;
+      const type = a.type || a.auditType || a.category || '—';
+      const rawStatus = a.status || a.state || a.approvalStatus || '—';
+      const norm = String(rawStatus).toLowerCase().replace(/\s+/g, '');
+      const status = norm.includes('approve') ? 'Completed' : norm.includes('submit') || norm.includes('submitted') ? 'Submitted' : rawStatus;
+      const createdRaw = a.createdAt || a.startDate || a.createdDate || a.start;
+      const createdDate = createdRaw ? new Date(createdRaw).toISOString().slice(0, 10) : '';
+      const findings = (findingsMap[id] ?? a.totalFindings ?? a.findingsCount ?? a.findingCount ?? 0) as number;
+      // const capas = a.capaCount ?? a.capaTotal ?? 0;
+      return { id, auditId: id, title, type, status, findings,  createdDate };
+    });
+  }, [audits, findingsMap]);
 
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = {
@@ -174,16 +355,16 @@ const SQAStaffReports = () => {
             <h1 className="text-2xl font-semibold text-primary-600">Report Management</h1>
             <p className="text-gray-600 text-sm mt-1">Create and manage audit reports</p>
           </div>
-          <button className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">+ Generate New Report</button>
+          
         </div>
       </div>
 
       <div className="px-6 pb-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <StatCard title="Total Reports" value={reports.length} icon={<svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>} variant="primary" />
-          <StatCard title="Pending Review" value={reports.filter(r => r.status === 'Pending Review').length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>} variant="primary-light" />
-          <StatCard title="In Progress" value={reports.filter(r => r.status === 'In Progress').length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>} variant="primary-light" />
-          <StatCard title="Approved" value={reports.filter(r => r.status === 'Approved').length} icon={<svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} variant="primary-dark" />
+          <StatCard title="Total Reports" value={reportRows.length} icon={<svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>} variant="primary" />
+          <StatCard title="Pending Review" value={reportRows.filter(r => String(r.status || '').toLowerCase().includes('pending')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>} variant="primary-light" />
+          <StatCard title="In Progress" value={reportRows.filter(r => String(r.status || '').toLowerCase().includes('progress')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>} variant="primary-light" />
+          <StatCard title="Completed" value={reportRows.filter(r => { const v = String(r.status || '').toLowerCase(); return v.includes('completed'); }).length} icon={<svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} variant="primary-dark" />
         </div>
 
         {/* Audit selector */}
@@ -202,13 +383,24 @@ const SQAStaffReports = () => {
               ))}
             </select>
             {loadingCharts && <span className="text-xs text-gray-500">Đang tải biểu đồ...</span>}
+            
             <button
               onClick={handleExportPdf}
-              className="ml-auto bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 rounded-md text-sm"
-              disabled={!selectedAuditId}
+              className={`px-3 py-2 rounded-md text-sm text-white ${canExportSelected ? 'bg-primary-600 hover:bg-primary-700' : 'bg-gray-300 cursor-not-allowed'}`}
+              disabled={!selectedAuditId || !canExportSelected}
+              title={canExportSelected ? '' : 'Chỉ được export khi Lead Auditor đã approve'}
             >
               Export PDF
             </button>
+            <button
+              onClick={onClickUpload}
+              className={`px-3 py-2 rounded-md text-sm text-white ${canExportSelected ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-300 cursor-not-allowed'}`}
+              disabled={!selectedAuditId || !canExportSelected || uploadLoading}
+              title={canExportSelected ? 'Tải lên bản PDF/scan đã ký' : 'Chỉ tải lên sau khi Lead Auditor đã approve'}
+            >
+              {uploadLoading ? 'Đang tải lên...' : 'Upload Signed Report'}
+            </button>
+            <input ref={fileInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={onFileSelected} />
           </div>
         </div>
 
@@ -244,27 +436,31 @@ const SQAStaffReports = () => {
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Findings</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">CAPAs</th>
+                  {/* <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">CAPAs</th> */}
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Created</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {reports.map((report) => (
-                  <tr key={report.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-medium text-primary-600">{report.id}</span></td>
+                {reportRows.map((report) => (
+                  <tr key={report.auditId} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm font-medium text-primary-600">{String(report.auditId).slice(0,8)}…</span></td>
                     <td className="px-6 py-4"><span className="text-sm font-medium text-gray-900">{report.title}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-700">{report.auditId}</span></td>
                     <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getTypeColor(report.type)}`}>{report.type}</span></td>
                     <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 text-sm font-semibold">{report.findings}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm font-semibold">{report.capas}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 text-sm font-semibold">{report.findings || 0}</span></td>
+                    {/* <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm font-semibold">{report.capas || 0}</span></td> */}
                     <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-600">{report.createdDate}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex gap-2">
-                        <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">View</button>
+                        <button onClick={() => { setSelectedAuditId(String(report.auditId)); setShowSummary(true); }} className="text-primary-600 hover:text-primary-700 text-sm font-medium">View</button>
                         <span className="text-gray-300">|</span>
-                        <button onClick={handleExportPdf} className="text-primary-600 hover:text-primary-700 text-sm font-medium">Export PDF</button>
+                        {isCompletedStatus(report.status) ? (
+                          <button onClick={() => exportAuditPdf(String(report.auditId)).then((blob) => { const url = window.URL.createObjectURL(blob as any); const a = document.createElement('a'); a.href = url; a.download = `${report.title || 'audit-report'}.pdf`; document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url); }).catch(() => alert('Xuất PDF thất bại'))} className="text-primary-600 hover:text-primary-700 text-sm font-medium">Export PDF</button>
+                        ) : (
+                          <button disabled className="text-gray-400 text-sm font-medium cursor-not-allowed" title="Chỉ được export khi báo cáo đã Completed">Export PDF</button>
+                        )}
                         {report.status === 'In Progress' && (<>
                           <span className="text-gray-300">|</span>
                           <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">Edit</button>
@@ -278,11 +474,46 @@ const SQAStaffReports = () => {
           </div>
         </div>
 
-        {/* Summary section - clearer, card-based UI */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
+        {/* Summary section - clearer, card-based UI; show after View */}
+        {showSummary && (
+        <div ref={summaryRef} className="bg-white rounded-xl border border-primary-100 shadow-md p-6 scroll-mt-24">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-primary-600">Summary Findings</h2>
-            <span className="text-xs text-gray-500">Tổng quan theo audit đã chọn</span>
+            <div>
+              <h2 className="text-lg font-semibold text-primary-600">Summary Findings</h2>
+              <span className="text-xs text-gray-500">Tổng quan theo audit đã chọn</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {isRejectedStatus(selectedAuditRow?.status) && (
+                <span className="text-xs font-medium px-2 py-1 rounded bg-red-50 text-red-700 border border-red-200">
+                  Báo cáo bị reject - chỉnh sửa và gửi lại.
+                </span>
+              )}
+              {submitMsg && <span className="text-sm text-gray-700">{submitMsg}</span>}
+              {uploadMsg && <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded">{uploadMsg}</span>}
+              {(() => {
+                const st = selectedAuditRow?.status || selectedAuditRow?.state || selectedAuditRow?.approvalStatus;
+                const submitted = isSubmittedStatus(st);
+                const completed = isCompletedStatus(st);
+                const rejected = isRejectedStatus(st);
+                const disabled = submitLoading || !selectedAuditId || submitted || completed;
+                const label = submitLoading
+                  ? 'Đang gửi...'
+                  : submitted
+                  ? 'Submited'
+                  : rejected
+                  ? 'Resubmit to Lead Auditor'
+                  : 'Submit to Lead Auditor';
+                return (
+                  <button
+                    onClick={handleSubmitToLead}
+                    disabled={disabled}
+                    className={`px-3 py-2 rounded-md text-sm font-medium shadow-sm ${disabled ? 'bg-amber-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'} text-white`}
+                  >
+                    {label}
+                  </button>
+                );
+              })()}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -365,12 +596,16 @@ const SQAStaffReports = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {deptRows.map((it: any, idx: number) => (
-                      <tr key={`${it.deptName || it.department || idx}`}>
-                        <td className="px-3 py-2">{it.deptName || it.department || '—'}</td>
+                    {deptRows.map((it: any, idx: number) => {
+                      const deptIdLike = it.deptId ;
+                      const name = it.deptName || (deptIdLike != null ? resolveDeptName(String(deptIdLike), departments) : '') || it.department || '—';
+                      return (
+                      <tr key={`${name}-${idx}`}>
+                        <td className="px-3 py-2">{name}</td>
                         <td className="px-3 py-2 text-right">{Number(it.count || 0)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {deptRows.length === 0 && (
                       <tr><td className="px-3 py-2 text-gray-500" colSpan={2}>No data</td></tr>
                     )}
@@ -405,8 +640,10 @@ const SQAStaffReports = () => {
             </div>
           </div>
         </div>
+        )}
 
-        {/* Findings details */}
+        {/* Findings details by month - show after View */}
+        {showSummary && (
         <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-primary-600">Findings Details</h2>
@@ -417,47 +654,67 @@ const SQAStaffReports = () => {
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-72"
             />
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-left px-3 py-2 text-gray-700">Title</th>
-                  <th className="text-left px-3 py-2 text-gray-700">Severity</th>
-                  <th className="text-left px-3 py-2 text-gray-700">Department</th>
-                  <th className="text-left px-3 py-2 text-gray-700">Status</th>
-                  <th className="text-left px-3 py-2 text-gray-700">Deadline</th>
-                  <th className="text-left px-3 py-2 text-gray-700">Created By</th>
-                  <th className="text-left px-3 py-2 text-gray-700">Created At</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredFindings.map((f: any, idx: number) => (
-                  <tr key={f.findingId || idx} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 font-medium text-gray-900">{f.title || '—'}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className="px-2 py-0.5 rounded-full text-xs font-medium border"
-                        style={{ borderColor: '#e5e7eb', color: severityColor(String(f.severity)) }}
-                      >
-                        {f.severity || '—'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">{f.deptName || f.department || f.deptId || '—'}</td>
-                    <td className="px-3 py-2">{f.status || '—'}</td>
-                    <td className="px-3 py-2">{f.deadline ? new Date(f.deadline).toLocaleDateString() : '—'}</td>
-                    <td className="px-3 py-2">{f.createdByUser?.fullName || '—'}</td>
-                    <td className="px-3 py-2">{f.createdAt ? new Date(f.createdAt).toLocaleDateString() : '—'}</td>
-                  </tr>
-                ))}
-                {filteredFindings.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-6 text-center text-gray-500">Không có dữ liệu</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+
+          {(filteredMonths.length ? filteredMonths : monthsFindings).map((m) => (
+            <div key={m.key} className="mb-6 last:mb-0">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-semibold text-gray-700">Tháng {isNaN(m.monthNum) || m.monthNum < 1 ? m.label : m.monthNum}</div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">Total: {m.total}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Open: {m.open}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700">Closed: {m.closed}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700">Overdue: {m.overdue}</span>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-gray-700">#</th>
+                      <th className="text-left px-3 py-2 text-gray-700">Title</th>
+                      <th className="text-left px-3 py-2 text-gray-700">Dept</th>
+                      <th className="text-left px-3 py-2 text-gray-700">Severity</th>
+                      <th className="text-left px-3 py-2 text-gray-700">Status</th>
+                      <th className="text-left px-3 py-2 text-gray-700">Deadline</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {(filteredMonths.length ? m.items : m.items).map((f: any, idx: number) => (
+                      <tr key={f.findingId || idx} className="hover:bg-gray-50">
+                        <td className="px-3 py-2">{idx + 1}</td>
+                        <td className="px-3 py-2 font-medium text-gray-900">{f.title || '—'}</td>
+                        <td className="px-3 py-2">{
+                           (f.deptId != null ? resolveDeptName(String(f.deptId), departments) : '—') || '—'
+                        }</td>
+                        <td className="px-3 py-2">
+                          <span
+                            className="px-2 py-0.5 rounded-full text-xs font-medium border"
+                            style={{ borderColor: '#e5e7eb', color: severityColor(String(f.severity)) }}
+                          >
+                            {f.severity || '—'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">{f.status || '—'}</td>
+                        <td className="px-3 py-2">{f.deadline ? new Date(f.deadline).toLocaleDateString() : '—'}</td>
+                      </tr>
+                    ))}
+                    {m.items.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-4 text-center text-gray-500">Không có dữ liệu</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+
+          {(!monthsFindings || monthsFindings.length === 0) && (
+            <div className="text-sm text-center text-gray-500">Không có dữ liệu</div>
+          )}
         </div>
+        )}
 
         <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
           <h2 className="text-lg font-semibold text-primary-600 mb-4">Report Templates</h2>
