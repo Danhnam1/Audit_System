@@ -44,16 +44,54 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
   const [reviewComments, setReviewComments] = React.useState('');
 
+  // Build a list of audit team members to render. If Auditee Owners are not present
+  // in `selectedPlanDetails.auditTeams.values`, try to supplement them from `ownerOptions`.
+  const auditTeamsFromDetails: any[] = Array.isArray(selectedPlanDetails.auditTeams?.values)
+    ? selectedPlanDetails.auditTeams.values
+    : [];
+
+  const ownerUserIdsInTeam = new Set(auditTeamsFromDetails.map((m) => String(m.userId)));
+
+  // Determine owners relevant for this plan: if scope is 'Department', pick owners whose deptId
+  // matches any selected scope department; if scope is 'Academy' pick all provided ownerOptions.
+  const relevantOwners: any[] = (ownerOptions || []).filter((o: any) => {
+    if (!o) return false;
+    if (!selectedPlanDetails) return false;
+    const scope = String(selectedPlanDetails.scope || '').toLowerCase();
+    const ownerDeptId = o.deptId ?? o.departmentId ?? o.deptID ?? o.dept?.id;
+    if (scope === 'department') {
+      const deptIds = (selectedPlanDetails.scopeDepartments?.values || []).map((d: any) => String(d.deptId));
+      return deptIds.length === 0 ? false : deptIds.includes(String(ownerDeptId));
+    }
+    return true;
+  });
+
+  const missingOwners = relevantOwners
+    .filter((o) => {
+      const uid = o.userId ?? o.id ?? o.$id;
+      return !ownerUserIdsInTeam.has(String(uid));
+    })
+    .map((o) => {
+      const uid = o.userId ?? o.id ?? o.$id;
+      return {
+        userId: uid,
+        fullName: o.fullName || o.name || `User ${uid}`,
+        roleInTeam: 'AuditeeOwner',
+        isLead: false,
+        email: o.email,
+      };
+    });
+
+  const combinedAuditTeam = [...auditTeamsFromDetails, ...missingOwners];
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-gradient-primary px-6 py-5 border-b border-sky-500">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-xl font-bold text-white flex items-center">📄 Full Audit Plan Details</h3>
-              <p className="text-sm text-sky-100 mt-1">
-                <span className="font-semibold">Audit:</span> {selectedPlanDetails.title || selectedPlanDetails.name || selectedPlanDetails.auditId}
-              </p>
+              <h3 className="text-xl font-bold text-white flex items-center">Audit Plan Details</h3>
+              
             </div>
             <button
               onClick={onClose}
@@ -71,7 +109,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           {/* Basic Information Section */}
           <div className="border-b border-gray-200 pb-4">
             <h3 className="text-lg font-semibold text-primary-600 mb-4 flex items-center">
-              📋 Basic Information
+              Basic Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
               <div className="flex">
@@ -135,7 +173,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           {selectedPlanDetails.createdByUser && (
             <div className="border-b border-gray-200 pb-4">
               <h3 className="text-lg font-semibold text-primary-600 mb-4 flex items-center">
-                👤 Created By
+               Created By
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
                 <div className="flex">
@@ -170,7 +208,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           {selectedPlanDetails.scopeDepartments?.values?.length > 0 && (
             <div className="border-b border-gray-200 pb-4">
               <h3 className="text-lg font-semibold text-primary-600 mb-3 flex items-center">
-                🏢 Scope Departments
+               Scope Departments
               </h3>
               <div className="space-y-2">
                 {selectedPlanDetails.scopeDepartments.values.map((dept: any, idx: number) => {
@@ -210,7 +248,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           {selectedPlanDetails.criteria?.values?.length > 0 && (
             <div className="border-b border-gray-200 pb-4">
               <h3 className="text-lg font-semibold text-primary-600 mb-3 flex items-center">
-                📌 Audit Criteria
+                Audit Criteria
               </h3>
               <ul className="space-y-2">
                 {selectedPlanDetails.criteria.values.map((criterion: any, idx: number) => {
@@ -234,13 +272,15 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Audit Team Section */}
-          {selectedPlanDetails.auditTeams?.values?.length > 0 && (
+          {combinedAuditTeam.length > 0 && (
             <div className="border-b border-gray-200 pb-4">
               <h3 className="text-lg font-semibold text-primary-600 mb-3 flex items-center">
-                👥 Audit Team
+                 Audit Team
               </h3>
               <ul className="space-y-2">
-                {selectedPlanDetails.auditTeams.values.map((member: any, idx: number) => (
+                {combinedAuditTeam
+                  .filter((m: any) => String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '') !== 'auditeeowner')
+                  .map((member: any, idx: number) => (
                   <li key={idx} className="flex items-start">
                     <span className="text-primary-500 mr-2">•</span>
                     <div className="text-sm text-gray-700">
@@ -274,7 +314,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           {selectedPlanDetails.schedules?.values?.length > 0 && (
             <div className="pb-4">
               <h3 className="text-lg font-semibold text-primary-600 mb-4 flex items-center">
-                📅 Schedule & Milestones
+                Schedule & Milestones
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {selectedPlanDetails.schedules.values.map((schedule: any, idx: number) => (

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 export interface MultiSelectOption {
   value: string
   label: string
+  disabled?: boolean
 }
 
 interface MultiSelectProps {
@@ -61,15 +62,23 @@ export default function MultiSelect({ options, value, onChange, placeholder = 'S
           )}
           {options.map((o) => {
             const checked = selectedMap.has(o.value)
+            const disabled = !!(o as any).disabled
             return (
-              <label key={o.value} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+              <label
+                key={o.value}
+                className={`flex items-center gap-2 px-3 py-2 ${disabled ? 'opacity-50 pointer-events-none' : 'hover:bg-gray-50 cursor-pointer'}`}
+              >
                 <input
                   type="checkbox"
-                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  disabled={disabled}
+                  className={`rounded border-gray-300 text-primary-600 focus:ring-primary-500 ${disabled ? 'cursor-not-allowed' : ''}`}
                   checked={checked}
-                  onChange={() => toggle(o.value)}
+                  onChange={() => {
+                    if (disabled) return
+                    toggle(o.value)
+                  }}
                 />
-                <span className="text-sm text-gray-700">{o.label}</span>
+                <span className={`text-sm ${disabled ? 'text-gray-500' : 'text-gray-700'}`}>{o.label}</span>
               </label>
             )
           })}

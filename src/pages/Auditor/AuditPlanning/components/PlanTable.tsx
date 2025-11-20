@@ -12,6 +12,8 @@ interface PlanTableProps {
   onDeletePlan: (auditId: string) => void;
   getStatusColor: (status: string) => string;
   getBadgeVariant: (variant: BadgeVariant) => string;
+  // Optional start index to compute global row numbers (useful for pagination)
+  startIndex?: number;
 }
 
 export const PlanTable: React.FC<PlanTableProps> = ({
@@ -23,6 +25,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
   onDeletePlan,
   getStatusColor,
   getBadgeVariant,
+  startIndex = 0,
 }) => {
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'N/A';
@@ -42,7 +45,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
               No.
             </th>
             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-              Title & Goal
+              Title
             </th>
             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
               Period
@@ -86,13 +89,13 @@ export const PlanTable: React.FC<PlanTableProps> = ({
               >
                 <td className="px-6 py-4 whitespace-nowrap">
                   {/* Display sequential row number instead of GUID for readability */}
-                  <span className="text-sm font-semibold text-primary-700">{index + 1}</span>
+                  <span className="text-sm font-semibold text-primary-700">{startIndex + index + 1}</span>
                 </td>
                 <td className="px-6 py-4" style={{ maxWidth: '250px' }}>
                   <p className="text-sm font-semibold text-gray-900">{plan.title || 'Untitled'}</p>
-                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                  {/* <p className="text-xs text-gray-500 mt-1 line-clamp-2">
                     {plan.objective || 'No objective specified'}
-                  </p>
+                  </p> */}
                   <div className="flex gap-2 mt-1">
                     <span className={`px-2 py-0.5 text-xs rounded ${getBadgeVariant('primary-light')}`}>
                       {plan.type || 'General'}
@@ -107,7 +110,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
                 </td>
                 <td className="px-6 py-4">
                   <p className="text-sm font-medium text-gray-900">{plan.scope || 'N/A'}</p>
-                  <p className="text-xs text-gray-500">{plan.isPublished ? 'Published' : 'Draft'}</p>
+                  {/* <p className="text-xs text-gray-500">{plan.isPublished ? 'Published' : 'Draft'}</p> */}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-xs text-gray-500">
@@ -122,9 +125,9 @@ export const PlanTable: React.FC<PlanTableProps> = ({
                   >
                     {plan.status || 'Draft'}
                   </span>
-                  <p className="text-xs text-gray-500 mt-2">Created:</p>
+                  {/* <p className="text-xs text-gray-500 mt-2">Created:</p>
                   <p className="text-xs text-gray-700">{formatDate(plan.createdAt)}</p>
-                  <p className="text-xs text-gray-500">By: {plan.createdBy || 'Unknown'}</p>
+                  <p className="text-xs text-gray-500">By: {plan.createdBy || 'Unknown'}</p> */}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex flex-col gap-2">
