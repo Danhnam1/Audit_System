@@ -7,8 +7,8 @@
 // Status color mapping using primary colors
 export const STATUS_COLORS = {
   // Completed/Success States - Xanh lục/Teal (Positive outcomes)
-  'Approve': 'bg-teal-500 text-white',
-  'Approved': 'bg-teal-500 text-white',
+  'Approve': 'bg-sky-100 text-sky-700',
+  'Approved': 'bg-sky-100 text-sky-700',
   'Resolved': 'bg-green-600 text-white',
   'Verified': 'bg-teal-400 text-white',
   'Distributed': 'bg-teal-600 text-white',
@@ -41,10 +41,11 @@ export const STATUS_COLORS = {
   'Draft': 'bg-gray-200 text-gray-700',
   'Open': 'bg-gray-300 text-gray-800',
   
-  // Rejected/Negative States - Xám đậm
-  'Rejected': 'bg-gray-500 text-white',
-  'Returned': 'bg-gray-500 text-white',
-  'Cancelled': 'bg-gray-600 text-white',
+
+
+  // Rejected/Negative States - Đỏ/Red
+  'Rejected': 'bg-red-100 text-red-700',
+  'Returned': 'bg-gray-600 text-white',
   
   // Special States
   'Reopened': 'bg-primary-800 text-white',
@@ -67,6 +68,17 @@ export const PRIORITY_COLORS = {
   'Low': 'bg-primary-300 text-primary-900',
 } as const;
 
+// Severity color mapping for findings
+export const SEVERITY_COLORS = {
+  'Critical': 'bg-red-100 text-red-800 border-red-300',
+  'Major': 'bg-orange-100 text-orange-800 border-orange-300',
+  'Minor': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  'Observation': 'bg-blue-100 text-blue-800 border-blue-300',
+  'Low': 'bg-green-100 text-green-800 border-green-300',
+  'Medium': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  'High': 'bg-red-100 text-red-800 border-red-300',
+} as const;
+
 // Helper function to get status color
 export const getStatusColor = (status: string): string => {
   return STATUS_COLORS[status as keyof typeof STATUS_COLORS] || 'bg-gray-100 text-gray-700';
@@ -75,6 +87,11 @@ export const getStatusColor = (status: string): string => {
 // Helper function to get priority color
 export const getPriorityColor = (priority: string): string => {
   return PRIORITY_COLORS[priority as keyof typeof PRIORITY_COLORS] || 'text-gray-600';
+};
+
+// Helper function to get severity color
+export const getSeverityColor = (severity: string): string => {
+  return SEVERITY_COLORS[severity as keyof typeof SEVERITY_COLORS] || 'bg-gray-100 text-gray-700 border-gray-300';
 };
 
 // Badge variants for different use cases

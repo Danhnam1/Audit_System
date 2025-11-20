@@ -49,9 +49,9 @@ const CreateFindingModal: React.FC<CreateFindingModalProps> = ({
               <span>•</span>
               <span>Category: {currentItemForFinding.category}</span>
               <span>•</span>
-              <span className={`px-2 py-0.5 rounded font-medium ${getCriticalityColor(currentItemForFinding.criticality)}`}>
+              {/* <span className={`px-2 py-0.5 rounded font-medium ${getCriticalityColor(currentItemForFinding.criticality)}`}>
                 {currentItemForFinding.criticality}
-              </span>
+              </span> */}
             </div>
           </div>
 

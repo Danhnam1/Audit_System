@@ -3,24 +3,12 @@ import { useAuth } from '../../../contexts';
 import { StatCard } from '../../../components';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  FindingList,
-  InterviewObservationModal,
-  ImmediateActionModal,
-} from './Components';
-import type {
-  InterviewLog,
-  ImmediateAction,
-  FindingRecord,
-} from './Components/types';
 import { useAuditFindings } from '../../../hooks/useAuditFindings';
-import { getFindings } from '../../../api/findings';
 
 const SQAStaffFindingManagement = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [selectedAudit, setSelectedAudit] = useState('all');
-  const [findings, setFindings] = useState<FindingRecord[]>([]);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -32,166 +20,21 @@ const SQAStaffFindingManagement = () => {
     fetchAuditPlans,
   } = useAuditFindings();
 
-  // Load audit plans and findings on mount
+  // Load audit plans on mount
   useEffect(() => {
     fetchAuditPlans();
-    loadFindings();
   }, [fetchAuditPlans]);
-
-  // Load findings from API
-  const loadFindings = async () => {
-    try {
-      const data = await getFindings();
-      
-      // Transform API findings to match FindingRecord format
-      const transformedFindings: FindingRecord[] = (Array.isArray(data) ? data : []).map((f: any) => ({
-        id: f.findingId || f.id,
-        auditId: f.auditId,
-        title: f.title,
-        severity: f.severity || 'Medium',
-        category: f.category || 'General',
-        description: f.description,
-        status: f.status || 'Open',
-        reportedDate: f.createdAt ? new Date(f.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
-        dueDate: f.deadline ? new Date(f.deadline).toISOString().slice(0, 10) : '',
-      }));
-      
-      setFindings(transformedFindings);
-    } catch (error) {
-      console.error('Error loading findings:', error);
-    }
-  };
-
-  // -------- Interview & Immediate Action --------
-
-  // New features - Interview/Observation Logger, Immediate Action, Daily Wrap-up
-  // Types moved to ./types
-
-  const [interviewLogs, setInterviewLogs] = useState<InterviewLog[]>([]);
-  const [immediateActions, setImmediateActions] = useState<ImmediateAction[]>([]);
-  const [showInterviewModal, setShowInterviewModal] = useState(false);
-  const [showImmediateActionModal, setShowImmediateActionModal] = useState(false);
-  const [currentFindingForIA, setCurrentFindingForIA] = useState<FindingRecord | null>(null);
-  const [currentFindingForInterview, setCurrentFindingForInterview] = useState<FindingRecord | null>(null);
-
-  const [newInterview, setNewInterview] = useState<Omit<InterviewLog, 'id' | 'date'>>({
-    type: 'Interview',
-    findingRef: '',
-    personRole: '',
-    summary: '',
-    attachments: [],
-    linkToItem: '',
-  });
-
-  const [newIA, setNewIA] = useState<Omit<ImmediateAction, 'id' | 'status' | 'createdDate'>>({
-    findingRef: '',
-    action: '',
-    owner: '',
-    dueDateTime: '',
-  });
-
-  // No form state needed - handled in detail page
 
   const openChecklist = (auditPlan: any) => {
     // Navigate to detail page for execution
     navigate(`/auditor/findings/${auditPlan.auditId}`);
   };
 
-  // New feature handlers
-  const openInterviewModal = (finding: FindingRecord) => {
-    setCurrentFindingForInterview(finding);
-    setNewInterview({
-      type: 'Interview',
-      findingRef: finding.id,
-      personRole: '',
-      summary: '',
-      attachments: [],
-      linkToItem: '',
-    });
-    setShowInterviewModal(true);
-  };
-
-  const saveInterviewLog = () => {
-    if (!newInterview.personRole.trim() || !newInterview.summary.trim()) {
-      alert('Please fill Person/Role and Summary');
-      return;
-    }
-    const log: InterviewLog = {
-      id: `INT-${String(interviewLogs.length + 1).padStart(3, '0')}`,
-      ...newInterview,
-      date: new Date().toISOString().slice(0, 10),
-    };
-    setInterviewLogs(prev => [...prev, log]);
-    setNewInterview({
-      type: 'Interview',
-      findingRef: '',
-      personRole: '',
-      summary: '',
-      attachments: [],
-      linkToItem: '',
-    });
-    setShowInterviewModal(false);
-    setCurrentFindingForInterview(null);
-    alert('Interview/Observation logged successfully as evidence for Finding!');
-  };
-
-  const openImmediateActionModal = (finding: FindingRecord) => {
-    setCurrentFindingForIA(finding);
-    setNewIA({
-      findingRef: finding.id,
-      action: '',
-      owner: '',
-      dueDateTime: '',
-    });
-    setShowImmediateActionModal(true);
-  };
-
-  const saveImmediateAction = () => {
-    if (!newIA.action.trim() || !newIA.owner.trim() || !newIA.dueDateTime) {
-      alert('Please fill all required fields');
-      return;
-    }
-
-    // Check due date is within 72h
-    const due = new Date(newIA.dueDateTime);
-    const now = new Date();
-    const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60);
-    if (diff > 72 || diff < 0) {
-      alert('Due date must be within 72 hours from now');
-      return;
-    }
-
-    const ia: ImmediateAction = {
-      id: `IA-${String(immediateActions.length + 1).padStart(3, '0')}`,
-      ...newIA,
-      status: 'Open',
-      createdDate: new Date().toISOString().slice(0, 10),
-    };
-    setImmediateActions(prev => [...prev, ia]);
-    setShowImmediateActionModal(false);
-    setCurrentFindingForIA(null);
-    alert('Immediate Action created successfully!');
-  };
-
-  // Using imported functions from constants
-  const getSeverityColor = (severity: string) => {
-    const severityMap: Record<string, string> = {
-      'High': 'bg-primary-900 text-white border border-primary-900',
-      'Medium': 'bg-primary-600 text-white border border-primary-600',
-      'Low': 'bg-primary-300 text-primary-900 border border-primary-300',
-    };
-    return severityMap[severity] || 'bg-gray-100 text-gray-700 border border-gray-300';
-  };
-
-  const filteredFindings = selectedAudit === 'all' 
-    ? findings 
-    : findings.filter(f => f.auditId === selectedAudit);
-
   const stats = {
-    total: findings.length,
-    open: findings.filter(f => f.status === 'Open').length,
-    inProgress: findings.filter(f => f.status === 'In Progress').length,
-    resolved: findings.filter(f => f.status === 'Resolved').length,
+    total: 0,
+    open: 0,
+    inProgress: 0,
+    resolved: 0,
   };
 
   return (
@@ -270,96 +113,84 @@ const SQAStaffFindingManagement = () => {
           </div>
         )}
         
-        {/* Audit Plans & Findings List */}
+        {/* Available Audit Plans */}
         {!loadingAudits && !auditsError && (
-          <div className="space-y-6">
-            {/* Available Audit Plans for Execution */}
-            <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-              <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-                <h2 className="text-lg font-semibold text-white">Available Audit Plans</h2>
-                <p className="text-sm text-white opacity-90 mt-1">Select an audit plan to start checklist execution</p>
+          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-primary-600">Available Audit Plans</h2>
+                <span className="text-sm text-gray-600">Showing {selectedAudit === 'all' ? auditPlans.length : auditPlans.filter(p => p.auditId === selectedAudit).length} audit plan(s)</span>
               </div>
-              
-              <div className="p-6">
-                {auditPlans.length === 0 ? (
-                  <div className="text-center py-8">
-                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <p className="text-gray-500 font-medium">No audit plans available</p>
-                    <p className="text-sm text-gray-400 mt-1">Audit plans will appear here when created</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {auditPlans.map((plan) => (
-                      <div
-                        key={plan.auditId}
-                        className="border border-gray-200 rounded-lg p-4 hover:border-primary-400 hover:shadow-md transition-all cursor-pointer"
-                        onClick={() => openChecklist(plan)}
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <h3 className="font-semibold text-gray-900 text-sm">
-                            {plan.title || plan.name || 'Untitled Audit'}
-                          </h3>
-                          <span className="text-xs px-2 py-1 rounded bg-primary-100 text-primary-700">
-                            {plan.status || 'Active'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-600 mb-2">
-                          {plan.auditId}
-                        </p>
-                        <div className="flex items-center justify-between text-xs text-gray-500">
-                          <span>{plan.departmentName || plan.department || 'N/A'}</span>
-                          <button
-                            className="px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700 text-xs font-medium"
-                          >
-                            Start Audit
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Filter by Audit:</label>
+                <select 
+                  value={selectedAudit}
+                  onChange={(e) => setSelectedAudit(e.target.value)}
+                  className="flex-1 border border-gray-300 bg-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="all">All Audits</option>
+                  {auditPlans.map(p => <option key={p.auditId} value={p.auditId}>{p.auditId} - {p.title || p.name || 'Untitled'}</option>)}
+                </select>
               </div>
             </div>
             
-            {/* Existing Findings List */}
-            <FindingList
-              checklistTemplates={[]}
-              openChecklist={openChecklist}
-              audits={auditPlans.map(p => ({ id: p.auditId, title: p.title || p.name || 'Untitled' }))}
-              selectedAudit={selectedAudit}
-              setSelectedAudit={setSelectedAudit}
-              filteredFindings={filteredFindings}
-              getSeverityColor={getSeverityColor}
-              onOpenInterview={openInterviewModal}
-              onOpenImmediateAction={openImmediateActionModal}
-            />
+            {auditPlans.length === 0 ? (
+              <div className="text-center py-12">
+                <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p className="text-gray-500 font-medium">No audit plans available</p>
+                <p className="text-sm text-gray-400 mt-1">Audit plans will appear here when created</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Title</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {(selectedAudit === 'all' ? auditPlans : auditPlans.filter(p => p.auditId === selectedAudit)).map((plan) => (
+                      <tr key={plan.auditId} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="text-sm font-medium text-primary-600">{plan.auditId}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-sm font-medium text-gray-900">
+                            {plan.title || plan.name || 'Untitled Audit'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="text-sm text-gray-600">{plan.departmentName || plan.department || 'N/A'}</span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className="px-3 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-700">
+                            {plan.status || 'Active'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <button
+                            onClick={() => openChecklist(plan)}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            Start Audit
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-
-        {/* Interview / Observation Logger Modal */}
-        {showInterviewModal && (
-          <InterviewObservationModal
-            visible={showInterviewModal}
-            currentFinding={currentFindingForInterview}
-            newInterview={newInterview}
-            setNewInterview={setNewInterview}
-            onClose={() => setShowInterviewModal(false)}
-            onSave={saveInterviewLog}
-          />
-        )}
-
-        {/* Immediate Action Modal */}
-        {showImmediateActionModal && (
-          <ImmediateActionModal
-            visible={showImmediateActionModal}
-            currentFinding={currentFindingForIA}
-            newIA={newIA}
-            setNewIA={setNewIA}
-            onClose={() => { setShowImmediateActionModal(false); setCurrentFindingForIA(null); }}
-            onSave={saveImmediateAction}
-          />
         )}
       </div>
     </MainLayout>

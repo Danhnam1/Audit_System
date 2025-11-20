@@ -22,7 +22,7 @@ interface StartExecutionProps {
   openFindingModal: (item: ChecklistItem) => void;
   closeChecklist: () => void;
   submitExecution: () => void;
-  getCriticalityColor: (criticality: string) => string;
+  // getCriticalityColor: (criticality: string) => string;
   getFindingTypeColor: (type: string) => string;
 }
 
@@ -35,7 +35,7 @@ const StartExecution: React.FC<StartExecutionProps> = ({
   openFindingModal,
   closeChecklist,
   submitExecution,
-  getCriticalityColor,
+  // getCriticalityColor,
   getFindingTypeColor,
 }) => {
   const [showNoteModal, setShowNoteModal] = useState(false);
@@ -119,7 +119,7 @@ const StartExecution: React.FC<StartExecutionProps> = ({
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Checklist Item + Guidance</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-28">Standard Ref</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-32">Category</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-24">Criticality</th>
+                {/* <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-24">Criticality</th> */}
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-40">Status (3.2)</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Note + Evidence</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-36">Actions</th>
@@ -141,9 +141,9 @@ const StartExecution: React.FC<StartExecutionProps> = ({
                     <span className="text-sm text-gray-600">{item.category}</span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCriticalityColor(item.criticality)}`}>
-                      {item.criticality}
-                    </span>
+                    {/* <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCriticalityColor(item.criticality)}`}> */}
+                      {/* {item.criticality}
+                    </span> */}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col gap-1">
@@ -377,9 +377,9 @@ const StartExecution: React.FC<StartExecutionProps> = ({
                   <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded border border-gray-200">
                     {currentNoteItem.standardRef}
                   </span>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCriticalityColor(currentNoteItem.criticality)}`}>
+                  {/* <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCriticalityColor(currentNoteItem.criticality)}`}>
                     {currentNoteItem.criticality}
-                  </span>
+                  </span> */}
                 </div>
               </div>
 

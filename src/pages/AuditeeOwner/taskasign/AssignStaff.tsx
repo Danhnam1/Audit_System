@@ -1,40 +1,96 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { MainLayout } from '../../../layouts';
+import { getFindingById, type Finding } from '../../../api/findings';
+import { createAuditAssignment } from '../../../api/auditAssignments';
+import { getDepartmentUsers } from '../../../api/departmentHeads';
+
+interface StaffMember {
+  userId: string;
+  fullName: string;
+  email: string;
+  role?: string;
+}
 
 const AssignStaff = () => {
-  // const { id } = useParams<{ id: string }>();
+  const { id: findingId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [finding, setFinding] = useState<Finding | null>(null);
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [selectedStaff, setSelectedStaff] = useState('');
-  const [internalDeadline, setInternalDeadline] = useState('');
-  const [instructions, setInstructions] = useState('');
-  const [sendEmail, setSendEmail] = useState(true);
-  const [setReminder, setSetReminder] = useState(true);
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const staffMembers = [
-    { id: '1', name: 'Nguyễn Thị C', role: 'HR Coordinator' },
-    { id: '2', name: 'Trần Văn D', role: 'Training Officer' },
-    { id: '3', name: 'Lê Thị E', role: 'Document Specialist' },
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!findingId) {
+        setError('Finding ID not found');
+        setLoading(false);
+        return;
+      }
 
-  const finding = {
-    code: '#007',
-    title: 'Thiếu hồ sơ instructor',
-    priority: 'MAJOR',
-    deadline: '28/10/2025',
-    description:
-      'Hồ sơ của 3 instructor không có bản sao medical certificate còn hiệu lực. Yêu cầu cung cấp trong 5 ngày.',
-    correctiveAction: [
-      'Liên hệ 3 instructor lấy medical cert',
-      'Scan và upload lên hệ thống',
-      'Cập nhật vào personal file',
-    ],
-  };
+      try {
+        setLoading(true);
+        // Fetch finding details
+        const findingData = await getFindingById(findingId);
+        setFinding(findingData);
 
-  const handleAssign = () => {
-    // Handle assignment logic
-    alert('Đã phân công thành công!');
-  navigate('/auditee-owner/assign-tasks');
+        // Fetch staff members from the same department
+        if (findingData.deptId) {
+          try {
+            const staff = await getDepartmentUsers(findingData.deptId);
+            setStaffMembers(staff);
+          } catch (staffErr) {
+            console.warn('Could not load staff members:', staffErr);
+            // Continue even if staff loading fails
+          }
+        }
+
+        setError(null);
+      } catch (err: any) {
+        console.error('Error loading data:', err);
+        setError(err?.message || 'Failed to load finding');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [findingId]);
+
+  const handleAssign = async () => {
+    if (!selectedStaff) {
+      alert('⚠️ Vui lòng chọn nhân viên');
+      return;
+    }
+
+    if (!finding) {
+      alert('❌ Finding data not loaded');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      
+      // Create audit assignment
+      await createAuditAssignment({
+        auditId: finding.auditId,
+        deptId: finding.deptId || 0,
+        auditorId: selectedStaff,
+        notes: notes || '',
+        status: 'Assigned',
+      });
+
+      alert('✅ Đã phân công thành công!');
+      navigate('/auditee-owner/findings');
+    } catch (err: any) {
+      console.error('Error creating assignment:', err);
+      alert(`❌ Lỗi: ${err?.message || 'Failed to assign'}`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
