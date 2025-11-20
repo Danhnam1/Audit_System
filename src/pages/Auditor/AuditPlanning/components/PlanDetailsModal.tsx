@@ -52,7 +52,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
             <div>
               <h3 className="text-xl font-bold text-white flex items-center">📄 Full Audit Plan Details</h3>
               <p className="text-sm text-sky-100 mt-1">
-                <span className="font-semibold">ID:</span> {selectedPlanDetails.auditId}
+                <span className="font-semibold">Audit:</span> {selectedPlanDetails.title || selectedPlanDetails.name || selectedPlanDetails.auditId}
               </p>
             </div>
             <button

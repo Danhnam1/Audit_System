@@ -22,7 +22,7 @@ export const STATUS_COLORS = {
   'In Progress': 'bg-primary-500 text-white',
   'InProgress': 'bg-primary-500 text-white',
   
-  // Under Review States - Primary nhạt
+  // Under Review States - Primary nhạt 
   'Under Review': 'bg-primary-200 text-primary-800',
   'UnderReview': 'bg-primary-200 text-primary-800',
   'Pending Review': 'bg-primary-200 text-primary-800',
@@ -43,6 +43,7 @@ export const STATUS_COLORS = {
   
   // Rejected/Negative States - Xám đậm
   'Rejected': 'bg-gray-500 text-white',
+  'Returned': 'bg-gray-500 text-white',
   'Cancelled': 'bg-gray-600 text-white',
   
   // Special States
@@ -104,7 +105,7 @@ export const STATUS_GROUPS = {
   INITIAL: ['Draft', 'Pending', 'Registered', 'Submitted', 'Open'],
   PROCESSING: ['Under Review', 'UnderReview', 'Pending Review', 'PendingReview', 'In Progress', 'InProgress', 'Validated', 'PendingDirectorApproval', 'Pending Director Approval', 'PendingLeadApproval', 'Pending Lead Approval'],
   SUCCESS: ['Approve', 'Approved', 'Verified', 'Resolved', 'Distributed', 'Closed'],
-  NEGATIVE: ['Rejected', 'Cancelled'],
+  NEGATIVE: ['Rejected', 'Returned', 'Cancelled'],
   SPECIAL: ['Reopened', 'Overdue'],
 } as const;
 

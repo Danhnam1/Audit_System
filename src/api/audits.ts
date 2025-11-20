@@ -117,8 +117,35 @@ export const approveAuditReport = async (auditId: string): Promise<any> => {
 
 // Reject audit report (Lead Auditor action)
 // New canonical endpoint per Swagger: /api/AuditReports/{auditId}/reject
-export const rejectAuditReport = async (auditId: string, payload: { comment?: string } = {}): Promise<any> => {
-  return apiClient.post(`/AuditReports/${auditId}/reject`, { auditId, comment: payload.comment ?? '' }) as any;
+export const rejectAuditReport = async (
+  auditId: string,
+  payload: { reason?: string; comment?: string } = {}
+): Promise<any> => {
+  const reason = payload.reason ?? payload.comment ?? '';
+  try {
+    // Primary (per Swagger): PUT with { reason }
+    return await apiClient.put(`/AuditReports/${auditId}/reject`, { reason }) as any;
+  } catch (err) {
+    // Fallback (legacy): POST with { auditId, comment }
+    try {
+      return await apiClient.post(`/AuditReports/${auditId}/reject`, { auditId, comment: reason }) as any;
+    } catch (err2) {
+      throw err2;
+    }
+  }
+};
+
+export const getAuditReportNote = async (auditId: string): Promise<string> => {
+  if (!auditId) return '';
+  const url = `/AuditReports/Note/${encodeURIComponent(auditId)}`;
+  const res = await apiClient.get(url) as any;
+  const data = res?.data ?? res;
+  if (data == null) return '';
+  if (typeof data === 'string') return data;
+  if (typeof data === 'object') {
+    return String(data.note ?? data.reason ?? data.comment ?? data.message ?? '');
+  }
+  return String(data);
 };
 
 // Backwards compatibility (will be deprecated)
@@ -141,6 +168,7 @@ export default {
   submitAudit,
   approveAuditReport,
   rejectAuditReport,
+  getAuditReportNote,
   // legacy names
   approveAudit,
   rejectAudit,

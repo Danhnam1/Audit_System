@@ -44,7 +44,7 @@ const ReviewAuditPlans = () => {
       scope: 'Document Control, Training Records, Internal Audit Process',
       startDate: '2024-11-20',
       endDate: '2024-11-25',
-  submittedBy: 'Nguyễn Văn A (Lead Auditor)',
+      submittedBy: 'Nguyễn Văn A (Lead Auditor)',
       submittedDate: '2024-11-01',
       status: 'Pending Review',
       objectives: [
@@ -62,7 +62,7 @@ const ReviewAuditPlans = () => {
       scope: 'Access Control, Data Protection, Security Policies',
       startDate: '2024-11-15',
       endDate: '2024-11-18',
-  submittedBy: 'Nguyễn Văn A (Lead Auditor)',
+      submittedBy: 'Nguyễn Văn A (Lead Auditor)',
       submittedDate: '2024-10-28',
       status: 'Pending Review',
       objectives: [
@@ -80,7 +80,7 @@ const ReviewAuditPlans = () => {
       scope: 'Financial Controls, Reporting Procedures',
       startDate: '2024-10-20',
       endDate: '2024-10-25',
-  submittedBy: 'Nguyễn Văn A (Lead Auditor)',
+      submittedBy: 'Nguyễn Văn A (Lead Auditor)',
       submittedDate: '2024-10-15',
       status: 'Approved',
       objectives: [
@@ -102,14 +102,14 @@ const ReviewAuditPlans = () => {
   const filteredPlans = filter === 'All'
     ? auditPlans
     : auditPlans.filter((plan) => {
-        const s = String(plan.status || '').toLowerCase();
-        if (filter === 'Pending Review') {
-          return s === 'pendingdirectorapproval' || s === 'pending director approval' || s === 'pendingreview' || s === 'pending review';
-        }
-        if (filter === 'Approved') return s === 'approved' || s === 'approve';
-        if (filter === 'Rejected') return s === 'rejected';
-        return false;
-      });
+      const s = String(plan.status || '').toLowerCase();
+      if (filter === 'Pending Review') {
+        return s === 'pendingdirectorapproval' || s === 'pending director approval' || s === 'pendingreview' || s === 'pending review';
+      }
+      if (filter === 'Approved') return s === 'approved' || s === 'approve';
+      if (filter === 'Rejected') return s === 'rejected';
+      return false;
+    });
 
   const [processingIdStr, setProcessingIdStr] = useState<string | null>(null);
 
@@ -146,7 +146,7 @@ const ReviewAuditPlans = () => {
         }, {} as any);
 
         const plansList = Array.isArray(plansRes) ? plansRes : [];
-  const mapped: AuditPlan[] = plansList.map((p: any) => {
+        const mapped: AuditPlan[] = plansList.map((p: any) => {
           const scopeArr = unwrap(p.scopeDepartments || p.scope || p.scopeDepartment);
           const deptNames = (scopeArr || [])
             .map((d: any) => d.deptName || deptMap[String(d.deptId ?? d.id ?? d.$id ?? d.departmentId)] || d.name)
@@ -187,8 +187,8 @@ const ReviewAuditPlans = () => {
             auditTeam: Array.isArray(p.auditTeams)
               ? p.auditTeams.map((t: any) => t.fullName || t.name || String(t))
               : p.auditTeams && Array.isArray(p.auditTeams?.values)
-              ? p.auditTeams.values.map((t: any) => t.fullName || t.name)
-              : [],
+                ? p.auditTeams.values.map((t: any) => t.fullName || t.name)
+                : [],
           };
         });
 
@@ -199,7 +199,7 @@ const ReviewAuditPlans = () => {
             s === 'pendingdirectorapproval' ||
             s === 'pending director approval' ||
             s === 'approved' ||
-            s === 'approve' || // backend may send 'Approve'
+            s === 'approve' ||
             s === 'rejected'
           );
         });
@@ -228,9 +228,17 @@ const ReviewAuditPlans = () => {
       setProcessingIdStr(planId);
       // Call backend API to approve. Send optional comment if needed.
       await approvePlan(String(planId), { comment: 'Approved by Director' });
-
-      // Update local UI
-      setAuditPlans((prev) => prev.map((p) => (String(p.planId) === String(planId) ? { ...p, status: 'Approved' } : p)));
+      // Fetch fresh status from backend instead of hardcoding
+      let freshStatus: string | undefined;
+      try {
+        const refreshed = await fetchFullPlan(String(planId));
+        freshStatus = String(refreshed?.status || refreshed?.auditStatus || '').trim();
+      } catch (e) {
+        console.warn('Failed to fetch refreshed plan after approve, fallback to previous status', e);
+      }
+      setAuditPlans(prev => prev.map(p => (String(p.planId) === String(planId)
+        ? { ...p, status: freshStatus && freshStatus.length ? freshStatus : p.status }
+        : p)));
       // Fetch full plan to derive recipients & due date
       try {
         const full = await fetchFullPlan(String(planId));
@@ -493,8 +501,17 @@ const ReviewAuditPlans = () => {
           // Director actions
           onApprove={async (id, comment) => {
             await approvePlan(String(id), { comment });
-            // Refresh local list state
-            setAuditPlans(prev => prev.map(p => (String(p.planId) === String(id) ? { ...p, status: 'Approved' } : p)));
+            // Refresh local list state using backend status
+            let freshStatus: string | undefined;
+            try {
+              const refreshed = await fetchFullPlan(String(id));
+              freshStatus = String(refreshed?.status || refreshed?.auditStatus || '').trim();
+            } catch (e) {
+              console.warn('Modal approve: failed to fetch refreshed plan status', e);
+            }
+            setAuditPlans(prev => prev.map(p => (String(p.planId) === String(id)
+              ? { ...p, status: freshStatus && freshStatus.length ? freshStatus : p.status }
+              : p)));
             // Fire notifications similarly
             try {
               const full = await fetchFullPlan(String(id));

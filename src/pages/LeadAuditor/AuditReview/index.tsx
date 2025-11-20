@@ -225,10 +225,14 @@ const SQAHeadAuditReview = () => {
               showModal={true}
               selectedPlanDetails={selectedPlanFull}
               onClose={() => setSelectedPlanFull(null)}
-              // Lead Auditor should NOT be able to edit the plan here, so we do NOT pass onEdit
-              onForwardToDirector={handleForwardToDirector}
-              onRejectPlan={handleReject}
-              // Request Revision is intentionally not provided so it will be handled via Reject
+              // Only show actionable buttons if not already reviewed
+              {
+                ...(() => {
+                  const st = String(selectedPlanFull?.status || '').toLowerCase();
+                  const alreadyReviewed = /approve|reject|published|pending director/.test(st);
+                  return alreadyReviewed ? {} : { onForwardToDirector: handleForwardToDirector, onRejectPlan: handleReject };
+                })()
+              }
               getCriterionName={(id: any) => String(id)}
               getDepartmentName={(id: any) => getDepartmentName(id, departments)}
               getStatusColor={getStatusColor}

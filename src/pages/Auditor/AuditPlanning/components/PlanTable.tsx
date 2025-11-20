@@ -39,7 +39,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         <thead className="bg-gray-50 border-b border-gray-200">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-              Audit ID
+              No.
             </th>
             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
               Title & Goal
@@ -84,7 +84,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
                   isInactive ? 'bg-gray-100 opacity-60' : 'hover:bg-gray-50'
                 }`}
               >
-                <td className="px-6 py-4 whitespace-nowrap" title={`ID: ${plan.id || plan.auditId}`}>
+                <td className="px-6 py-4 whitespace-nowrap">
                   {/* Display sequential row number instead of GUID for readability */}
                   <span className="text-sm font-semibold text-primary-700">{index + 1}</span>
                 </td>

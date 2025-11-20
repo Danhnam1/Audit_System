@@ -24,7 +24,7 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
               <p className="text-sm text-gray-500">No templates available.</p>
             ) : (
               checklistTemplates.map((template: any) => {
-                const templateId = template.templateId || template.id || template.$id;
+                const templateId = template.templateId ;
                 const isSelected = String(selectedTemplateId) === String(templateId);
                 return (
                   <div

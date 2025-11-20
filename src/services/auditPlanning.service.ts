@@ -26,8 +26,8 @@ export const getPlansWithDepartments = async (): Promise<AuditPlan[]> => {
     const planId = String(plan.auditId || plan.id);
     const planScopeDepsRaw = scopeDeps.filter((sd: any) => String(sd.auditId) === planId);
     const planScopeDeps = planScopeDepsRaw.map((sd: any) => {
-      const deptId = sd.deptId ?? sd.departmentId ?? sd.deptCode ?? sd.id ?? sd.$id ?? sd.department;
-      const deptName = sd.deptName || sd.name || sd.departmentName || sd.code || undefined;
+      const deptId = sd.deptId ;
+      const deptName = sd.name || undefined;
       return { deptId, deptName };
     }).filter((sd: any) => sd.deptId != null);
 

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getAuditPlans } from '../../../api/audits';
-import { getAuditDocuments } from '../../../api/auditDocuments';
+import { getAuditDocuments, downloadAuditDocumentById } from '../../../api/auditDocuments';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
+import { exportFile } from '../../../utils/globalUtil';
 import { getStatusColor } from '../../../constants';
 
 interface AuditDocRow {
@@ -19,6 +20,17 @@ interface AuditDocRow {
   url?: string;
 }
 
+const resolveAuditId = (audit: any, idx?: number) => {
+  const candidate = audit?.auditId ;
+  if (candidate !== undefined && candidate !== null && String(candidate).trim() !== '') {
+    return String(candidate).trim();
+  }
+  if (typeof idx === 'number') {
+    return `audit_${idx}`;
+  }
+  return 'audit_unknown';
+};
+
 const HistoryUploadPage = () => {
   const { user } = useAuth();
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
@@ -29,7 +41,9 @@ const HistoryUploadPage = () => {
   const [documentsMap, setDocumentsMap] = useState<Record<string, AuditDocRow[]>>({});
   const [expandedAudit, setExpandedAudit] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const [userMap, setUserMap] = useState<Record<string,string>>({});
+  const [userMap, setUserMap] = useState<Record<string, string>>({});
+  const [docsLoaded, setDocsLoaded] = useState(false);
+  const lastDocFetchKeyRef = useRef<string>('');
 
   // Load audits (Submitted + Completed) similar to reports page
   useEffect(() => {
@@ -40,7 +54,7 @@ const HistoryUploadPage = () => {
         const res = await getAuditPlans();
         const arr = unwrap(res);
         const visible = (Array.isArray(arr) ? arr : []).filter((a: any) => {
-          const v = String(a.status || a.state || a.approvalStatus || '').toLowerCase().replace(/\s+/g,'');
+          const v = String(a.status || a.state || a.approvalStatus || '').toLowerCase().replace(/\s+/g, '');
           // History only for audits that are Completed (including backend 'Approved')
           return v.includes('completed') || v.includes('complete') || v.includes('approve');
         });
@@ -48,7 +62,7 @@ const HistoryUploadPage = () => {
         // Preload users once for name mapping
         try {
           const users = await getAdminUsers();
-          const map: Record<string,string> = {};
+          const map: Record<string, string> = {};
           (users || []).forEach(u => {
             const id = String(u.userId || u.$id || '').trim();
             if (id) map[id] = u.fullName || u.email || id;
@@ -69,32 +83,60 @@ const HistoryUploadPage = () => {
 
   // Load documents for all audits when audits list changes
   useEffect(() => {
-    if (!audits.length) return;
+    if (!audits.length) {
+      lastDocFetchKeyRef.current = '';
+      return;
+    }
     const fetchDocs = async () => {
       setLoadingDocs(true);
+      setDocsLoaded(false);
       try {
-        const results = await Promise.allSettled(audits.map(a => getAuditDocuments(String(a.auditId || a.id || a.$id))));
+        const auditIds = audits.map((a, idx) => resolveAuditId(a, idx));
+        const fetchKey = auditIds.join('|');
+        if (lastDocFetchKeyRef.current === fetchKey) {
+          setLoadingDocs(false);
+          setDocsLoaded(true);
+          return;
+        }
+        lastDocFetchKeyRef.current = fetchKey;
+        const results = await Promise.allSettled(auditIds.map(id => getAuditDocuments(id)));
         const next: Record<string, AuditDocRow[]> = {};
         results.forEach((res, idx) => {
-          const auditId = String(audits[idx].auditId || audits[idx].id || audits[idx].$id);
+          const auditId = auditIds[idx];
           if (res.status === 'fulfilled') {
             const rows = Array.isArray(res.value) ? res.value : [res.value];
-            next[auditId] = rows.filter(Boolean).map((d: any) => ({
-              auditId,
-              id: d.id || d.$id || d.documentId || auditId + '_' + (d.uploadedAt || ''),
-              documentType: d.documentType || d.type || '—',
-              contentType: d.contentType || d.mimeType || '—',
-              uploadedBy: ((): string => {
-                const uploadedById = d.uploadedBy || d.uploadedByUserId || d.userId || d.uploadedByUser || '';
-                const idStr = String(uploadedById || '').trim();
-                if (idStr && userMap[idStr]) return userMap[idStr];
-                return d.uploadedByUser || d.userName || idStr || '—';
-              })(),
-              uploadedAt: d.uploadedAt || d.createdAt || d.createdDate || '',
-              sizeBytes: d.sizeBytes || d.size || 0,
-              status: d.status || '—',
-              url: d.blobPath || d.url || d.downloadUrl,
-            }));
+            const mapped = rows.filter(Boolean).map((d: any) => {
+              const documentType = d.documentType || '';
+              const contentType = d.contentType || '';
+              const uploadedAt = d.uploadedAt || '';
+              const sizeBytes = Number(d.sizeBytes ?? 0) || 0;
+              const fileName = d.fileName || d.originalFileName || d.originalName || d.name || '';
+              const url = d.blobPath || '';
+              const hasDownload = Boolean(url);
+              const hasInfo = hasDownload || sizeBytes > 0 || Boolean(fileName.trim());
+
+              if (!hasInfo) {
+                return null;
+              }
+
+              return {
+                auditId,
+                id: String(fileName || `${auditId}_${uploadedAt || Date.now()}`),
+                documentType: documentType || fileName || '—',
+                contentType: contentType || '—',
+                uploadedBy: ((): string => {
+                  const uploadedById = d.uploadedBy || '';
+                  const idStr = String(uploadedById || '').trim();
+                  if (idStr && userMap[idStr]) return userMap[idStr];
+                  return d.uploadedByUser || idStr || '—';
+                })(),
+                uploadedAt,
+                sizeBytes,
+                status: d.status || '—',
+                url,
+              } as AuditDocRow | null;
+            }).filter(Boolean) as AuditDocRow[];
+            next[auditId] = mapped;
           } else {
             next[auditId] = [];
           }
@@ -104,6 +146,7 @@ const HistoryUploadPage = () => {
         console.error('Fetch document history failed', e);
       } finally {
         setLoadingDocs(false);
+        setDocsLoaded(true);
       }
     };
     fetchDocs();
@@ -111,17 +154,49 @@ const HistoryUploadPage = () => {
 
   const auditRows = useMemo(() => (
     (Array.isArray(audits) ? audits : []).map((a: any, idx: number) => {
-      const id = String(a.auditId || a.id || a.$id || `audit_${idx}`);
-      const title = a.title || a.name || `Audit ${idx+1}`;
+      const id = resolveAuditId(a, idx);
+      const title = a.title || `Audit ${idx + 1}`;
       const rawStatus = a.status || a.state || a.approvalStatus || '—';
-      const norm = String(rawStatus).toLowerCase().replace(/\s+/g,'');
-      const status = (norm.includes('approve') || norm.includes('completed') || norm.includes('complete')) ? 'Completed' : rawStatus;
+      const norm = String(rawStatus).toLowerCase().replace(/\s+/g, '');
+      const status = (norm.includes('approve') || norm.includes('completed')) ? 'Completed' : rawStatus;
       return { auditId: id, title, status };
     })
   ), [audits]);
 
+  const visibleAuditRows = useMemo(() => {
+    if (!docsLoaded) return auditRows;
+    return auditRows.filter((row) => (documentsMap[row.auditId]?.length || 0) > 0);
+  }, [auditRows, documentsMap, docsLoaded]);
+
   const toggleExpand = (auditId: string) => {
     setExpandedAudit(prev => prev === auditId ? '' : auditId);
+  };
+
+  useEffect(() => {
+    if (!docsLoaded || !expandedAudit) return;
+    if ((documentsMap[expandedAudit]?.length || 0) === 0) {
+      setExpandedAudit('');
+    }
+  }, [docsLoaded, documentsMap, expandedAudit]);
+
+  const handleDownload = async (doc: AuditDocRow) => {
+    if (!doc || !doc.id) return;
+    try {
+      const blob = await downloadAuditDocumentById(doc.id, doc.auditId);
+      const extMap: Record<string, string> = {
+        'application/pdf': 'pdf',
+        'image/png': 'png',
+        'image/jpeg': 'jpg',
+      };
+      const ext = extMap[(doc.contentType || '').toLowerCase()] || 'bin';
+      const base = (doc.documentType || 'document').toString().replace(/\s+/g, '-').toLowerCase();
+      const filename = `${base}-${doc.auditId || 'audit'}.${ext}`;
+      exportFile(blob, filename);
+    } catch (e) {
+      alert('Tải xuống thất bại');
+      // eslint-disable-next-line no-console
+      console.error('download document failed', e);
+    }
   };
 
   return (
@@ -156,7 +231,7 @@ const HistoryUploadPage = () => {
                 {loadingAudits && (
                   <tr><td colSpan={4} className="px-6 py-4 text-sm text-gray-500">Đang tải audits...</td></tr>
                 )}
-                {!loadingAudits && auditRows.map(r => {
+                {!loadingAudits && visibleAuditRows.map(r => {
                   const docs = documentsMap[r.auditId] || [];
                   return (
                     <tr key={r.auditId} className="hover:bg-gray-50">
@@ -179,8 +254,14 @@ const HistoryUploadPage = () => {
                     </tr>
                   );
                 })}
-                {!loadingAudits && auditRows.length === 0 && (
-                  <tr><td colSpan={4} className="px-6 py-4 text-sm text-gray-500">Không có audit phù hợp</td></tr>
+                {!loadingAudits && visibleAuditRows.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-4 text-sm text-gray-500">
+                      {loadingDocs || !docsLoaded
+                        ? 'Đang kiểm tra lịch sử upload...'
+                        : 'Chỉ hiển thị các audit đã có tài liệu được upload.'}
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -226,7 +307,10 @@ const HistoryUploadPage = () => {
                                 className="text-primary-600 hover:text-primary-700"
                               >Download</a>
                             ) : (
-                              <span className="text-gray-400">—</span>
+                              <button
+                                onClick={() => handleDownload(doc)}
+                                className="text-primary-600 hover:text-primary-700"
+                              >Download</button>
                             )}
                           </td>
                         </tr>

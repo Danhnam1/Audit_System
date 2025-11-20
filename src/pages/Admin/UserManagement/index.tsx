@@ -120,8 +120,9 @@ const AdminUserManagement = () => {
       if (editingUserId) {
         const updatePayload = {
           fullName: formData.fullName,
-          roleName: formData.role,
-          deptId: formData.deptId ? Number(formData.deptId) : 0,
+            roleName: formData.role,
+          // Send null instead of 0 to indicate no department; backend typically treats null as absence
+          deptId: formData.deptId ? Number(formData.deptId) : null,
           isActive: true,
           status: 'Active'
         }
@@ -223,11 +224,12 @@ const AdminUserManagement = () => {
   const values: ApiUser[] = (await getAdminUsers()) as any;
 
       const mapped: UIUser[] = (values || []).map(v => {
-        const roleNormalized = String(v.roleName || '').toLowerCase().replace(/\s+/g, '')
         const deptIdVal = v.deptId ?? null
-        // Only show department name when the user's role is Auditee Owner
-        const departmentName = (roleNormalized === 'auditeeowner' && deptIdVal != null)
-          ? (deptMap[String(deptIdVal)] || String(deptIdVal))
+        const deptIdStr = String(deptIdVal ?? '').trim()
+        // Treat empty string or '0' (backend sentinel) as no department
+        const hasDept = deptIdStr !== '' && deptIdStr !== '0'
+        const departmentName = hasDept
+          ? (deptMap[deptIdStr] || deptIdStr)
           : '—'
 
         return {
@@ -493,10 +495,10 @@ const AdminUserManagement = () => {
               >
                 <option value="all">All Roles</option>
                 <option value="Admin">Admin</option>
-                <option value="Lead Auditor">Lead Auditor</option>
+                <option value="LeadAuditor">Lead Auditor</option>
                 <option value="Auditor">Auditor</option>
-                <option value="Auditee Owner">Auditee Owner</option>
-                <option value="CAPA Owner">CAPA Owner</option>
+                <option value="AuditeeOwner">Auditee Owner</option>
+                <option value="CAPAOwner">CAPA Owner</option>
                 <option value="Director">Director</option>
               </select>
             </div>

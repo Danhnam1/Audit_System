@@ -136,14 +136,14 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
         </div>
 
         {/* Notes */}
-        <div>
+        {/* <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
           <textarea
             rows={2}
             placeholder="Additional team notes..."
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
-        </div>
+        </div> */}
       </div>
     </div>
   );

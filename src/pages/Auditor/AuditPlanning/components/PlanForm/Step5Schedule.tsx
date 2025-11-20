@@ -86,7 +86,7 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
           />
           {errors.capaDue && <p className="text-xs text-red-600 mt-1">{errors.capaDue}</p>}
         </div>
-        <div className="border-t pt-4 mt-4">
+        {/* <div className="border-t pt-4 mt-4">
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -96,7 +96,7 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
               Checklist Published ≥2 days before fieldwork: [Yes/No]
             </span>
           </label>
-        </div>
+        </div> */}
       </div>
     </div>
   );

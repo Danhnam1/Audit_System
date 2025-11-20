@@ -57,8 +57,8 @@ const AuditPlans = () => {
 				// If user has a department, filter auditIds directly by deptId
 				const myIdStr = effDeptId != null ? String(effDeptId) : undefined;
 				const normalizedScopes = (Array.isArray(scopesList) ? scopesList : []).map((sd: any) => ({
-					auditId: String(sd.auditId ?? sd.planId ?? sd.auditPlanId ?? sd.id ?? sd.$id ?? ''),
-					deptId: String(sd.deptId ?? sd.departmentId ?? sd.deptCode ?? sd.department ?? sd.id ?? sd.$id ?? ''),
+					auditId: String(sd.auditId ?? sd.auditPlanId ?? ''),
+					deptId: String(sd.deptId ?? ''),
 					deptName: sd.deptName || sd.name || sd.departmentName || sd.code,
 				})).filter((x: any) => x.auditId);
 
@@ -75,8 +75,8 @@ const AuditPlans = () => {
 					list = list.filter((p: any) => allowedAuditIds.has(String(p.auditId || p.id || p.$id)));
 				}
 
-				// Only keep published plans strictly by backend status
-				list = list.filter((p: any) => String(p?.status || '').toLowerCase().replace(/\s+/g, '') === 'published');
+				// Only keep published plans by backend boolean flag
+				list = list.filter((p: any) => p?.isPublished === true);
 
 				// attach scopeDepartments for display
 				const withScopes = list.map((p: any) => {
@@ -110,7 +110,7 @@ const AuditPlans = () => {
 				.filter(Boolean);
 			return [...normIds, ...scopeIds, ...planLevelIds].some((id) => id === myIdStr);
 		};
-		const isPublished = (p: any) => String(p?.status || '').toLowerCase().replace(/\s+/g, '') === 'published';
+		const isPublished = (p: any) => p?.isPublished === true;
 		return (plans || []).filter(matchesDept).filter(isPublished);
 	}, [plans, effectiveDeptId]);
 
@@ -134,7 +134,6 @@ const AuditPlans = () => {
 									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Plan ID</th>
 									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Title</th>
 									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Departments</th>
-									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
 									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Duration</th>
 									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
 								</tr>
@@ -151,7 +150,6 @@ const AuditPlans = () => {
 											<td className="px-6 py-3 text-sm text-primary-600 font-medium">{id.slice(0,8)}…</td>
 											<td className="px-6 py-3 text-sm font-semibold text-gray-900">{p.title || '—'}</td>
 											<td className="px-6 py-3 text-sm text-gray-700">{deptNames.length ? deptNames.join(', ') : '—'}</td>
-											<td className="px-6 py-3 text-sm"><span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700 border border-gray-200">{p.status || '—'}</span></td>
 											<td className="px-6 py-3 text-sm text-gray-700">{start} {start || end ? '→' : ''} {end}</td>
 											<td className="px-6 py-3 whitespace-nowrap">
 												<div className="flex gap-2">
@@ -165,7 +163,7 @@ const AuditPlans = () => {
 								})}
 								{filteredPlans.length === 0 && !loading && (
 									<tr>
-										<td className="px-6 py-6 text-center text-gray-500" colSpan={6}>Không có kế hoạch đã publish phù hợp với phòng ban của bạn</td>
+										<td className="px-6 py-6 text-center text-gray-500" colSpan={5}>Không có kế hoạch đã publish phù hợp với phòng ban của bạn</td>
 									</tr>
 								)}
 							</tbody>

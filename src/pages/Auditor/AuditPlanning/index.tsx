@@ -33,30 +33,39 @@ import { Step3Checklist } from './components/PlanForm/Step3Checklist';
 import { Step4Team } from './components/PlanForm/Step4Team';
 import { Step5Schedule } from './components/PlanForm/Step5Schedule';
 
+const AUDITOR_VISIBLE_STATUSES = ['draft', 'pendingreview', 'pendingdirectorapproval', 'approved', 'inactive'];
+
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
-  
+
   // Use custom hooks for form state management
   const formState = useAuditPlanForm();
-  
+
   // Data fetching states
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
   const [criteria, setCriteria] = useState<any[]>([]);
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
-  
+
   // Plans data
   const [existingPlans, setExistingPlans] = useState<AuditPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
-  
-  // Use filter hook
-  const filterState = useAuditPlanFilters(existingPlans);
-  
+
+  const visiblePlans = useMemo(() => {
+    return existingPlans.filter((plan) => {
+      const normStatus = String(plan.status || 'draft').toLowerCase().replace(/\s+/g, '');
+      return AUDITOR_VISIBLE_STATUSES.includes(normStatus);
+    });
+  }, [existingPlans]);
+
+  // Use filter hook limited to visible statuses
+  const filterState = useAuditPlanFilters(visiblePlans);
+
   // Details modal state
   const [selectedPlanDetails, setSelectedPlanDetails] = useState<AuditPlanDetails | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  
+
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
   // Helpers: date and schedule validations
@@ -173,14 +182,14 @@ const SQAStaffAuditPlanning = () => {
       try {
         const data = await getChecklistTemplates();
         setChecklistTemplates(Array.isArray(data) ? data : []);
-        
+
         try {
           const crit = await getAuditCriteria();
           setCriteria(Array.isArray(crit) ? crit : []);
         } catch (e) {
           console.error('Failed to load audit criteria', e);
         }
-        
+
         try {
           const users = await getAdminUsers();
           const norm = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, '');
@@ -242,13 +251,13 @@ const SQAStaffAuditPlanning = () => {
         return;
       } catch (apiError) {
         console.warn('⚠️ Full details API failed, using basic data from table:', apiError);
-        
-  const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
-        
+
+        const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
+
         if (!planFromTable) {
           throw new Error('Plan not found in table. Backend API /AuditPlan/{id} is also returning 500 error.');
         }
-        
+
         const basicDetails = {
           ...planFromTable,
           scopeDepartments: { values: [] },
@@ -261,9 +270,9 @@ const SQAStaffAuditPlanning = () => {
             roleName: 'N/A'
           }
         };
-        
+
         alert('⚠️ Backend API Issue\n\nGET /api/AuditPlan/{id} is returning 500 error.\n\nShowing basic information only.\nNested data (departments, criteria, team, schedules) is not available.\n\nPlease contact backend team to fix this endpoint.');
-        
+
         setSelectedPlanDetails(basicDetails);
         setShowDetailsModal(true);
         return;
@@ -271,8 +280,8 @@ const SQAStaffAuditPlanning = () => {
     } catch (error) {
       console.error('❌ Failed to fetch plan details', error);
       alert('⚠️ Cannot load full plan details\n\n' +
-            'The backend API endpoint GET /api/AuditPlan/{id} is returning 500 Internal Server Error.\n\n' +
-            'Error: ' + (error as any)?.message);
+        'The backend API endpoint GET /api/AuditPlan/{id} is returning 500 Internal Server Error.\n\n' +
+        'Error: ' + (error as any)?.message);
     }
   };
 
@@ -281,11 +290,11 @@ const SQAStaffAuditPlanning = () => {
     if (!window.confirm('Delete this audit plan permanently?')) return;
     try {
       await deleteAuditPlan(auditId);
-      
-      setExistingPlans(prevPlans => 
+
+      setExistingPlans(prevPlans =>
         prevPlans.filter(p => (p.auditId || p.id) !== auditId)
       );
-      
+
       try {
         const merged = await getPlansWithDepartments();
         setExistingPlans(merged);
@@ -302,7 +311,7 @@ const SQAStaffAuditPlanning = () => {
   const handleEditPlan = async (auditId: string) => {
     try {
       let details: any;
-      
+
       try {
         const rawDetails = await getAuditPlanById(auditId);
 
@@ -330,7 +339,7 @@ const SQAStaffAuditPlanning = () => {
         console.warn('⚠️ Full details API failed, falling back to table data for edit:', apiError);
 
         const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
-  const planFromTableAny = planFromTable as any;
+        const planFromTableAny = planFromTable as any;
 
         if (!planFromTable) {
           console.error('❌ Plan not found in table and detailed API failed:', apiError);
@@ -350,7 +359,7 @@ const SQAStaffAuditPlanning = () => {
 
       // Use formState.loadPlanForEdit with the best-effort details
       formState.loadPlanForEdit(details);
-      
+
       console.log('✅ Plan loaded for editing successfully');
     } catch (error) {
       console.error('❌ Failed to load plan for editing', error);
@@ -439,21 +448,21 @@ const SQAStaffAuditPlanning = () => {
 
     try {
       let auditId: string;
-      
+
       if (formState.isEditMode && formState.editingAuditId) {
         await updateAuditPlan(formState.editingAuditId, payload);
         auditId = formState.editingAuditId;
       } else {
         const resp = await createAudit(payload);
         auditId = resp?.auditId || resp?.id || resp;
-        
+
         if (!auditId) {
           throw new Error('No auditId returned from createAudit API');
         }
       }
-      
+
       const newAuditId = auditId;
-      
+
       // Attach departments
       if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
         try {
@@ -468,7 +477,7 @@ const SQAStaffAuditPlanning = () => {
           console.error('❌ Attach departments to audit failed', scopeErr);
         }
       }
-      
+
       // Attach criteria
       if (Array.isArray(formState.selectedCriteriaIds) && formState.selectedCriteriaIds.length > 0) {
         try {
@@ -479,18 +488,18 @@ const SQAStaffAuditPlanning = () => {
           console.error('❌ Attach criteria to audit failed', critErr);
         }
       }
-      
+
       // Add team members
       try {
         const calls: Promise<any>[] = [];
         const auditorSet = new Set<string>(formState.selectedAuditorIds);
         if (formState.selectedLeadId) auditorSet.add(formState.selectedLeadId);
-        
+
         auditorSet.forEach((uid) => {
           const isLead = uid === formState.selectedLeadId;
           calls.push(addTeamMember({ auditId: String(newAuditId), userId: uid, roleInTeam: 'Auditor', isLead }));
         });
-        
+
         if (formState.level === 'academy') {
           const uniqueOwnerIds = Array.from(new Set(ownerOptions.map((o: any) => String(o.userId)).filter(Boolean)));
           uniqueOwnerIds.forEach((uid) => {
@@ -504,14 +513,14 @@ const SQAStaffAuditPlanning = () => {
             }
           });
         }
-        
+
         if (calls.length) {
           await Promise.allSettled(calls);
         }
       } catch (teamErr) {
         console.error('❌ Attach team failed', teamErr);
       }
-      
+
       // Post schedules
       try {
         const schedulePairs = [
@@ -521,9 +530,9 @@ const SQAStaffAuditPlanning = () => {
           { name: MILESTONE_NAMES.DRAFT, date: formState.draftReportDue },
           { name: MILESTONE_NAMES.CAPA, date: formState.capaDue },
         ].filter(pair => pair.date);
-        
+
         if (schedulePairs.length > 0) {
-          const schedulePromises = schedulePairs.map(pair => 
+          const schedulePromises = schedulePairs.map(pair =>
             addAuditSchedule({
               auditId: String(newAuditId),
               milestoneName: pair.name,
@@ -537,7 +546,7 @@ const SQAStaffAuditPlanning = () => {
       } catch (scheduleErr) {
         console.error('❌ Failed to post schedules', scheduleErr);
       }
-      
+
       // Refresh plans list
       try {
         const response = await getAuditPlans();
@@ -546,13 +555,13 @@ const SQAStaffAuditPlanning = () => {
       } catch (refreshErr) {
         console.error('❌ Failed to refresh plans list', refreshErr);
       }
-      
+
       // Reset form
       formState.resetForm();
-      
-      const successMsg = formState.isEditMode 
-        ? '✅ Audit plan updated successfully!\n\nID: ' + String(newAuditId)
-        : '✅ Audit plan created successfully!\n\nID: ' + String(newAuditId);
+
+      const successMsg = formState.isEditMode
+        ? '✅ Audit plan updated successfully!\n\n' + (formState.title ? `Plan: ${formState.title}` : '')
+        : '✅ Audit plan created successfully!\n\n' + (formState.title ? `Plan: ${formState.title}` : '');
       alert(successMsg);
     } catch (err: any) {
       const serverMsg = err?.response?.data || err?.response || err?.message || err;
@@ -574,7 +583,7 @@ const SQAStaffAuditPlanning = () => {
             <h1 className="text-2xl font-semibold text-primary-600">Audit Planning</h1>
             <p className="text-gray-600 text-sm mt-1">Create and manage audit plans</p>
           </div>
-          <button 
+          <button
             onClick={() => formState.setShowForm(!formState.showForm)}
             className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
           >
@@ -596,20 +605,19 @@ const SQAStaffAuditPlanning = () => {
                 </span>
               )}
             </div>
-            
+
             {/* Progress Stepper */}
             <div className="mb-6">
               <div className="flex items-center justify-between">
                 {[1, 2, 3, 4, 5].map((step) => (
                   <div key={step} className="flex items-center flex-1">
                     <div className="flex flex-col items-center">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
-                        formState.currentStep === step 
-                          ? 'bg-primary-600 text-white' 
-                          : formState.currentStep > step 
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${formState.currentStep === step
+                          ? 'bg-primary-600 text-white'
+                          : formState.currentStep > step
                             ? 'bg-primary-500 text-white'
                             : 'bg-gray-200 text-gray-600'
-                      }`}>
+                        }`}>
                         {formState.currentStep > step ? '✓' : step}
                       </div>
                       <span className={`text-xs mt-1 ${formState.currentStep === step ? 'text-primary-600 font-semibold' : 'text-gray-500'}`}>
@@ -631,67 +639,67 @@ const SQAStaffAuditPlanning = () => {
             {/* Step Components */}
             <div className="space-y-4">
               {formState.currentStep === 1 && (
-                  <Step1BasicInfo 
-                    title={formState.title}
-                    auditType={formState.auditType}
-                    goal={formState.goal}
-                    periodFrom={formState.periodFrom}
-                    periodTo={formState.periodTo}
-                    onTitleChange={formState.setTitle}
-                    onAuditTypeChange={formState.setAuditType}
-                    onGoalChange={formState.setGoal}
-                    onPeriodFromChange={formState.setPeriodFrom}
-                    onPeriodToChange={formState.setPeriodTo}
-                  />
+                <Step1BasicInfo
+                  title={formState.title}
+                  auditType={formState.auditType}
+                  goal={formState.goal}
+                  periodFrom={formState.periodFrom}
+                  periodTo={formState.periodTo}
+                  onTitleChange={formState.setTitle}
+                  onAuditTypeChange={formState.setAuditType}
+                  onGoalChange={formState.setGoal}
+                  onPeriodFromChange={formState.setPeriodFrom}
+                  onPeriodToChange={formState.setPeriodTo}
+                />
               )}
 
               {formState.currentStep === 2 && (
-                <Step2Scope 
-                    level={formState.level}
-                    selectedDeptIds={formState.selectedDeptIds}
+                <Step2Scope
+                  level={formState.level}
+                  selectedDeptIds={formState.selectedDeptIds}
                   departments={departments}
                   criteria={criteria}
-                    selectedCriteriaIds={formState.selectedCriteriaIds}
-                    onLevelChange={formState.setLevel}
-                    onSelectedDeptIdsChange={formState.setSelectedDeptIds}
-                    onCriteriaToggle={(id: string) => {
-                      const val = String(id);
-                      formState.setSelectedCriteriaIds((prev) => 
-                        prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
-                      );
-                    }}
+                  selectedCriteriaIds={formState.selectedCriteriaIds}
+                  onLevelChange={formState.setLevel}
+                  onSelectedDeptIdsChange={formState.setSelectedDeptIds}
+                  onCriteriaToggle={(id: string) => {
+                    const val = String(id);
+                    formState.setSelectedCriteriaIds((prev) =>
+                      prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
+                    );
+                  }}
                 />
               )}
 
               {formState.currentStep === 3 && (
-                <Step3Checklist 
+                <Step3Checklist
                   checklistTemplates={checklistTemplates}
                   selectedTemplateId={formState.selectedTemplateId}
-                  onTemplateSelect={(id:string)=>formState.setSelectedTemplateId(id)}
+                  onTemplateSelect={(id: string) => formState.setSelectedTemplateId(id)}
                 />
               )}
 
               {formState.currentStep === 4 && (
-                <Step4Team 
-                    level={formState.level}
-                    selectedDeptIds={formState.selectedDeptIds}
-                    selectedLeadId={formState.selectedLeadId}
-                    selectedAuditorIds={formState.selectedAuditorIds}
+                <Step4Team
+                  level={formState.level}
+                  selectedDeptIds={formState.selectedDeptIds}
+                  selectedLeadId={formState.selectedLeadId}
+                  selectedAuditorIds={formState.selectedAuditorIds}
                   auditorOptions={auditorOptions}
                   ownerOptions={ownerOptions}
                   departments={departments}
-                    onLeadChange={(leadId: string) => {
-                      formState.setSelectedLeadId(leadId);
-                      if (leadId && formState.selectedAuditorIds.includes(leadId)) {
-                        formState.setSelectedAuditorIds(formState.selectedAuditorIds.filter(id => id !== leadId));
-                      }
-                    }}
-                    onAuditorsChange={formState.setSelectedAuditorIds}
+                  onLeadChange={(leadId: string) => {
+                    formState.setSelectedLeadId(leadId);
+                    if (leadId && formState.selectedAuditorIds.includes(leadId)) {
+                      formState.setSelectedAuditorIds(formState.selectedAuditorIds.filter(id => id !== leadId));
+                    }
+                  }}
+                  onAuditorsChange={formState.setSelectedAuditorIds}
                 />
               )}
 
               {formState.currentStep === 5 && (
-                <Step5Schedule 
+                <Step5Schedule
                   kickoffMeeting={formState.kickoffMeeting}
                   fieldworkStart={formState.fieldworkStart}
                   evidenceDue={formState.evidenceDue}
@@ -708,7 +716,7 @@ const SQAStaffAuditPlanning = () => {
 
               {/* Navigation Buttons */}
               <div className="flex justify-between gap-3 pt-6 border-t">
-                <button 
+                <button
                   onClick={() => {
                     if (formState.currentStep > 1) {
                       formState.setCurrentStep(formState.currentStep - 1);
@@ -721,10 +729,10 @@ const SQAStaffAuditPlanning = () => {
                 >
                   {formState.currentStep === 1 ? 'Cancel' : '← Back'}
                 </button>
-                
+
                 <div className="flex gap-3">
                   {formState.currentStep < 5 && (
-                    <button 
+                    <button
                       onClick={() => formState.setCurrentStep(formState.currentStep + 1)}
                       className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
                     >
@@ -733,14 +741,14 @@ const SQAStaffAuditPlanning = () => {
                   )}
                   {formState.currentStep === 5 && (
                     <>
-                      <button 
+                      <button
                         onClick={handleSubmitPlan}
                         className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
                       >
                         {formState.isEditMode ? ' Update Plan' : ' Submit Plan'}
                       </button>
                       {formState.isEditMode && (
-                        <button 
+                        <button
                           onClick={() => {
                             if (window.confirm('Discard changes and exit edit mode?')) {
                               formState.resetForm();
@@ -748,7 +756,7 @@ const SQAStaffAuditPlanning = () => {
                           }}
                           className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
                         >
-                           Cancel
+                          Cancel
                         </button>
                       )}
                     </>
@@ -764,52 +772,52 @@ const SQAStaffAuditPlanning = () => {
           <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
             <h2 className="text-lg font-semibold text-white">Existing Audit Plans</h2>
           </div>
-          
-          <FilterBar 
-              filterDepartment={filterState.filterDepartment}
-              filterDateFrom={filterState.filterDateFrom}
-              filterDateTo={filterState.filterDateTo}
-              filterStatus={filterState.filterStatus}
-              departments={departments}
-              onFilterDepartmentChange={filterState.setFilterDepartment}
-              onFilterDateFromChange={filterState.setFilterDateFrom}
-              onFilterDateToChange={filterState.setFilterDateTo}
-              onFilterStatusChange={filterState.setFilterStatus}
-              onClearFilters={filterState.clearFilters}
-              filteredCount={filterState.filteredPlans.length}
-              totalCount={existingPlans.length}
+
+          <FilterBar
+            filterDepartment={filterState.filterDepartment}
+            filterDateFrom={filterState.filterDateFrom}
+            filterDateTo={filterState.filterDateTo}
+            filterStatus={filterState.filterStatus}
+            departments={departments}
+            onFilterDepartmentChange={filterState.setFilterDepartment}
+            onFilterDateFromChange={filterState.setFilterDateFrom}
+            onFilterDateToChange={filterState.setFilterDateTo}
+            onFilterStatusChange={filterState.setFilterStatus}
+            onClearFilters={filterState.clearFilters}
+            filteredCount={filterState.filteredPlans.length}
+            totalCount={visiblePlans.length}
           />
-          
-          <PlanTable 
-              filteredPlans={filterState.filteredPlans}
-              existingPlans={existingPlans}
-              loadingPlans={loadingPlans}
-              onViewDetails={handleViewDetails}
-              onEditPlan={handleEditPlan}
-              onDeletePlan={handleDeletePlan}
-              getStatusColor={getStatusColor}
-              getBadgeVariant={getBadgeVariant}
+
+          <PlanTable
+            filteredPlans={filterState.filteredPlans}
+            existingPlans={visiblePlans}
+            loadingPlans={loadingPlans}
+            onViewDetails={handleViewDetails}
+            onEditPlan={handleEditPlan}
+            onDeletePlan={handleDeletePlan}
+            getStatusColor={getStatusColor}
+            getBadgeVariant={getBadgeVariant}
           />
         </div>
 
         {/* Details Modal */}
         {showDetailsModal && selectedPlanDetails && (
-            <PlanDetailsModal 
-              showModal={showDetailsModal}
-              selectedPlanDetails={selectedPlanDetails}
-              onClose={() => setShowDetailsModal(false)}
-              onEdit={handleEditPlan}
-              onSubmitToLead={handleSubmitToLead}
-              getCriterionName={(id: string) => getCriterionName(id, criteria)}
-              getDepartmentName={(id: string | number) => getDepartmentName(id, departments)}
-              getStatusColor={getStatusColor}
-              getBadgeVariant={getBadgeVariant}
-              ownerOptions={ownerOptions}
-              getTemplateName={(tid) => {
-                const t = checklistTemplates.find((tpl: any) => String(tpl.templateId || tpl.id || tpl.$id) === String(tid));
-                return t?.title || t?.name || `Template ${String(tid ?? '')}`;
-              }}
-            />
+          <PlanDetailsModal
+            showModal={showDetailsModal}
+            selectedPlanDetails={selectedPlanDetails}
+            onClose={() => setShowDetailsModal(false)}
+            onEdit={handleEditPlan}
+            onSubmitToLead={handleSubmitToLead}
+            getCriterionName={(id: string) => getCriterionName(id, criteria)}
+            getDepartmentName={(id: string | number) => getDepartmentName(id, departments)}
+            getStatusColor={getStatusColor}
+            getBadgeVariant={getBadgeVariant}
+            ownerOptions={ownerOptions}
+            getTemplateName={(tid) => {
+              const t = checklistTemplates.find((tpl: any) => String(tpl.templateId || tpl.id || tpl.$id) === String(tid));
+              return t?.title || t?.name || `Template ${String(tid ?? '')}`;
+            }}
+          />
         )}
       </div>
     </MainLayout>

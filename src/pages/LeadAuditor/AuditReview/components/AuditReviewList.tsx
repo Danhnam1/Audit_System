@@ -25,6 +25,7 @@ interface Props {
 }
 
 export const AuditReviewList: React.FC<Props> = ({ plans, onSelect, getDepartmentName, title }) => {
+  const isReviewedList = String(title || '').toLowerCase().includes('reviewed');
   return (
     <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
       <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
@@ -76,7 +77,14 @@ export const AuditReviewList: React.FC<Props> = ({ plans, onSelect, getDepartmen
                 {/* <td className="px-6 py-4 text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary-100 text-primary-700 text-sm font-semibold">{audit.findings ?? 0}</span></td> */}
                 <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-700">{audit.createdByUser?.fullName || audit.createdBy || audit.submittedBy || 'N/A'}</span></td>
                 <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-600">{audit.startDate ? new Date(audit.startDate).toLocaleDateString() : (audit.schedules?.values?.[0]?.dueDate ? new Date(audit.schedules.values[0].dueDate).toLocaleDateString() : audit.submittedDate || 'N/A')}</span></td>
-                <td className="px-6 py-4 whitespace-nowrap"><button onClick={() => onSelect(String(audit.auditId || audit.id))} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150">Review</button></td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <button
+                    onClick={() => onSelect(String(audit.auditId || audit.id))}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${isReviewedList ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-primary-600 hover:bg-primary-700 text-white'}`}
+                  >
+                    {isReviewedList ? 'View' : 'Review'}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
