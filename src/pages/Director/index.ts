@@ -1,4 +1,4 @@
-export { default as DirectorWelcome } from './Welcome';
+// Removed Welcome export (file missing)
 export { default as DirectorDashboard } from './Dashboard';
 export { default as DirectorReviewAuditPlans } from './ReviewAuditPlans';
 export { default as DirectorAuditPlanDetail } from './AuditPlanDetail';

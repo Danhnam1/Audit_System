@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react';
 import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
 import './icons.tsx';
-import { useAuth } from '../contexts';
+import useAuthStore from '../store/useAuthStore';
 import { getRoleMenu } from '../helpers/roleMenus';
+import { NotificationBell } from '../components/NotificationBell';
 
 export interface Team {
   id: string;
@@ -51,12 +52,18 @@ export const MainLayout = ({
   );
 
   // Default menu handled by role-based helper. If caller passes `menuItems`, that will be used instead.
-  const { user: authUser } = useAuth();
-  const role = authUser?.role;
+  const { user: authUser } = useAuthStore();
+  // Get role from either 'role' or 'roleName' field
+  const role = authUser?.role || (authUser as any)?.roleName;
+  
+  console.log('=== MainLayout Debug ===');
+  console.log('Auth User:', authUser);
+  console.log('Role:', role);
+  
   const defaultMenuItems: SidebarMenuItem[] = getRoleMenu(role);
+  
   // Debug: log menu items for roles that reported missing items
-  if (role === 'Admin' || role === 'SQAHead') {
-    // eslint-disable-next-line no-console
+  if (role === 'Admin' || role === 'Lead Auditor') {
     console.debug('[MainLayout] role:', role, 'menuItems:', defaultMenuItems);
   }
 
@@ -122,6 +129,12 @@ export const MainLayout = ({
         </>
       )}
       <main className="flex-1 overflow-y-auto w-full">
+        {/* Top bar */}
+        <div className="sticky top-0 z-30 bg-white/70 backdrop-blur border-b border-gray-200">
+          <div className="px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-end">
+            <NotificationBell />
+          </div>
+        </div>
         <div className="p-4 sm:p-6 lg:p-8">
           {children}
         </div>

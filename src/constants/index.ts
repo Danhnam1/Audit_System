@@ -4,10 +4,10 @@ export const APP_NAME = 'AMS Web';
 // User Roles
 export const ROLES = {
   ADMIN: 'Admin',
-  SQA_STAFF: 'SQAStaff',
-  SQA_HEAD: 'SQAHead',
-  DEPARTMENT_STAFF: 'DepartmentStaff',
-  DEPARTMENT_HEAD: 'DepartmentHead',
+  SQA_STAFF: 'Auditor',
+  SQA_HEAD: 'Lead Auditor',
+  DEPARTMENT_STAFF: 'CAPAOwner',
+  DEPARTMENT_HEAD: 'AuditeeOwner',
   DIRECTOR: 'Director',
 } as const;
 
@@ -16,10 +16,10 @@ export const ROUTES = {
   HOME: '/',
   LOGIN: '/login',
   ADMIN: '/admin',
-  SQA_STAFF: '/sqa-staff',
-  SQA_HEAD: '/sqa-head',
-  DEPARTMENT_STAFF: '/department-staff',
-  DEPARTMENT_HEAD: '/department-head',
+  AUDITOR: '/auditor',
+  LEAD_AUDITOR: '/lead-auditor',
+  CAPA_OWNER: '/capa-owner',
+  AUDITEE_OWNER: '/auditee-owner',
   DIRECTOR: '/director',
 } as const;
 
@@ -29,5 +29,8 @@ export const API_ENDPOINTS = {
 
 // Export status colors
 export * from './statusColors';
+
+// Export audit constants
+export * from './audit';
 
 export {};

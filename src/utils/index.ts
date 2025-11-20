@@ -3,7 +3,7 @@ export const sleep = (ms: number): Promise<void> => {
   return new Promise((resolve) => setTimeout(resolve, ms));
 };
 
-export const debounce = <T extends (...args: any[]) => any>(
+export const debounce = <T extends (...args: unknown[]) => unknown>(
   func: T,
   delay: number
 ): ((...args: Parameters<T>) => void) => {
@@ -14,4 +14,4 @@ export const debounce = <T extends (...args: any[]) => any>(
   };
 };
 
-export {};
+export * from './normalize';

@@ -6,3 +6,5 @@ export { default as ProtectedRoute } from '../routes/ProtectedRoute';
 export { Navigation } from './Header.tsx';
 export { StatCard } from './StatCard';
 export * from './charts';
+export { Button } from './Button';
+export { NotificationBell } from './NotificationBell';

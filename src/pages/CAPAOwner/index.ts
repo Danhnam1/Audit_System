@@ -1,0 +1,8 @@
+export { default as DepartmentStaffWelcome } from './Welcome';
+export { default as DepartmentStaffDashboard } from './Dashboard';
+export { default as DepartmentStaffAssignedTasks } from './AssignedTasks';
+export { default as DepartmentStaffTaskDetail } from './TaskDetail';
+export { default as DepartmentStaffUploadEvidence } from './UploadEvidence';
+export { default as DepartmentStaffTodoList } from './TodoList';
+export { default as DepartmentStaffFindingsProgress } from './FindingsProgress';
+export { default as DepartmentStaffCheckDeadlines } from './CheckDeadlines';

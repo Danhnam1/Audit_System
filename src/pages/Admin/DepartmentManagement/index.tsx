@@ -1,106 +1,123 @@
 import { MainLayout, DepartmentIcon, UsersIcon, ChartBarIcon } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StatCard } from '../../../components';
-import { getStatusColor } from '../../../constants';
+import { getDepartments, createDepartment, updateDepartment, deleteDepartment } from '../../../api/departments';
+import { getAdminUsers } from '../../../api/adminUsers';
 
 const AdminDepartmentManagement = () => {
   const { user } = useAuth();
   const [showCreateForm, setShowCreateForm] = useState(false);
-
+  const [departments, setDepartments] = useState<Array<any>>([]);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState({ name: '', code: '', description: '' });
+  const [editOpen, setEditOpen] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [editingDept, setEditingDept] = useState<{ deptId: number | null } | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const departments = [
-    {
-      id: 'DEPT-001',
-      name: 'Quality Assurance',
-      code: 'QA',
-      headName: 'Sarah Johnson',
-      headEmail: 'sarah.j@aviation.edu',
-      staffCount: 12,
-      activeAudits: 5,
-      status: 'Active',
-      createdDate: '2024-01-15',
-    },
-    {
-      id: 'DEPT-002',
-      name: 'Flight Operations',
-      code: 'FO',
-      headName: 'Mike Chen',
-      headEmail: 'mike.chen@aviation.edu',
-      staffCount: 28,
-      activeAudits: 3,
-      status: 'Active',
-      createdDate: '2024-01-15',
-    },
-    {
-      id: 'DEPT-003',
-      name: 'Maintenance',
-      code: 'MAINT',
-      headName: 'David Martinez',
-      headEmail: 'david.m@aviation.edu',
-      staffCount: 35,
-      activeAudits: 8,
-      status: 'Active',
-      createdDate: '2024-01-15',
-    },
-    {
-      id: 'DEPT-004',
-      name: 'Training',
-      code: 'TRN',
-      headName: 'Emily Davis',
-      headEmail: 'emily.d@aviation.edu',
-      staffCount: 18,
-      activeAudits: 2,
-      status: 'Active',
-      createdDate: '2024-01-20',
-    },
-    {
-      id: 'DEPT-005',
-      name: 'Safety',
-      code: 'SAF',
-      headName: 'Robert Wilson',
-      headEmail: 'robert.w@aviation.edu',
-      staffCount: 15,
-      activeAudits: 6,
-      status: 'Active',
-      createdDate: '2024-02-01',
-    },
-    {
-      id: 'DEPT-006',
-      name: 'Ground Operations',
-      code: 'GO',
-      headName: 'Lisa Anderson',
-      headEmail: 'lisa.a@aviation.edu',
-      staffCount: 22,
-      activeAudits: 1,
-      status: 'Active',
-      createdDate: '2024-03-10',
-    },
-    {
-      id: 'DEPT-007',
-      name: 'Executive',
-      code: 'EXEC',
-      headName: 'John Smith',
-      headEmail: 'john.smith@aviation.edu',
-      staffCount: 8,
-      activeAudits: 0,
-      status: 'Active',
-      createdDate: '2024-01-10',
-    },
-    {
-      id: 'DEPT-008',
-      name: 'IT Services',
-      code: 'IT',
-      headName: 'Not Assigned',
-      headEmail: '-',
-      staffCount: 0,
-      activeAudits: 0,
-      status: 'Inactive',
-      createdDate: '2024-09-15',
-    },
-  ];
+  // Load departments from API on mount
+  const fetchDepartmentsAndOwners = async () => {
+    setLoading(true)
+    try {
+      // Fetch departments and users in parallel
+      const [deptRes, userRes] = await Promise.all([
+        getDepartments(),
+        getAdminUsers(),
+      ])
+
+      // Build map deptId -> Auditee Owner fullName
+      const ownerMap: Record<string, string> = {}
+      ;(userRes || []).forEach((u: any) => {
+        const roleNormalized = String(u.roleName || '').toLowerCase().replace(/\s+/g, '')
+        if (roleNormalized === 'auditeeowner' && u.deptId != null) {
+          ownerMap[String(u.deptId)] = u.fullName || u.email || 'Unknown'
+        }
+      })
+
+      // Map backend department shape to UI row shape with owner name
+      const mapped = (deptRes || []).map((d: any, idx: number) => ({
+        id: d.deptId ?? d.$id ?? `DEPT-${idx + 1}`,
+        deptId: d.deptId ?? null,
+        name: d.name || d.code || 'Unnamed',
+        code: d.code || '-',
+        ownerName: ownerMap[String(d.deptId ?? d.$id ?? '')] || '—',
+        headName: d.headName || 'Not Assigned',
+        headEmail: d.headEmail || '-',
+        staffCount: d.staffCount ?? 0,
+        activeAudits: d.activeAudits ?? 0,
+        createdDate: d.createdAt || d.createAt || null,
+        description: d.description || '',
+      }))
+      setDepartments(mapped)
+    } catch (err) {
+      console.error('Failed to load departments', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchDepartmentsAndOwners()
+  }, [])
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name?.trim() || !form.code?.trim()) return
+    try {
+      setCreating(true)
+      await createDepartment({ name: form.name.trim(), code: form.code.trim(), description: form.description?.trim() || '' })
+      setForm({ name: '', code: '', description: '' })
+      setShowCreateForm(false)
+      await fetchDepartmentsAndOwners()
+    } catch (err) {
+      console.error('Failed to create department', err)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const openEdit = (dept: any) => {
+    setForm({ name: dept.name || '', code: dept.code || '', description: dept.description || '' })
+    setEditingDept({ deptId: dept.deptId ?? dept.id ?? null })
+    setEditOpen(true)
+  }
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingDept?.deptId) return
+    if (!form.name?.trim() || !form.code?.trim()) return
+    try {
+      setUpdating(true)
+      await updateDepartment(editingDept.deptId, { name: form.name.trim(), code: form.code.trim(), description: form.description?.trim() || '' })
+      setEditOpen(false)
+      setEditingDept(null)
+      await fetchDepartmentsAndOwners()
+    } catch (err) {
+      console.error('Failed to update department', err)
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const handleDelete = async (dept: any) => {
+    const id = dept.deptId ?? dept.id
+    if (!id) return
+    const ok = window.confirm(`Delete department ${dept.name || id}?`)
+    if (!ok) return
+    try {
+      setDeletingId(Number(id))
+      await deleteDepartment(id)
+      await fetchDepartmentsAndOwners()
+    } catch (err) {
+      console.error('Failed to delete department', err)
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   // Using imported getStatusColor from constants
 
@@ -138,9 +155,15 @@ const AdminDepartmentManagement = () => {
           <StatCard title="Active Audits" value={stats.totalAudits.toString()} icon={<ChartBarIcon />} variant="primary-dark" />
         </div>
 
+        {loading && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700 p-4 rounded">
+            Loading departments…
+          </div>
+        )}
+
         {/* Create Department Form */}
         {showCreateForm && (
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
+          <form onSubmit={handleCreate} className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
             <h2 className="text-lg font-semibold text-primary-600 mb-4">Create New Department</h2>
             
             <div className="space-y-4">
@@ -148,35 +171,23 @@ const AdminDepartmentManagement = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Department Name *</label>
                   <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
                     type="text"
                     placeholder="e.g., Aircraft Engineering"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    required
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Department Code *</label>
                   <input
+                    value={form.code}
+                    onChange={(e) => setForm({ ...form, code: e.target.value })}
                     type="text"
                     placeholder="e.g., AE"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Department Head *</label>
-                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-                    <option>Select Department Head</option>
-                    <option>John Smith</option>
-                    <option>Sarah Johnson</option>
-                    <option>Mike Chen</option>
-                    <option>Emily Davis</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email *</label>
-                  <input
-                    type="email"
-                    placeholder="dept.head@aviation.edu"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    required
                   />
                 </div>
               </div>
@@ -184,6 +195,8 @@ const AdminDepartmentManagement = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={3}
                   placeholder="Department description and responsibilities..."
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
@@ -191,10 +204,11 @@ const AdminDepartmentManagement = () => {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">
-                  Create Department
+                <button type="submit" disabled={creating} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-70 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">
+                  {creating ? 'Creating…' : 'Create Department'}
                 </button>
                 <button 
+                  type="button"
                   onClick={() => setShowCreateForm(false)}
                   className="border border-gray-300 text-gray-600 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150"
                 >
@@ -202,7 +216,64 @@ const AdminDepartmentManagement = () => {
                 </button>
               </div>
             </div>
-          </div>
+          </form>
+        )}
+
+        {editOpen && (
+          <form onSubmit={handleUpdate} className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
+            <h2 className="text-lg font-semibold text-primary-600 mb-4">Edit Department</h2>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Department Name *</label>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    type="text"
+                    placeholder="Department name"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Department Code *</label>
+                  <input
+                    value={form.code}
+                    onChange={(e) => setForm({ ...form, code: e.target.value })}
+                    type="text"
+                    placeholder="Code"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  rows={3}
+                  placeholder="Description"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                ></textarea>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="submit" disabled={updating} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-70 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">
+                  {updating ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => { setEditOpen(false); setEditingDept(null); }}
+                  className="border border-gray-300 text-gray-600 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </form>
         )}
 
         {/* Departments Table */}
@@ -216,12 +287,10 @@ const AdminDepartmentManagement = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Dept ID</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department Name</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Code</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department Head</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Staff Count</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Active Audits</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Auditee Owner</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -243,34 +312,33 @@ const AdminDepartmentManagement = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{dept.headName}</p>
-                        <p className="text-xs text-gray-500">{dept.headEmail}</p>
-                      </div>
+                      <span className="text-sm text-gray-800">{dept.description}</span>
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary-100 text-primary-700 text-sm font-bold">
-                        {dept.staffCount}
-                      </span>
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-gray-800">{dept.ownerName}</span>
                     </td>
-                    <td className="px-6 py-4 text-center">
+                    {/* <td className="px-6 py-4 text-center">
                       <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary-100 text-primary-700 text-sm font-bold">
                         {dept.activeAudits}
                       </span>
-                    </td>
-                    <td className="px-6 py-4">
+                    </td> */}
+                    {/* <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(dept.status)}`}>
                         {dept.status}
                       </span>
-                    </td>
+                    </td> */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex gap-2">
-                        <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">
+                        <button onClick={() => openEdit(dept)} className="text-primary-600 hover:text-primary-700 text-sm font-medium">
                           Edit
                         </button>
                         <span className="text-gray-300">|</span>
                         <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">
                           View Staff
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button onClick={() => handleDelete(dept)} disabled={deletingId === (dept.deptId ?? dept.id)} className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-60">
+                          {deletingId === (dept.deptId ?? dept.id) ? 'Deleting…' : 'Delete'}
                         </button>
                         {dept.status === 'Inactive' && (
                           <>

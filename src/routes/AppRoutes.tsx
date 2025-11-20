@@ -1,7 +1,7 @@
 import { lazy } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ROUTES } from "../constants";
-import { useAuth } from "../contexts";
+import useAuthStore from "../store/useAuthStore";
 import { ProtectedRoute } from "../components";
 
 // Lazy load all pages
@@ -13,37 +13,42 @@ const AdminUserManagement = lazy(() => import("../pages/Admin/UserManagement"));
 const AdminDepartmentManagement = lazy(() => import("../pages/Admin/DepartmentManagement"));
 const AdminBackupRestore = lazy(() => import("../pages/Admin/BackupRestore"));
 
-// SQA Staff pages
-const SQAStaffDashboard = lazy(() => import("../pages/SQAStaff/Dashboard"));
-const SQAStaffAuditPlanning = lazy(() => import("../pages/SQAStaff/AuditPlanning"));
-const SQAStaffFindingManagement = lazy(() => import("../pages/SQAStaff/FindingManagement"));
-const SQAStaffReports = lazy(() => import("../pages/SQAStaff/Reports"));
-const SQAStaffRequests = lazy(() => import("../pages/SQAStaff/Requests"));
+// Auditor pages
+const SQAStaffDashboard = lazy(() => import("../pages/Auditor/Dashboard"));
+const SQAStaffAuditPlanning = lazy(() => import("../pages/Auditor/AuditPlanning"));
+const SQAStaffAuditTeam = lazy(() => import("../pages/Auditor/AuditTeam"));
+const SQAStaffFindingManagement = lazy(() => import("../pages/Auditor/FindingManagement"));
+const SQAStaffAuditExecutionDetail = lazy(() => import("../pages/Auditor/FindingManagement/AuditExecutionDetail"));
+const SQAStaffReports = lazy(() => import("../pages/Auditor/Reports"));
+const SQAStaffRequests = lazy(() => import("../pages/Auditor/Requests"));
+const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"));
 
-// SQA Head pages
-const SQAHeadDashboard = lazy(() => import("../pages/SQAHead/Dashboard"));
-const SQAHeadAuditReview = lazy(() => import("../pages/SQAHead/AuditReview"));
+// Lead Auditor pages (formerly SQA Head)
+const SQAHeadDashboard = lazy(() => import("../pages/LeadAuditor/Dashboard"));
+const SQAHeadAuditReview = lazy(() => import("../pages/LeadAuditor/AuditReview"));
+const SQAHeadTeam = lazy(() => import("../pages/LeadAuditor/Team"));
+const SQAHeadReports = lazy(() => import("../pages/LeadAuditor/Reports"));
 
-// Department Staff pages
-const DepartmentStaffDashboard = lazy(() => import("../pages/DepartmentStaff/Dashboard"));
-const DepartmentStaffAssignedTasks = lazy(() => import("../pages/DepartmentStaff/AssignedTasks"));
-const DepartmentStaffTaskDetail = lazy(() => import("../pages/DepartmentStaff/TaskDetail"));
-const DepartmentStaffUploadEvidence = lazy(() => import("../pages/DepartmentStaff/UploadEvidence"));
-const DepartmentStaffTodoList = lazy(() => import("../pages/DepartmentStaff/TodoList"));
-const DepartmentStaffFindingsProgress = lazy(() => import("../pages/DepartmentStaff/FindingsProgress"));
-const DepartmentStaffCheckDeadlines = lazy(() => import("../pages/DepartmentStaff/CheckDeadlines"));
+// CAPA Owner pages (formerly Department Staff)
+const DepartmentStaffDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard"));
+const DepartmentStaffAssignedTasks = lazy(() => import("../pages/CAPAOwner/AssignedTasks"));
+const DepartmentStaffTaskDetail = lazy(() => import("../pages/CAPAOwner/TaskDetail"));
+const DepartmentStaffUploadEvidence = lazy(() => import("../pages/CAPAOwner/UploadEvidence"));
+const DepartmentStaffTodoList = lazy(() => import("../pages/CAPAOwner/TodoList"));
+const DepartmentStaffFindingsProgress = lazy(() => import("../pages/CAPAOwner/FindingsProgress"));
+const DepartmentStaffCheckDeadlines = lazy(() => import("../pages/CAPAOwner/CheckDeadlines"));
 
-// Department Head pages
-const DepartmentHeadWelcome = lazy(() => import("../pages/DepartmentHead/Welcome"));
-const DepartmentHeadAuditPlans = lazy(() => import("../pages/DepartmentHead/auditplan/AuditPlans"));
-const DepartmentHeadAuditPlanDetail = lazy(() => import("../pages/DepartmentHead/auditplan/AuditPlanDetail"));
-const DepartmentHeadAuditPlanConfirm = lazy(() => import("../pages/DepartmentHead/auditplan/AuditPlanConfirm"));
-const DepartmentHeadAssignTasks = lazy(() => import("../pages/DepartmentHead/taskasign/AssignTasks"));
-const DepartmentHeadFindingsList = lazy(() => import("../pages/DepartmentHead/findings/FindingsList"));
-const DepartmentHeadAssignStaff = lazy(() => import("../pages/DepartmentHead/taskasign/AssignStaff"));
-const DepartmentHeadReviewEvidence = lazy(() => import("../pages/DepartmentHead/ReviewEvidence"));
-const DepartmentHeadEvidenceDetail = lazy(() => import("../pages/DepartmentHead/EvidenceDetail"));
-const DepartmentHeadFindingsProgress = lazy(() => import("../pages/DepartmentHead/findings/FindingsProgress"));
+// Auditee Owner pages (formerly Department Head)
+const DepartmentHeadWelcome = lazy(() => import("../pages/AuditeeOwner/Welcome"));
+const DepartmentHeadAuditPlans = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlans"));
+const DepartmentHeadAuditPlanDetail = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlanDetail"));
+const DepartmentHeadAuditPlanConfirm = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlanConfirm"));
+const DepartmentHeadAssignTasks = lazy(() => import("../pages/AuditeeOwner/taskasign/AssignTasks"));
+const DepartmentHeadFindingsList = lazy(() => import("../pages/AuditeeOwner/findings/FindingsList"));
+const DepartmentHeadAssignStaff = lazy(() => import("../pages/AuditeeOwner/taskasign/AssignStaff"));
+const DepartmentHeadReviewEvidence = lazy(() => import("../pages/AuditeeOwner/ReviewEvidence"));
+const DepartmentHeadEvidenceDetail = lazy(() => import("../pages/AuditeeOwner/EvidenceDetail"));
+const DepartmentHeadFindingsProgress = lazy(() => import("../pages/AuditeeOwner/findings/FindingsProgress"));
 
 // Director pages
 const DirectorDashboard = lazy(() => import("../pages/Director/Dashboard"));
@@ -55,26 +60,30 @@ const DirectorSummaryReport = lazy(() => import("../pages/Director/SummaryReport
 
 // AppRoutes component - chỉ chứa các route definitions
 export function AppRoutes() {
-    const { isAuthenticated, user } = useAuth();
+    const { token, user } = useAuthStore();
+    const isAuthenticated = !!token;
 
     // Redirect to appropriate dashboard based on role
     const getDefaultRoute = () => {
         if (!user) return ROUTES.LOGIN;
 
+        // Use normalized keys (lowercase, no spaces) to be tolerant of different role string formats
         const roleRouteMap: Record<string, string> = {
-            Admin: ROUTES.ADMIN,
-            SQAStaff: ROUTES.SQA_STAFF,
-            SQAHead: ROUTES.SQA_HEAD,
-            DepartmentStaff: ROUTES.DEPARTMENT_STAFF,
-            DepartmentHead: ROUTES.DEPARTMENT_HEAD,
-            Director: ROUTES.DIRECTOR,
+            admin: ROUTES.ADMIN,
+            auditor: ROUTES.AUDITOR,
+            leadauditor: ROUTES.LEAD_AUDITOR,
+            capaowner: ROUTES.CAPA_OWNER,
+            auditeeowner: ROUTES.AUDITEE_OWNER,
+            director: ROUTES.DIRECTOR,
         };
 
         // Debug log để xem user role
         console.log('Current user:', user);
-        console.log('Redirecting to:', roleRouteMap[user.role] || ROUTES.LOGIN);
+        const rawRole = (user?.role || user?.roleName || '');
+        const normalized = String(rawRole).toLowerCase().replace(/\s+/g, '');
+        console.log('Original role:', rawRole, '\nNormalized role:', normalized);
 
-        return roleRouteMap[user.role] || ROUTES.LOGIN;
+        return roleRouteMap[normalized] || ROUTES.LOGIN;
     };
 
     return (
@@ -125,210 +134,250 @@ export function AppRoutes() {
                 }
             />
 
-            {/* Protected routes - SQA Staff */}
+            {/* Protected routes - Auditor */}
             <Route
-                path={ROUTES.SQA_STAFF}
+                path={ROUTES.AUDITOR}
                 element={
-                    <ProtectedRoute allowedRoles={["SQAStaff"]}>
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
                         <SQAStaffDashboard />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/sqa-staff/planning"
+                path="/auditor/planning"
                 element={
-                    <ProtectedRoute allowedRoles={["SQAStaff"]}>
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
                         <SQAStaffAuditPlanning />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/sqa-staff/findings"
+                path="/auditor/team"
                 element={
-                    <ProtectedRoute allowedRoles={["SQAStaff"]}>
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffAuditTeam />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditor/findings"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
                         <SQAStaffFindingManagement />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/sqa-staff/reports"
+                path="/auditor/findings/:id"
                 element={
-                    <ProtectedRoute allowedRoles={["SQAStaff"]}>
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffAuditExecutionDetail />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditor/reports"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
                         <SQAStaffReports />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/sqa-staff/requests"
+                path="/auditor/requests"
                 element={
-                    <ProtectedRoute allowedRoles={["SQAStaff"]}>
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
                         <SQAStaffRequests />
                     </ProtectedRoute>
                 }
             />
-
-            {/* Protected routes - SQA Head */}
             <Route
-                path={ROUTES.SQA_HEAD}
+                path="/auditor/history-upload"
                 element={
-                    <ProtectedRoute allowedRoles={["SQAHead"]}>
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffHistoryUpload />
+                    </ProtectedRoute>
+                }
+            />
+
+            {/* Protected routes - Lead Auditor */}
+            <Route
+                path={ROUTES.LEAD_AUDITOR}
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <SQAHeadDashboard />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/sqa-head/audit-review"
+                path="/lead-auditor/audit-review"
                 element={
-                    <ProtectedRoute allowedRoles={["SQAHead"]}>
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <SQAHeadAuditReview />
                     </ProtectedRoute>
                 }
             />
-
-            {/* Protected routes - Department Staff */}
             <Route
-                path={ROUTES.DEPARTMENT_STAFF}
+                path="/lead-auditor/team"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentStaff"]}>
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <SQAHeadTeam />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/reports"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <SQAHeadReports />
+                    </ProtectedRoute>
+                }
+            />
+
+            {/* Protected routes - CAPA Owner */}
+            <Route
+                path={ROUTES.CAPA_OWNER}
+                element={
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffDashboard />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-staff/tasks"
+                path="/capa-owner/tasks"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentStaff"]}>
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffAssignedTasks />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-staff/tasks/:taskId"
+                path="/capa-owner/tasks/:taskId"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentStaff"]}>
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffTaskDetail />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-staff/upload-evidence"
+                path="/capa-owner/upload-evidence"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentStaff"]}>
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffUploadEvidence />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-staff/upload-evidence/:taskId"
+                path="/capa-owner/upload-evidence/:taskId"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentStaff"]}>
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffUploadEvidence />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-staff/todo"
+                path="/capa-owner/todo"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentStaff"]}>
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffTodoList />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-staff/progress"
+                path="/capa-owner/progress"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentStaff"]}>
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffFindingsProgress />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-staff/deadlines"
+                path="/capa-owner/deadlines"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentStaff"]}>
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffCheckDeadlines />
                     </ProtectedRoute>
                 }
             />
         
 
-            {/* Protected routes - Department Head */}
+            {/* Protected routes - Auditee Owner */}
             <Route
-                path={ROUTES.DEPARTMENT_HEAD}
+                path={ROUTES.AUDITEE_OWNER}
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadWelcome />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-head/audit-plans"
+                path="/auditee-owner/audit-plans"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadAuditPlans />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-head/audit-plans/:id/detail"
+                path="/auditee-owner/audit-plans/:id/detail"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadAuditPlanDetail />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-head/audit-plans/:id/confirm"
+                path="/auditee-owner/audit-plans/:id/confirm"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadAuditPlanConfirm />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-head/assign-tasks"
+                path="/auditee-owner/assign-tasks"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadAssignTasks />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-head/assign-tasks/findings"
+                path="/auditee-owner/assign-tasks/findings"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadFindingsList />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-head/assign-tasks/:id/assign"
+                path="/auditee-owner/assign-tasks/:id/assign"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadAssignStaff />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-head/review-evidence"
+                path="/auditee-owner/review-evidence"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadReviewEvidence />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-head/review-evidence/:id"
+                path="/auditee-owner/review-evidence/:id"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadEvidenceDetail />
                     </ProtectedRoute>
                 }
             />
             <Route
-                path="/department-head/findings"
+                path="/auditee-owner/findings"
                 element={
-                    <ProtectedRoute allowedRoles={["DepartmentHead"]}>
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadFindingsProgress />
                     </ProtectedRoute>
                 }

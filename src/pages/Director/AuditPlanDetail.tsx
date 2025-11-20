@@ -18,7 +18,7 @@ const AuditPlanDetail = () => {
     scope: 'Document Control, Training Records, Internal Audit Process',
     startDate: '2024-11-20',
     endDate: '2024-11-25',
-    submittedBy: 'Nguyễn Văn A (SQA Head)',
+  submittedBy: 'Nguyễn Văn A (Lead Auditor)',
     submittedDate: '2024-11-01',
     status: 'Pending Review',
     objectives: [
