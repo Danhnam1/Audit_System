@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuditFindings } from '../../../hooks/useAuditFindings';
 import type { ChecklistItem, ResultType } from './Components/types';
+import { getFindingSeverities, type FindingSeverity } from '../../../api/findingSeverity';
+import { getRootCauses, createRootCause, type RootCause } from '../../../api/rootCauses';
+import { uploadAttachment } from '../../../api/attachments';
 
 const AuditExecutionDetail = () => {
   const { id: auditId } = useParams<{ id: string }>();
@@ -20,6 +23,7 @@ const AuditExecutionDetail = () => {
 
   const [auditPlan, setAuditPlan] = useState<any>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [createdFindings, setCreatedFindings] = useState<Record<number, string>>({}); // checklistItemId -> findingId
   const [showCreateFinding, setShowCreateFinding] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
   const [findingForm, setFindingForm] = useState({
@@ -27,10 +31,52 @@ const AuditExecutionDetail = () => {
     description: '',
     severity: 'Minor',
     rootCauseId: undefined as number | undefined,
-    deptId: undefined as number | undefined,
-    status: 'Open',
     deadline: '',
+    evidenceFile: null as File | null,
   });
+  
+  // Dropdown data from APIs
+  const [severities, setSeverities] = useState<FindingSeverity[]>([]);
+  const [rootCauses, setRootCauses] = useState<RootCause[]>([]);
+  const [showAddRootCause, setShowAddRootCause] = useState(false);
+  const [newRootCauseForm, setNewRootCauseForm] = useState({
+    name: '',
+    description: '',
+    status: 'Active',
+    category: 'Root Cause',
+  });
+  const [loadingRootCauses, setLoadingRootCauses] = useState(false);
+
+  // Load severities and root causes on mount
+  useEffect(() => {
+    const loadMasterData = async () => {
+      try {
+        const [severitiesData, rootCausesData] = await Promise.all([
+          getFindingSeverities(),
+          getRootCauses(),
+        ]);
+        console.log('Loaded severities:', severitiesData);
+        console.log('Loaded root causes:', rootCausesData);
+        
+        // Set data or fallback to defaults
+        setSeverities(severitiesData.length > 0 ? severitiesData : [
+          { id: 1, name: 'Minor' },
+          { id: 2, name: 'Major' },
+          { id: 3, name: 'Critical' },
+        ]);
+        setRootCauses(rootCausesData);
+      } catch (err) {
+        console.error('Error loading master data:', err);
+        // Fallback to default severities on error
+        setSeverities([
+          { id: 1, name: 'Minor' },
+          { id: 2, name: 'Major' },
+          { id: 3, name: 'Critical' },
+        ]);
+      }
+    };
+    loadMasterData();
+  }, []);
 
   // Load audit plan and checklist items
   useEffect(() => {
@@ -99,19 +145,43 @@ const AuditExecutionDetail = () => {
 
   const handleCreateFinding = (item: ChecklistItem) => {
     setSelectedItem(item);
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 7); // Default 7 days deadline
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7); // Default 7 days deadline
+    
+    // Use first severity from loaded data or fallback to 'Minor'
+    const defaultSeverity = severities.length > 0 ? (severities[0].name || 'Minor') : 'Minor';
     
     setFindingForm({
       title: `Non-compliance: ${item.item}`,
       description: '',
-      severity: 'Minor',
+      severity: defaultSeverity,
       rootCauseId: undefined,
-      deptId: undefined,
-      status: 'Open',
-      deadline: tomorrow.toISOString().split('T')[0],
+      deadline: nextWeek.toISOString().split('T')[0],
+      evidenceFile: null,
     });
     setShowCreateFinding(true);
+  };
+
+  const handleAddRootCause = async () => {
+    if (!newRootCauseForm.name.trim() || !newRootCauseForm.description.trim()) {
+      alert('Please fill in all required fields (Name and Description)');
+      return;
+    }
+
+    setLoadingRootCauses(true);
+    try {
+      const newRootCause = await createRootCause(newRootCauseForm);
+      setRootCauses(prev => [...prev, newRootCause]);
+      setFindingForm(prev => ({ ...prev, rootCauseId: newRootCause.rootCauseId }));
+      setNewRootCauseForm({ name: '', description: '', status: 'Active', category: 'Root Cause' });
+      setShowAddRootCause(false);
+      alert('Root cause added successfully!');
+    } catch (err) {
+      console.error('Error adding root cause:', err);
+      alert('Failed to add root cause. Check console for details.');
+    } finally {
+      setLoadingRootCauses(false);
+    }
   };
 
   const handleSaveFinding = async () => {
@@ -124,34 +194,30 @@ const AuditExecutionDetail = () => {
       console.log('Full auditPlan object:', auditPlan);
       console.log('scopeDepartments:', auditPlan?.scopeDepartments);
       
-      // Get deptId from audit plan's scopeDepartments or from user input
-      let deptId = findingForm.deptId; // User input has priority
-      
-      if (!deptId) {
-        // Try to get from scopeDepartments with multiple possible structures
-        const scopeDepts = auditPlan?.scopeDepartments?.$values 
-          || auditPlan?.scopeDepartments?.values 
-          || (Array.isArray(auditPlan?.scopeDepartments) ? auditPlan.scopeDepartments : null);
-          
-        console.log('Extracted scopeDepts:', scopeDepts);
+      // Auto-get deptId from audit plan's scopeDepartments
+      const scopeDepts = auditPlan?.scopeDepartments?.$values 
+        || auditPlan?.scopeDepartments?.values 
+        || (Array.isArray(auditPlan?.scopeDepartments) ? auditPlan.scopeDepartments : null);
         
-        if (Array.isArray(scopeDepts) && scopeDepts.length > 0) {
-          deptId = scopeDepts[0].deptId;
-          console.log('Auto-filled deptId from scopeDepartments:', deptId);
-        } else {
-          // Try getting from createdByUser
-          deptId = auditPlan?.createdByUser?.deptId;
-          console.log('Trying deptId from createdByUser:', deptId);
-        }
+      console.log('Extracted scopeDepts:', scopeDepts);
+      
+      let deptId: number | undefined;
+      if (Array.isArray(scopeDepts) && scopeDepts.length > 0) {
+        deptId = scopeDepts[0].deptId;
+        console.log('Auto-filled deptId from scopeDepartments:', deptId);
+      } else {
+        // Try getting from createdByUser
+        deptId = auditPlan?.createdByUser?.deptId;
+        console.log('Trying deptId from createdByUser:', deptId);
       }
 
       if (!deptId) {
-        alert('Please enter Department ID - cannot auto-detect from audit plan');
+        alert('Cannot determine department ID from audit plan');
         console.error('auditPlan structure:', JSON.stringify(auditPlan, null, 2));
         return;
       }
 
-      const payload = {
+      const payload: any = {
         auditId: auditId!,
         auditItemId: selectedItem.apiData.auditItemId,
         title: findingForm.title,
@@ -159,22 +225,81 @@ const AuditExecutionDetail = () => {
         severity: findingForm.severity,
         rootCauseId: findingForm.rootCauseId || 0,
         deptId: deptId,
-        status: findingForm.status,
+        status: 'Open', // Always Open when created
         deadline: findingForm.deadline ? new Date(findingForm.deadline).toISOString() : new Date().toISOString(),
         reviewerId: null,
-        source: '',
-        externalAuditorName: '',
+        source: '', // Backend requires string, not null
+        externalAuditorName: '', // Backend requires string, not null
       };
 
-      console.log('Creating finding with payload:', payload);
+      console.log('========== FINDING CREATION DEBUG ==========');
+      console.log('1. Original payload (camelCase):', JSON.stringify(payload, null, 2));
+      console.log('2. Calling createFindingFromChecklistItem...');
+      
       const result = await createFindingFromChecklistItem(selectedItem.apiData, payload);
 
-      if (result.success) {
-        alert('Finding created successfully!');
-        setShowCreateFinding(false);
-        setSelectedItem(null);
+      if (result.success && result.data) {
+        const findingId = result.data.findingId;
+        console.log('Finding created successfully with ID:', findingId);
+        
+        // Save findingId to track this item has been uploaded
+        setCreatedFindings(prev => ({ ...prev, [selectedItem.id]: findingId }));
+        
         // Mark as Non-compliant
         setItemResult(selectedItem.id, 'Non-compliant');
+        
+        // Upload evidence if file selected
+        if (findingForm.evidenceFile) {
+          try {
+            console.log('Uploading evidence for finding:', findingId);
+            
+            // Extract user ID from token
+            const token = localStorage.getItem('auth-storage');
+            let userId = '';
+            if (token) {
+              try {
+                const authData = JSON.parse(token);
+                const jwtToken = authData?.state?.token;
+                if (jwtToken) {
+                  // Decode JWT token (split by . and decode base64)
+                  const base64Url = jwtToken.split('.')[1];
+                  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                  const payload = JSON.parse(window.atob(base64));
+                  userId = payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'] || '';
+                  console.log('Extracted user ID from token:', userId);
+                }
+              } catch (parseErr) {
+                console.error('Error parsing token:', parseErr);
+              }
+            }
+            
+            if (!userId) {
+              console.warn('User ID not found in token, evidence upload may fail');
+            }
+            
+            await uploadAttachment({
+              entityType: 'finding',
+              entityId: findingId,
+              uploadedBy: userId,
+              status: 'Open', // Same status as Finding
+              file: findingForm.evidenceFile,
+            });
+            console.log('Evidence uploaded successfully');
+          } catch (uploadErr: any) {
+            console.error('Error uploading evidence:', uploadErr);
+            
+            // Check if it's a CORS error
+            if (uploadErr?.message?.includes('CORS') || uploadErr?.message?.includes('Network Error')) {
+              alert('Finding created successfully!\n\nNote: Evidence upload failed due to CORS policy. Please contact backend team to enable CORS for /api/admin/AdminAttachment endpoint.');
+            } else {
+              alert(`Finding created successfully!\n\nNote: Evidence upload failed: ${uploadErr?.message || 'Unknown error'}`);
+            }
+          }
+        }
+
+        alert('✅ Finding created successfully!');
+        setShowCreateFinding(false);
+        setSelectedItem(null);
       } else {
         alert(`Error: ${result.error}`);
       }
@@ -368,17 +493,29 @@ const AuditExecutionDetail = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <button
-                        onClick={() => {
-                          const remarks = prompt('Enter remarks/notes:', item.remarks);
-                          if (remarks !== null) {
-                            setItemRemarks(item.id, remarks);
-                          }
-                        }}
-                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-medium"
-                      >
-                        Add Note
-                      </button>
+                      {createdFindings[item.id] ? (
+                        <div className="text-xs">
+                          <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded font-medium block text-center">
+                            ✓ Finding Created
+                          </span>
+                          <span className="text-gray-500 mt-1 block text-center">
+                            ID: {createdFindings[item.id].slice(0, 8)}...
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            const remarks = prompt('Enter remarks/notes:', item.remarks);
+                            if (remarks !== null) {
+                              setItemRemarks(item.id, remarks);
+                            }
+                          }}
+                          disabled={item.result === 'Non-compliant'}
+                          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        >
+                          Add Note
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -457,23 +594,19 @@ const AuditExecutionDetail = () => {
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Severity <span className="text-red-500">*</span>
                   </label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {(['Minor', 'Major', 'Critical'] as const).map(type => (
-                      <button
-                        key={type}
-                        onClick={() => setFindingForm(prev => ({ ...prev, severity: type }))}
-                        className={`px-4 py-3 rounded-lg border-2 font-semibold text-sm transition-all shadow-sm hover:shadow ${
-                          findingForm.severity === type
-                            ? type === 'Critical' ? 'border-red-600 bg-red-600 text-white shadow-red-200' :
-                              type === 'Major' ? 'border-orange-500 bg-orange-500 text-white shadow-orange-200' :
-                              'border-yellow-500 bg-yellow-500 text-white shadow-yellow-200'
-                            : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 hover:bg-gray-50'
-                        }`}
-                      >
-                        {type}
-                      </button>
+                  <select
+                    value={findingForm.severity}
+                    onChange={(e) => setFindingForm(prev => ({ ...prev, severity: e.target.value }))}
+                    className="w-full border-2 border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                  >
+                    {severities.length === 0 && <option value="">Loading severities...</option>}
+                    {severities.map(sev => (
+                      <option key={sev.id} value={sev.name}>{sev.name}</option>
                     ))}
-                  </div>
+                  </select>
+                  {severities.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">⚠ Severity list is empty. Please check API connection.</p>
+                  )}
                 </div>
 
                 {/* Description */}
@@ -490,67 +623,68 @@ const AuditExecutionDetail = () => {
                   />
                 </div>
 
-                {/* Status & Deadline Row */}
-                <div className="grid grid-cols-2 gap-4">
+                {/* Root Cause & Deadline Row */}
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Root Cause */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Status
+                      Root Cause
                     </label>
-                    <select
-                      value={findingForm.status}
-                      onChange={(e) => setFindingForm(prev => ({ ...prev, status: e.target.value }))}
-                      className="w-full border-2 border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
-                    >
-                      <option value="Open">Open</option>
-                      <option value="In Progress">In Progress</option>
-                      <option value="Resolved">Resolved</option>
-                      <option value="Closed">Closed</option>
-                    </select>
+                    <div className="flex gap-2 items-stretch">
+                      <select
+                        value={findingForm.rootCauseId || ''}
+                        onChange={(e) => setFindingForm(prev => ({ ...prev, rootCauseId: e.target.value ? parseInt(e.target.value) : undefined }))}
+                        className="flex-1 border-2 border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                      >
+                        <option value="">Select root cause...</option>
+                        {rootCauses.map(rc => (
+                          <option key={rc.rootCauseId} value={rc.rootCauseId}>{rc.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddRootCause(true)}
+                        className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 active:bg-green-800 font-bold text-lg transition-all shadow-md hover:shadow-lg flex items-center justify-center shrink-0"
+                        title="Add new root cause"
+                        style={{ minWidth: '44px', height: 'auto' }}
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
 
+                  {/* Deadline */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Deadline
+                      Deadline <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="date"
                       value={findingForm.deadline}
                       onChange={(e) => setFindingForm(prev => ({ ...prev, deadline: e.target.value }))}
                       className="w-full border-2 border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
+                      required
                     />
                   </div>
                 </div>
 
-                {/* Optional IDs Section */}
+                {/* Evidence Upload */}
                 <div className="border-t pt-4">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Required Fields</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Department ID <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        value={findingForm.deptId || ''}
-                        onChange={(e) => setFindingForm(prev => ({ ...prev, deptId: e.target.value ? parseInt(e.target.value) : undefined }))}
-                        className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
-                        placeholder="Enter dept ID"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600 mb-2">
-                        Root Cause ID
-                      </label>
-                      <input
-                        type="number"
-                        value={findingForm.rootCauseId || ''}
-                        onChange={(e) => setFindingForm(prev => ({ ...prev, rootCauseId: e.target.value ? parseInt(e.target.value) : undefined }))}
-                        className="w-full border-2 border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all"
-                        placeholder="Optional"
-                      />
-                    </div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Evidence / Attachment
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      onChange={(e) => setFindingForm(prev => ({ ...prev, evidenceFile: e.target.files?.[0] || null }))}
+                      className="w-full border-2 border-dashed border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                      accept="image/*,.pdf,.doc,.docx"
+                    />
+                    {findingForm.evidenceFile && (
+                      <p className="mt-2 text-xs text-gray-600">
+                        Selected: <span className="font-medium">{findingForm.evidenceFile.name}</span>
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -568,6 +702,107 @@ const AuditExecutionDetail = () => {
                     className="flex-1 px-5 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg hover:from-primary-700 hover:to-primary-800 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed font-semibold shadow-lg hover:shadow-xl transition-all"
                   >
                     💾 Save Finding
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Add Root Cause Modal */}
+        {showAddRootCause && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200 bg-green-600">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white">Add New Root Cause</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddRootCause(false);
+                      setNewRootCauseForm({ name: '', description: '', status: 'Active', category: 'Root Cause' });
+                    }}
+                    className="text-white hover:text-gray-200 text-2xl font-bold"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Root Cause Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newRootCauseForm.name}
+                    onChange={(e) => setNewRootCauseForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full border-2 border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    placeholder="e.g., Human Error, System Failure..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Description <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={newRootCauseForm.description}
+                    onChange={(e) => setNewRootCauseForm(prev => ({ ...prev, description: e.target.value }))}
+                    rows={3}
+                    className="w-full border-2 border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
+                    placeholder="Describe the root cause..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Category <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newRootCauseForm.category}
+                      onChange={(e) => setNewRootCauseForm(prev => ({ ...prev, category: e.target.value }))}
+                      className="w-full border-2 border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      placeholder="Root Cause"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Status <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={newRootCauseForm.status}
+                      onChange={(e) => setNewRootCauseForm(prev => ({ ...prev, status: e.target.value }))}
+                      className="w-full border-2 border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    >
+                      <option value="Active">Active</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddRootCause(false);
+                      setNewRootCauseForm({ name: '', description: '', status: 'Active', category: 'Root Cause' });
+                    }}
+                    className="flex-1 px-5 py-2.5 border-2 border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 text-gray-700 font-semibold transition-all shadow-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddRootCause}
+                    disabled={!newRootCauseForm.name.trim() || !newRootCauseForm.description.trim() || loadingRootCauses}
+                    className="flex-1 px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 active:bg-green-800 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold transition-all shadow-md hover:shadow-lg"
+                  >
+                    {loadingRootCauses ? 'Adding...' : '✓ Add'}
                   </button>
                 </div>
               </div>

@@ -20,6 +20,7 @@ export interface ChecklistItem {
 export interface FindingCreationResult {
   success: boolean;
   finding?: any;
+  data?: any; // Add data property for findingId
   error?: string;
 }
 
@@ -94,12 +95,15 @@ export const useAuditFindings = () => {
 
       // Use additionalData directly if provided with all required fields
       if (additionalData && additionalData.title && additionalData.description) {
-        console.log('Using provided payload:', additionalData);
+        console.log('3. useAuditFindings - Received payload:', JSON.stringify(additionalData, null, 2));
+        console.log('4. Calling createFinding API...');
         const result = await createFinding(additionalData as CreateFindingPayload);
+        console.log('5. API Response:', result);
         
         return {
           success: true,
           finding: result,
+          data: result, // Include data for findingId access
         };
       }
 
@@ -142,6 +146,7 @@ export const useAuditFindings = () => {
       return {
         success: true,
         finding: result,
+        data: result, // Include data for findingId access
       };
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || err.message || 'Failed to create finding';

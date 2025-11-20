@@ -1,5 +1,5 @@
 import React from 'react';
-import { getStatusColor } from '../../../../constants';
+import { getStatusColor, getSeverityColor } from '../../../../constants';
 import type { ChecklistTemplate, FindingRecord } from './types';
 
 interface FindingListProps {
@@ -9,7 +9,6 @@ interface FindingListProps {
   selectedAudit: string;
   setSelectedAudit: (val: string) => void;
   filteredFindings: FindingRecord[];
-  getSeverityColor: (severity: string) => string;
   onOpenInterview: (finding: FindingRecord) => void;
   onOpenImmediateAction: (finding: FindingRecord) => void;
 }
@@ -21,7 +20,6 @@ const FindingList: React.FC<FindingListProps> = ({
   selectedAudit,
   setSelectedAudit,
   filteredFindings,
-  getSeverityColor,
   onOpenInterview,
   onOpenImmediateAction,
 }) => {
@@ -93,28 +91,24 @@ const FindingList: React.FC<FindingListProps> = ({
         </div>
       )}
 
-      {/* Filter */}
-      <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4">
-        <div className="flex items-center gap-4">
-          <label className="text-sm font-medium text-gray-700">Filter by Audit:</label>
-          <select 
-            value={selectedAudit}
-            onChange={(e) => setSelectedAudit(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          >
-            <option value="all">All Audits</option>
-            {audits.map(a => <option key={a.id} value={a.id}>{a.id} - {a.title}</option>)}
-          </select>
-          <span className="text-sm text-gray-600">
-            Showing {filteredFindings.length} finding(s)
-          </span>
-        </div>
-      </div>
-
       {/* Findings Table */}
       <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-        <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-          <h2 className="text-lg font-semibold text-white">Findings List</h2>
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold text-primary-600">Findings List</h2>
+            <span className="text-sm text-gray-600">Showing {filteredFindings.length} finding(s)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Filter by Audit:</label>
+            <select 
+              value={selectedAudit}
+              onChange={(e) => setSelectedAudit(e.target.value)}
+              className="flex-1 border border-gray-300 bg-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="all">All Audits</option>
+              {audits.map(a => <option key={a.id} value={a.id}>{a.id} - {a.title}</option>)}
+            </select>
+          </div>
         </div>
         
         <div className="overflow-x-auto">
@@ -132,7 +126,17 @@ const FindingList: React.FC<FindingListProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {filteredFindings.map((finding) => (
+              {filteredFindings.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-12 text-center">
+                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-gray-500 font-medium">No findings available</p>
+                    <p className="text-sm text-gray-400 mt-1">Findings will appear here when created from audit execution</p>
+                  </td>
+                </tr>
+              ) : filteredFindings.map((finding) => (
                 <tr key={finding.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="text-sm font-medium text-primary-600">{finding.id}</span>
