@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { getFindings, type Finding } from '../../../api/findings';
+import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getSeverityColor } from '../../../constants/statusColors';
 
 const FindingsList = () => {
@@ -38,14 +38,20 @@ const FindingsList = () => {
       try {
         setLoading(true);
         const userDeptId = getUserDeptId();
+        console.log('🔍 DEBUG - User DeptId from token:', userDeptId, 'Type:', typeof userDeptId);
 
-        // Fetch all findings
-        const allFindings = await getFindings();
+        if (userDeptId === null) {
+          console.warn('⚠️ No userDeptId found in token');
+          setError('Không tìm thấy thông tin phòng ban. Vui lòng liên hệ admin.');
+          setFindings([]);
+          setLoading(false);
+          return;
+        }
 
-        // Filter findings by user's department
-        const deptFindings = userDeptId 
-          ? allFindings.filter(f => f.deptId === userDeptId)
-          : allFindings;
+        // Fetch findings by department using dedicated API
+        const deptFindings = await getFindingsByDepartment(userDeptId);
+        console.log('🔍 DEBUG - Department findings:', deptFindings.length);
+
         setFindings(deptFindings);
         setError(null);
       } catch (err: any) {
@@ -82,6 +88,23 @@ const FindingsList = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Quay lại
+          </button>
+          
+          {/* DEBUG BUTTON */}
+          <button
+            onClick={() => {
+              const deptId = getUserDeptId();
+              const token = localStorage.getItem('auth-storage');
+              console.log('=== DEBUG INFO ===');
+              console.log('Token storage:', token);
+              console.log('User DeptId:', deptId);
+              console.log('Findings count:', findings.length);
+              console.log('All findings:', findings);
+              alert(`DeptId: ${deptId}\nFindings: ${findings.length}\nCheck console for details`);
+            }}
+            className="px-3 py-1 bg-purple-600 text-white rounded text-xs"
+          >
+            🐛 Debug Info
           </button>
         </div>
 

@@ -1,4 +1,5 @@
 import { apiClient } from '../hooks/axios';
+import { unwrap } from '../utils';
 
 // Helper function to convert camelCase to PascalCase
 const toPascalCase = (obj: any): any => {
@@ -49,12 +50,34 @@ export interface Finding {
 
 // Get all findings
 export const getFindings = async (): Promise<Finding[]> => {
-  return apiClient.get('/Findings') as any;
+  console.log('📡 Calling GET /Findings...');
+  const res = await apiClient.get('/Findings');
+  console.log('📡 Raw response:', res);
+  console.log('📡 Response data:', res.data);
+  const unwrapped = unwrap<Finding>(res.data);
+  console.log('📡 Unwrapped findings:', unwrapped);
+  return unwrapped;
+};
+
+// Get findings by department
+export const getFindingsByDepartment = async (deptId: number): Promise<Finding[]> => {
+  console.log(`📡 Calling GET /Findings/by-department/${deptId}...`);
+  const res = await apiClient.get(`/Findings/by-department/${deptId}`);
+  console.log('📡 Full response object:', res);
+  
+  // Axios interceptor returns data directly, not res.data
+  const data = res.data !== undefined ? res.data : res;
+  console.log('📡 Data to unwrap:', data);
+  
+  const unwrapped = unwrap<Finding>(data);
+  console.log('📡 Unwrapped findings:', unwrapped.length, 'items');
+  return unwrapped;
 };
 
 // Get finding by ID
 export const getFindingById = async (findingId: string): Promise<Finding> => {
-  return apiClient.get(`/Findings/${findingId}`) as any;
+  const res = await apiClient.get(`/Findings/${findingId}`);
+  return res.data;
 };
 
 // Create a new finding
