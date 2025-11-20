@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import MultiSelect from '../../../../../components/MultiSelect';
+import { useAuth } from '../../../../../contexts';
 
 interface Step4TeamProps {
   level: string;
@@ -24,6 +25,17 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
   onLeadChange,
   onAuditorsChange,
 }) => {
+  const { user } = useAuth();
+  const rawUser: any = user as any;
+  const currentUserId = String(rawUser?.userId ?? rawUser?.id ?? rawUser?.email ?? '');
+
+  // Ensure current user is always in auditors and always disabled
+  useEffect(() => {
+    if (!currentUserId) return;
+    if (!selectedAuditorIds.includes(currentUserId)) {
+      onAuditorsChange([currentUserId, ...selectedAuditorIds]);
+    }
+  }, [currentUserId, selectedAuditorIds, onAuditorsChange]);
   return (
     <div>
       <h3 className="text-md font-semibold text-gray-700 mb-4">Step 4/5: Team & Responsibilities</h3>
@@ -50,18 +62,51 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
         {/* Auditors */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Auditors</label>
-          <MultiSelect
-            options={auditorOptions
-              .filter((u: any) => String(u.userId) !== selectedLeadId)
-              .map((u: any) => ({
-                value: String(u.userId),
-                label: `${u.fullName} (${u.email})`,
-              }))}
-            value={selectedAuditorIds}
-            onChange={onAuditorsChange}
-            placeholder="Select auditor(s)"
-          />
-          <p className="mt-1 text-xs text-gray-500">Bạn có thể chọn 1 hoặc nhiều auditor.</p>
+          {(() => {
+            // Đảm bảo user hiện tại luôn nằm đầu danh sách, luôn disabled
+            const filteredOptions = auditorOptions.filter((u: any) => String(u.userId) !== selectedLeadId);
+            const currentUserOption = auditorOptions.find((u: any) => String(u.userId) === currentUserId);
+            const optionsRaw = [
+              currentUserOption
+                ? {
+                    value: String(currentUserOption.userId),
+                    label: `${currentUserOption.fullName} (${currentUserOption.email})`,
+                    disabled: true,
+                  }
+                : undefined,
+              ...filteredOptions
+                .filter((u: any) => String(u.userId) !== currentUserId)
+                .map((u: any) => ({
+                  value: String(u.userId),
+                  label: `${u.fullName} (${u.email})`,
+                  disabled: false,
+                })),
+            ];
+            const options = optionsRaw.filter((opt) => !!opt) as {
+              value: string;
+              label: string;
+              disabled: boolean;
+            }[];
+
+            // Đảm bảo value luôn chứa user hiện tại
+            const valueWithCurrent = currentUserId
+              ? Array.from(new Set([currentUserId, ...selectedAuditorIds]))
+              : selectedAuditorIds;
+
+            return (
+              <MultiSelect
+                options={options}
+                value={valueWithCurrent}
+                onChange={(next) => {
+                  // Luôn giữ user hiện tại trong value
+                  const withCurrent = currentUserId ? Array.from(new Set([currentUserId, ...next])) : next;
+                  onAuditorsChange(withCurrent);
+                }}
+                placeholder="Select auditor(s)"
+              />
+            );
+          })()}
+          
         </div>
 
         {/* Auditee Owners */}

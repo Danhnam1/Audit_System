@@ -33,7 +33,7 @@ import { Step3Checklist } from './components/PlanForm/Step3Checklist';
 import { Step4Team } from './components/PlanForm/Step4Team';
 import { Step5Schedule } from './components/PlanForm/Step5Schedule';
 
-const AUDITOR_VISIBLE_STATUSES = ['draft', 'pendingreview', 'pendingdirectorapproval', 'approved', 'inactive'];
+const AUDITOR_VISIBLE_STATUSES = ['draft', 'pendingreview', 'pendingdirectorapproval', 'approved', 'rejected'];
 
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
@@ -51,6 +51,9 @@ const SQAStaffAuditPlanning = () => {
   // Plans data
   const [existingPlans, setExistingPlans] = useState<AuditPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(false);
+  // UI: tabs for plans when more than pageSize
+  const [activePlansTab, setActivePlansTab] = useState<number>(1);
+  const pageSize = 7;
 
   const visiblePlans = useMemo(() => {
     return existingPlans.filter((plan) => {
@@ -789,7 +792,7 @@ const SQAStaffAuditPlanning = () => {
           />
 
           <PlanTable
-            filteredPlans={filterState.filteredPlans}
+            filteredPlans={activePlansTab === 1 ? filterState.filteredPlans.slice(0, pageSize) : filterState.filteredPlans.slice(pageSize)}
             existingPlans={visiblePlans}
             loadingPlans={loadingPlans}
             onViewDetails={handleViewDetails}
@@ -797,7 +800,29 @@ const SQAStaffAuditPlanning = () => {
             onDeletePlan={handleDeletePlan}
             getStatusColor={getStatusColor}
             getBadgeVariant={getBadgeVariant}
+            startIndex={activePlansTab === 1 ? 0 : pageSize}
           />
+
+          {/* Tabs / pagination placed at bottom, centered like the design */}
+          {filterState.filteredPlans.length > pageSize && (
+            <div className="px-6 py-4 border-t bg-white flex items-center justify-center gap-3">
+              <button
+                onClick={() => setActivePlansTab(1)}
+                className={`px-4 py-2 rounded font-medium transition ${activePlansTab === 1 ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+              >
+                1
+              </button>
+
+              
+
+              <button
+                onClick={() => setActivePlansTab(2)}
+                className={`px-4 py-2 rounded font-medium transition ${activePlansTab === 2 ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}
+              >
+                2
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Details Modal */}
