@@ -51,6 +51,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <UsersIcon />, label: 'My Audit Teams', path: `${ROUTES.AUDITOR}/team` },
         { icon: <DashboardIcon />, label: 'Finding Management', path: `${ROUTES.AUDITOR}/findings` },
         { icon: <ReportsIcon />, label: 'Reports', path: `${ROUTES.AUDITOR}/reports` },
+        { icon: <ReportsIcon />, label: 'History Upload', path: `${ROUTES.AUDITOR}/history-upload` },
         { icon: <DashboardIcon />, label: 'Requests', path: `${ROUTES.AUDITOR}/requests` },
       ];
 

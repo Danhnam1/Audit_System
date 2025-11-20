@@ -219,7 +219,7 @@ export default function AuditorTeamPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-xl font-semibold text-primary-700">My Audit Plans</h1>
-              <p className="text-gray-600 text-sm">Các kế hoạch kiểm định mà bạn được phân công</p>
+              <p className="text-gray-600 text-sm">The inspection plans you are assigned to</p>
             </div>
           </div>
 

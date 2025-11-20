@@ -18,11 +18,13 @@ import { getAdminUsers } from '../../../api/adminUsers';
 const SQAHeadAuditReview = () => {
   const { user } = useAuth();
   const [selectedPlanFull, setSelectedPlanFull] = useState<any | null>(null);
-  const [plans, setPlans] = useState<any[]>([]);
+  const [pendingPlans, setPendingPlans] = useState<any[]>([]);
+  const [reviewedPlans, setReviewedPlans] = useState<any[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
   const [criteriaList, setCriteriaList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pending' | 'reviewed'>('pending');
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -35,11 +37,17 @@ const SQAHeadAuditReview = () => {
   // normalize list wrapper variations (array | { $values: [] } | { values: [] })
   let list: any = unwrap(resPlans);
 
-      // Filter plans that are pending review (backend may set 'PendingReview' or similar)
-      const pending = list.filter((p: any) => {
-        const s = String(p.status || '').toLowerCase();
-        return s.includes('pending') || s.includes('submitted');
-      });
+      // Split into Pending vs Reviewed
+      const isPending = (s: string) => {
+        const v = String(s || '').toLowerCase();
+        return v.includes('pendingreview') ;
+      };
+      const isReviewed = (s: string) => {
+        const v = String(s || '').toLowerCase();
+        return v.includes('approve') || v.includes('reject') || v.includes('published') || v.includes('pending director');
+      };
+      const pending = list.filter((p: any) => isPending(p.status || p.state));
+      const reviewed = list.filter((p: any) => isReviewed(p.status || p.state));
       // normalize departments list from API
       const deptList = Array.isArray(deptsRes)
         ? deptsRes.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
@@ -111,12 +119,15 @@ const SQAHeadAuditReview = () => {
       };
 
       const pendingNormalized = pending.map(normalizeForList);
-      setPlans(pendingNormalized);
+      const reviewedNormalized = reviewed.map(normalizeForList);
+      setPendingPlans(pendingNormalized);
+      setReviewedPlans(reviewedNormalized);
       setOwnerOptions(Array.isArray(adminUsers) ? adminUsers : []);
       setCriteriaList(Array.isArray(critRes) ? critRes : []);
     } catch (err) {
       console.error('Failed to load audit plans for review', err);
-      setPlans([]);
+      setPendingPlans([]);
+      setReviewedPlans([]);
     } finally {
       setLoading(false);
     }
@@ -166,8 +177,9 @@ const SQAHeadAuditReview = () => {
       setSelectedPlanFull(normalized);
 
       // update plans list with department name derived from normalized details
-  const deptNames = ((normalized.scopeDepartments?.values || []) as any).map((d: any) => d.deptName || d.name).filter(Boolean);
-      setPlans(prev => prev.map(p => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
+    const deptNames = ((normalized.scopeDepartments?.values || []) as any).map((d: any) => d.deptName || d.name).filter(Boolean);
+      setPendingPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
+      setReviewedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
     } catch (err) {
       console.error('Failed to load plan details', err);
       alert('Không thể tải chi tiết kế hoạch. Vui lòng thử lại.');
@@ -187,14 +199,23 @@ const SQAHeadAuditReview = () => {
 
       <div className="px-6 pb-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatCard title="Pending Review" value={plans.length.toString()} icon={<ClockIcon />} variant="primary-light" />
-          <StatCard title="High Priority" value={plans.filter(a => a.priority === 'High').length.toString()} icon={<AuditIcon />} variant="primary-dark" />
-          <StatCard title="Total Plans" value={(plans.length).toString()} icon={<ChartBarIcon />} variant="primary" />
+          <StatCard title="Pending Review" value={pendingPlans.length.toString()} icon={<ClockIcon />} variant="primary-light" />
+          <StatCard title="High Priority" value={pendingPlans.filter((a: any) => a.priority === 'High').length.toString()} icon={<AuditIcon />} variant="primary-dark" />
+          <StatCard title="Reviewed" value={reviewedPlans.length.toString()} icon={<ChartBarIcon />} variant="primary" />
         </div>
 
         {!selectedPlanFull ? (
           <div>
-            <AuditReviewList plans={plans} onSelect={(id) => void handleSelectPlan(id)} getDepartmentName={(id:any)=> getDepartmentName(id, departments)} />
+            <div className="mb-3 flex gap-2">
+              <button onClick={() => setActiveTab('pending')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${activeTab==='pending' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-800'}`}>Pending</button>
+              <button onClick={() => setActiveTab('reviewed')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${activeTab==='reviewed' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-800'}`}>Reviewed</button>
+            </div>
+            <AuditReviewList
+              title={activeTab==='pending' ? 'Pending Audit Plans' : 'Reviewed Audit Plans'}
+              plans={activeTab==='pending' ? pendingPlans : reviewedPlans}
+              onSelect={(id) => void handleSelectPlan(id)}
+              getDepartmentName={(id:any)=> getDepartmentName(id, departments)}
+            />
             {loading && <p className="text-sm text-gray-500 mt-2">Loading...</p>}
           </div>
         ) : (

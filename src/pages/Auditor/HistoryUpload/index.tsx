@@ -1,0 +1,249 @@
+import { useEffect, useMemo, useState } from 'react';
+import { MainLayout } from '../../../layouts';
+import { useAuth } from '../../../contexts';
+import { getAuditPlans } from '../../../api/audits';
+import { getAuditDocuments } from '../../../api/auditDocuments';
+import { getAdminUsers } from '../../../api/adminUsers';
+import { unwrap } from '../../../utils/normalize';
+import { getStatusColor } from '../../../constants';
+
+interface AuditDocRow {
+  auditId: string;
+  id?: string;
+  documentType?: string;
+  contentType?: string;
+  uploadedBy?: string;
+  uploadedAt?: string;
+  sizeBytes?: number;
+  status?: string;
+  url?: string;
+}
+
+const HistoryUploadPage = () => {
+  const { user } = useAuth();
+  const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
+
+  const [audits, setAudits] = useState<any[]>([]);
+  const [loadingAudits, setLoadingAudits] = useState(false);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [documentsMap, setDocumentsMap] = useState<Record<string, AuditDocRow[]>>({});
+  const [expandedAudit, setExpandedAudit] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [userMap, setUserMap] = useState<Record<string,string>>({});
+
+  // Load audits (Submitted + Completed) similar to reports page
+  useEffect(() => {
+    const loadAudits = async () => {
+      setLoadingAudits(true);
+      setError(null);
+      try {
+        const res = await getAuditPlans();
+        const arr = unwrap(res);
+        const visible = (Array.isArray(arr) ? arr : []).filter((a: any) => {
+          const v = String(a.status || a.state || a.approvalStatus || '').toLowerCase().replace(/\s+/g,'');
+          // History only for audits that are Completed (including backend 'Approved')
+          return v.includes('completed') || v.includes('complete') || v.includes('approve');
+        });
+        setAudits(visible);
+        // Preload users once for name mapping
+        try {
+          const users = await getAdminUsers();
+          const map: Record<string,string> = {};
+          (users || []).forEach(u => {
+            const id = String(u.userId || u.$id || '').trim();
+            if (id) map[id] = u.fullName || u.email || id;
+          });
+          setUserMap(map);
+        } catch (e) {
+          console.warn('Load users for upload history failed', e);
+        }
+      } catch (e) {
+        console.error('Load audits failed', e);
+        setError('Không tải được danh sách audit');
+      } finally {
+        setLoadingAudits(false);
+      }
+    };
+    loadAudits();
+  }, []);
+
+  // Load documents for all audits when audits list changes
+  useEffect(() => {
+    if (!audits.length) return;
+    const fetchDocs = async () => {
+      setLoadingDocs(true);
+      try {
+        const results = await Promise.allSettled(audits.map(a => getAuditDocuments(String(a.auditId || a.id || a.$id))));
+        const next: Record<string, AuditDocRow[]> = {};
+        results.forEach((res, idx) => {
+          const auditId = String(audits[idx].auditId || audits[idx].id || audits[idx].$id);
+          if (res.status === 'fulfilled') {
+            const rows = Array.isArray(res.value) ? res.value : [res.value];
+            next[auditId] = rows.filter(Boolean).map((d: any) => ({
+              auditId,
+              id: d.id || d.$id || d.documentId || auditId + '_' + (d.uploadedAt || ''),
+              documentType: d.documentType || d.type || '—',
+              contentType: d.contentType || d.mimeType || '—',
+              uploadedBy: ((): string => {
+                const uploadedById = d.uploadedBy || d.uploadedByUserId || d.userId || d.uploadedByUser || '';
+                const idStr = String(uploadedById || '').trim();
+                if (idStr && userMap[idStr]) return userMap[idStr];
+                return d.uploadedByUser || d.userName || idStr || '—';
+              })(),
+              uploadedAt: d.uploadedAt || d.createdAt || d.createdDate || '',
+              sizeBytes: d.sizeBytes || d.size || 0,
+              status: d.status || '—',
+              url: d.blobPath || d.url || d.downloadUrl,
+            }));
+          } else {
+            next[auditId] = [];
+          }
+        });
+        setDocumentsMap(next);
+      } catch (e) {
+        console.error('Fetch document history failed', e);
+      } finally {
+        setLoadingDocs(false);
+      }
+    };
+    fetchDocs();
+  }, [audits, userMap]);
+
+  const auditRows = useMemo(() => (
+    (Array.isArray(audits) ? audits : []).map((a: any, idx: number) => {
+      const id = String(a.auditId || a.id || a.$id || `audit_${idx}`);
+      const title = a.title || a.name || `Audit ${idx+1}`;
+      const rawStatus = a.status || a.state || a.approvalStatus || '—';
+      const norm = String(rawStatus).toLowerCase().replace(/\s+/g,'');
+      const status = (norm.includes('approve') || norm.includes('completed') || norm.includes('complete')) ? 'Completed' : rawStatus;
+      return { auditId: id, title, status };
+    })
+  ), [audits]);
+
+  const toggleExpand = (auditId: string) => {
+    setExpandedAudit(prev => prev === auditId ? '' : auditId);
+  };
+
+  return (
+    <MainLayout user={layoutUser}>
+      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
+        <div className="px-6 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-primary-600">History Upload</h1>
+            <p className="text-gray-600 text-sm mt-1">Document upload history for each Audit</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-6 pb-6 space-y-6">
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
+            <h2 className="text-lg font-semibold text-white">Audit Upload History</h2>
+          </div>
+
+          {error && <div className="px-6 py-3 text-sm text-red-600 bg-red-50 border-b border-red-100">{error}</div>}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Uploads</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {loadingAudits && (
+                  <tr><td colSpan={4} className="px-6 py-4 text-sm text-gray-500">Đang tải audits...</td></tr>
+                )}
+                {!loadingAudits && auditRows.map(r => {
+                  const docs = documentsMap[r.auditId] || [];
+                  return (
+                    <tr key={r.auditId} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-gray-900">{r.title}</span>
+                          <span className="text-xs text-gray-500">{r.auditId}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>{r.status}</span></td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center min-w-[2rem] h-8 rounded-full bg-primary-50 text-primary-700 text-sm font-semibold border border-primary-100">{docs.length}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button
+                          onClick={() => toggleExpand(r.auditId)}
+                          className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                        >{expandedAudit === r.auditId ? 'Hide' : 'View'} Details</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!loadingAudits && auditRows.length === 0 && (
+                  <tr><td colSpan={4} className="px-6 py-4 text-sm text-gray-500">Không có audit phù hợp</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {expandedAudit && (
+            <div className="border-t border-primary-100">
+              <div className="px-6 py-3 flex items-center justify-between bg-gray-50">
+                <h3 className="text-sm font-semibold text-gray-700">Uploads for Audit {expandedAudit}</h3>
+                {loadingDocs && <span className="text-xs text-gray-500">Đang tải lịch sử...</span>}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-gray-700">Document Type</th>
+                      <th className="px-4 py-2 text-left text-gray-700">Content Type</th>
+                      <th className="px-4 py-2 text-left text-gray-700">Uploaded By</th>
+                      <th className="px-4 py-2 text-left text-gray-700">Uploaded At</th>
+                      <th className="px-4 py-2 text-left text-gray-700">Size</th>
+                      <th className="px-4 py-2 text-left text-gray-700">Status</th>
+                      <th className="px-4 py-2 text-left text-gray-700">Download</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {(documentsMap[expandedAudit] || []).map(doc => {
+                      const dateStr = doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleString() : '—';
+                      const sizeKB = doc.sizeBytes ? Math.round(doc.sizeBytes / 1024) : 0;
+                      return (
+                        <tr key={doc.id} className="hover:bg-white">
+                          <td className="px-4 py-2">{doc.documentType}</td>
+                          <td className="px-4 py-2">{doc.contentType}</td>
+                          <td className="px-4 py-2">{doc.uploadedBy}</td>
+                          <td className="px-4 py-2">{dateStr}</td>
+                          <td className="px-4 py-2">{sizeKB ? `${sizeKB} KB` : '—'}</td>
+                          <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(doc.status || '')}`}>{doc.status}</span></td>
+                          <td className="px-4 py-2">
+                            {doc.url ? (
+                              <a
+                                href={doc.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary-600 hover:text-primary-700"
+                              >Download</a>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {(!documentsMap[expandedAudit] || documentsMap[expandedAudit].length === 0) && !loadingDocs && (
+                      <tr><td colSpan={7} className="px-4 py-3 text-center text-gray-500">Chưa có tài liệu nào được upload</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </MainLayout>
+  );
+};
+
+export default HistoryUploadPage;

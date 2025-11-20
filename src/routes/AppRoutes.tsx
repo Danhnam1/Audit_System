@@ -21,11 +21,13 @@ const SQAStaffFindingManagement = lazy(() => import("../pages/Auditor/FindingMan
 const SQAStaffAuditExecutionDetail = lazy(() => import("../pages/Auditor/FindingManagement/AuditExecutionDetail"));
 const SQAStaffReports = lazy(() => import("../pages/Auditor/Reports"));
 const SQAStaffRequests = lazy(() => import("../pages/Auditor/Requests"));
+const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"));
 
 // Lead Auditor pages (formerly SQA Head)
 const SQAHeadDashboard = lazy(() => import("../pages/LeadAuditor/Dashboard"));
 const SQAHeadAuditReview = lazy(() => import("../pages/LeadAuditor/AuditReview"));
 const SQAHeadTeam = lazy(() => import("../pages/LeadAuditor/Team"));
+const SQAHeadReports = lazy(() => import("../pages/LeadAuditor/Reports"));
 
 // CAPA Owner pages (formerly Department Staff)
 const DepartmentStaffDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard"));
@@ -189,6 +191,14 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
+            <Route
+                path="/auditor/history-upload"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffHistoryUpload />
+                    </ProtectedRoute>
+                }
+            />
 
             {/* Protected routes - Lead Auditor */}
             <Route
@@ -212,6 +222,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <SQAHeadTeam />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/reports"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <SQAHeadReports />
                     </ProtectedRoute>
                 }
             />

@@ -104,6 +104,27 @@ export const exportAuditPdf = async (auditId: string): Promise<Blob> => {
   return apiClient.get(`/Audits/ExportPdf/${auditId}`, { responseType: 'blob' } as any) as any;
 };
 
+// Submit audit to Lead Auditor
+export const submitAudit = async (auditId: string): Promise<any> => {
+  return apiClient.post(`/Audits/Submit/${auditId}`) as any;
+};
+
+// Approve audit report (Lead Auditor action)
+// New canonical endpoint per Swagger: /api/AuditReports/{auditId}/approve
+export const approveAuditReport = async (auditId: string): Promise<any> => {
+  return apiClient.post(`/AuditReports/${auditId}/approve`) as any;
+};
+
+// Reject audit report (Lead Auditor action)
+// New canonical endpoint per Swagger: /api/AuditReports/{auditId}/reject
+export const rejectAuditReport = async (auditId: string, payload: { comment?: string } = {}): Promise<any> => {
+  return apiClient.post(`/AuditReports/${auditId}/reject`, { auditId, comment: payload.comment ?? '' }) as any;
+};
+
+// Backwards compatibility (will be deprecated)
+export const approveAudit = approveAuditReport;
+export const rejectAudit = rejectAuditReport;
+
 export default {
   createAudit,
   addAuditScopeDepartment,
@@ -117,4 +138,10 @@ export default {
   getAuditChartBar,
   getAuditSummary,
   exportAuditPdf,
+  submitAudit,
+  approveAuditReport,
+  rejectAuditReport,
+  // legacy names
+  approveAudit,
+  rejectAudit,
 };
