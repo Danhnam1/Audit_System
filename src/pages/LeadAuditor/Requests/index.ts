@@ -1,1 +1,3 @@
-export { default as EvidenceReview } from './EvidenceReview';
+import ActionReview from './ActionReview';
+
+export default ActionReview;

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getActionsForReview, approveAction, rejectAction } from '../../../api/actionReview';
+import { getActionsForReview } from '../../../api/actionReview';
+import { approveActionHigherLevel, rejectActionHigherLevel } from '../../../api/actionReviewHigherLevel';
 import { getFindings, getFindingById } from '../../../api/findings';
 import { getAttachments } from '../../../api/attachments';
 
@@ -80,12 +81,12 @@ const ActionReview = () => {
     enabled: !!selectedFinding?.findingId,
   });
 
-  // Approve mutation
+  // Approve mutation (Higher Level)
   const approveMutation = useMutation({
     mutationFn: ({ actionId, feedback }: { actionId: string; feedback?: string }) => 
-      approveAction(actionId, feedback),
+      approveActionHigherLevel(actionId, feedback),
     onSuccess: () => {
-      alert('✅ Action approved');
+      alert('✅ Action approved at higher level');
       queryClient.invalidateQueries({ queryKey: ['actions-for-review'] });
       closeDetailModal();
     },
@@ -94,12 +95,12 @@ const ActionReview = () => {
     },
   });
 
-  // Reject mutation
+  // Reject mutation (Higher Level)
   const rejectMutation = useMutation({
     mutationFn: ({ actionId, feedback }: { actionId: string; feedback: string }) => 
-      rejectAction(actionId, feedback),
+      rejectActionHigherLevel(actionId, feedback),
     onSuccess: () => {
-      alert('🔄 Action returned for correction');
+      alert('🔄 Action rejected at higher level');
       queryClient.invalidateQueries({ queryKey: ['actions-for-review'] });
       closeDetailModal();
     },
@@ -124,11 +125,11 @@ const ActionReview = () => {
     returned: findingAttachments.filter(a => a.status === 'Returned').length,
   };
 
-  // Filter actions
+  // Filter actions (LeadAuditor reviews Approved actions)
   const filteredActions = actions.filter((action: any) => {
     const matchesSearch = action.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           action.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesPending = !showPendingOnly || action.status === 'Active';
+    const matchesPending = !showPendingOnly || action.status === 'Approved';
     return matchesSearch && matchesPending;
   });
 
@@ -204,8 +205,8 @@ const ActionReview = () => {
     <div className="p-4 sm:p-6 min-h-screen bg-gray-50">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">📋 Action Review</h1>
-        <p className="text-sm sm:text-base text-gray-600 mt-1">Review and approve corrective actions with evidence</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800">📝 Action Review (Higher Level)</h1>
+        <p className="text-sm sm:text-base text-gray-600 mt-1">Review and approve auditor-approved actions</p>
       </div>
 
       {/* Filters */}
@@ -229,7 +230,7 @@ const ActionReview = () => {
               className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
             <span className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
-              Show only active actions
+              Show only approved actions
             </span>
           </label>
 
@@ -701,7 +702,7 @@ const ActionReview = () => {
                   >
                     Close
                   </button>
-                  {selectedAction.status === 'Active' && (actionAttachmentSummary.total > 0 || findingAttachmentSummary.total > 0) && 
+                  {selectedAction.status === 'Approved' && (actionAttachmentSummary.total > 0 || findingAttachmentSummary.total > 0) && 
                    (actionAttachmentSummary.approved < actionAttachmentSummary.total || findingAttachmentSummary.approved < findingAttachmentSummary.total) && (
                     <div className="text-xs sm:text-sm text-amber-600 flex items-center gap-2">
                       ⚠️ Warning: Not all attachments are approved ({actionAttachmentSummary.approved + findingAttachmentSummary.approved}/{actionAttachmentSummary.total + findingAttachmentSummary.total})
@@ -709,14 +710,14 @@ const ActionReview = () => {
                   )}
                 </div>
                 
-                {selectedAction.status === 'Active' && (
+                {selectedAction.status === 'Approved' && (
                   <div className="flex gap-2 sm:gap-3">
                     <button
                       onClick={handleReject}
                       disabled={rejectMutation.isPending}
                       className="flex-1 sm:flex-initial px-4 sm:px-6 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
                     >
-                      <span className="hidden sm:inline">✗ Reject & Return</span>
+                      <span className="hidden sm:inline">✗ Reject Action</span>
                       <span className="sm:hidden">✗ Reject</span>
                     </button>
                     <button
@@ -724,7 +725,7 @@ const ActionReview = () => {
                       disabled={approveMutation.isPending}
                       className="flex-1 sm:flex-initial px-4 sm:px-6 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
                     >
-                      <span className="hidden sm:inline">✓ Approve Action</span>
+                      <span className="hidden sm:inline">✓ Approve (Final)</span>
                       <span className="sm:hidden">✓ Approve</span>
                     </button>
                   </div>
