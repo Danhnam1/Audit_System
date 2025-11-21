@@ -41,7 +41,8 @@ export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attach
   const formData = new FormData();
   formData.append('EntityType', dto.entityType);
   formData.append('EntityId', dto.entityId);
-  if (dto.status !== undefined) formData.append('Status', dto.status || '');
+  // Status is required by backend - always send it
+  formData.append('Status', dto.status !== undefined && dto.status !== null ? dto.status : '');
   if (dto.retentionUntil) formData.append('RetentionUntil', dto.retentionUntil);
   if (dto.isArchived !== undefined) formData.append('IsArchived', String(dto.isArchived));
   formData.append('file', dto.file);
@@ -68,6 +69,25 @@ export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attach
     console.error('Error response:', error?.response);
     console.error('Error data:', error?.response?.data);
     console.error('Error status:', error?.response?.status);
+    
+    // Extract validation errors if available
+    const errorData = error?.response?.data;
+    if (errorData?.errors && typeof errorData.errors === 'object') {
+      console.error('Validation errors:', errorData.errors);
+      const validationErrors: string[] = [];
+      Object.keys(errorData.errors).forEach(key => {
+        const fieldErrors = errorData.errors[key];
+        if (Array.isArray(fieldErrors)) {
+          fieldErrors.forEach((err: string) => {
+            validationErrors.push(`${key}: ${err}`);
+          });
+        } else if (typeof fieldErrors === 'string') {
+          validationErrors.push(`${key}: ${fieldErrors}`);
+        }
+      });
+      console.error('Validation errors list:', validationErrors);
+    }
+    
     console.error('Error headers:', error?.response?.headers);
     console.error('Full error:', error);
     throw error;

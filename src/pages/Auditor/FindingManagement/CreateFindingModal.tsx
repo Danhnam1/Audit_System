@@ -109,10 +109,10 @@ const CreateFindingModal = ({
     setSubmitting(true);
     
     try {
-      // Calculate retentionUntil (30 days from now)
+      // Calculate retentionUntil (30 days from now) - format as YYYY-MM-DD
       const retentionDate = new Date();
       retentionDate.setDate(retentionDate.getDate() + 30);
-      const retentionUntil = retentionDate.toISOString().split('T')[0];
+      const retentionUntil = retentionDate.toISOString().split('T')[0]; // Format: YYYY-MM-DD
 
       // Create finding payload
       // Based on working example: rootCauseId and reviewerId can be null
@@ -150,21 +150,40 @@ const CreateFindingModal = ({
       if (files.length > 0) {
         console.log(`Uploading ${files.length} file(s)...`);
         
+        const uploadResults = [];
         for (const file of files) {
           try {
-            await uploadAttachment({
-              entityType: 'Finding',
+            console.log(`Uploading file: ${file.name}...`);
+            const result =             await uploadAttachment({
+              entityType: 'finding', // lowercase as per API example
               entityId: findingId,
-              status: '',
-              retentionUntil: retentionUntil,
+              status: 'Open', // Status is required by backend, use 'Open' as default
+              retentionUntil: retentionUntil, // Format: YYYY-MM-DD
               isArchived: false,
               file: file,
             });
-            console.log(`File ${file.name} uploaded successfully`);
-          } catch (fileError) {
-            console.error(`Error uploading file ${file.name}:`, fileError);
+            console.log(`✅ File ${file.name} uploaded successfully:`, result);
+            uploadResults.push({ file: file.name, success: true });
+          } catch (fileError: any) {
+            console.error(`❌ Error uploading file ${file.name}:`, fileError);
+            console.error('Upload error details:', {
+              message: fileError?.message,
+              response: fileError?.response,
+              data: fileError?.response?.data,
+              status: fileError?.response?.status,
+            });
+            uploadResults.push({ file: file.name, success: false, error: fileError?.message });
             // Continue with other files even if one fails
           }
+        }
+        
+        // Show summary of uploads
+        const successCount = uploadResults.filter(r => r.success).length;
+        const failCount = uploadResults.filter(r => !r.success).length;
+        if (failCount > 0) {
+          console.warn(`⚠️ ${successCount} file(s) uploaded, ${failCount} file(s) failed`);
+        } else {
+          console.log(`✅ All ${successCount} file(s) uploaded successfully`);
         }
       }
 
