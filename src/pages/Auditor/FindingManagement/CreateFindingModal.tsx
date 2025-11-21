@@ -2,11 +2,7 @@ import { useState, useEffect } from 'react';
 import { createFinding } from '../../../api/findings';
 import { getFindingSeverities } from '../../../api/findingSeverity';
 import { uploadAttachment } from '../../../api/attachments';
-<<<<<<< HEAD
 import { markChecklistItemNonCompliant } from '../../../api/checklists';
-=======
-import useAuthStore from '../../../store/useAuthStore';
->>>>>>> 6378783f0de53f5576befa7ddff06f15ee91a7b2
 
 interface CreateFindingModalProps {
   isOpen: boolean;
@@ -44,6 +40,10 @@ const CreateFindingModal = ({
     deadline?: string;
     files?: string;
   }>({});
+
+  // Confirmation modal state
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showCreateConfirmModal, setShowCreateConfirmModal] = useState(false);
 
   // Load severities on mount
   useEffect(() => {
@@ -104,6 +104,17 @@ const CreateFindingModal = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+
+    // Show confirmation modal before creating
+    setShowCreateConfirmModal(true);
+  };
+
+  const handleConfirmCreate = async () => {
+    setShowCreateConfirmModal(false);
     
     if (!validateForm()) {
       return;
@@ -190,6 +201,16 @@ const CreateFindingModal = ({
         }
       }
 
+      // Mark checklist item as non-compliant
+      try {
+        console.log('Marking checklist item as non-compliant:', checklistItem.auditItemId);
+        await markChecklistItemNonCompliant(checklistItem.auditItemId);
+        console.log('✅ Checklist item marked as non-compliant');
+      } catch (markError: any) {
+        console.error('❌ Error marking item as non-compliant:', markError);
+        // Don't throw error, just log it - finding was created successfully
+      }
+
       // Reset form
       setDescription('');
       setSeverity('');
@@ -219,7 +240,19 @@ const CreateFindingModal = ({
   };
 
   const handleClose = () => {
-    if (!submitting) {
+    if (submitting) return;
+    
+    // Check if form has any data
+    const hasData = description.trim() !== '' || 
+                   severity !== '' || 
+                   deadline !== '' || 
+                   files.length > 0;
+    
+    if (hasData) {
+      // Show confirmation modal if form has data
+      setShowConfirmModal(true);
+    } else {
+      // No data, close directly
       setDescription('');
       setSeverity('');
       setDeadline('');
@@ -227,6 +260,20 @@ const CreateFindingModal = ({
       setErrors({});
       onClose();
     }
+  };
+
+  const handleConfirmClose = () => {
+    setDescription('');
+    setSeverity('');
+    setDeadline('');
+    setFiles([]);
+    setErrors({});
+    setShowConfirmModal(false);
+    onClose();
+  };
+
+  const handleCancelClose = () => {
+    setShowConfirmModal(false);
   };
 
   if (!isOpen) return null;
@@ -419,6 +466,87 @@ const CreateFindingModal = ({
           </form>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={handleCancelClose}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Confirm Cancel
+              </h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure you want to cancel? All entered data will be lost.
+              </p>
+              
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCancelClose}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  No, Keep Editing
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmClose}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Yes, Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Create */}
+      {showCreateConfirmModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => setShowCreateConfirmModal(false)}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Confirm Create Finding
+              </h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure you want to create this finding? The checklist item will be marked as non-compliant.
+              </p>
+              
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateConfirmModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  No, Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmCreate}
+                  disabled={submitting}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting ? 'Creating...' : 'Yes, Create'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
