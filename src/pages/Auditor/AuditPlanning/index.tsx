@@ -9,7 +9,7 @@ import { addCriterionToAudit } from '../../../api/auditCriteriaMap';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { addTeamMember } from '../../../api/auditTeam';
 import { getDepartments } from '../../../api/departments';
-import { addAuditSchedule } from '../../../api/auditSchedule';
+import { addAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule';
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
 import { getAuditPlans, getAuditPlanById, updateAuditPlan, deleteAuditPlan, submitToLeadAuditor } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
@@ -244,11 +244,53 @@ const SQAStaffAuditPlanning = () => {
 
       try {
         const rawDetails = await getAuditPlanById(auditId);
-        const normalizedDetails = normalizePlanDetails(rawDetails, {
+        
+        // Debug: Log raw API response structure
+        console.log('📥 Raw API Response:', {
+          hasAudit: !!rawDetails?.audit,
+          auditTitle: rawDetails?.audit?.title,
+          rawTitle: rawDetails?.title,
+          auditId: rawDetails?.audit?.auditId || rawDetails?.auditId,
+        });
+        
+        // Fetch schedules separately if not included in main response
+        let schedulesData = rawDetails?.schedules;
+        if (!schedulesData || (!schedulesData.values && !schedulesData.$values && !Array.isArray(schedulesData))) {
+          try {
+            const schedulesResponse = await getAuditSchedules(auditId);
+            const { unwrap } = await import('../../../utils/normalize');
+            const schedulesArray = unwrap(schedulesResponse);
+            schedulesData = { values: schedulesArray };
+          } catch (scheduleErr) {
+            console.warn('⚠️ Failed to fetch schedules separately:', scheduleErr);
+            schedulesData = { values: [] };
+          }
+        }
+
+        // Merge schedules into rawDetails
+        const detailsWithSchedules = {
+          ...rawDetails,
+          schedules: schedulesData,
+        };
+
+        const normalizedDetails = normalizePlanDetails(detailsWithSchedules, {
           departments: deptList,
           criteriaList: criteria,
           users: [...auditorOptions, ...ownerOptions],
         });
+        
+        // Debug: Log normalized details to check data
+        console.log('📋 Normalized Plan Details:', {
+          title: normalizedDetails.title,
+          type: normalizedDetails.type,
+          startDate: normalizedDetails.startDate,
+          endDate: normalizedDetails.endDate,
+          scope: normalizedDetails.scope,
+          status: normalizedDetails.status,
+          objective: normalizedDetails.objective,
+          schedulesCount: normalizedDetails.schedules?.values?.length || 0,
+        });
+        
         setSelectedPlanDetails(normalizedDetails);
         setShowDetailsModal(true);
         return;
@@ -261,12 +303,23 @@ const SQAStaffAuditPlanning = () => {
           throw new Error('Plan not found in table. Backend API /AuditPlan/{id} is also returning 500 error.');
         }
 
+        // Try to fetch schedules even if main API failed
+        let schedulesData: { values: any[] } = { values: [] };
+        try {
+          const schedulesResponse = await getAuditSchedules(auditId);
+          const { unwrap } = await import('../../../utils/normalize');
+          const schedulesArray = unwrap(schedulesResponse);
+          schedulesData = { values: schedulesArray };
+        } catch (scheduleErr) {
+          console.warn('⚠️ Failed to fetch schedules separately:', scheduleErr);
+        }
+
         const basicDetails = {
           ...planFromTable,
           scopeDepartments: { values: [] },
           criteria: { values: [] },
           auditTeams: { values: [] },
-          schedules: { values: [] },
+          schedules: schedulesData,
           createdByUser: {
             fullName: planFromTable.createdBy || 'Unknown',
             email: 'N/A',
@@ -274,7 +327,7 @@ const SQAStaffAuditPlanning = () => {
           }
         };
 
-        alert('⚠️ Backend API Issue\n\nGET /api/AuditPlan/{id} is returning 500 error.\n\nShowing basic information only.\nNested data (departments, criteria, team, schedules) is not available.\n\nPlease contact backend team to fix this endpoint.');
+        alert('⚠️ Backend API Issue\n\nGET /api/AuditPlan/{id} is returning 500 error.\n\nShowing basic information only.\nNested data (departments, criteria, team) is not available.\nSchedules have been fetched separately.\n\nPlease contact backend team to fix this endpoint.');
 
         setSelectedPlanDetails(basicDetails);
         setShowDetailsModal(true);

@@ -17,6 +17,11 @@ export const getAuditScopeDepartments = async (): Promise<any> => {
   return apiClient.get('/AuditScopeDepartment') as any;
 };
 
+// Delete audit scope department by ID
+export const deleteAuditScopeDepartment = async (id: string | number): Promise<any> => {
+  return apiClient.delete(`/AuditScopeDepartment/${id}`) as any;
+};
+
 // Get all audit plans (list view)
 export const getAuditPlans = async (): Promise<any> => {
   return apiClient.get('/Audits') as any;
@@ -47,9 +52,14 @@ export const getAuditPlanById = async (auditId: string): Promise<any> => {
   }
 };
 
-// Update audit plan
+// Update audit plan (basic - only audit fields)
 export const updateAuditPlan = async (auditId: string, payload: any): Promise<any> => {
   return apiClient.put(`/Audits/${auditId}`, payload) as any;
+};
+
+// Update audit plan with full relationships (uses /AuditPlan/{auditId} endpoint)
+export const updateAuditPlanFull = async (auditId: string, payload: any): Promise<any> => {
+  return apiClient.put(`/AuditPlan/${auditId}`, payload) as any;
 };
 
 // Delete audit plan
@@ -159,6 +169,7 @@ export default {
   getAuditPlans,
   getAuditPlanById,
   updateAuditPlan,
+  updateAuditPlanFull,
   deleteAuditPlan,
   getAuditChartLine,
   getAuditChartPie,

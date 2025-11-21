@@ -18,4 +18,9 @@ export const getAuditTeam = async () => {
   return values
 }
 
-export default { addTeamMember, getAuditTeam }
+// Delete audit team member by ID
+export const deleteTeamMember = async (id: string | number) => {
+  return apiClient.delete(`/AuditTeam/${id}`)
+}
+
+export default { addTeamMember, getAuditTeam, deleteTeamMember }

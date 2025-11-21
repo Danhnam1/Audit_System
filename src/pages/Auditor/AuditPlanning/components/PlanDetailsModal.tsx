@@ -44,6 +44,22 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
   const [reviewComments, setReviewComments] = React.useState('');
 
+  // Debug: Log selectedPlanDetails to check data
+  React.useEffect(() => {
+    if (showModal && selectedPlanDetails) {
+      console.log('🔍 PlanDetailsModal - selectedPlanDetails:', {
+        title: selectedPlanDetails.title,
+        type: selectedPlanDetails.type,
+        startDate: selectedPlanDetails.startDate,
+        endDate: selectedPlanDetails.endDate,
+        scope: selectedPlanDetails.scope,
+        status: selectedPlanDetails.status,
+        objective: selectedPlanDetails.objective,
+        fullObject: selectedPlanDetails,
+      });
+    }
+  }, [showModal, selectedPlanDetails]);
+
   // Build a list of audit team members to render. If Auditee Owners are not present
   // in `selectedPlanDetails.auditTeams.values`, try to supplement them from `ownerOptions`.
   const auditTeamsFromDetails: any[] = Array.isArray(selectedPlanDetails.auditTeams?.values)
@@ -374,7 +390,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         </div>
 
         {/* Review comments area for Lead Auditor actions */}
-        <div className="px-6 pb-6">
+        {/* <div className="px-6 pb-6">
           <h4 className="text-sm font-semibold text-gray-700 mb-2">Review Comments (Optional)</h4>
           <textarea
             value={reviewComments}
@@ -383,7 +399,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
             placeholder="Add any comments or feedback for the Auditor..."
             className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           ></textarea>
-        </div>
+        </div> */}
 
         <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-300 flex justify-center gap-3">
           <button
