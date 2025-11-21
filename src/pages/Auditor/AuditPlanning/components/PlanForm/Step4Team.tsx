@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import MultiSelect from '../../../../../components/MultiSelect';
 import { useAuth } from '../../../../../contexts';
 
@@ -26,13 +26,25 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
   onAuditorsChange,
 }) => {
   const { user } = useAuth();
-  const rawUser: any = user as any;
-  const currentUserId = String(rawUser?.userId ?? rawUser?.id ?? rawUser?.email ?? '');
+  
+  // Find current user's userId from auditorOptions by matching email
+  const currentUserId = useMemo(() => {
+    if (!user?.email || !auditorOptions || auditorOptions.length === 0) return null;
+    const found = auditorOptions.find((u: any) => {
+      const uEmail = String(u?.email || '').toLowerCase().trim();
+      const userEmail = String(user.email).toLowerCase().trim();
+      return uEmail === userEmail;
+    });
+    return found?.userId ? String(found.userId) : null;
+  }, [user?.email, auditorOptions]);
 
   // Ensure current user is always in auditors and always disabled
   useEffect(() => {
     if (!currentUserId) return;
-    if (!selectedAuditorIds.includes(currentUserId)) {
+    // Always ensure current user is in the list
+    const normalizedCurrentUserId = String(currentUserId).trim();
+    const hasCurrentUser = selectedAuditorIds.some(id => String(id).trim() === normalizedCurrentUserId);
+    if (!hasCurrentUser) {
       onAuditorsChange([currentUserId, ...selectedAuditorIds]);
     }
   }, [currentUserId, selectedAuditorIds, onAuditorsChange]);
@@ -51,17 +63,25 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
             onChange={(e) => onLeadChange(e.target.value)}
           >
             <option value="">Select Lead Auditor</option>
-            {auditorOptions.map((u: any) => (
-              <option key={u.userId} value={u.userId}>
-                {u.fullName} ({u.email})
-              </option>
-            ))}
+            {auditorOptions
+              .filter((u: any) => {
+                // Exclude current user from Lead Auditor options
+                if (!currentUserId) return true;
+                return String(u.userId) !== String(currentUserId);
+              })
+              .map((u: any) => (
+                <option key={u.userId} value={u.userId}>
+                  {u.fullName} ({u.email})
+                </option>
+              ))}
           </select>
         </div>
 
         {/* Auditors */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Auditors</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Auditors *
+          </label>
           {(() => {
             // Đảm bảo user hiện tại luôn nằm đầu danh sách, luôn disabled
             const filteredOptions = auditorOptions.filter((u: any) => String(u.userId) !== selectedLeadId);
@@ -88,22 +108,38 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
               disabled: boolean;
             }[];
 
-            // Đảm bảo value luôn chứa user hiện tại
+            // Đảm bảo value luôn chứa user hiện tại (luôn ở đầu danh sách)
             const valueWithCurrent = currentUserId
-              ? Array.from(new Set([currentUserId, ...selectedAuditorIds]))
+              ? Array.from(new Set([currentUserId, ...selectedAuditorIds.filter(id => String(id) !== String(currentUserId))]))
               : selectedAuditorIds;
 
+            // Tính số auditors thực tế
+            const actualAuditorCount = valueWithCurrent.length;
+
             return (
-              <MultiSelect
-                options={options}
-                value={valueWithCurrent}
-                onChange={(next) => {
-                  // Luôn giữ user hiện tại trong value
-                  const withCurrent = currentUserId ? Array.from(new Set([currentUserId, ...next])) : next;
-                  onAuditorsChange(withCurrent);
-                }}
-                placeholder="Select auditor(s)"
-              />
+              <>
+                <MultiSelect
+                  options={options}
+                  value={valueWithCurrent}
+                  onChange={(next) => {
+                    if (!currentUserId) {
+                      onAuditorsChange(next);
+                      return;
+                    }
+                    // Filter out current user from next array (in case someone tries to remove it)
+                    const withoutCurrent = next.filter(id => String(id) !== String(currentUserId));
+                    // Always add current user back at the beginning
+                    const withCurrent = [currentUserId, ...withoutCurrent];
+                    onAuditorsChange(withCurrent);
+                  }}
+                  placeholder="Select auditor(s)"
+                />
+                {actualAuditorCount < 2 && (
+                  <p className="mt-1 text-xs text-red-600">
+                     At least 2 auditors are required.
+                  </p>
+                )}
+              </>
             );
           })()}
           

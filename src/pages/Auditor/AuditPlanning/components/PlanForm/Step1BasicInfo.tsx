@@ -72,7 +72,7 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
         </div>
         
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Objective</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Objective *</label>
           <textarea
             value={goal}
             onChange={(e) => onGoalChange(e.target.value)}

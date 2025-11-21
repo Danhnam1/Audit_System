@@ -7,6 +7,8 @@ import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, g
 import { getDepartments } from '../../../api/departments';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
 import { uploadAuditDocument, uploadMultipleAuditDocuments } from '../../../api/auditDocuments';
+import { getAuditTeam } from '../../../api/auditTeam';
+import { getAdminUsers } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 
@@ -131,21 +133,120 @@ const SQAStaffReports = () => {
   // Load audits list (only Open) and departments
   const reloadReports = useCallback(async () => {
     try {
-      const [res, depts] = await Promise.all([getAuditPlans(), getDepartments()]);
+      const [res, depts, teamsRes, usersRes] = await Promise.all([
+        getAuditPlans(), 
+        getDepartments(),
+        getAuditTeam(),
+        getAdminUsers()
+      ]);
+      
+      // Get current user's userId - try multiple methods
+      const users = Array.isArray(usersRes) ? usersRes : [];
+      let currentUserId: string | null = null;
+      
+      // Find by email (ProfileResponse doesn't have userId, need to look it up from AdminUsers)
+      if (user?.email) {
+        const found = users.find((u: any) => {
+          const uEmail = String(u?.email || '').toLowerCase().trim();
+          const userEmail = String(user.email).toLowerCase().trim();
+          return uEmail === userEmail;
+        });
+        if (found?.userId) {
+          currentUserId = String(found.userId);
+        } else if (found?.$id) {
+          currentUserId = String(found.$id);
+        }
+      }
+      
+      // Normalize currentUserId for comparison (lowercase, trim)
+      const normalizedCurrentUserId = currentUserId ? String(currentUserId).toLowerCase().trim() : null;
+      
+      // Get audit IDs where current user is a team member
+      const teams = Array.isArray(teamsRes) ? teamsRes : [];
+      const userAuditIds = new Set<string>();
+      
+      if (normalizedCurrentUserId) {
+        teams.forEach((m: any) => {
+          // Try multiple userId fields and normalize for comparison
+          const memberUserId = m?.userId || m?.id || m?.$id;
+          if (memberUserId) {
+            const normalizedMemberUserId = String(memberUserId).toLowerCase().trim();
+            // Match if userIds match (case-insensitive)
+            if (normalizedMemberUserId === normalizedCurrentUserId) {
+              // Collect all possible auditId formats
+              const auditId = m?.auditId || m?.auditPlanId || m?.planId || m?.id;
+              if (auditId) {
+                const auditIdStr = String(auditId).trim();
+                if (auditIdStr) {
+                  userAuditIds.add(auditIdStr);
+                  // Also add lowercase version for case-insensitive matching
+                  userAuditIds.add(auditIdStr.toLowerCase());
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      // Debug logging (only in development mode)
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        console.log('[Reports] Filtering audits:', {
+          currentUserId: normalizedCurrentUserId,
+          userAuditIds: Array.from(userAuditIds),
+          totalTeams: teams.length,
+          totalAudits: Array.isArray(res) ? res.length : 0
+        });
+      }
+      
       const arr = unwrap(res);
       const isVisibleStatus = (s: any) => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '');
         return v.includes('open') || v.includes('completed') || v.includes('returned');
       };
-      const filtered = (Array.isArray(arr) ? arr : []).filter((a: any) =>
-        isVisibleStatus(a.status || a.state || a.approvalStatus)
-      );
+      
+      // Filter audits: must match status AND user must be in audit team
+      const filtered = (Array.isArray(arr) ? arr : []).filter((a: any) => {
+        // First check status
+        const statusMatch = isVisibleStatus(a.status || a.state || a.approvalStatus);
+        if (!statusMatch) return false;
+        
+        // If user is not in any audit team, don't show any audits
+        if (!normalizedCurrentUserId || userAuditIds.size === 0) {
+          return false;
+        }
+        
+        // Check if this audit is in user's audit list
+        // Try all possible auditId formats
+        const auditIdCandidates = [
+          a.auditId,
+          a.id,
+          a.$id,
+          a.planId,
+          a.auditPlanId
+        ].filter(Boolean).map(id => String(id).trim());
+        
+        // Check if any auditId format matches
+        const isUserAudit = auditIdCandidates.some(auditId => {
+          // Direct match
+          if (userAuditIds.has(auditId)) return true;
+          // Case-insensitive match
+          if (userAuditIds.has(auditId.toLowerCase())) return true;
+          // Try lowercase version
+          const lowerAuditId = auditId.toLowerCase();
+          return Array.from(userAuditIds).some(uid => uid.toLowerCase() === lowerAuditId);
+        });
+        
+        return isUserAudit;
+      });
+      
       setAudits(filtered);
+      
       // normalize departments list from API
       const deptList = Array.isArray(depts)
         ? depts.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
         : [];
       setDepartments(deptList);
+      
       const firstId = filtered?.[0]?.auditId || filtered?.[0]?.id || filtered?.[0]?.$id || '';
       if (firstId) setSelectedAuditId(String(firstId));
       else {
@@ -154,8 +255,9 @@ const SQAStaffReports = () => {
       }
     } catch (err) {
       console.error('Failed to load audits for Reports', err);
+      setAudits([]);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     reloadReports();
@@ -477,16 +579,16 @@ const SQAStaffReports = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <LineChartCard
-            title="Findings theo tháng"
+            title="Findings findings of the month"
             data={lineData}
             xAxisKey="month"
             lines={[{ dataKey: 'count', stroke: '#0369a1', name: 'Findings' }]}
           />
-          <PieChartCard title="Mức độ Findings (theo tháng)" data={pieData} />
+          <PieChartCard title="Level of Findings (findings of the month)" data={pieData} />
         </div>
 
         <BarChartCard
-          title="Số Findings theo phòng ban (theo tháng)"
+          title="Number of Findings by Department (findings of the month)"
           data={barData}
           xAxisKey="department"
           bars={[{ dataKey: 'count', fill: '#0369a1', name: 'Findings' }]}

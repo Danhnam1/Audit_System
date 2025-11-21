@@ -7,6 +7,9 @@ import {
   AuditIcon,
   ReportsIcon,
   DatabaseIcon,
+  UploadIcon,
+  ClipboardCheckIcon,
+  DocumentIcon,
 } from '../layouts/icons';
 
 
@@ -37,13 +40,6 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <SettingsIcon />, label: 'Settings', path: '/admin/settings' },
       ];
 
-    case 'leadauditor':
-      return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.LEAD_AUDITOR },
-        { icon: <AuditIcon />, label: 'Audit Review', path: `${ROUTES.LEAD_AUDITOR}/audit-review` },
-        { icon: <ReportsIcon />, label: 'Reports', path: `${ROUTES.LEAD_AUDITOR}/reports` },
-      ];
-
     case 'auditor':
       return [
         // { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITOR },
@@ -51,7 +47,9 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <UsersIcon />, label: 'My Audit Teams', path: `${ROUTES.AUDITOR}/team` },
         { icon: <DashboardIcon />, label: 'Finding Management', path: `${ROUTES.AUDITOR}/findings` },
         { icon: <ReportsIcon />, label: 'Reports', path: `${ROUTES.AUDITOR}/reports` },
-        { icon: <ReportsIcon />, label: 'History Upload', path: `${ROUTES.AUDITOR}/history-upload` },
+        { icon: <UploadIcon />, label: 'History Upload', path: `${ROUTES.AUDITOR}/history-upload` },
+        { icon: <DocumentIcon />, label: 'Review Reports', path: `${ROUTES.AUDITOR}/lead-reports` },
+        { icon: <ClipboardCheckIcon />, label: 'Review Audit Plans', path: `${ROUTES.AUDITOR}/audit-review` },
         { icon: <DashboardIcon />, label: 'Requests', path: `${ROUTES.AUDITOR}/requests` },
       ];
 
