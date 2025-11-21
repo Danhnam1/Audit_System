@@ -4,6 +4,7 @@ import { getActionsForReview } from '../../../api/actionReview';
 import { approveActionHigherLevel, rejectActionHigherLevel } from '../../../api/actionReviewHigherLevel';
 import { getFindings, getFindingById } from '../../../api/findings';
 import { getAttachments } from '../../../api/attachments';
+import { getAdminUsers } from '../../../api/adminUsers';
 
 const ActionReview = () => {
   const queryClient = useQueryClient();
@@ -37,8 +38,24 @@ const ActionReview = () => {
     },
   });
 
+  // Fetch all users for name lookup
+  const { data: allUsers = [] } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: async () => {
+      const res = await getAdminUsers();
+      return Array.isArray(res) ? res : [];
+    },
+  });
+
   const selectedAction = actions.find((a: any) => a.actionId === selectedActionId);
   const selectedFinding = selectedAction ? allFindings.find((f: any) => f.findingId === selectedAction.findingId) : null;
+
+  // Helper function to get user name from ID
+  const getUserName = (userId: string | undefined) => {
+    if (!userId) return 'N/A';
+    const user = allUsers.find((u: any) => u.userId === userId);
+    return user?.fullName || userId;
+  };
 
   // Debug logging
   if (isDetailModalOpen && selectedAction) {
@@ -485,11 +502,11 @@ const ActionReview = () => {
                   </div>
                   <div>
                     <span className="font-medium text-gray-700">Assigned By:</span>
-                    <span className="ml-2 text-gray-600">{selectedAction.assignedBy}</span>
+                    <span className="ml-2 text-gray-600">{getUserName(selectedAction.assignedBy)}</span>
                   </div>
                   <div>
                     <span className="font-medium text-gray-700">Assigned To:</span>
-                    <span className="ml-2 text-gray-600">{selectedAction.assignedTo}</span>
+                    <span className="ml-2 text-gray-600">{getUserName(selectedAction.assignedTo)}</span>
                   </div>
                   <div>
                     <span className="font-medium text-gray-700">Department:</span>
