@@ -1,4 +1,4 @@
-import apiClient from './client';
+import { apiClient } from '../hooks/axios';
 
 export interface UploadAttachmentDto {
   entityType: string; // "finding", "action", etc.
@@ -41,11 +41,12 @@ export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attach
   const formData = new FormData();
   formData.append('EntityType', dto.entityType);
   formData.append('EntityId', dto.entityId);
-  formData.append('UploadedBy', dto.uploadedBy);
-  if (dto.status) formData.append('Status', dto.status);
+  if (dto.status !== undefined) formData.append('Status', dto.status || '');
   if (dto.retentionUntil) formData.append('RetentionUntil', dto.retentionUntil);
   if (dto.isArchived !== undefined) formData.append('IsArchived', String(dto.isArchived));
   formData.append('file', dto.file);
+  
+  // Note: uploadedBy is handled by backend from token, not included in formData
 
   console.log('2. FormData entries:');
   for (const [key, value] of formData.entries()) {

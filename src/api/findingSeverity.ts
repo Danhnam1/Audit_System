@@ -1,5 +1,5 @@
-import apiClient from './client';
-import { unwrap } from '../utils';
+import { apiClient } from '../hooks/axios';
+import { unwrap } from '../utils/normalize';
 
 export interface FindingSeverity {
   $id?: string;
@@ -12,8 +12,8 @@ export interface FindingSeverity {
 
 // Get all finding severities
 export const getFindingSeverities = async (): Promise<FindingSeverity[]> => {
-  const res = await apiClient.get('/FindingSeverity');
-  const data = unwrap<FindingSeverity>(res.data);
+  const res: any = await apiClient.get('/FindingSeverity');
+  const data = unwrap<FindingSeverity>(res);
   
   // Transform data to normalize field names
   return data.map(item => ({

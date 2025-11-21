@@ -8,7 +8,9 @@ const toPascalCase = (obj: any): any => {
   
   return Object.keys(obj).reduce((acc, key) => {
     const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
-    acc[pascalKey] = toPascalCase(obj[key]);
+    const value = obj[key];
+    // Preserve null values for optional fields, but convert empty strings and 0
+    acc[pascalKey] = toPascalCase(value);
     return acc;
   }, {} as any);
 };
@@ -20,13 +22,13 @@ export interface CreateFindingPayload {
   title: string;
   description: string;
   severity: string;
-  rootCauseId: number;
+  rootCauseId: number | null; // Can be null
   deptId: number;
   status: string;
   deadline: string;
   reviewerId: string | null; // GUID or null
   source?: string; // Optional
-  externalAuditorName?: string; // Optional
+  externalAuditorName?: string | null; // Optional, can be null
 }
 
 export interface Finding {
@@ -59,24 +61,65 @@ export const getFindingById = async (findingId: string): Promise<Finding> => {
 
 // Create a new finding
 export const createFinding = async (payload: CreateFindingPayload): Promise<Finding> => {
-  console.log('6. createFinding API - Received (camelCase):', JSON.stringify(payload, null, 2));
+  console.log('4. createFinding API - Received (camelCase):', JSON.stringify(payload, null, 2));
   
   // Convert to PascalCase for .NET API
   const pascalPayload = toPascalCase(payload);
-  console.log('7. createFinding API - After PascalCase transform:', JSON.stringify(pascalPayload, null, 2));
-  console.log('8. Sending POST to /Findings...');
+  console.log('5. createFinding API - After PascalCase transform:', JSON.stringify(pascalPayload, null, 2));
+  
+  // Handle null values - backend accepts null for rootCauseId and reviewerId
+  const finalPayload: any = { ...pascalPayload };
+  // Ensure string fields are not null (convert to empty string)
+  if (finalPayload.ExternalAuditorName === null || finalPayload.ExternalAuditorName === undefined) {
+    finalPayload.ExternalAuditorName = '';
+  }
+  if (finalPayload.Source === null || finalPayload.Source === undefined) {
+    finalPayload.Source = '';
+  }
+  // Keep null for RootCauseId and ReviewerId as backend accepts them
+  
+  console.log('6. Final payload to send:', JSON.stringify(finalPayload, null, 2));
+  console.log('7. Sending POST to /Findings...');
   
   try {
-    const result = await apiClient.post('/Findings', pascalPayload) as any;
-    console.log('9. API Response received:', result);
+    const result = await apiClient.post('/Findings', finalPayload) as any;
+    console.log('8. API Response received:', result);
     return result;
   } catch (error: any) {
     console.error('========== API ERROR ==========');
     console.error('Error response:', error?.response);
     console.error('Error data:', error?.response?.data);
     console.error('Error status:', error?.response?.status);
+    console.error('Error message:', error?.message);
     console.error('Full error:', error);
-    throw error;
+    
+    // Try to extract more detailed error message
+    const errorData = error?.response?.data;
+    let errorMessage = errorData?.title || errorData?.message || error?.message || 'Unknown error';
+    
+    // Extract validation errors if available
+    if (errorData?.errors && typeof errorData.errors === 'object') {
+      const validationErrors: string[] = [];
+      Object.keys(errorData.errors).forEach(key => {
+        const fieldErrors = errorData.errors[key];
+        if (Array.isArray(fieldErrors)) {
+          fieldErrors.forEach((err: string) => {
+            validationErrors.push(`${key}: ${err}`);
+          });
+        } else if (typeof fieldErrors === 'string') {
+          validationErrors.push(`${key}: ${fieldErrors}`);
+        }
+      });
+      
+      if (validationErrors.length > 0) {
+        errorMessage = `Validation Errors:\n${validationErrors.join('\n')}`;
+        console.error('Validation errors:', validationErrors);
+      }
+    }
+    
+    console.error('Extracted error message:', errorMessage);
+    console.error('Full error data:', errorData);
+    throw new Error(errorMessage);
   }
 };
 

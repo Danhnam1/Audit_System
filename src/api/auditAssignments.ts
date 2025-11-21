@@ -75,3 +75,31 @@ export const updateAuditAssignment = async (
 export const deleteAuditAssignment = async (assignmentId: string): Promise<void> => {
   await apiClient.delete(`/AuditAssignment/${assignmentId}`);
 };
+
+// Get my assignments (for current auditor)
+export const getMyAssignments = async (): Promise<any> => {
+  try {
+    // apiClient uses axios interceptor that returns response.data
+    // But we need to handle the case where response might still be full axios response
+    const res: any = await apiClient.get('/AuditAssignment/my-assignments');
+    console.log('🔍 API Response from /AuditAssignment/my-assignments:', res);
+    console.log('🔍 Response type:', typeof res);
+    console.log('🔍 Has data property?', !!res?.data);
+    console.log('🔍 Has $values?', !!res?.$values);
+    console.log('🔍 Has data.$values?', !!res?.data?.$values);
+    
+    // If interceptor worked, res should be response.data already
+    // But if we got full response, extract data
+    let data = res;
+    if (res?.data && res?.status) {
+      // This is full axios response, get the data
+      data = res.data;
+    }
+    
+    console.log('🔍 Extracted data:', data);
+    return data;
+  } catch (error) {
+    console.error('❌ Error in getMyAssignments:', error);
+    throw error;
+  }
+};

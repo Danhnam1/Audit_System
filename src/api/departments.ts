@@ -27,6 +27,12 @@ export const deleteDepartment = async (id: string | number) => {
   return apiClient.delete(`/admin/AdminDepartments/${id}`)
 }
 
+// Get department by ID
+export const getDepartmentById = async (deptId: number): Promise<DepartmentDto> => {
+  const res: any = await apiClient.get(`/admin/AdminDepartments/${deptId}`)
+  return res
+}
+
 export default {
   getDepartments,
   createDepartment,

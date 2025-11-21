@@ -31,8 +31,24 @@ export const getAuditChecklistItems = async (auditId: string) => {
   return unwrapped;
 };
 
+// Get checklist items by department ID
+export const getChecklistItemsByDepartment = async (deptId: number) => {
+  const res: any = await apiClient.get(`/AuditChecklistItems/by-department/${deptId}`);
+  console.log('getChecklistItemsByDepartment raw response:', res);
+  // Handle response - could be direct data or wrapped
+  let data = res;
+  if (res?.data && res?.status) {
+    // Full axios response
+    data = res.data;
+  }
+  const unwrapped = unwrapArray(data);
+  console.log('getChecklistItemsByDepartment unwrapped:', unwrapped);
+  return unwrapped;
+};
+
 export default {
   getChecklistTemplates,
   getChecklistItemsByTemplate,
   getAuditChecklistItems,
+  getChecklistItemsByDepartment,
 };
