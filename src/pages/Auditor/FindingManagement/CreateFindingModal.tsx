@@ -3,7 +3,6 @@ import { createFinding } from '../../../api/findings';
 import { getFindingSeverities } from '../../../api/findingSeverity';
 import { uploadAttachment } from '../../../api/attachments';
 import { markChecklistItemNonCompliant } from '../../../api/checklists';
-import useAuthStore from '../../../store/useAuthStore';
 
 interface CreateFindingModalProps {
   isOpen: boolean;
@@ -24,7 +23,6 @@ const CreateFindingModal = ({
   checklistItem,
   deptId,
 }: CreateFindingModalProps) => {
-  const { user } = useAuthStore();
   const [severities, setSeverities] = useState<Array<{ severity: string }>>([]);
   const [loadingSeverities, setLoadingSeverities] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -156,7 +154,7 @@ const CreateFindingModal = ({
       const finding = await createFinding(findingPayload);
       console.log('Finding created:', finding);
       
-      const findingId = finding.findingId || finding.$id || finding.id;
+      const findingId = finding.findingId || (finding as any).$id || (finding as any).id;
       
       if (!findingId) {
         throw new Error('Finding ID not found in response');

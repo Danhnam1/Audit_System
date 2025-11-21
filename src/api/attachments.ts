@@ -3,7 +3,7 @@ import { apiClient } from '../hooks/axios';
 export interface UploadAttachmentDto {
   entityType: string; // "finding", "action", etc.
   entityId: string; // GUID of the entity
-  uploadedBy: string; // User ID from token
+  uploadedBy?: string; // User ID from token (optional, backend will get from token if not provided)
   status?: string;
   retentionUntil?: string;
   isArchived?: boolean;
