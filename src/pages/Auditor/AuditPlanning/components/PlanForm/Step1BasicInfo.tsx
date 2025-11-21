@@ -25,6 +25,24 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
   onPeriodFromChange,
   onPeriodToChange,
 }) => {
+  // Calculate min date for Period - To
+  // Must be: 1) not in the past, 2) greater than Period - From
+  const today = new Date().toISOString().split('T')[0];
+  const getPeriodToMin = () => {
+    if (!periodFrom) {
+      // If Period - From is not set, min is today
+      return today;
+    }
+    // If Period - From is set, min is the day after Period - From
+    const fromDate = new Date(periodFrom);
+    fromDate.setDate(fromDate.getDate() + 1);
+    const nextDay = fromDate.toISOString().split('T')[0];
+    // Return the later of: next day after Period - From, or today
+    return nextDay > today ? nextDay : today;
+  };
+
+  const periodToMin = getPeriodToMin();
+
   return (
     <div>
       <h3 className="text-md font-semibold text-gray-700 mb-4">Step 1/5: Plan</h3>
@@ -42,17 +60,19 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
         
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Type *</label>
-          <input
-            type="text"
+          <select
             value={auditType}
             onChange={(e) => onAuditTypeChange(e.target.value)}
-            placeholder="Ví dụ: Internal, External, ..."
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          />
+          >
+            <option value="">Select Type</option>
+            <option value="External">External</option>
+            <option value="Internal">Internal</option>
+          </select>
         </div>
         
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Goal</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Objective</label>
           <textarea
             value={goal}
             onChange={(e) => onGoalChange(e.target.value)}
@@ -70,6 +90,7 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
               onChange={(e) => onPeriodFromChange(e.target.value)}
               type="date"
               placeholder="dd/mm/yyyy"
+              min={new Date().toISOString().split('T')[0]}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
@@ -80,6 +101,7 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
               onChange={(e) => onPeriodToChange(e.target.value)}
               type="date"
               placeholder="dd/mm/yyyy"
+              min={periodToMin}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>

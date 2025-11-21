@@ -12,6 +12,20 @@ export async function uploadAuditDocument(auditId: string, file: File) {
   return res.data;
 }
 
+export async function uploadMultipleAuditDocuments(auditId: string, files: File[]) {
+  const form = new FormData();
+  files.forEach((file) => {
+    form.append('files', file);
+  });
+  const url = `/AuditDocuments/upload-multiple/${encodeURIComponent(auditId)}`;
+  const res = await apiClient.post(url, form, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return res.data;
+}
+
 export async function getAuditDocuments(auditId: string) {
   if (!auditId) return [];
   const url = `/AuditDocuments/${encodeURIComponent(auditId)}`;
@@ -59,6 +73,7 @@ export async function downloadAuditDocumentById(documentId: string, auditId?: st
 
 export default {
   uploadAuditDocument,
+  uploadMultipleAuditDocuments,
   getAuditDocuments,
   downloadAuditDocumentById,
 };

@@ -27,6 +27,7 @@ import { getStatusColor, getBadgeVariant } from '../../../constants';
 import { FilterBar } from './components/FilterBar';
 import { PlanTable } from './components/PlanTable';
 import { PlanDetailsModal } from './components/PlanDetailsModal';
+import { Toast } from './components/Toast';
 import { Step1BasicInfo } from './components/PlanForm/Step1BasicInfo';
 import { Step2Scope } from './components/PlanForm/Step2Scope';
 import { Step3Checklist } from './components/PlanForm/Step3Checklist';
@@ -69,6 +70,13 @@ const SQAStaffAuditPlanning = () => {
   const [selectedPlanDetails, setSelectedPlanDetails] = useState<AuditPlanDetails | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
+  // Toast state
+  const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' | 'info' | 'warning'; isVisible: boolean }>({
+    message: '',
+    type: 'info',
+    isVisible: false,
+  });
+
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
   // Helpers: date and schedule validations
@@ -84,6 +92,25 @@ const SQAStaffAuditPlanning = () => {
       formState.capaDue ? { key: 'capaDue' as any, value: formState.capaDue, label: 'CAPA Due' } : null,
     ].filter(Boolean) as any[];
 
+    // Get period dates for validation
+    const periodFromDate = toDate(formState.periodFrom);
+    const periodToDate = toDate(formState.periodTo);
+
+    // Check if schedule dates are within period range
+    if (periodFromDate && periodToDate) {
+      points.forEach((p) => {
+        if (!p) return;
+        const scheduleDate = toDate(p.value);
+        if (scheduleDate) {
+          if (scheduleDate < periodFromDate) {
+            errs[p.key] = `Date must be on or after Period From (${formState.periodFrom}).`;
+          } else if (scheduleDate > periodToDate) {
+            errs[p.key] = `Date must be on or before Period To (${formState.periodTo}).`;
+          }
+        }
+      });
+    }
+
     // Duplicate check among filled dates
     const seen = new Map<string, number[]>();
     points.forEach((p, idx) => {
@@ -96,7 +123,10 @@ const SQAStaffAuditPlanning = () => {
       if (idxs.length > 1) {
         idxs.forEach((i) => {
           const k = points[i]!.key as string;
-          errs[k] = 'Dates must be unique (no duplicates).';
+          // Only add duplicate error if not already has period range error
+          if (!errs[k]) {
+            errs[k] = 'Dates must be unique (no duplicates).';
+          }
         });
       }
     });
@@ -118,7 +148,58 @@ const SQAStaffAuditPlanning = () => {
     formState.evidenceDue,
     formState.draftReportDue,
     formState.capaDue,
+    formState.periodFrom,
+    formState.periodTo,
   ]);
+
+  // Validation functions for each step
+  const validateStep1 = useMemo(() => {
+    return (
+      formState.title.trim() !== '' &&
+      formState.auditType.trim() !== '' &&
+      formState.periodFrom !== '' &&
+      formState.periodTo !== '' &&
+      new Date(formState.periodFrom).getTime() <= new Date(formState.periodTo).getTime()
+    );
+  }, [formState.title, formState.auditType, formState.periodFrom, formState.periodTo]);
+
+  const validateStep2 = useMemo(() => {
+    if (formState.level === 'department') {
+      return formState.selectedDeptIds.length > 0 && formState.selectedCriteriaIds.length > 0;
+    }
+    return formState.selectedCriteriaIds.length > 0;
+  }, [formState.level, formState.selectedDeptIds, formState.selectedCriteriaIds]);
+
+  const validateStep3 = useMemo(() => {
+    return formState.selectedTemplateId !== null && formState.selectedTemplateId !== '';
+  }, [formState.selectedTemplateId]);
+
+  const validateStep4 = useMemo(() => {
+    return formState.selectedLeadId !== null && formState.selectedLeadId !== '';
+  }, [formState.selectedLeadId]);
+
+  const validateStep5 = useMemo(() => {
+    // Step 5 is optional, but if dates are filled, they must be valid
+    const scheduleErrorMessages = Object.values(scheduleErrors).filter(Boolean);
+    return scheduleErrorMessages.length === 0;
+  }, [scheduleErrors]);
+
+  const canContinue = useMemo(() => {
+    switch (formState.currentStep) {
+      case 1:
+        return validateStep1;
+      case 2:
+        return validateStep2;
+      case 3:
+        return validateStep3;
+      case 4:
+        return validateStep4;
+      case 5:
+        return validateStep5;
+      default:
+        return false;
+    }
+  }, [formState.currentStep, validateStep1, validateStep2, validateStep3, validateStep4, validateStep5]);
 
   // Load departments when level changes to 'department'
   useEffect(() => {
@@ -341,8 +422,33 @@ const SQAStaffAuditPlanning = () => {
     }
   };
 
-  // Handler: Delete plan
+  // Handler: Delete plan (only allowed for Draft status)
   const handleDeletePlan = async (auditId: string) => {
+    // Find the plan to check its status
+    const planToDelete = existingPlans.find(p => (p.auditId || p.id) === auditId);
+    
+    if (!planToDelete) {
+      setToast({
+        message: 'Plan not found.',
+        type: 'error',
+        isVisible: true,
+      });
+      return;
+    }
+
+    // Normalize status for comparison (remove spaces, convert to lowercase)
+    const normalizedStatus = String(planToDelete.status || 'draft').toLowerCase().replace(/\s+/g, '');
+    
+    // Only allow delete if status is Draft
+    if (normalizedStatus !== 'draft') {
+      setToast({
+        message: 'Chỉ có trạng thái Draft mới được delete.',
+        type: 'warning',
+        isVisible: true,
+      });
+      return;
+    }
+
     if (!window.confirm('Delete this audit plan permanently?')) return;
     try {
       await deleteAuditPlan(auditId);
@@ -447,29 +553,49 @@ const SQAStaffAuditPlanning = () => {
   const handleSubmitPlan = async () => {
     // Client-side validation
     if (!formState.title.trim()) {
-      alert('Vui lòng nhập tiêu đề (Title) cho kế hoạch.');
+      setToast({
+        message: 'Vui lòng nhập tiêu đề (Title) cho kế hoạch.',
+        type: 'warning',
+        isVisible: true,
+      });
       formState.setCurrentStep(1);
       return;
     }
     if (!formState.periodFrom || !formState.periodTo) {
-      alert('Vui lòng chọn ngày bắt đầu và kết thúc.');
+      setToast({
+        message: 'Vui lòng chọn ngày bắt đầu và kết thúc.',
+        type: 'warning',
+        isVisible: true,
+      });
       formState.setCurrentStep(1);
       return;
     }
     // period_from ≤ period_to
     if (new Date(formState.periodFrom).getTime() > new Date(formState.periodTo).getTime()) {
-      alert('Khoảng thời gian không hợp lệ: Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.');
+      setToast({
+        message: 'Khoảng thời gian không hợp lệ: Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.',
+        type: 'warning',
+        isVisible: true,
+      });
       formState.setCurrentStep(1);
       return;
     }
     if (!formState.selectedTemplateId) {
-      alert('Vui lòng chọn Checklist Template (Step 3).');
+      setToast({
+        message: 'Vui lòng chọn Checklist Template (Step 3).',
+        type: 'warning',
+        isVisible: true,
+      });
       formState.setCurrentStep(3);
       return;
     }
     if (formState.level === 'department') {
       if (formState.selectedDeptIds.length === 0) {
-        alert('Vui lòng chọn ít nhất 1 phòng ban cho phạm vi Department (Step 2).');
+        setToast({
+          message: 'Vui lòng chọn ít nhất 1 phòng ban cho phạm vi Department (Step 2).',
+          type: 'warning',
+          isVisible: true,
+        });
         formState.setCurrentStep(2);
         return;
       }
@@ -485,7 +611,11 @@ const SQAStaffAuditPlanning = () => {
     // Schedule constraints: unique dates and strictly increasing order
     const scheduleErrorMessages = Object.values(scheduleErrors).filter(Boolean);
     if (scheduleErrorMessages.length > 0) {
-      alert('Lịch không hợp lệ:\n\n' + scheduleErrorMessages.join('\n'));
+      setToast({
+        message: 'Lịch không hợp lệ:\n\n' + scheduleErrorMessages.join('\n'),
+        type: 'error',
+        isVisible: true,
+      });
       formState.setCurrentStep(5);
       return;
     }
@@ -520,18 +650,28 @@ const SQAStaffAuditPlanning = () => {
       const newAuditId = auditId;
 
       // Attach departments
-      if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
-        try {
+      try {
+        let deptIdsToAttach: string[] = [];
+        
+        if (formState.level === 'academy') {
+          // When level is "Entire Aviation Academy", attach all departments
+          deptIdsToAttach = departments.map((d) => String(d.deptId));
+        } else if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
+          // When level is "Department", attach only selected departments
+          deptIdsToAttach = formState.selectedDeptIds;
+        }
+        
+        if (deptIdsToAttach.length > 0) {
           const deptResults = await Promise.allSettled(
-            formState.selectedDeptIds.map((deptId) => addAuditScopeDepartment(String(newAuditId), Number(deptId)))
+            deptIdsToAttach.map((deptId) => addAuditScopeDepartment(String(newAuditId), Number(deptId)))
           );
           const failedDepts = deptResults.filter((r) => r.status === 'rejected');
           if (failedDepts.length > 0) {
             console.warn('⚠️ Some departments failed to attach:', failedDepts);
           }
-        } catch (scopeErr) {
-          console.error('❌ Attach departments to audit failed', scopeErr);
         }
+      } catch (scopeErr) {
+        console.error('❌ Attach departments to audit failed', scopeErr);
       }
 
       // Attach criteria
@@ -616,18 +756,31 @@ const SQAStaffAuditPlanning = () => {
       formState.resetForm();
 
       const successMsg = formState.isEditMode
-        ? '✅ Audit plan updated successfully!\n\n' + (formState.title ? `Plan: ${formState.title}` : '')
-        : '✅ Audit plan created successfully!\n\n' + (formState.title ? `Plan: ${formState.title}` : '');
-      alert(successMsg);
+        ? `Audit plan updated successfully!${formState.title ? ` Plan: ${formState.title}` : ''}`
+        : `Audit plan created successfully!${formState.title ? ` Plan: ${formState.title}` : ''}`;
+      setToast({
+        message: successMsg,
+        type: 'success',
+        isVisible: true,
+      });
     } catch (err: any) {
       const serverMsg = err?.response?.data || err?.response || err?.message || err;
       console.error('Create audit failed', err, serverMsg);
+      let errorMessage = 'Failed to create audit plan.';
       try {
-        const pretty = typeof serverMsg === 'object' ? JSON.stringify(serverMsg, null, 2) : String(serverMsg);
-        alert('Failed to create audit plan. Server response:\n' + pretty);
+        if (typeof serverMsg === 'object') {
+          errorMessage = serverMsg?.message || JSON.stringify(serverMsg, null, 2);
+        } else {
+          errorMessage = String(serverMsg) || err?.message || String(err);
+        }
       } catch (e) {
-        alert('Failed to create audit plan: ' + (err?.message || err));
+        errorMessage = err?.message || String(err);
       }
+      setToast({
+        message: errorMessage,
+        type: 'error',
+        isVisible: true,
+      });
     }
   };
 
@@ -767,6 +920,8 @@ const SQAStaffAuditPlanning = () => {
                   onDraftReportChange={formState.setDraftReportDue}
                   onCapaChange={formState.setCapaDue}
                   errors={scheduleErrors}
+                  periodFrom={formState.periodFrom}
+                  periodTo={formState.periodTo}
                 />
               )}
 
@@ -789,8 +944,43 @@ const SQAStaffAuditPlanning = () => {
                 <div className="flex gap-3">
                   {formState.currentStep < 5 && (
                     <button
-                      onClick={() => formState.setCurrentStep(formState.currentStep + 1)}
-                      className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
+                      onClick={() => {
+                        if (canContinue) {
+                          formState.setCurrentStep(formState.currentStep + 1);
+                        } else {
+                          // Show validation message based on current step
+                          let message = '';
+                          switch (formState.currentStep) {
+                            case 1:
+                              message = 'Vui lòng điền đầy đủ thông tin: Title, Type, Period From, và Period To.';
+                              break;
+                            case 2:
+                              message = formState.level === 'department'
+                                ? 'Vui lòng chọn ít nhất 1 phòng ban và 1 tiêu chí kiểm toán.'
+                                : 'Vui lòng chọn ít nhất 1 tiêu chí kiểm toán.';
+                              break;
+                            case 3:
+                              message = 'Vui lòng chọn một Checklist Template.';
+                              break;
+                            case 4:
+                              message = 'Vui lòng chọn Lead Auditor.';
+                              break;
+                            default:
+                              message = 'Vui lòng điền đầy đủ thông tin trước khi tiếp tục.';
+                          }
+                          setToast({
+                            message,
+                            type: 'warning',
+                            isVisible: true,
+                          });
+                        }
+                      }}
+                      disabled={!canContinue}
+                      className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
+                        canContinue
+                          ? 'bg-primary-600 hover:bg-primary-700 text-white cursor-pointer'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
                     >
                       Continue →
                     </button>
@@ -889,12 +1079,21 @@ const SQAStaffAuditPlanning = () => {
             getStatusColor={getStatusColor}
             getBadgeVariant={getBadgeVariant}
             ownerOptions={ownerOptions}
+            auditorOptions={auditorOptions}
             getTemplateName={(tid) => {
               const t = checklistTemplates.find((tpl: any) => String(tpl.templateId || tpl.id || tpl.$id) === String(tid));
               return t?.title || t?.name || `Template ${String(tid ?? '')}`;
             }}
           />
         )}
+
+        {/* Toast Notification */}
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          isVisible={toast.isVisible}
+          onClose={() => setToast({ ...toast, isVisible: false })}
+        />
       </div>
     </MainLayout>
   );

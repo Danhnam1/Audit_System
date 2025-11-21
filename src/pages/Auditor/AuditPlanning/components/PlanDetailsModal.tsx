@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 
 // Badge variant type matching the constants definition
 type BadgeVariant = 'primary-light' | 'primary-medium' | 'primary-dark' | 'primary-solid' | 'gray-light' | 'gray-medium';
@@ -20,6 +21,7 @@ interface PlanDetailsModalProps {
   getStatusColor: (status: string) => string;
   getBadgeVariant: (variant: BadgeVariant) => string;
   ownerOptions: any[];
+  auditorOptions?: any[];
   getTemplateName?: (templateId: string | number | null | undefined) => string;
 }
 
@@ -38,11 +40,12 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   getStatusColor,
   getBadgeVariant,
   ownerOptions,
+  auditorOptions = [],
   getTemplateName,
 }) => {
   if (!showModal || !selectedPlanDetails) return null;
 
-  const [reviewComments, setReviewComments] = React.useState('');
+  const reviewComments = ''; // Review comments for actions
 
   // Debug: Log selectedPlanDetails to check data
   React.useEffect(() => {
@@ -98,87 +101,188 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       };
     });
 
-  const combinedAuditTeam = [...auditTeamsFromDetails, ...missingOwners];
+  // Build user lookup map from auditorOptions and ownerOptions
+  const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
+  const userMap = new Map<string, any>();
+  
+  allUsers.forEach((u: any) => {
+    // Get all possible ID fields
+    const possibleIds = [
+      u.userId,
+      u.id,
+      u.$id,
+    ].filter(id => id !== undefined && id !== null && id !== '');
+    
+    // Index by all possible ID formats (string, lowercase, number)
+    possibleIds.forEach((id: any) => {
+      const idStr = String(id);
+      // Store with lowercase key
+      userMap.set(idStr.toLowerCase(), u);
+      // Also store with original case (in case of exact match needed)
+      userMap.set(idStr, u);
+      // Try as number if it's a valid number string
+      if (!isNaN(Number(idStr)) && idStr.trim() !== '') {
+        userMap.set(String(Number(idStr)), u);
+      }
+    });
+    
+    // Also index by email for fallback lookup
+    if (u.email) {
+      const emailStr = String(u.email);
+      userMap.set(emailStr.toLowerCase(), u);
+      userMap.set(emailStr, u);
+    }
+  });
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-gradient-primary px-6 py-5 border-b border-sky-500">
+  // Enrich audit team members with fullName from userMap
+  const enrichedAuditTeam = auditTeamsFromDetails.map((member: any) => {
+    const userId = member.userId || member.id || member.$id;
+    const userIdStr = userId ? String(userId).trim() : '';
+    
+    // Try multiple lookup strategies
+    let user = null;
+    if (userIdStr) {
+      // Try exact match (case-insensitive first, then original case)
+      user = userMap.get(userIdStr.toLowerCase()) || userMap.get(userIdStr);
+      
+      // If still not found, try with the original userId value (in case it's a different type)
+      if (!user && userId) {
+        const originalStr = String(userId).trim();
+        user = userMap.get(originalStr.toLowerCase()) || userMap.get(originalStr);
+      }
+      
+      // Try as number if it's a valid number string
+      if (!user && !isNaN(Number(userIdStr)) && userIdStr !== '') {
+        user = userMap.get(String(Number(userIdStr)));
+      }
+    }
+    
+    // Fallback to email lookup
+    if (!user && member.email) {
+      const emailStr = String(member.email).trim();
+      user = userMap.get(emailStr.toLowerCase()) || userMap.get(emailStr);
+    }
+    
+    // Use found user's fullName, or keep existing fullName, or fallback to User ID
+    const fullName = member.fullName || user?.fullName || user?.name;
+    
+    // Debug logging only if we couldn't find the user
+    if (showModal && !fullName && userIdStr && userMap.size > 0) {
+      console.warn('⚠️ PlanDetailsModal - Could not find fullName for userId:', userIdStr, {
+        memberKeys: Object.keys(member),
+        userIdType: typeof userId,
+        userFound: !!user,
+        userMapSize: userMap.size,
+        sampleKeys: Array.from(userMap.keys()).slice(0, 3),
+      });
+    }
+    
+    return {
+      ...member,
+      fullName: fullName || (userIdStr ? `User ID: ${userIdStr}` : 'Unknown User'),
+      email: member.email || user?.email,
+    };
+  });
+
+  const combinedAuditTeam = [...enrichedAuditTeam, ...missingOwners];
+
+  const modalContent = (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] overflow-hidden">
+      <div className="h-full flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+        {/* Header with gradient */}
+        <div className="sticky top-0 bg-gradient-to-r from-primary-600 via-primary-700 to-primary-800 px-8 py-6  shadow-lg">
           <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-xl font-bold text-white flex items-center">Audit Plan Details</h3>
+            <div className="flex items-center gap-3">
               
+              <div>
+                <h3 className="text-2xl font-bold text-white">Audit Plan Details</h3>
+                
+              </div>
             </div>
             <button
               onClick={onClose}
-              className="text-white hover:bg-sky-800 rounded-full p-2 transition-colors"
+              className="text-white hover:bg-white/20 rounded-lg p-2 transition-all duration-200"
               title="Close"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              
             </button>
           </div>
         </div>
 
-        <div className="p-6 space-y-5">
+        {/* Content area with scroll */}
+        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white">
+          <div className="p-8 space-y-6">
           {/* Basic Information Section */}
-          <div className="border-b border-gray-200 pb-4">
-            <h3 className="text-lg font-semibold text-primary-600 mb-4 flex items-center">
-              Basic Information
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-              <div className="flex">
-                <span className="text-sm font-medium text-gray-600 w-32">Title:</span>
-                <span className="text-sm text-gray-900 font-medium">{selectedPlanDetails.title}</span>
+          <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
+                
+                <h3 className="text-lg font-bold text-primary-700">Basic Information</h3>
               </div>
-              <div className="flex">
-                <span className="text-sm font-medium text-gray-600 w-32">Type:</span>
-                <span className="text-sm text-gray-900">{selectedPlanDetails.type}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-bold text-black min-w-[100px]">Title:</span>
+                <span className="text-sm text-black font-normal">{selectedPlanDetails.title}</span>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-bold text-black min-w-[100px]">Type:</span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-light')}`}>
+                  {selectedPlanDetails.type}
+                </span>
               </div>
               {selectedPlanDetails.templateId && (
-                <div className="flex col-span-1 md:col-span-2">
-                  <span className="text-sm font-medium text-gray-600 w-32">Template:</span>
-                  <span className="text-sm text-gray-900">
+                <div className="flex items-start gap-3 md:col-span-2">
+                  <span className="text-sm font-bold text-black min-w-[100px]">Template:</span>
+                  <span className="text-sm text-black font-normal">
                     {getTemplateName
                       ? getTemplateName(selectedPlanDetails.templateId)
                       : String(selectedPlanDetails.templateId)}
                   </span>
                 </div>
               )}
-              <div className="flex">
-                <span className="text-sm font-medium text-gray-600 w-32">Start Date:</span>
-                <span className="text-sm text-gray-900">
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-bold text-black min-w-[100px]">Start Date:</span>
+                <span className="text-sm text-black font-normal">
                   {selectedPlanDetails.startDate
-                    ? new Date(selectedPlanDetails.startDate).toLocaleDateString()
+                    ? new Date(selectedPlanDetails.startDate).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })
                     : 'N/A'}
                 </span>
               </div>
-              <div className="flex">
-                <span className="text-sm font-medium text-gray-600 w-32">End Date:</span>
-                <span className="text-sm text-gray-900">
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-bold text-black min-w-[100px]">End Date:</span>
+                <span className="text-sm text-black font-normal">
                   {selectedPlanDetails.endDate
-                    ? new Date(selectedPlanDetails.endDate).toLocaleDateString()
+                    ? new Date(selectedPlanDetails.endDate).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })
                     : 'N/A'}
                 </span>
               </div>
-              <div className="flex">
-                <span className="text-sm font-medium text-gray-600 w-32">Scope:</span>
-                <span className="text-sm text-gray-900">{selectedPlanDetails.scope || 'N/A'}</span>
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-bold text-black min-w-[100px]">Scope:</span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-medium')}`}>
+                  {selectedPlanDetails.scope || 'N/A'}
+                </span>
               </div>
-              <div className="flex">
-                <span className="text-sm font-medium text-gray-600 w-32">Status:</span>
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-bold text-black min-w-[100px]">Status:</span>
                 <span
-                  className={`text-sm px-2 py-0.5 rounded font-medium ${getStatusColor(
+                  className={`text-xs px-3 py-1 rounded-full font-semibold ${getStatusColor(
                     selectedPlanDetails.status
                   )}`}
                 >
                   {selectedPlanDetails.status}
                 </span>
               </div>
-              <div className="flex col-span-1 md:col-span-2">
-                <span className="text-sm font-medium text-gray-600 w-32">Objective:</span>
-                <span className="text-sm text-gray-900 flex-1">
+              <div className="flex items-start gap-3 md:col-span-2">
+                <span className="text-sm font-bold text-black min-w-[100px]">Objective:</span>
+                <span className="text-sm text-black font-normal flex-1 leading-relaxed">
                   {selectedPlanDetails.objective || 'N/A'}
                 </span>
               </div>
@@ -187,33 +291,40 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
           {/* Created By Section */}
           {selectedPlanDetails.createdByUser && (
-            <div className="border-b border-gray-200 pb-4">
-              <h3 className="text-lg font-semibold text-primary-600 mb-4 flex items-center">
-               Created By
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-                <div className="flex">
-                  <span className="text-sm font-medium text-gray-600 w-32">Name:</span>
-                  <span className="text-sm text-gray-900">
+            <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
+                
+                <h3 className="text-lg font-bold text-primary-700">Created By</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-bold text-black min-w-[100px]">Name:</span>
+                  <span className="text-sm text-black font-normal">
                     {selectedPlanDetails.createdByUser.fullName}
                   </span>
                 </div>
-                <div className="flex">
-                  <span className="text-sm font-medium text-gray-600 w-32">Email:</span>
-                  <span className="text-sm text-gray-900">
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-bold text-black min-w-[100px]">Email:</span>
+                  <span className="text-sm text-black font-normal">
                     {selectedPlanDetails.createdByUser.email}
                   </span>
                 </div>
-                <div className="flex">
-                  <span className="text-sm font-medium text-gray-600 w-32">Role:</span>
-                  <span className="text-sm text-gray-900">
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-bold text-black min-w-[100px]">Role:</span>
+                  <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-light')}`}>
                     {selectedPlanDetails.createdByUser.roleName}
                   </span>
                 </div>
-                <div className="flex">
-                  <span className="text-sm font-medium text-gray-600 w-32">Created At:</span>
-                  <span className="text-sm text-gray-900">
-                    {new Date(selectedPlanDetails.createdAt).toLocaleString()}
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-bold text-black min-w-[100px]">Created At:</span>
+                  <span className="text-sm text-black font-normal">
+                    {new Date(selectedPlanDetails.createdAt).toLocaleString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </span>
                 </div>
               </div>
@@ -222,14 +333,14 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
           {/* Scope Departments Section */}
           {selectedPlanDetails.scopeDepartments?.values?.length > 0 && (
-            <div className="border-b border-gray-200 pb-4">
-              <h3 className="text-lg font-semibold text-primary-600 mb-3 flex items-center">
-               Scope Departments
-              </h3>
-              <div className="space-y-2">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-200">
+                
+                <h3 className="text-lg font-bold text-primary-700">Scope Departments</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {selectedPlanDetails.scopeDepartments.values.map((dept: any, idx: number) => {
                   const deptName = dept.deptName || getDepartmentName(dept.deptId);
-                  // Find department head (AuditeeOwner) for this department
                   const deptHead = ownerOptions.find(
                     (owner: any) => String(owner.deptId) === String(dept.deptId)
                   );
@@ -237,22 +348,27 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   return (
                     <div
                       key={idx}
-                      className="flex items-start justify-between bg-gray-50 rounded-lg px-3 py-2"
+                      className="bg-white rounded-lg p-5 border-2 border-gray-200 hover:border-primary-300 hover:shadow-lg transition-all duration-300 group"
                     >
-                      <div className="flex items-start">
-                        <span className="text-primary-500 mr-2 mt-0.5">•</span>
-                        <div>
-                          <span className="text-sm font-medium text-gray-900">{deptName}</span>
-                          {deptHead && (
-                            <p className="text-xs text-gray-600 mt-0.5">
-                              Trưởng phòng: <span className="font-medium">{deptHead.fullName}</span>
-                              {deptHead.email && (
-                                <span className="text-gray-500"> ({deptHead.email})</span>
-                              )}
-                            </p>
+                      <div className="text-center mb-3">
+                        <p className="text-sm font-bold text-gray-900 leading-tight">{deptName}</p>
+                      </div>
+                      {deptHead && (
+                        <div className="pt-3 border-t border-gray-100">
+                          <div className="flex items-center justify-center gap-2 flex-wrap">
+                            <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                            <span className="text-xs font-bold text-gray-600">Department Head:</span>
+                            <span className="text-sm font-semibold text-gray-900">{deptHead.fullName}</span>
+                          </div>
+                          {deptHead.email && (
+                            <div className="mt-1 text-center">
+                              <span className="text-xs text-gray-600">{deptHead.email}</span>
+                            </div>
                           )}
                         </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
@@ -262,14 +378,13 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
           {/* Audit Criteria Section */}
           {selectedPlanDetails.criteria?.values?.length > 0 && (
-            <div className="border-b border-gray-200 pb-4">
-              <h3 className="text-lg font-semibold text-primary-600 mb-3 flex items-center">
-                Audit Criteria
-              </h3>
-              <ul className="space-y-2">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
+               
+                <h3 className="text-lg font-bold text-primary-700">Audit Criteria</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {selectedPlanDetails.criteria.values.map((criterion: any, idx: number) => {
-                  // Use criterion.name if available, otherwise lookup by criteriaId
-                  // API uses 'criteriaId' (with 'a'), not 'criterionId'
                   const displayName =
                     criterion.name ||
                     criterion.criterionName ||
@@ -277,108 +392,123 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                       criterion.criteriaId || criterion.criterionId || criterion.auditCriteriaMapId
                     );
                   return (
-                    <li key={idx} className="flex items-start">
-                      <span className="text-primary-500 mr-2">•</span>
-                      <span className="text-sm text-gray-700">{displayName}</span>
-                    </li>
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="bg-primary-600 rounded-full p-1">
+                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <span className="text-sm text-black font-normal">{displayName}</span>
+                    </div>
                   );
                 })}
-              </ul>
+              </div>
             </div>
           )}
 
           {/* Audit Team Section */}
           {combinedAuditTeam.length > 0 && (
-            <div className="border-b border-gray-200 pb-4">
-              <h3 className="text-lg font-semibold text-primary-600 mb-3 flex items-center">
-                 Audit Team
-              </h3>
-              <ul className="space-y-2">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
+                
+                <h3 className="text-lg font-bold text-primary-700">Audit Team</h3>
+              </div>
+              <div className="space-y-2">
                 {combinedAuditTeam
                   .filter((m: any) => String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '') !== 'auditeeowner')
+                  .sort((a: any, b: any) => {
+                    // Sort: Lead Auditor first, then others
+                    if (a.isLead && !b.isLead) return -1;
+                    if (!a.isLead && b.isLead) return 1;
+                    return 0;
+                  })
                   .map((member: any, idx: number) => (
-                  <li key={idx} className="flex items-start">
-                    <span className="text-primary-500 mr-2">•</span>
-                    <div className="text-sm text-gray-700">
-                      <span className="font-medium">{member.fullName}</span>
-                      {member.roleInTeam && (
-                        <span
-                          className={`ml-2 text-xs px-2 py-0.5 rounded ${getBadgeVariant(
-                            'primary-light'
-                          )}`}
-                        >
-                          {member.roleInTeam}
+                    <div
+                      key={idx}
+                      className={`flex items-center gap-3 py-2.5 px-3 rounded-lg transition-all `}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        member.isLead ? 'bg-primary-600' : 'bg-gray-300'
+                      }`}>
+                        <span className={`text-xs font-bold ${
+                          member.isLead ? 'text-white' : 'text-gray-700'
+                        }`}>
+                          {member.fullName?.charAt(0)?.toUpperCase() || 'U'}
                         </span>
-                      )}
-                      {member.isLead && (
-                        <span
-                          className={`ml-1 text-xs px-2 py-0.5 rounded font-semibold ${getBadgeVariant(
-                            'primary-medium'
-                          )}`}
-                        >
-                          Lead
-                        </span>
-                      )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-sm ${member.isLead ? 'font-semibold text-gray-900' : 'font-normal text-gray-800'}`}>
+                            {member.fullName}
+                          </span>
+                          {member.isLead && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${getBadgeVariant('primary-solid')} text-white`}>
+                              Lead Auditor
+                            </span>
+                          )}
+                          {member.roleInTeam && !member.isLead && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getBadgeVariant('primary-light')}`}>
+                              {member.roleInTeam}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </li>
-                ))}
-              </ul>
+                  ))}
+              </div>
             </div>
           )}
 
           {/* Schedule & Milestones Section */}
           {selectedPlanDetails.schedules?.values?.length > 0 && (
-            <div className="pb-4">
-              <h3 className="text-lg font-semibold text-primary-600 mb-4 flex items-center">
-                Schedule & Milestones
-              </h3>
+            <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
+               
+                <h3 className="text-lg font-bold text-primary-700">Schedule & Milestones</h3>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {selectedPlanDetails.schedules.values.map((schedule: any, idx: number) => (
                   <div
                     key={idx}
-                    className="bg-sky-50 rounded-lg p-4 border border-sky-200 hover:shadow-md transition-shadow"
+                    className="bg-white rounded-xl p-5 border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all duration-200"
                   >
-                    <div className="space-y-2">
-                      <div>
-                        <p className="text-xs font-medium text-sky-600 mb-1">Milestone</p>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {schedule.milestoneName || 'N/A'}
-                        </p>
-                      </div>
+                    <div className="flex items-center justify-center gap-2 mb-3 pb-2 border-b border-gray-200">
+                      
+                      <p className="text-sm font-bold ">
+                        {schedule.milestoneName || 'N/A'}
+                      </p>
+                    </div>
+                    <div className="space-y-2.5">
                       {schedule.dueDate && (
-                        <div>
-                          <p className="text-xs font-medium text-sky-600 mb-1">Due Date</p>
-                          <p className="text-sm text-gray-700">
-                            {new Date(schedule.dueDate).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </p>
+                        <div className="flex items-center justify-center gap-2">
+                          
+                          <div className="text-center">
+                            <p className="text-xs font-bold text-gray-600">Due Date:</p>
+                            <p className="text-xs text-gray-600">
+                              {new Date(schedule.dueDate).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                              })}
+                            </p>
+                          </div>
                         </div>
                       )}
                       {schedule.evidenceDate && (
-                        <div>
-                          <p className="text-xs font-medium text-sky-600 mb-1">Evidence Date</p>
-                          <p className="text-sm text-gray-700">
-                            {new Date(schedule.evidenceDate).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </p>
-                        </div>
-                      )}
-                      {schedule.status && (
-                        <div>
-                          <p className="text-xs font-medium text-sky-600 mb-1">Status</p>
-                          <span
-                            className={`text-xs px-2 py-1 rounded font-medium ${getStatusColor(
-                              schedule.status
-                            )}`}
-                          >
-                            {schedule.status}
-                          </span>
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="text-center">
+                            <p className="text-xs font-bold text-black">Evidence Date:</p>
+                            <p className="text-sm text-black font-normal">
+                              {new Date(schedule.evidenceDate).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric',
+                              })}
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -387,132 +517,119 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               </div>
             </div>
           )}
+          </div>
         </div>
 
-        {/* Review comments area for Lead Auditor actions */}
-        {/* <div className="px-6 pb-6">
-          <h4 className="text-sm font-semibold text-gray-700 mb-2">Review Comments (Optional)</h4>
-          <textarea
-            value={reviewComments}
-            onChange={(e) => setReviewComments(e.target.value)}
-            rows={4}
-            placeholder="Add any comments or feedback for the Auditor..."
-            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          ></textarea>
-        </div> */}
+        
 
-        <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-300 flex justify-center gap-3">
-          <button
-            onClick={onClose}
-            className="px-8 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors shadow-sm"
-          >
-            Close
-          </button>
-
-          {onForwardToDirector && (
+        {/* Footer with actions */}
+        <div className="sticky bottom-0 bg-gradient-to-r from-gray-50 to-white px-8 py-5  shadow-lg">
+          <div className="flex flex-wrap justify-center gap-3">
             <button
-              onClick={async () => {
-                try {
-                  await onForwardToDirector(selectedPlanDetails.auditId, reviewComments);
-                  onClose();
-                } catch (err) {
-                  console.error('Forward to director failed', err);
-                  alert('Failed to forward to Director: ' + (err as any)?.message || String(err));
-                }
-              }}
-              className="px-8 py-2 bg-teal-500 hover:bg-teal-600 text-white font-medium rounded-lg transition-colors shadow-sm"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50"
             >
-              Forward to Director
+              Close
             </button>
-          )}
 
-          {onRequestRevision && (
-            <button
-              onClick={async () => {
-                try {
-                  await onRequestRevision(selectedPlanDetails.auditId, reviewComments);
-                  onClose();
-                } catch (err) {
-                  console.error('Request revision failed', err);
-                  alert('Failed to request revision: ' + (err as any)?.message || String(err));
-                }
-              }}
-              className="px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors shadow-sm"
-            >
-              Request Revision
-            </button>
-          )}
+            {onForwardToDirector && (
+              <button
+                onClick={async () => {
+                  try {
+                    await onForwardToDirector(selectedPlanDetails.auditId, reviewComments);
+                    onClose();
+                  } catch (err) {
+                    console.error('Forward to director failed', err);
+                    alert('Failed to forward to Director: ' + (err as any)?.message || String(err));
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
+              >
+                Forward to Director
+              </button>
+            )}
 
-          {onRejectPlan && (
-            <button
-              onClick={async () => {
-                if (!reviewComments) {
-                  if (!window.confirm('Reject without comment?')) return;
-                }
-                try {
-                  await onRejectPlan(selectedPlanDetails.auditId, reviewComments);
-                  onClose();
-                } catch (err) {
-                  console.error('Reject failed', err);
-                  alert('Failed to reject: ' + (err as any)?.message || String(err));
-                }
-              }}
-              className="px-8 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg transition-colors shadow-sm"
-            >
-              Reject
-            </button>
-          )}
+            {onRequestRevision && (
+              <button
+                onClick={async () => {
+                  try {
+                    await onRequestRevision(selectedPlanDetails.auditId, reviewComments);
+                    onClose();
+                  } catch (err) {
+                    console.error('Request revision failed', err);
+                    alert('Failed to request revision: ' + (err as any)?.message || String(err));
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-500 hover:bg-primary-600 text-white"
+              >
+                Request Revision
+              </button>
+            )}
 
-          {onApprove && (
-            <button
-              onClick={async () => {
-                try {
-                  await onApprove(selectedPlanDetails.auditId, reviewComments);
-                  onClose();
-                } catch (err) {
-                  console.error('Approve failed', err);
-                  alert('Failed to approve: ' + (err as any)?.message || String(err));
-                }
-              }}
-              className="px-8 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors shadow-sm"
-            >
-              Approve
-            </button>
-          )}
+            {onRejectPlan && (
+              <button
+                onClick={async () => {
+                  if (!reviewComments) {
+                    if (!window.confirm('Reject without comment?')) return;
+                  }
+                  try {
+                    await onRejectPlan(selectedPlanDetails.auditId, reviewComments);
+                    onClose();
+                  } catch (err) {
+                    console.error('Reject failed', err);
+                    alert('Failed to reject: ' + (err as any)?.message || String(err));
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-red-500 hover:bg-red-600 text-white"
+              >
+                Reject
+              </button>
+            )}
 
-          {/* If the plan is still Draft, allow submitting to Lead Auditor */}
-          {selectedPlanDetails.status === 'Draft' && onSubmitToLead && (
-            <button
-              onClick={async () => {
-                if (!window.confirm('Submit this plan to Lead Auditor?')) return;
-                try {
-                  await onSubmitToLead(selectedPlanDetails.auditId);
-                  // close modal after submit
-                  onClose();
-                } catch (err) {
-                  console.error('Failed to submit to lead auditor', err);
-                  alert('Failed to submit to Lead Auditor: ' + (err as any)?.message || String(err));
-                }
-              }}
-              className="px-8 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors shadow-sm"
-            >
-              Submit to Lead Auditor
-            </button>
-          )}
+            {onApprove && (
+              <button
+                onClick={async () => {
+                  try {
+                    await onApprove(selectedPlanDetails.auditId, reviewComments);
+                    onClose();
+                  } catch (err) {
+                    console.error('Approve failed', err);
+                    alert('Failed to approve: ' + (err as any)?.message || String(err));
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
+              >
+                Approve
+              </button>
+            )}
 
-          {onEdit && (
-            <button
-              onClick={() => {
-                onClose();
-                onEdit(selectedPlanDetails.auditId);
-              }}
-              className="px-8 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg transition-colors shadow-sm"
-            >
-              Edit Plan
-            </button>
-          )}
+            {/* If the plan is still Draft, allow submitting to Lead Auditor */}
+            {selectedPlanDetails.status === 'Draft' && onSubmitToLead && (
+              <button
+                onClick={async () => {
+                  if (!window.confirm('Submit this plan to Lead Auditor?')) return;
+                  try {
+                    await onSubmitToLead(selectedPlanDetails.auditId);
+                    onClose();
+                  } catch (err) {
+                    console.error('Failed to submit to lead auditor', err);
+                    alert('Failed to submit to Lead Auditor: ' + (err as any)?.message || String(err));
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
+              >
+                Submit to Lead Auditor
+              </button>
+            )}
+
+            
+          </div>
+        </div>
         </div>
       </div>
     </div>
   );
+
+  // Render modal using Portal to ensure it's outside the DOM hierarchy
+  return createPortal(modalContent, document.body);
 };

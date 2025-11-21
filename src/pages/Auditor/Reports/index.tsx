@@ -6,7 +6,7 @@ import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../co
 import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
 import { getDepartments } from '../../../api/departments';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
-import { uploadAuditDocument } from '../../../api/auditDocuments';
+import { uploadAuditDocument, uploadMultipleAuditDocuments } from '../../../api/auditDocuments';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 
@@ -25,9 +25,9 @@ const SQAStaffReports = () => {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitMsg, setSubmitMsg] = useState<string | null>(null);
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const [uploadMsg, setUploadMsg] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadLoading, setUploadLoading] = useState<Record<string, boolean>>({});
+  const [uploadMsg, setUploadMsg] = useState<Record<string, string | null>>({});
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
@@ -316,11 +316,6 @@ const SQAStaffReports = () => {
     return (audits || []).find((a: any) => String(a.auditId || a.id || a.$id) === sid);
   }, [audits, selectedAuditId]);
 
-  const canExportSelected = useMemo(() => {
-    const st = selectedAuditRow?.status || selectedAuditRow?.state || selectedAuditRow?.approvalStatus;
-    return isCompletedStatus(st);
-  }, [selectedAuditRow]);
-
   const handleSubmitToLead = async () => {
     if (!selectedAuditId) return;
     try {
@@ -338,15 +333,43 @@ const SQAStaffReports = () => {
     }
   };
 
-  const handleExportPdf = async () => {
-    if (!selectedAuditId) return;
+  const onClickUpload = (auditId: string) => {
+    setUploadMsg(prev => ({ ...prev, [auditId]: null }));
+    fileInputRefs.current[auditId]?.click();
+  };
+
+  const onFileSelected = async (auditId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0 || !auditId) return;
     try {
-      const blob = await exportAuditPdf(selectedAuditId);
+      setUploadLoading(prev => ({ ...prev, [auditId]: true }));
+      setUploadMsg(prev => ({ ...prev, [auditId]: null }));
+      
+      if (files.length === 1) {
+        await uploadAuditDocument(auditId, files[0]);
+      } else {
+        await uploadMultipleAuditDocuments(auditId, files);
+      }
+      
+      setUploadMsg(prev => ({ ...prev, [auditId]: 'Tải lên báo cáo đã ký thành công.' }));
+      e.target.value = '';
+      // Reload reports to refresh the list
+      await reloadReports();
+    } catch (err) {
+      console.error('Upload signed report failed', err);
+      setUploadMsg(prev => ({ ...prev, [auditId]: 'Tải lên thất bại. Vui lòng thử lại.' }));
+    } finally {
+      setUploadLoading(prev => ({ ...prev, [auditId]: false }));
+    }
+  };
+
+  const handleExportPdfForRow = async (auditId: string, title: string) => {
+    try {
+      const blob = await exportAuditPdf(auditId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const title = summary?.title || 'audit-report';
-      a.download = `${title}.pdf`;
+      a.download = `${title || 'audit-report'}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -354,28 +377,6 @@ const SQAStaffReports = () => {
     } catch (err) {
       console.error('Export PDF failed', err);
       alert('Xuất PDF thất bại. Vui lòng thử lại.');
-    }
-  };
-
-  const onClickUpload = () => {
-    setUploadMsg(null);
-    fileInputRef.current?.click();
-  };
-
-  const onFileSelected: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const f = e.target.files?.[0];
-    if (!f || !selectedAuditId) return;
-    try {
-      setUploadLoading(true);
-      setUploadMsg(null);
-      await uploadAuditDocument(selectedAuditId, f);
-      setUploadMsg('Tải lên báo cáo đã ký thành công.');
-      e.target.value = '';
-    } catch (err) {
-      console.error('Upload signed report failed', err);
-      setUploadMsg('Tải lên thất bại. Vui lòng thử lại.');
-    } finally {
-      setUploadLoading(false);
     }
   };
 
@@ -471,24 +472,6 @@ const SQAStaffReports = () => {
               ))}
             </select>
             {loadingCharts && <span className="text-xs text-gray-500">Đang tải biểu đồ...</span>}
-
-            <button
-              onClick={handleExportPdf}
-              className={`px-3 py-2 rounded-md text-sm text-white ${canExportSelected ? 'bg-primary-600 hover:bg-primary-700' : 'bg-gray-300 cursor-not-allowed'}`}
-              disabled={!selectedAuditId || !canExportSelected}
-              title={canExportSelected ? '' : 'Chỉ được export khi Lead Auditor đã approve'}
-            >
-              Export PDF
-            </button>
-            <button
-              onClick={onClickUpload}
-              className={`px-3 py-2 rounded-md text-sm text-white ${canExportSelected ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-300 cursor-not-allowed'}`}
-              disabled={!selectedAuditId || !canExportSelected || uploadLoading}
-              title={canExportSelected ? 'Tải lên bản PDF/scan đã ký' : 'Chỉ tải lên sau khi Lead Auditor đã approve'}
-            >
-              {uploadLoading ? 'Đang tải lên...' : 'Upload Signed Report'}
-            </button>
-            <input ref={fileInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={onFileSelected} />
           </div>
         </div>
 
@@ -558,18 +541,66 @@ const SQAStaffReports = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 text-sm font-semibold">{report.findings || 0}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-600">{report.createdDate}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex gap-2">
-                        <button onClick={() => { setSelectedAuditId(String(report.auditId)); setShowSummary(true); }} className="text-primary-600 hover:text-primary-700 text-sm font-medium">View</button>
-                        <span className="text-gray-300">|</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button 
+                          onClick={() => { setSelectedAuditId(String(report.auditId)); setShowSummary(true); }} 
+                          className="px-3 py-1.5 rounded-md text-sm font-medium bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          View
+                        </button>
                         {isCompletedStatus(report.status) ? (
-                          <button onClick={() => exportAuditPdf(String(report.auditId)).then((blob) => { const url = window.URL.createObjectURL(blob as any); const a = document.createElement('a'); a.href = url; a.download = `${report.title || 'audit-report'}.pdf`; document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url); }).catch(() => alert('Xuất PDF thất bại'))} className="text-primary-600 hover:text-primary-700 text-sm font-medium">Export PDF</button>
+                          <>
+                            <button 
+                              onClick={() => handleExportPdfForRow(String(report.auditId), report.title)} 
+                              className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors"
+                            >
+                              Export PDF
+                            </button>
+                            <button
+                              onClick={() => onClickUpload(String(report.auditId))}
+                              disabled={uploadLoading[String(report.auditId)]}
+                              className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Tải lên bản PDF/scan đã ký"
+                            >
+                              {uploadLoading[String(report.auditId)] ? 'Uploading...' : 'Upload'}
+                            </button>
+                            <input 
+                              ref={(el) => { fileInputRefs.current[String(report.auditId)] = el; }}
+                              type="file" 
+                              accept="application/pdf,image/*" 
+                              multiple
+                              className="hidden" 
+                              onChange={(e) => onFileSelected(String(report.auditId), e)} 
+                            />
+                            {uploadMsg[String(report.auditId)] && (
+                              <span className={`text-xs px-2 py-1 rounded ${uploadMsg[String(report.auditId)]?.includes('thành công') ? 'text-emerald-700 bg-emerald-50' : 'text-red-700 bg-red-50'}`}>
+                                {uploadMsg[String(report.auditId)]}
+                              </span>
+                            )}
+                          </>
                         ) : (
-                          <button disabled className="text-gray-400 text-sm font-medium cursor-not-allowed" title="Chỉ được export khi báo cáo đã Completed">Export PDF</button>
+                          <>
+                            <button 
+                              disabled 
+                              className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed" 
+                              title="Chỉ được export khi báo cáo đã Completed"
+                            >
+                              Export PDF
+                            </button>
+                            <button
+                              disabled
+                              className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed"
+                              title="Chỉ tải lên sau khi Lead Auditor đã approve"
+                            >
+                              Upload
+                            </button>
+                          </>
                         )}
-                        {report.status === 'In Progress' && (<>
-                          <span className="text-gray-300">|</span>
-                          <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">Edit</button>
-                        </>)}
+                        {report.status === 'In Progress' && (
+                          <button className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors">
+                            Edit
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -605,7 +636,6 @@ const SQAStaffReports = () => {
                   );
                 })()}
                 {submitMsg && <span className="text-sm text-gray-700">{submitMsg}</span>}
-                {uploadMsg && <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded">{uploadMsg}</span>}
                 {(() => {
                   const st = selectedAuditRow?.status || selectedAuditRow?.state || selectedAuditRow?.approvalStatus;
                   const submitted = isSubmittedStatus(st);

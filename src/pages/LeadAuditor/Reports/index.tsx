@@ -44,7 +44,15 @@ const LeadAuditorReports = () => {
       const list = unwrap(res);
       const all = (Array.isArray(list) ? list : []).map((p: any) => ({ ...p }));
       const filtered = all.filter((p: any) => isRelevantToLead(p.status || p.state || p.approvalStatus));
-      setAudits(filtered);
+      
+      // Sort by newest first (by createdAt or startDate)
+      const sorted = filtered.sort((a: any, b: any) => {
+        const dateA = a.startDate ? new Date(a.startDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const dateB = b.startDate ? new Date(b.startDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        return dateB - dateA; // Newest first
+      });
+      
+      setAudits(sorted);
     } catch (err) {
       console.error('Failed to load audits for LeadAuditor Reports', err);
       setAudits([]);

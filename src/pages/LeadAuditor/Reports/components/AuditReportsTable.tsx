@@ -89,12 +89,12 @@ const AuditReportsTable: React.FC<Props> = ({
                         <button
                           onClick={() => onApprove(r.auditId)}
                           disabled={actionLoading === r.auditId}
-                          className={`text-sm font-medium px-2 py-1 rounded-md shadow-sm transition-colors ${actionLoading === r.auditId ? 'bg-teal-300 cursor-not-allowed text-white' : 'bg-teal-500 hover:bg-teal-600 text-white'}`}
+                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${actionLoading === r.auditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved')}`}
                         >{actionLoading === r.auditId ? 'Đang duyệt...' : 'Approve'}</button>
                         <button
                           onClick={() => onReject(r.auditId)}
                           disabled={actionLoading === r.auditId}
-                          className={`text-sm font-medium px-2 py-1 rounded-md shadow-sm transition-colors ${actionLoading === r.auditId ? 'bg-gray-300 cursor-not-allowed text-white' : 'bg-gray-500 hover:bg-gray-600 text-white'}`}
+                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${actionLoading === r.auditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Rejected')}`}
                         >{actionLoading === r.auditId ? 'Đang xử lý...' : 'Reject'}</button>
                       </>
                     )}

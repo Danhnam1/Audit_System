@@ -7,12 +7,11 @@ import { getAdminUsers } from '../../api/adminUsers';
 import { getPlansWithDepartments } from '../../services/auditPlanning.service';
 import { getStatusColor, getBadgeVariant } from '../../constants';
 import { PlanDetailsModal } from '../Auditor/AuditPlanning/components/PlanDetailsModal';
-import { getDepartmentName } from '../../helpers/auditPlanHelpers';
+import { getDepartmentName, getCriterionName } from '../../helpers/auditPlanHelpers';
+import { getChecklistTemplates } from '../../api/checklists';
 import { MainLayout } from '../../layouts';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components';
-import { createNotification } from '../../api/notifications';
-import { extractDueDate, getRecipientsForApproval } from '../../helpers/notificationRecipients';
 import { getAuditPlanById as fetchFullPlan } from '../../api/audits';
 
 interface AuditPlan {
@@ -32,7 +31,7 @@ interface AuditPlan {
 
 const ReviewAuditPlans = () => {
   const navigate = useNavigate();
-  const [filter, setFilter] = useState<'All' | 'Pending Review' | 'Approved' | 'Rejected'>('All');
+  const [filter, setFilter] = useState<'All' | 'Pending Review' | 'Approved' | 'Rejected'>('Pending Review');
 
   // Mock data (kept as fallback)
   const initialPlans: AuditPlan[] = [
@@ -96,7 +95,9 @@ const ReviewAuditPlans = () => {
   const [selectedDetails, setSelectedDetails] = useState<any | null>(null);
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
   const [criteriaList, setCriteriaList] = useState<any[]>([]);
+  const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
+  const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
   // loading currently unused; reserved for future spinner
 
   const filteredPlans = filter === 'All'
@@ -104,7 +105,7 @@ const ReviewAuditPlans = () => {
     : auditPlans.filter((plan) => {
       const s = String(plan.status || '').toLowerCase();
       if (filter === 'Pending Review') {
-        return s === 'pendingdirectorapproval' || s === 'pending director approval' || s === 'pendingreview' || s === 'pending review';
+        return s === 'pendingdirectorapproval' || s === 'pending director approval';
       }
       if (filter === 'Approved') return s === 'approved' || s === 'approve';
       if (filter === 'Rejected') return s === 'rejected';
@@ -118,11 +119,12 @@ const ReviewAuditPlans = () => {
     let mounted = true;
     const load = async () => {
       try {
-        const [plansRes, deptRes, critRes, usersRes] = await Promise.all([
+        const [plansRes, deptRes, critRes, usersRes, templatesRes] = await Promise.all([
           getPlansWithDepartments(),
           getDepartments(),
           getAuditCriteria(),
           getAdminUsers(),
+          getChecklistTemplates(),
         ]);
 
         // Build departments map for id->name lookup
@@ -208,8 +210,11 @@ const ReviewAuditPlans = () => {
         if (mounted) {
           setDepartments(deptList);
           setCriteriaList(Array.isArray(critRes) ? critRes : []);
+          setChecklistTemplates(Array.isArray(templatesRes) ? templatesRes : []);
           const owners = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditee'));
+          const auditors = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditor'));
           setOwnerOptions(owners);
+          setAuditorOptions(auditors);
         }
       } catch (err) {
         console.warn('Failed to fetch plans for Director page, using mock data', err);
@@ -239,31 +244,6 @@ const ReviewAuditPlans = () => {
       setAuditPlans(prev => prev.map(p => (String(p.planId) === String(planId)
         ? { ...p, status: freshStatus && freshStatus.length ? freshStatus : p.status }
         : p)));
-      // Fetch full plan to derive recipients & due date
-      try {
-        const full = await fetchFullPlan(String(planId));
-        const usersArr = await getAdminUsers();
-        const recipients = getRecipientsForApproval(full, usersArr);
-        const { dueDate } = extractDueDate(full);
-        const title = 'Kế hoạch được phê duyệt';
-        const baseMsg = `Kế hoạch kiểm toán '${full?.title || planId}' đã được Giám đốc phê duyệt.`;
-        const dueMsg = dueDate ? ` Hạn chuẩn bị bằng chứng: ${new Date(dueDate).toLocaleDateString()}.` : '';
-        await Promise.all(
-          recipients.map(r =>
-            createNotification({
-              userId: r.userId,
-              title,
-              message: baseMsg + dueMsg,
-              entityType: 'AuditPlan',
-              entityId: String(planId),
-              category: r.reason,
-              status: 'Sent',
-            }).catch(() => null)
-          )
-        );
-      } catch (notifyErr) {
-        console.warn('Notification dispatch failed (non-blocking):', notifyErr);
-      }
       alert('✅ Plan approved successfully.');
     } catch (err: any) {
       console.error('Failed to approve plan', err);
@@ -293,7 +273,8 @@ const ReviewAuditPlans = () => {
   const openDetails = async (plan: AuditPlan) => {
     try {
       const raw = await getAuditPlanById(String(plan.planId));
-      const normalized = normalizePlanDetails(raw, { departments, criteriaList, users: ownerOptions });
+      const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
+      const normalized = normalizePlanDetails(raw, { departments, criteriaList, users: allUsers });
       setSelectedDetails(normalized);
     } catch (err) {
       console.warn('Failed to load full details, using mapped summary', err);
@@ -317,7 +298,7 @@ const ReviewAuditPlans = () => {
     total: auditPlans.length,
     pending: auditPlans.filter((p) => {
       const s = String(p.status || '').toLowerCase();
-      return s === 'pendingdirectorapproval' || s === 'pending director approval' || s === 'pendingreview' || s === 'pending review';
+      return s === 'pendingdirectorapproval' || s === 'pending director approval';
     }).length,
     approved: auditPlans.filter((p) => {
       const s = String(p.status || '').toLowerCase();
@@ -332,18 +313,15 @@ const ReviewAuditPlans = () => {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800">Review Audit Plans</h1>
-            <p className="text-gray-600 mt-1">Review plans approved by Lead Auditor</p>
+        <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
+          <div className="px-6 py-4">
+            <h1 className="text-2xl font-semibold text-primary-600">Review Audit Plans</h1>
+            <p className="text-gray-600 text-sm mt-1">Review and approve audit plans forwarded by Lead Auditor</p>
           </div>
-          <Button variant="secondary" onClick={() => navigate('/director')}>
-            Back to Dashboard
-          </Button>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -401,96 +379,136 @@ const ReviewAuditPlans = () => {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap gap-2">
-          {(['All', 'Pending Review', 'Approved', 'Rejected'] as const).map((status) => (
-            <Button
-              key={status}
-              size="sm"
-              variant={filter === status ? 'primary' : 'secondary'}
-              onClick={() => setFilter(status)}
-            >
-              {status}
-            </Button>
-          ))}
+
+        {/* Status Tabs */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-primary-100">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setFilter('Pending Review')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  filter === 'Pending Review'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Pending Review
+              </button>
+              <button
+                onClick={() => setFilter('Approved')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  filter === 'Approved'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Approved
+              </button>
+              <button
+                onClick={() => setFilter('Rejected')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  filter === 'Rejected'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Rejected
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Plans List */}
-        <div className="space-y-4">
-          {filteredPlans.length === 0 ? (
-            <div className="bg-white rounded-lg shadow p-8 text-center">
-              <p className="text-gray-500">No audit plans found for the selected filter</p>
-            </div>
-          ) : (
-            filteredPlans.map((plan) => (
-              <div key={plan.id} className="bg-white rounded-lg shadow hover:shadow-md transition-shadow">
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-gray-800">{plan.title}</h3>
+        {/* Plans Table */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
+            <h2 className="text-lg font-semibold text-white">
+              {filter === 'Pending Review' ? 'Pending Review Plans' : filter === 'Approved' ? 'Approved Plans' : filter === 'Rejected' ? 'Rejected Plans' : 'All Audit Plans'}
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Title</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Start Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">End Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Submitted By</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredPlans.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                      No audit plans found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPlans.map((plan, index) => (
+                    <tr key={plan.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm font-medium text-primary-600">{index + 1}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-sm font-semibold text-gray-900">{plan.title}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-700">{plan.department}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-700">
+                          {plan.startDate ? new Date(plan.startDate).toLocaleDateString() : 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-700">
+                          {plan.endDate ? new Date(plan.endDate).toLocaleDateString() : 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-700">{plan.submittedBy}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(plan.status)}`}>
                           {plan.status}
                         </span>
-                      </div>
-                      <p className="text-sm text-gray-600">Plan ID: {plan.planId}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Department</p>
-                      <p className="font-medium text-gray-800">{plan.department}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Audit Period</p>
-                      <p className="font-medium text-gray-800">
-                        {new Date(plan.startDate).toLocaleDateString()} - {new Date(plan.endDate).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Submitted By</p>
-                      <p className="font-medium text-gray-800">{plan.submittedBy}</p>
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-500 mb-1">Scope</p>
-                    <p className="text-gray-700">{plan.scope}</p>
-                  </div>
-
-                  <div className="flex gap-3 pt-4 border-t border-gray-200">
-                    <Button onClick={() => openDetails(plan)} size="sm">
-                      View Details
-                    </Button>
-                    {String(plan.status).toLowerCase() === 'pendingdirectorapproval' || String(plan.status).toLowerCase() === 'pending director approval' ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="success"
-                          onClick={() => handleApprovePlan(plan.planId)}
-                          isLoading={processingIdStr === plan.planId}
-                          disabled={processingIdStr === plan.planId}
-                        >
-                          {processingIdStr === plan.planId ? 'Approving...' : 'Approve'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={() => {
-                            const c = window.prompt('Nhập lý do từ chối (tùy chọn):') || '';
-                            handleRejectPlan(plan.planId, c);
-                          }}
-                        >
-                          Reject
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-2">
+                          <Button onClick={() => openDetails(plan)} size="sm" variant="secondary">
+                            View
+                          </Button>
+                          {String(plan.status).toLowerCase() === 'pendingdirectorapproval' || String(plan.status).toLowerCase() === 'pending director approval' ? (
+                            <>
+                              <button
+                                onClick={() => handleApprovePlan(plan.planId)}
+                                disabled={processingIdStr === plan.planId}
+                                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {processingIdStr === plan.planId ? 'Approving...' : 'Approve'}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const c = window.prompt('Nhập lý do từ chối (tùy chọn):') || '';
+                                  handleRejectPlan(plan.planId, c);
+                                }}
+                                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-red-500 hover:bg-red-600 text-white"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
       {selectedDetails && (
@@ -512,31 +530,6 @@ const ReviewAuditPlans = () => {
             setAuditPlans(prev => prev.map(p => (String(p.planId) === String(id)
               ? { ...p, status: freshStatus && freshStatus.length ? freshStatus : p.status }
               : p)));
-            // Fire notifications similarly
-            try {
-              const full = await fetchFullPlan(String(id));
-              const usersArr = await getAdminUsers();
-              const recipients = getRecipientsForApproval(full, usersArr);
-              const { dueDate } = extractDueDate(full);
-              const title = 'Kế hoạch được phê duyệt';
-              const baseMsg = `Kế hoạch kiểm toán '${full?.title || id}' đã được Giám đốc phê duyệt.`;
-              const dueMsg = dueDate ? ` Hạn chuẩn bị bằng chứng: ${new Date(dueDate).toLocaleDateString()}.` : '';
-              await Promise.all(
-                recipients.map(r =>
-                  createNotification({
-                    userId: r.userId,
-                    title,
-                    message: baseMsg + dueMsg,
-                    entityType: 'AuditPlan',
-                    entityId: String(id),
-                    category: r.reason,
-                    status: 'Sent',
-                  }).catch(() => null)
-                )
-              );
-            } catch (notifyErr) {
-              console.warn('Notification dispatch failed (modal) (non-blocking):', notifyErr);
-            }
             alert('✅ Approved.');
             setSelectedDetails(null);
           }}
@@ -546,11 +539,16 @@ const ReviewAuditPlans = () => {
             alert('✅ Rejected.');
             setSelectedDetails(null);
           }}
-          getCriterionName={(id: any) => String(id)}
+          getCriterionName={(id: any) => getCriterionName(id, criteriaList)}
           getDepartmentName={(id: any) => getDepartmentName(id, departments)}
           getStatusColor={getStatusColor}
           getBadgeVariant={getBadgeVariant}
           ownerOptions={ownerOptions}
+          auditorOptions={auditorOptions}
+          getTemplateName={(tid) => {
+            const t = checklistTemplates.find((tpl: any) => String(tpl.templateId || tpl.id || tpl.$id) === String(tid));
+            return t?.name || t?.title || `Template ${String(tid ?? '')}`;
+          }}
         />
       )}
     </MainLayout>

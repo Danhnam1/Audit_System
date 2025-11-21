@@ -46,7 +46,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
 
     case 'auditor':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITOR },
+        // { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITOR },
         { icon: <AuditIcon />, label: 'Audit Planning', path: `${ROUTES.AUDITOR}/planning` },
         { icon: <UsersIcon />, label: 'My Audit Teams', path: `${ROUTES.AUDITOR}/team` },
         { icon: <DashboardIcon />, label: 'Finding Management', path: `${ROUTES.AUDITOR}/findings` },
@@ -73,7 +73,10 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
 
     case 'director':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.DIRECTOR },
+        // { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.DIRECTOR },
+        { icon: <AuditIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
+        { icon: <AuditIcon />, label: 'Review Audit Results', path: '/director/review-results' },
+        { icon: <ReportsIcon />, label: 'Summary Report', path: '/director/summary-report' },
       ];
 
     default:

@@ -1,13 +1,14 @@
-import { MainLayout, ClockIcon, AuditIcon, ChartBarIcon } from '../../../layouts';
+import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { useEffect, useState } from 'react';
-import { StatCard } from '../../../components';
+import { useEffect, useState, useMemo } from 'react';
 import AuditReviewList from './components/AuditReviewList';
+import { FilterBar } from './components/FilterBar';
 // PlanReviewPanel previously provided inline actions; we removed inline panel to avoid duplicate UI with modal
 // import PlanReviewPanel from './components/PlanReviewPanel';
 import { getAuditPlanById, approveForwardDirector, rejectPlanContent } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
+import { getChecklistTemplates } from '../../../api/checklists';
 import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
 import { getStatusColor, getBadgeVariant } from '../../../constants';
 import { getDepartments } from '../../../api/departments';
@@ -19,35 +20,54 @@ const SQAHeadAuditReview = () => {
   const { user } = useAuth();
   const [selectedPlanFull, setSelectedPlanFull] = useState<any | null>(null);
   const [pendingPlans, setPendingPlans] = useState<any[]>([]);
-  const [reviewedPlans, setReviewedPlans] = useState<any[]>([]);
+  const [approvedPlans, setApprovedPlans] = useState<any[]>([]);
+  const [rejectedPlans, setRejectedPlans] = useState<any[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
   const [criteriaList, setCriteriaList] = useState<any[]>([]);
+  const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
+  const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'pending' | 'reviewed'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
+
+  // Filter state
+  const [filterDepartment, setFilterDepartment] = useState<string>('');
+  const [sortDateOrder, setSortDateOrder] = useState<string>('desc'); // Default: newest first
+  const [filterStatus, setFilterStatus] = useState<string>('');
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
   const loadPlans = async () => {
     setLoading(true);
     try {
-  // fetch plans, admin users and departments in parallel
-  const [resPlans, adminUsers, deptsRes, critRes] = await Promise.all([getPlansWithDepartments(), getAdminUsers(), getDepartments(), getAuditCriteria()]);
+  // fetch plans, admin users, departments, criteria, and checklist templates in parallel
+  const [resPlans, adminUsers, deptsRes, critRes, templatesRes] = await Promise.all([
+    getPlansWithDepartments(), 
+    getAdminUsers(), 
+    getDepartments(), 
+    getAuditCriteria(),
+    getChecklistTemplates()
+  ]);
 
   // normalize list wrapper variations (array | { $values: [] } | { values: [] })
   let list: any = unwrap(resPlans);
 
-      // Split into Pending vs Reviewed
+      // Split into Pending, Approved, Rejected
       const isPending = (s: string) => {
-        const v = String(s || '').toLowerCase();
-        return v.includes('pendingreview') ;
+        const v = String(s || '').toLowerCase().replace(/\s+/g, '');
+        return v.includes('pendingreview');
       };
-      const isReviewed = (s: string) => {
-        const v = String(s || '').toLowerCase();
-        return v.includes('approve') || v.includes('reject') || v.includes('published') || v.includes('pending director');
+      const isApproved = (s: string) => {
+        const v = String(s || '').toLowerCase().replace(/\s+/g, '');
+        return v.includes('approved') || v.includes('approve') || v.includes('pendingdirectorapproval') || v.includes('pendingdirector');
+      };
+      const isRejected = (s: string) => {
+        const v = String(s || '').toLowerCase().replace(/\s+/g, '');
+        return v === 'rejected' || v.includes('reject');
       };
       const pending = list.filter((p: any) => isPending(p.status || p.state));
-      const reviewed = list.filter((p: any) => isReviewed(p.status || p.state));
+      const approved = list.filter((p: any) => isApproved(p.status || p.state));
+      const rejected = list.filter((p: any) => isRejected(p.status || p.state));
       // normalize departments list from API
       const deptList = Array.isArray(deptsRes)
         ? deptsRes.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
@@ -119,15 +139,33 @@ const SQAHeadAuditReview = () => {
       };
 
       const pendingNormalized = pending.map(normalizeForList);
-      const reviewedNormalized = reviewed.map(normalizeForList);
-      setPendingPlans(pendingNormalized);
-      setReviewedPlans(reviewedNormalized);
-      setOwnerOptions(Array.isArray(adminUsers) ? adminUsers : []);
+      const approvedNormalized = approved.map(normalizeForList);
+      const rejectedNormalized = rejected.map(normalizeForList);
+      
+      // Sort by newest first (by createdAt or startDate)
+      const sortByNewest = (a: any, b: any) => {
+        const dateA = a.startDate ? new Date(a.startDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const dateB = b.startDate ? new Date(b.startDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        return dateB - dateA; // Newest first
+      };
+      
+      // Store all plans (will be filtered later)
+      setPendingPlans(pendingNormalized.sort(sortByNewest));
+      setApprovedPlans(approvedNormalized.sort(sortByNewest));
+      setRejectedPlans(rejectedNormalized.sort(sortByNewest));
+      const usersArr = Array.isArray(adminUsers) ? adminUsers : [];
+      const norm = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, '');
+      const auditors = usersArr.filter((u: any) => norm(u.roleName) === 'auditor');
+      const owners = usersArr.filter((u: any) => norm(u.roleName) === 'auditeeowner');
+      setOwnerOptions(owners);
+      setAuditorOptions(auditors);
       setCriteriaList(Array.isArray(critRes) ? critRes : []);
+      setChecklistTemplates(Array.isArray(templatesRes) ? templatesRes : []);
     } catch (err) {
       console.error('Failed to load audit plans for review', err);
       setPendingPlans([]);
-      setReviewedPlans([]);
+      setApprovedPlans([]);
+      setRejectedPlans([]);
     } finally {
       setLoading(false);
     }
@@ -136,6 +174,145 @@ const SQAHeadAuditReview = () => {
   useEffect(() => {
     void loadPlans();
   }, []);
+
+  // Filter and sort plans based on filter criteria
+  const filteredPendingPlans = useMemo(() => {
+    let filtered = pendingPlans.filter((plan: any) => {
+      // Department filter
+      if (filterDepartment) {
+        const scopeArr = plan.scopeDepartments || [];
+        const hasDept = Array.isArray(scopeArr)
+          ? scopeArr.some((d: any) => {
+              const deptId = String(d.deptId || d.id || d.$id || d.departmentId || '');
+              return deptId === String(filterDepartment);
+            })
+          : false;
+        if (!hasDept) return false;
+      }
+
+      // Status filter
+      if (filterStatus) {
+        const planStatus = plan.status || plan.state || '';
+        if (String(planStatus) !== filterStatus) return false;
+      }
+
+      return true;
+    });
+
+    // Sort by date if sortDateOrder is set
+    if (sortDateOrder) {
+      filtered = filtered.sort((a: any, b: any) => {
+        const dateA = a.startDate ? new Date(a.startDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const dateB = b.startDate ? new Date(b.startDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        if (sortDateOrder === 'desc') {
+          return dateB - dateA; // Newest first
+        } else if (sortDateOrder === 'asc') {
+          return dateA - dateB; // Oldest first
+        }
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [pendingPlans, filterDepartment, sortDateOrder, filterStatus]);
+
+  const filteredApprovedPlans = useMemo(() => {
+    let filtered = approvedPlans.filter((plan: any) => {
+      // Department filter
+      if (filterDepartment) {
+        const scopeArr = plan.scopeDepartments || [];
+        const hasDept = Array.isArray(scopeArr)
+          ? scopeArr.some((d: any) => {
+              const deptId = String(d.deptId || d.id || d.$id || d.departmentId || '');
+              return deptId === String(filterDepartment);
+            })
+          : false;
+        if (!hasDept) return false;
+      }
+
+      // Status filter
+      if (filterStatus) {
+        const planStatus = plan.status || plan.state || '';
+        if (String(planStatus) !== filterStatus) return false;
+      }
+
+      return true;
+    });
+
+    // Sort by date if sortDateOrder is set
+    if (sortDateOrder) {
+      filtered = filtered.sort((a: any, b: any) => {
+        const dateA = a.startDate ? new Date(a.startDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const dateB = b.startDate ? new Date(b.startDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        if (sortDateOrder === 'desc') {
+          return dateB - dateA; // Newest first
+        } else if (sortDateOrder === 'asc') {
+          return dateA - dateB; // Oldest first
+        }
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [approvedPlans, filterDepartment, sortDateOrder, filterStatus]);
+
+  const filteredRejectedPlans = useMemo(() => {
+    let filtered = rejectedPlans.filter((plan: any) => {
+      // Department filter
+      if (filterDepartment) {
+        const scopeArr = plan.scopeDepartments || [];
+        const hasDept = Array.isArray(scopeArr)
+          ? scopeArr.some((d: any) => {
+              const deptId = String(d.deptId || d.id || d.$id || d.departmentId || '');
+              return deptId === String(filterDepartment);
+            })
+          : false;
+        if (!hasDept) return false;
+      }
+
+      // Status filter
+      if (filterStatus) {
+        const planStatus = plan.status || plan.state || '';
+        if (String(planStatus) !== filterStatus) return false;
+      }
+
+      return true;
+    });
+
+    // Sort by date if sortDateOrder is set
+    if (sortDateOrder) {
+      filtered = filtered.sort((a: any, b: any) => {
+        const dateA = a.startDate ? new Date(a.startDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const dateB = b.startDate ? new Date(b.startDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        if (sortDateOrder === 'desc') {
+          return dateB - dateA; // Newest first
+        } else if (sortDateOrder === 'asc') {
+          return dateA - dateB; // Oldest first
+        }
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [rejectedPlans, filterDepartment, sortDateOrder, filterStatus]);
+
+  // Get current filtered plans based on active tab
+  const currentFilteredPlans = 
+    activeTab === 'pending' ? filteredPendingPlans :
+    activeTab === 'approved' ? filteredApprovedPlans :
+    filteredRejectedPlans;
+  
+  const currentTotalPlans = 
+    activeTab === 'pending' ? pendingPlans.length :
+    activeTab === 'approved' ? approvedPlans.length :
+    rejectedPlans.length;
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilterDepartment('');
+    setSortDateOrder('desc'); // Reset to default: newest first
+    setFilterStatus('');
+  };
 
   const handleForwardToDirector = async (auditId: string, comment?: string) => {
     try {
@@ -172,14 +349,16 @@ const SQAHeadAuditReview = () => {
     setLoading(true);
     try {
       const details = await getAuditPlanById(auditId);
-      const normalized = normalizePlanDetails(details, { departments: departments || [], criteriaList: criteriaList || [], users: ownerOptions || [] });
+      const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
+      const normalized = normalizePlanDetails(details, { departments: departments || [], criteriaList: criteriaList || [], users: allUsers });
 
       setSelectedPlanFull(normalized);
 
       // update plans list with department name derived from normalized details
     const deptNames = ((normalized.scopeDepartments?.values || []) as any).map((d: any) => d.deptName || d.name).filter(Boolean);
       setPendingPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
-      setReviewedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
+      setApprovedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
+      setRejectedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
     } catch (err) {
       console.error('Failed to load plan details', err);
       alert('Không thể tải chi tiết kế hoạch. Vui lòng thử lại.');
@@ -188,35 +367,150 @@ const SQAHeadAuditReview = () => {
     }
   };
 
+  // Calculate stats
+  const stats = {
+    total: pendingPlans.length + approvedPlans.length + rejectedPlans.length,
+    pending: pendingPlans.length,
+    approved: approvedPlans.length,
+    rejected: rejectedPlans.length,
+  };
+
   return (
     <MainLayout user={layoutUser}>
-      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
-        <div className="px-6 py-4">
-          <h1 className="text-2xl font-semibold text-primary-600">Audit Review</h1>
-          <p className="text-gray-600 text-sm mt-1">Review and approve audit plans submitted by Auditor</p>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
+          <div className="px-6 py-4">
+            <h1 className="text-2xl font-semibold text-primary-600">Audit Review</h1>
+            <p className="text-gray-600 text-sm mt-1">Review and approve audit plans submitted by Auditor</p>
+          </div>
         </div>
-      </div>
 
-      <div className="px-6 pb-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatCard title="Pending Review" value={pendingPlans.length.toString()} icon={<ClockIcon />} variant="primary-light" />
-          <StatCard title="High Priority" value={pendingPlans.filter((a: any) => a.priority === 'High').length.toString()} icon={<AuditIcon />} variant="primary-dark" />
-          <StatCard title="Reviewed" value={reviewedPlans.length.toString()} icon={<ChartBarIcon />} variant="primary" />
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Plans</p>
+                <p className="text-3xl font-bold text-gray-800">{stats.total}</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Pending Review</p>
+                <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
+              </div>
+              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Approved</p>
+                <p className="text-3xl font-bold text-green-600">{stats.approved}</p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Rejected</p>
+                <p className="text-3xl font-bold text-red-600">{stats.rejected}</p>
+              </div>
+              <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Status Tabs */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-primary-100">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveTab('pending')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'pending'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Pending Review
+              </button>
+              <button
+                onClick={() => setActiveTab('approved')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'approved'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Approved
+              </button>
+              <button
+                onClick={() => setActiveTab('rejected')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeTab === 'rejected'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Rejected
+              </button>
+            </div>
+          </div>
         </div>
 
         {!selectedPlanFull ? (
-          <div>
-            <div className="mb-3 flex gap-2">
-              <button onClick={() => setActiveTab('pending')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${activeTab==='pending' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-800'}`}>Pending</button>
-              <button onClick={() => setActiveTab('reviewed')} className={`px-3 py-1.5 rounded-md text-sm font-medium ${activeTab==='reviewed' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-800'}`}>Reviewed</button>
+          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
+              <h2 className="text-lg font-semibold text-white">
+                {activeTab === 'pending' ? 'Pending Audit Plans' : activeTab === 'approved' ? 'Approved Audit Plans' : 'Rejected Audit Plans'}
+              </h2>
             </div>
+
+            <FilterBar
+              filterDepartment={filterDepartment}
+              sortDateOrder={sortDateOrder}
+              filterStatus={filterStatus}
+              departments={departments}
+              onFilterDepartmentChange={setFilterDepartment}
+              onSortDateOrderChange={setSortDateOrder}
+              onFilterStatusChange={setFilterStatus}
+              onClearFilters={clearFilters}
+              filteredCount={currentFilteredPlans.length}
+              totalCount={currentTotalPlans}
+            />
+
             <AuditReviewList
-              title={activeTab==='pending' ? 'Pending Audit Plans' : 'Reviewed Audit Plans'}
-              plans={activeTab==='pending' ? pendingPlans : reviewedPlans}
+              title={activeTab === 'pending' ? 'Pending Audit Plans' : activeTab === 'approved' ? 'Approved Audit Plans' : 'Rejected Audit Plans'}
+              plans={currentFilteredPlans}
               onSelect={(id) => void handleSelectPlan(id)}
               getDepartmentName={(id:any)=> getDepartmentName(id, departments)}
             />
-            {loading && <p className="text-sm text-gray-500 mt-2">Loading...</p>}
+            {loading && <p className="text-sm text-gray-500 mt-2 px-6 pb-4">Loading...</p>}
           </div>
         ) : (
           <>
@@ -228,8 +522,11 @@ const SQAHeadAuditReview = () => {
               // Only show actionable buttons if not already reviewed
               {
                 ...(() => {
-                  const st = String(selectedPlanFull?.status || '').toLowerCase();
-                  const alreadyReviewed = /approve|reject|published|pending director/.test(st);
+                  const st = String(selectedPlanFull?.status || '').toLowerCase().replace(/\s+/g, '');
+                  // Check if status indicates already reviewed/approved/rejected
+                  const isApproved = st.includes('approved') || st === 'approve' || st.includes('pendingdirectorapproval');
+                  const isRejected = st.includes('rejected') || st === 'reject';
+                  const alreadyReviewed = isApproved || isRejected;
                   return alreadyReviewed ? {} : { onForwardToDirector: handleForwardToDirector, onRejectPlan: handleReject };
                 })()
               }
@@ -238,6 +535,11 @@ const SQAHeadAuditReview = () => {
               getStatusColor={getStatusColor}
               getBadgeVariant={getBadgeVariant}
               ownerOptions={ownerOptions}
+              auditorOptions={auditorOptions}
+              getTemplateName={(tid) => {
+                const t = checklistTemplates.find((tpl: any) => String(tpl.templateId) === String(tid));
+                return  t?.name || `Template ${String(tid ?? '')}`;
+              }}
             />
             {/* Inline review panel removed to avoid duplicate UI behind the modal. Actions are available in the modal. */}
           </>

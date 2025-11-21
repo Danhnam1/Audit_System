@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MainLayout } from '../../layouts';
 import { useNavigate } from 'react-router-dom';
+import { getStatusColor } from '../../constants';
 
 interface AuditResult {
   id: number;
@@ -255,10 +256,10 @@ const ReviewAuditResults = () => {
                     </button>
                     {result.status === 'Pending Review' && (
                       <>
-                        <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium">
+                        <button className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${getStatusColor('Approved')}`}>
                           Approve
                         </button>
-                        <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium">
+                        <button className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${getStatusColor('Rejected')}`}>
                           Reject
                         </button>
                       </>

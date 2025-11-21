@@ -12,6 +12,8 @@ interface Step5ScheduleProps {
   onDraftReportChange: (value: string) => void;
   onCapaChange: (value: string) => void;
   errors?: Record<string, string | undefined>; // field -> message
+  periodFrom?: string; // Period From date for validation
+  periodTo?: string; // Period To date for validation
 }
 
 export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
@@ -26,7 +28,18 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
   onDraftReportChange,
   onCapaChange,
   errors = {},
+  periodFrom,
+  periodTo,
 }) => {
+  // Helper to get min/max date attributes
+  const getDateAttributes = () => {
+    const attrs: { min?: string; max?: string } = {};
+    if (periodFrom) attrs.min = periodFrom;
+    if (periodTo) attrs.max = periodTo;
+    return attrs;
+  };
+
+  const dateAttrs = getDateAttributes();
   return (
     <div>
       <h3 className="text-md font-semibold text-gray-700 mb-4">Step 5/5: Schedule & Deadlines</h3>
@@ -38,7 +51,8 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             value={kickoffMeeting}
             onChange={(e) => onKickoffChange(e.target.value)}
             placeholder="dd/mm/yyyy"
-            className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.kickoffMeeting ? 'border-red-500' : 'border-gray-300'}`}
+            {...dateAttrs}
+            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.kickoffMeeting ? 'border-red-500' : 'border-gray-300'}`}
           />
           {errors.kickoffMeeting && <p className="text-xs text-red-600 mt-1">{errors.kickoffMeeting}</p>}
         </div>
@@ -49,7 +63,8 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             value={fieldworkStart}
             onChange={(e) => onFieldworkChange(e.target.value)}
             placeholder="dd/mm/yyyy"
-            className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.fieldworkStart ? 'border-red-500' : 'border-gray-300'}`}
+            {...dateAttrs}
+            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.fieldworkStart ? 'border-red-500' : 'border-gray-300'}`}
           />
           {errors.fieldworkStart && <p className="text-xs text-red-600 mt-1">{errors.fieldworkStart}</p>}
         </div>
@@ -60,7 +75,8 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             value={evidenceDue}
             onChange={(e) => onEvidenceChange(e.target.value)}
             placeholder="dd/mm/yyyy"
-            className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.evidenceDue ? 'border-red-500' : 'border-gray-300'}`}
+            {...dateAttrs}
+            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.evidenceDue ? 'border-red-500' : 'border-gray-300'}`}
           />
           {errors.evidenceDue && <p className="text-xs text-red-600 mt-1">{errors.evidenceDue}</p>}
         </div>
@@ -71,7 +87,8 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             value={draftReportDue}
             onChange={(e) => onDraftReportChange(e.target.value)}
             placeholder="dd/mm/yyyy"
-            className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.draftReportDue ? 'border-red-500' : 'border-gray-300'}`}
+            {...dateAttrs}
+            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.draftReportDue ? 'border-red-500' : 'border-gray-300'}`}
           />
           {errors.draftReportDue && <p className="text-xs text-red-600 mt-1">{errors.draftReportDue}</p>}
         </div>
@@ -82,7 +99,8 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             value={capaDue}
             onChange={(e) => onCapaChange(e.target.value)}
             placeholder="dd/mm/yyyy"
-            className={`w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.capaDue ? 'border-red-500' : 'border-gray-300'}`}
+            {...dateAttrs}
+            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.capaDue ? 'border-red-500' : 'border-gray-300'}`}
           />
           {errors.capaDue && <p className="text-xs text-red-600 mt-1">{errors.capaDue}</p>}
         </div>
