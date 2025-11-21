@@ -2,13 +2,11 @@ import React from 'react';
 
 interface FilterBarProps {
   filterDepartment: string;
-  filterDateFrom: string;
-  filterDateTo: string;
+  sortDateOrder: string;
   filterStatus: string;
   departments: Array<{ deptId: number | string; name: string }>;
   onFilterDepartmentChange: (value: string) => void;
-  onFilterDateFromChange: (value: string) => void;
-  onFilterDateToChange: (value: string) => void;
+  onSortDateOrderChange: (value: string) => void;
   onFilterStatusChange: (value: string) => void;
   onClearFilters: () => void;
   filteredCount: number;
@@ -17,13 +15,11 @@ interface FilterBarProps {
 
 export const FilterBar: React.FC<FilterBarProps> = ({
   filterDepartment,
-  filterDateFrom,
-  filterDateTo,
+  sortDateOrder,
   filterStatus,
   departments,
   onFilterDepartmentChange,
-  onFilterDateFromChange,
-  onFilterDateToChange,
+  onSortDateOrderChange,
   onFilterStatusChange,
   onClearFilters,
   filteredCount,
@@ -49,26 +45,18 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           </select>
         </div>
 
-        {/* Period From Filter */}
+        {/* Date Sort Filter */}
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Period From</label>
-          <input
-            type="date"
-            value={filterDateFrom}
-            onChange={(e) => onFilterDateFromChange(e.target.value)}
+          <label className="block text-xs font-medium text-gray-700 mb-1">Sort by Date</label>
+          <select
+            value={sortDateOrder}
+            onChange={(e) => onSortDateOrderChange(e.target.value)}
             className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          />
-        </div>
-
-        {/* Period To Filter */}
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Period To</label>
-          <input
-            type="date"
-            value={filterDateTo}
-            onChange={(e) => onFilterDateToChange(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-          />
+          >
+            <option value="">Default</option>
+            <option value="desc">Newest to Oldest</option>
+            <option value="asc">Oldest to Newest</option>
+          </select>
         </div>
 
         {/* Status Filter */}
@@ -81,9 +69,9 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           >
             <option value="">All Status</option>
             <option value="Draft">Draft</option>
-            <option value="Published">Published</option>
-            <option value="Pending">Pending</option>
-            <option value="Completed">Completed</option>
+            <option value="Approved">Approved</option>
+            <option value="PendingReview">Pending Review</option>
+            <option value="PendingDirectorApproval">Pending Director Approval</option>
             <option value="Rejected">Rejected</option>
           </select>
         </div>

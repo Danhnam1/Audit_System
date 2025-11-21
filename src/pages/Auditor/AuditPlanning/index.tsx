@@ -831,13 +831,11 @@ const SQAStaffAuditPlanning = () => {
 
           <FilterBar
             filterDepartment={filterState.filterDepartment}
-            filterDateFrom={filterState.filterDateFrom}
-            filterDateTo={filterState.filterDateTo}
+            sortDateOrder={filterState.sortDateOrder}
             filterStatus={filterState.filterStatus}
             departments={departments}
             onFilterDepartmentChange={filterState.setFilterDepartment}
-            onFilterDateFromChange={filterState.setFilterDateFrom}
-            onFilterDateToChange={filterState.setFilterDateTo}
+            onSortDateOrderChange={filterState.setSortDateOrder}
             onFilterStatusChange={filterState.setFilterStatus}
             onClearFilters={filterState.clearFilters}
             filteredCount={filterState.filteredPlans.length}

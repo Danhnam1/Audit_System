@@ -7,8 +7,7 @@ import { useState, useMemo } from 'react';
 export const useAuditPlanFilters = (existingPlans: any[] = []) => {
   // Filter state
   const [filterDepartment, setFilterDepartment] = useState<string>('');
-  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
-  const [filterDateTo, setFilterDateTo] = useState<string>('');
+  const [sortDateOrder, setSortDateOrder] = useState<string>(''); // 'desc' (mới đến cũ), 'asc' (cũ đến mới), '' (không sort)
   const [filterStatus, setFilterStatus] = useState<string>('');
 
   // Filter audit plans based on filter criteria
@@ -31,19 +30,6 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
         if (!hasDept) return false;
       }
 
-      // Date range filter
-      if (filterDateFrom) {
-        const planEnd = plan.endDate ? new Date(plan.endDate) : null;
-        const filterFrom = new Date(filterDateFrom);
-        if (planEnd && planEnd < filterFrom) return false;
-      }
-
-      if (filterDateTo) {
-        const planStart = plan.startDate ? new Date(plan.startDate) : null;
-        const filterTo = new Date(filterDateTo);
-        if (planStart && planStart > filterTo) return false;
-      }
-
       // Status filter
       if (filterStatus) {
         const planStatus = plan.status || 'Draft';
@@ -54,7 +40,7 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
     });
 
     // Sort: Inactive plans go to bottom
-    return filtered.sort((a: any, b: any) => {
+    let sorted = filtered.sort((a: any, b: any) => {
       const statusA = a.status || 'Draft';
       const statusB = b.status || 'Draft';
       
@@ -63,30 +49,44 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
       // If B is Inactive and A is not, B goes down
       if (statusB === 'Inactive' && statusA !== 'Inactive') return -1;
       
+      // Sort by date if sortDateOrder is set
+      if (sortDateOrder) {
+        // Use startDate for sorting, fallback to createdAt if startDate is not available
+        const dateA = a.startDate ? new Date(a.startDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const dateB = b.startDate ? new Date(b.startDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        
+        if (sortDateOrder === 'desc') {
+          // Từ mới đến cũ (ngày lớn đến bé)
+          return dateB - dateA;
+        } else if (sortDateOrder === 'asc') {
+          // Từ cũ đến mới (ngày bé đến lớn)
+          return dateA - dateB;
+        }
+      }
+      
       // Otherwise maintain original order (or sort by created date descending)
       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return dateB - dateA; // Newest first
     });
-  }, [existingPlans, filterDepartment, filterDateFrom, filterDateTo, filterStatus]);
+
+    return sorted;
+  }, [existingPlans, filterDepartment, sortDateOrder, filterStatus]);
 
   // Clear all filters
   const clearFilters = () => {
     setFilterDepartment('');
-    setFilterDateFrom('');
-    setFilterDateTo('');
+    setSortDateOrder('');
     setFilterStatus('');
   };
 
   return {
     filterDepartment,
-    filterDateFrom,
-    filterDateTo,
+    sortDateOrder,
     filterStatus,
     filteredPlans,
     setFilterDepartment,
-    setFilterDateFrom,
-    setFilterDateTo,
+    setSortDateOrder,
     setFilterStatus,
     clearFilters,
   };
