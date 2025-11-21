@@ -15,16 +15,6 @@ export interface AdminNotificationDTO {
   readAt?: string | null;
 }
 
-export interface CreateNotificationPayload {
-  userId: string; // recipient
-  title: string;
-  message: string;
-  entityType: string;
-  entityId: string;
-  category?: string;
-  status?: string;
-}
-
 export const getNotifications = async (): Promise<AdminNotificationDTO[]> => {
   const res: any = await apiClient.get('/admin/AdminNotification');
   return unwrap(res?.data || res?.$values || res?.values || res);
@@ -32,11 +22,6 @@ export const getNotifications = async (): Promise<AdminNotificationDTO[]> => {
 
 export const getNotificationById = async (notificationId: string): Promise<AdminNotificationDTO> => {
   const res: any = await apiClient.get(`/admin/AdminNotification/${notificationId}`);
-  return res?.data || res;
-};
-
-export const createNotification = async (payload: CreateNotificationPayload): Promise<AdminNotificationDTO> => {
-  const res: any = await apiClient.post('/admin/AdminNotification', payload);
   return res?.data || res;
 };
 
@@ -48,6 +33,5 @@ export const markNotificationRead = async (notificationId: string): Promise<Admi
 export default {
   getNotifications,
   getNotificationById,
-  createNotification,
   markNotificationRead,
 };

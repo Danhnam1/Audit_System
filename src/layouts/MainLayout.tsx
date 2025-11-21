@@ -130,11 +130,7 @@ export const MainLayout = ({
       )}
       <main className="flex-1 overflow-y-auto w-full">
         {/* Top bar */}
-        <div className="sticky top-0 z-30 bg-white/70 backdrop-blur border-b border-gray-200">
-          <div className="px-4 sm:px-6 lg:px-8 py-2 flex items-center justify-end">
-            <NotificationBell />
-          </div>
-        </div>
+      
         <div className="p-4 sm:p-6 lg:p-8">
           {children}
         </div>
