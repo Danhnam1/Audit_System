@@ -125,7 +125,7 @@ const SQAStaffAuditPlanning = () => {
           const k = points[i]!.key as string;
           // Only add duplicate error if not already has period range error
           if (!errs[k]) {
-            errs[k] = 'Dates must be unique (no duplicates).';
+          errs[k] = 'Dates must be unique (no duplicates).';
           }
         });
       }
@@ -157,11 +157,12 @@ const SQAStaffAuditPlanning = () => {
     return (
       formState.title.trim() !== '' &&
       formState.auditType.trim() !== '' &&
+      formState.goal.trim() !== '' &&
       formState.periodFrom !== '' &&
       formState.periodTo !== '' &&
       new Date(formState.periodFrom).getTime() <= new Date(formState.periodTo).getTime()
     );
-  }, [formState.title, formState.auditType, formState.periodFrom, formState.periodTo]);
+  }, [formState.title, formState.auditType, formState.goal, formState.periodFrom, formState.periodTo]);
 
   const validateStep2 = useMemo(() => {
     if (formState.level === 'department') {
@@ -175,8 +176,12 @@ const SQAStaffAuditPlanning = () => {
   }, [formState.selectedTemplateId]);
 
   const validateStep4 = useMemo(() => {
-    return formState.selectedLeadId !== null && formState.selectedLeadId !== '';
-  }, [formState.selectedLeadId]);
+    return (
+      formState.selectedLeadId !== null &&
+      formState.selectedLeadId !== '' &&
+      formState.selectedAuditorIds.length >= 2
+    );
+  }, [formState.selectedLeadId, formState.selectedAuditorIds]);
 
   const validateStep5 = useMemo(() => {
     // Step 5 is optional, but if dates are filled, they must be valid
@@ -549,6 +554,45 @@ const SQAStaffAuditPlanning = () => {
     }
   };
 
+  // Helper: Check if form has any data entered
+  const hasFormData = useMemo(() => {
+    return (
+      formState.title.trim() !== '' ||
+      formState.goal.trim() !== '' ||
+      formState.periodFrom !== '' ||
+      formState.periodTo !== '' ||
+      formState.auditType !== 'Internal' ||
+      formState.level !== 'academy' ||
+      formState.selectedDeptIds.length > 0 ||
+      formState.selectedCriteriaIds.length > 0 ||
+      formState.selectedTemplateId !== null ||
+      formState.selectedLeadId !== '' ||
+      formState.selectedAuditorIds.length > 0 ||
+      formState.kickoffMeeting !== '' ||
+      formState.fieldworkStart !== '' ||
+      formState.evidenceDue !== '' ||
+      formState.draftReportDue !== '' ||
+      formState.capaDue !== ''
+    );
+  }, [
+    formState.title,
+    formState.goal,
+    formState.periodFrom,
+    formState.periodTo,
+    formState.auditType,
+    formState.level,
+    formState.selectedDeptIds,
+    formState.selectedCriteriaIds,
+    formState.selectedTemplateId,
+    formState.selectedLeadId,
+    formState.selectedAuditorIds,
+    formState.kickoffMeeting,
+    formState.fieldworkStart,
+    formState.evidenceDue,
+    formState.draftReportDue,
+    formState.capaDue,
+  ]);
+
   // Handler: Submit plan
   const handleSubmitPlan = async () => {
     // Client-side validation
@@ -669,9 +713,9 @@ const SQAStaffAuditPlanning = () => {
           if (failedDepts.length > 0) {
             console.warn('⚠️ Some departments failed to attach:', failedDepts);
           }
-        }
-      } catch (scopeErr) {
-        console.error('❌ Attach departments to audit failed', scopeErr);
+          }
+        } catch (scopeErr) {
+          console.error('❌ Attach departments to audit failed', scopeErr);
       }
 
       // Attach criteria
@@ -793,7 +837,19 @@ const SQAStaffAuditPlanning = () => {
             <p className="text-gray-600 text-sm mt-1">Create and manage audit plans</p>
           </div>
           <button
-            onClick={() => formState.setShowForm(!formState.showForm)}
+            onClick={() => {
+              // If form is currently open and in edit mode, reset it first
+              if (formState.showForm && formState.isEditMode) {
+                formState.resetFormForCreate();
+              } else if (!formState.showForm) {
+                // If form is closed, reset and open it
+                formState.resetFormForCreate();
+                formState.setShowForm(true);
+              } else {
+                // If form is open and not in edit mode, just close it
+                formState.setShowForm(false);
+              }
+            }}
             className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
           >
             + Create New Plan
@@ -806,10 +862,10 @@ const SQAStaffAuditPlanning = () => {
           <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-primary-600">
-                {formState.isEditMode ? '✏️ Edit Audit Plan' : 'New Audit Plan'}
+                {formState.isEditMode ? 'Edit Audit Plan' : 'New Audit Plan'}
               </h2>
               {formState.isEditMode && (
-                <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-sm font-medium rounded-full">
+                <span className="px-3 py-1 bg-sky-100 text-sky-800 text-sm font-medium rounded-md">
                   Editing Mode
                 </span>
               )}
@@ -932,8 +988,15 @@ const SQAStaffAuditPlanning = () => {
                     if (formState.currentStep > 1) {
                       formState.setCurrentStep(formState.currentStep - 1);
                     } else {
+                      // Step 1 - Cancel button
+                      if (hasFormData || formState.isEditMode) {
+                        if (window.confirm('Are you sure you want to cancel?')) {
+                          formState.resetForm();
+                        }
+                    } else {
                       formState.setShowForm(false);
                       formState.setCurrentStep(1);
+                      }
                     }
                   }}
                   className="border-2 border-gray-400 text-gray-700 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150"
@@ -996,7 +1059,7 @@ const SQAStaffAuditPlanning = () => {
                       {formState.isEditMode && (
                         <button
                           onClick={() => {
-                            if (window.confirm('Discard changes and exit edit mode?')) {
+                            if (window.confirm('Are you sure you want to cancel?')) {
                               formState.resetForm();
                             }
                           }}

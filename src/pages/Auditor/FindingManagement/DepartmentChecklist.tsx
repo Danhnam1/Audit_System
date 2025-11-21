@@ -2,12 +2,9 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getChecklistItemsByDepartment, markChecklistItemCompliant } from '../../../api/checklists';
+import { getChecklistItemsByDepartment } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
-import { getFindings } from '../../../api/findings';
-import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
-import FindingDetailModal from './FindingDetailModal';
 
 interface ChecklistItem {
   auditItemId: string;
@@ -30,104 +27,11 @@ const DepartmentChecklist = () => {
   const [departmentName, setDepartmentName] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
-  const [findingsMap, setFindingsMap] = useState<Record<string, string>>({}); // auditItemId -> findingId
-  const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
 
   // Get auditId from location state (passed from parent component)
   const auditId = (location.state as any)?.auditId || '';
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
-
-  // Helper function to get background color based on status
-  const getStatusColor = (status: string) => {
-    const statusLower = (status || '').toLowerCase().trim();
-    
-    // Check for NonCompliant first (must check this before Compliant)
-    // Handle both "NonCompliant" and "Non-Compliant" formats
-    if (statusLower.startsWith('non') || (statusLower.includes('non') && statusLower.includes('compliant'))) {
-      // Non-compliant - red background with hover
-      return 'bg-red-50 border-l-4 border-red-500 hover:bg-red-100';
-    }
-    
-    // Check for Compliant (only if not NonCompliant)
-    if (statusLower === 'compliant' || statusLower.includes('compliant')) {
-      // Compliant - green background with hover
-      return 'bg-green-50 border-l-4 border-green-500 hover:bg-green-100';
-    }
-    
-    // Default - no special color
-    return 'bg-white border-l-4 border-transparent hover:bg-gray-50';
-  };
-
-  // Check if item is non-compliant
-  const isNonCompliant = (status: string) => {
-    const statusLower = status?.toLowerCase() || '';
-    return statusLower.includes('non') && statusLower.includes('compliant');
-  };
-
-  // Load findings to map auditItemId to findingId
-  useEffect(() => {
-    const loadFindings = async () => {
-      try {
-        const findingsResponse = await getFindings();
-        // Unwrap the response to handle $values or values arrays
-        const findingsArray = unwrap(findingsResponse);
-        
-        // Create map: auditItemId -> findingId
-        const map: Record<string, string> = {};
-        findingsArray.forEach((finding: any) => {
-          if (finding.auditItemId && finding.findingId) {
-            map[finding.auditItemId] = finding.findingId;
-          }
-        });
-        setFindingsMap(map);
-        console.log('Findings map created:', map);
-      } catch (err) {
-        console.error('Error loading findings:', err);
-      }
-    };
-    loadFindings();
-  }, []);
-
-  // Handle view finding details
-  const handleViewFinding = (item: ChecklistItem) => {
-    const findingId = findingsMap[item.auditItemId];
-    if (findingId) {
-      setSelectedFindingId(findingId);
-      setShowDetailModal(true);
-    } else {
-      console.warn('Finding not found for auditItemId:', item.auditItemId);
-      alert('Finding not found for this item');
-    }
-  };
-
-  // Handle mark item as compliant
-  const handleMarkCompliant = async (item: ChecklistItem) => {
-    if (updatingItemId) return; // Prevent multiple clicks
-    
-    setUpdatingItemId(item.auditItemId);
-    try {
-      await markChecklistItemCompliant(item.auditItemId);
-      
-      // Update local state to reflect the change
-      setChecklistItems(prevItems =>
-        prevItems.map(prevItem =>
-          prevItem.auditItemId === item.auditItemId
-            ? { ...prevItem, status: 'Compliant' }
-            : prevItem
-        )
-      );
-      
-      console.log('Item marked as compliant:', item.auditItemId);
-    } catch (err: any) {
-      console.error('Error marking item as compliant:', err);
-      alert(err?.message || 'Failed to mark item as compliant');
-    } finally {
-      setUpdatingItemId(null);
-    }
-  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -224,7 +128,7 @@ const DepartmentChecklist = () => {
                 {checklistItems.map((item, index) => (
                   <div
                     key={item.auditItemId}
-                    className={`px-4 sm:px-6 py-3 sm:py-4 transition-colors ${getStatusColor(item.status)}`}
+                    className="px-4 sm:px-6 py-3 sm:py-4 hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center justify-between gap-3 sm:gap-4">
                       <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
@@ -237,59 +141,33 @@ const DepartmentChecklist = () => {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                        {isNonCompliant(item.status) ? (
-                          /* Eye icon for Non-compliant items */
-                          <button
-                            className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewFinding(item);
-                            }}
-                            title="View Finding Details"
-                          >
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
-                        ) : (
-                          <>
-                            {/* Green Checkmark */}
-                            <button
-                              className={`w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-green-100 hover:bg-green-200 text-green-600 transition-colors active:scale-95 ${
-                                updatingItemId === item.auditItemId ? 'opacity-50 cursor-not-allowed' : ''
-                              }`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMarkCompliant(item);
-                              }}
-                              disabled={updatingItemId === item.auditItemId}
-                              title="Mark as Compliant"
-                            >
-                              {updatingItemId === item.auditItemId ? (
-                                <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-green-600"></div>
-                              ) : (
-                                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                            </button>
-                            
-                            {/* Red X */}
-                            <button
-                              className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-red-100 hover:bg-red-200 text-red-600 transition-colors active:scale-95"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedItem(item);
-                                setShowCreateModal(true);
-                              }}
-                            >
-                              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </>
-                        )}
+                        {/* Green Checkmark */}
+                        <button
+                          className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-green-100 hover:bg-green-200 text-green-600 transition-colors active:scale-95"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Handle check action
+                            console.log('Check clicked for item:', item.auditItemId);
+                          }}
+                        >
+                          <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                        
+                        {/* Red X */}
+                        <button
+                          className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-red-100 hover:bg-red-200 text-red-600 transition-colors active:scale-95"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedItem(item);
+                            setShowCreateModal(true);
+                          }}
+                        >
+                          <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -309,38 +187,7 @@ const DepartmentChecklist = () => {
             setSelectedItem(null);
           }}
           onSuccess={() => {
-            // Reload findings to update the map
-            const reloadFindings = async () => {
-              try {
-                const findingsResponse = await getFindings();
-                const findingsArray = unwrap(findingsResponse);
-                const map: Record<string, string> = {};
-                findingsArray.forEach((finding: any) => {
-                  if (finding.auditItemId && finding.findingId) {
-                    map[finding.auditItemId] = finding.findingId;
-                  }
-                });
-                setFindingsMap(map);
-              } catch (err) {
-                console.error('Error reloading findings:', err);
-              }
-            };
-            reloadFindings();
-            
-            // Reload checklist items to update status
-            const reloadChecklistItems = async () => {
-              if (!deptId) return;
-              try {
-                const deptIdNum = parseInt(deptId, 10);
-                const items = await getChecklistItemsByDepartment(deptIdNum);
-                const sortedItems = items.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
-                setChecklistItems(sortedItems);
-              } catch (err) {
-                console.error('Error reloading checklist items:', err);
-              }
-            };
-            reloadChecklistItems();
-            
+            // Optionally refresh checklist items or show success message
             console.log('Finding created successfully');
           }}
           checklistItem={{
@@ -349,18 +196,6 @@ const DepartmentChecklist = () => {
             questionTextSnapshot: selectedItem.questionTextSnapshot,
           }}
           deptId={parseInt(deptId, 10)}
-        />
-      )}
-
-      {/* Finding Detail Modal */}
-      {selectedFindingId && (
-        <FindingDetailModal
-          isOpen={showDetailModal}
-          onClose={() => {
-            setShowDetailModal(false);
-            setSelectedFindingId(null);
-          }}
-          findingId={selectedFindingId}
         />
       )}
     </MainLayout>

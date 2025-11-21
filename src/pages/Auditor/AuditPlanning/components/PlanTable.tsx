@@ -48,6 +48,9 @@ export const PlanTable: React.FC<PlanTableProps> = ({
               Title
             </th>
             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+              Type
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
               Start Date
             </th>
             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
@@ -99,11 +102,11 @@ export const PlanTable: React.FC<PlanTableProps> = ({
                   {/* <p className="text-xs text-gray-500 mt-1 line-clamp-2">
                     {plan.objective || 'No objective specified'}
                   </p> */}
-                  <div className="flex gap-2 mt-1">
-                    <span className={`px-2 py-0.5 text-xs rounded ${getBadgeVariant('primary-light')}`}>
-                      {plan.type || 'General'}
-                    </span>
-                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className={`px-2 py-0.5 text-xs rounded ${getBadgeVariant('primary-light')}`}>
+                    {plan.type || 'General'}
+                  </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <p className="text-sm  text-gray-900">{formatDate(plan.startDate)}</p>

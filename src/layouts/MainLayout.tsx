@@ -5,7 +5,7 @@ import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
 import './icons.tsx';
 import useAuthStore from '../store/useAuthStore';
 import { getRoleMenu } from '../helpers/roleMenus';
-import { NotificationBell } from '../components/NotificationBell';
+
 
 export interface Team {
   id: string;

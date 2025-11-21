@@ -21,14 +21,11 @@ const SQAStaffFindingManagement = lazy(() => import("../pages/Auditor/FindingMan
 const SQAStaffAuditExecutionDetail = lazy(() => import("../pages/Auditor/FindingManagement/AuditExecutionDetail"));
 const SQAStaffDepartmentChecklist = lazy(() => import("../pages/Auditor/FindingManagement/DepartmentChecklist"));
 const SQAStaffReports = lazy(() => import("../pages/Auditor/Reports"));
+const SQAStaffAuditReview = lazy(() => import("../pages/Auditor/AuditReview"));
+const SQAStaffLeadReports = lazy(() => import("../pages/Auditor/LeadReports"));
 const SQAStaffRequests = lazy(() => import("../pages/Auditor/Requests"));
 const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"));
 
-// Lead Auditor pages (formerly SQA Head)
-const SQAHeadDashboard = lazy(() => import("../pages/LeadAuditor/Dashboard"));
-const SQAHeadAuditReview = lazy(() => import("../pages/LeadAuditor/AuditReview"));
-const SQAHeadTeam = lazy(() => import("../pages/LeadAuditor/Team"));
-const SQAHeadReports = lazy(() => import("../pages/LeadAuditor/Reports"));
 
 // CAPA Owner pages (formerly Department Staff)
 const DepartmentStaffDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard"));
@@ -72,7 +69,6 @@ export function AppRoutes() {
         const roleRouteMap: Record<string, string> = {
             admin: ROUTES.ADMIN,
             auditor: ROUTES.AUDITOR,
-            leadauditor: ROUTES.LEAD_AUDITOR,
             capaowner: ROUTES.CAPA_OWNER,
             auditeeowner: ROUTES.AUDITEE_OWNER,
             director: ROUTES.DIRECTOR,
@@ -193,6 +189,22 @@ export function AppRoutes() {
                 }
             />
             <Route
+                path="/auditor/audit-review"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffAuditReview />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditor/lead-reports"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffLeadReports />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
                 path="/auditor/requests"
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
@@ -209,39 +221,6 @@ export function AppRoutes() {
                 }
             />
 
-            {/* Protected routes - Lead Auditor */}
-            <Route
-                path={ROUTES.LEAD_AUDITOR}
-                element={
-                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
-                        <SQAHeadDashboard />
-                    </ProtectedRoute>
-                }
-            />
-            <Route
-                path="/lead-auditor/audit-review"
-                element={
-                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
-                        <SQAHeadAuditReview />
-                    </ProtectedRoute>
-                }
-            />
-            <Route
-                path="/lead-auditor/team"
-                element={
-                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
-                        <SQAHeadTeam />
-                    </ProtectedRoute>
-                }
-            />
-            <Route
-                path="/lead-auditor/reports"
-                element={
-                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
-                        <SQAHeadReports />
-                    </ProtectedRoute>
-                }
-            />
 
             {/* Protected routes - CAPA Owner */}
             <Route
