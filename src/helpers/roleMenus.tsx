@@ -41,6 +41,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.LEAD_AUDITOR },
         { icon: <AuditIcon />, label: 'Audit Review', path: `${ROUTES.LEAD_AUDITOR}/audit-review` },
+        { icon: <DashboardIcon />, label: 'Requests', path: `${ROUTES.LEAD_AUDITOR}/requests` },
         { icon: <ReportsIcon />, label: 'Reports', path: `${ROUTES.LEAD_AUDITOR}/reports` },
       ];
 

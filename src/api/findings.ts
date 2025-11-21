@@ -53,8 +53,12 @@ export const getFindings = async (): Promise<Finding[]> => {
   console.log('📡 Calling GET /Findings...');
   const res = await apiClient.get('/Findings');
   console.log('📡 Raw response:', res);
-  console.log('📡 Response data:', res.data);
-  const unwrapped = unwrap<Finding>(res.data);
+  
+  // Axios interceptor may return data directly
+  const data = res.data !== undefined ? res.data : res;
+  console.log('📡 Response data:', data);
+  
+  const unwrapped = unwrap<Finding>(data);
   console.log('📡 Unwrapped findings:', unwrapped);
   return unwrapped;
 };

@@ -20,7 +20,7 @@ const SQAStaffAuditTeam = lazy(() => import("../pages/Auditor/AuditTeam"));
 const SQAStaffFindingManagement = lazy(() => import("../pages/Auditor/FindingManagement"));
 const SQAStaffAuditExecutionDetail = lazy(() => import("../pages/Auditor/FindingManagement/AuditExecutionDetail"));
 const SQAStaffReports = lazy(() => import("../pages/Auditor/Reports"));
-const SQAStaffRequests = lazy(() => import("../pages/Auditor/Requests"));
+const SQAStaffActionReview = lazy(() => import("../pages/Auditor/Requests/ActionReview"));
 const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"));
 
 // Lead Auditor pages (formerly SQA Head)
@@ -28,6 +28,7 @@ const SQAHeadDashboard = lazy(() => import("../pages/LeadAuditor/Dashboard"));
 const SQAHeadAuditReview = lazy(() => import("../pages/LeadAuditor/AuditReview"));
 const SQAHeadTeam = lazy(() => import("../pages/LeadAuditor/Team"));
 const SQAHeadReports = lazy(() => import("../pages/LeadAuditor/Reports"));
+const SQAHeadEvidenceReview = lazy(() => import("../pages/LeadAuditor/Requests/EvidenceReview"));
 
 // CAPA Owner pages (formerly Department Staff)
 const DepartmentStaffDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard"));
@@ -187,7 +188,7 @@ export function AppRoutes() {
                 path="/auditor/requests"
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
-                        <SQAStaffRequests />
+                        <SQAStaffActionReview />
                     </ProtectedRoute>
                 }
             />
@@ -230,6 +231,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <SQAHeadReports />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/requests"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <SQAHeadEvidenceReview />
                     </ProtectedRoute>
                 }
             />

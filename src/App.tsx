@@ -1,8 +1,10 @@
 import { Suspense } from "react";
 import { BrowserRouter } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./contexts";
 import { Navigation } from "./components";
 import { AppRoutes } from "./routes/AppRoutes";
+import { queryClient } from "./config/react-query";
 import "./App.css";
 
 // Loading component
@@ -17,14 +19,16 @@ const LoadingSpinner = () => (
 
 function App() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Navigation />
-        <Suspense fallback={<LoadingSpinner />}>
-          <AppRoutes />
-        </Suspense>
-      </AuthProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AuthProvider>
+          <Navigation />
+          <Suspense fallback={<LoadingSpinner />}>
+            <AppRoutes />
+          </Suspense>
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
 
