@@ -96,6 +96,22 @@ export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attach
 
 // Get attachments for an entity
 export const getAttachments = async (entityType: string, entityId: string): Promise<Attachment[]> => {
-  const res = await apiClient.get(`/admin/AdminAttachment/${entityType}/${entityId}`);
-  return res.data;
+  const res = await apiClient.get(`/admin/AdminAttachment/entity/${entityType}/${entityId}`);
+  // Unwrap $values if present
+  const { unwrap } = await import('../utils/normalize');
+  const attachments = unwrap(res);
+  return attachments.map((att: any) => ({
+    attachmentId: att.attachmentId || att.$id,
+    entityType: att.entityType,
+    entityId: att.entityId,
+    fileName: att.fileName,
+    fileSize: att.sizeBytes || att.fileSize || 0,
+    contentType: att.contentType,
+    filePath: att.blobPath || att.filePath,
+    uploadedAt: att.uploadedAt,
+    uploadedBy: att.uploadedBy,
+    status: att.status,
+    retentionUntil: att.retentionUntil,
+    isArchived: att.isArchived || false,
+  }));
 };

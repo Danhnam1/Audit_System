@@ -46,9 +46,23 @@ export const getChecklistItemsByDepartment = async (deptId: number) => {
   return unwrapped;
 };
 
+// Mark checklist item as compliant
+export const markChecklistItemCompliant = async (auditItemId: string) => {
+  const res = await apiClient.put(`/AuditChecklistItems/${auditItemId}/compliant`);
+  return res.data;
+};
+
+// Mark checklist item as non-compliant
+export const markChecklistItemNonCompliant = async (auditItemId: string) => {
+  const res = await apiClient.put(`/AuditChecklistItems/${auditItemId}/non-compliant`);
+  return res.data;
+};
+
 export default {
   getChecklistTemplates,
   getChecklistItemsByTemplate,
   getAuditChecklistItems,
   getChecklistItemsByDepartment,
+  markChecklistItemCompliant,
+  markChecklistItemNonCompliant,
 };
