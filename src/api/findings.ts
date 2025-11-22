@@ -66,6 +66,11 @@ export const getFindingById = async (findingId: string): Promise<Finding> => {
   return apiClient.get(`/Findings/${findingId}`) as any;
 };
 
+// Mark finding as received
+export const markFindingAsReceived = async (findingId: string): Promise<any> => {
+  return apiClient.put(`/Findings/${findingId}/received`) as any;
+};
+
 // Create a new finding
 export const createFinding = async (payload: CreateFindingPayload): Promise<Finding> => {
   console.log('4. createFinding API - Received (camelCase):', JSON.stringify(payload, null, 2));

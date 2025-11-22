@@ -6,6 +6,7 @@ import { getSeverityColor } from '../../../constants/statusColors';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
 import { createAction } from '../../../api/actions';
 import { getAdminUsersByDepartment } from '../../../api/adminUsers';
+import { markFindingAsReceived } from '../../../api/findings';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
@@ -21,6 +22,7 @@ const FindingsProgress = () => {
   const [dueDate, setDueDate] = useState('');
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [submittingAssign, setSubmittingAssign] = useState(false);
+  const [showAssignConfirmModal, setShowAssignConfirmModal] = useState(false);
 
   // Get user's department ID from token
   const getUserDeptId = (): number | null => {
@@ -155,8 +157,8 @@ const FindingsProgress = () => {
     }
   };
 
-  // Handle assign finding (create action)
-  const handleAssign = async () => {
+  // Handle assign finding - show confirmation first
+  const handleAssign = () => {
     if (!selectedStaff) {
       alert('Please select a staff member');
       return;
@@ -172,9 +174,24 @@ const FindingsProgress = () => {
       return;
     }
 
+    // Show confirmation modal
+    setShowAssignConfirmModal(true);
+  };
+
+  // Confirm and actually assign finding (create action)
+  const handleConfirmAssign = async () => {
+    if (!selectedFindingForAssign) {
+      return;
+    }
+
+    setShowAssignConfirmModal(false);
+    setSubmittingAssign(true);
+
     try {
-      setSubmittingAssign(true);
+      // First, mark finding as received
+      await markFindingAsReceived(selectedFindingForAssign.findingId);
       
+      // Then, create action
       await createAction({
         findingId: selectedFindingForAssign.findingId,
         title: selectedFindingForAssign.title,
@@ -472,6 +489,47 @@ const FindingsProgress = () => {
                     className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submittingAssign ? 'Assigning...' : 'Assign'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Assign Confirmation Modal */}
+        {showAssignConfirmModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => setShowAssignConfirmModal(false)}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Confirm Assign
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Are you sure you want to assign this finding? The finding will be marked as received and an action will be created.
+                </p>
+                
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAssignConfirmModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmAssign}
+                    disabled={submittingAssign}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submittingAssign ? 'Assigning...' : 'Yes, Assign'}
                   </button>
                 </div>
               </div>
