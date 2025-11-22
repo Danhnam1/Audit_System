@@ -4,6 +4,8 @@ import { useAuth } from '../../../contexts';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getSeverityColor } from '../../../constants/statusColors';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
+import { createAuditAssignment } from '../../../api/auditAssignments';
+import { getDepartmentUsers } from '../../../api/departmentHeads';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
@@ -12,6 +14,13 @@ const FindingsProgress = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedFindingForAssign, setSelectedFindingForAssign] = useState<Finding | null>(null);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [staffMembers, setStaffMembers] = useState<Array<{ id: string; name: string; email?: string }>>([]);
+  const [selectedStaff, setSelectedStaff] = useState('');
+  const [assignNotes, setAssignNotes] = useState('');
+  const [loadingStaff, setLoadingStaff] = useState(false);
+  const [submittingAssign, setSubmittingAssign] = useState(false);
 
   // Get user's department ID from token
   const getUserDeptId = (): number | null => {
@@ -122,6 +131,75 @@ const FindingsProgress = () => {
     return 'bg-gray-100 text-gray-700';
   };
 
+  // Load staff members for assignment
+  const loadStaffMembers = async (deptId?: number) => {
+    if (!deptId) return;
+    
+    setLoadingStaff(true);
+    try {
+      const staff = await getDepartmentUsers(deptId);
+      setStaffMembers(staff || []);
+    } catch (err: any) {
+      console.error('Error loading staff members:', err);
+      setStaffMembers([]);
+    } finally {
+      setLoadingStaff(false);
+    }
+  };
+
+  // Handle assign finding
+  const handleAssign = async () => {
+    if (!selectedStaff) {
+      alert('Please select a staff member');
+      return;
+    }
+
+    if (!selectedFindingForAssign) {
+      alert('Finding data not available');
+      return;
+    }
+
+    try {
+      setSubmittingAssign(true);
+      
+      await createAuditAssignment({
+        auditId: selectedFindingForAssign.auditId,
+        deptId: selectedFindingForAssign.deptId || 0,
+        auditorId: selectedStaff,
+        notes: assignNotes || '',
+        status: 'Assigned',
+      });
+
+      alert('Finding assigned successfully!');
+      
+      // Reset form and close modal
+      setSelectedStaff('');
+      setAssignNotes('');
+      setSelectedFindingForAssign(null);
+      setShowAssignModal(false);
+      
+      // Optionally reload findings
+      const deptId = getUserDeptId();
+      if (deptId) {
+        const data = await getFindingsByDepartment(deptId);
+        setFindings(data);
+      }
+    } catch (err: any) {
+      console.error('Error assigning finding:', err);
+      alert(`Error: ${err?.message || 'Failed to assign finding'}`);
+    } finally {
+      setSubmittingAssign(false);
+    }
+  };
+
+  // Handle close assign modal
+  const handleCloseAssignModal = () => {
+    setSelectedStaff('');
+    setAssignNotes('');
+    setSelectedFindingForAssign(null);
+    setShowAssignModal(false);
+  };
+
   return (
     <MainLayout user={layoutUser}>
       <div className="px-4 sm:px-6 pb-4 sm:pb-6">
@@ -227,19 +305,32 @@ const FindingsProgress = () => {
                             {formatDate(finding.deadline)}
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <button
-                              onClick={() => {
-                                setSelectedFindingId(finding.findingId);
-                                setShowDetailModal(true);
-                              }}
-                              className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
-                              title="View Details"
-                            >
-                              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setSelectedFindingId(finding.findingId);
+                                  setShowDetailModal(true);
+                                }}
+                                className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
+                                title="View Details"
+                              >
+                                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedFindingForAssign(finding);
+                                  setShowAssignModal(true);
+                                  loadStaffMembers(finding.deptId);
+                                }}
+                                className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
+                                title="Assign Finding"
+                              >
+                                Assign
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -261,6 +352,112 @@ const FindingsProgress = () => {
             }}
             findingId={selectedFindingId}
           />
+        )}
+
+        {/* Assign Finding Modal */}
+        {showAssignModal && selectedFindingForAssign && (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={handleCloseAssignModal}
+            />
+
+            {/* Modal */}
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div
+                className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between z-10">
+                  <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Assign Finding</h2>
+                  <button
+                    onClick={handleCloseAssignModal}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-4 sm:p-6 space-y-4">
+                  {/* Finding Title */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                      Finding
+                    </label>
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <p className="text-sm font-medium text-gray-900">{selectedFindingForAssign.title}</p>
+                    </div>
+                  </div>
+
+                  {/* Staff Selection */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                      Staff Member <span className="text-red-500">*</span>
+                    </label>
+                    {loadingStaff ? (
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                        <span className="text-sm text-gray-500">Loading staff members...</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedStaff}
+                        onChange={(e) => setSelectedStaff(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      >
+                        <option value="">Select staff member</option>
+                        {staffMembers.map((staff) => (
+                          <option key={staff.id} value={staff.id}>
+                            {staff.name} {staff.email ? `(${staff.email})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {staffMembers.length === 0 && !loadingStaff && (
+                      <p className="mt-1 text-xs text-gray-500">No staff members found in this department</p>
+                    )}
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                      Notes (Optional)
+                    </label>
+                    <textarea
+                      value={assignNotes}
+                      onChange={(e) => setAssignNotes(e.target.value)}
+                      rows={3}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="Add any additional notes..."
+                    />
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="sticky bottom-0 bg-white border-t border-gray-200 px-4 sm:px-6 py-4 flex justify-end gap-3">
+                  <button
+                    onClick={handleCloseAssignModal}
+                    disabled={submittingAssign}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAssign}
+                    disabled={submittingAssign || !selectedStaff}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submittingAssign ? 'Assigning...' : 'Assign'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </MainLayout>
