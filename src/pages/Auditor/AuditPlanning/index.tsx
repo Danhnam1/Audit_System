@@ -11,7 +11,7 @@ import { addTeamMember } from '../../../api/auditTeam';
 import { getDepartments } from '../../../api/departments';
 import { addAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule';
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
-import { getAuditPlans, getAuditPlanById, updateAuditPlan, deleteAuditPlan, submitToLeadAuditor } from '../../../api/audits';
+import { getAuditPlanById, updateAuditPlan, deleteAuditPlan, submitToLeadAuditor } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
 
@@ -1095,7 +1095,10 @@ const SQAStaffAuditPlanning = () => {
           />
 
           <PlanTable
-            filteredPlans={activePlansTab === 1 ? filterState.filteredPlans.slice(0, pageSize) : filterState.filteredPlans.slice(pageSize)}
+            filteredPlans={filterState.filteredPlans.slice(
+              (activePlansTab - 1) * pageSize,
+              activePlansTab * pageSize
+            )}
             existingPlans={visiblePlans}
             loadingPlans={loadingPlans}
             onViewDetails={handleViewDetails}
@@ -1103,29 +1106,34 @@ const SQAStaffAuditPlanning = () => {
             onDeletePlan={handleDeletePlan}
             getStatusColor={getStatusColor}
             getBadgeVariant={getBadgeVariant}
-            startIndex={activePlansTab === 1 ? 0 : pageSize}
+            startIndex={(activePlansTab - 1) * pageSize}
           />
 
           {/* Tabs / pagination placed at bottom, centered like the design */}
-          {filterState.filteredPlans.length > pageSize && (
-            <div className="px-6 py-4 border-t bg-white flex items-center justify-center gap-3">
-              <button
-                onClick={() => setActivePlansTab(1)}
-                className={`px-4 py-2 rounded font-medium transition ${activePlansTab === 1 ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-              >
-                1
-              </button>
-
-              
-
-              <button
-                onClick={() => setActivePlansTab(2)}
-                className={`px-4 py-2 rounded font-medium transition ${activePlansTab === 2 ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-              >
-                2
-              </button>
-            </div>
-          )}
+          {(() => {
+            const totalPlans = filterState.filteredPlans.length;
+            const totalPages = Math.ceil(totalPlans / pageSize);
+            
+            if (totalPages <= 1) return null;
+            
+            return (
+              <div className="px-6 py-4 border-t bg-white flex items-center justify-center gap-3">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                  <button
+                    key={pageNum}
+                    onClick={() => setActivePlansTab(pageNum)}
+                    className={`px-4 py-2 rounded font-medium transition ${
+                      activePlansTab === pageNum
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Details Modal */}
