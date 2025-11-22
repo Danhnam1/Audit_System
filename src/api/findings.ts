@@ -54,6 +54,13 @@ export const getFindings = async (): Promise<Finding[]> => {
   return apiClient.get('/Findings') as any;
 };
 
+// Get findings by department ID
+export const getFindingsByDepartment = async (deptId: number): Promise<Finding[]> => {
+  const res = await apiClient.get(`/Findings/by-department/${deptId}`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Finding>(res);
+};
+
 // Get finding by ID
 export const getFindingById = async (findingId: string): Promise<Finding> => {
   return apiClient.get(`/Findings/${findingId}`) as any;
