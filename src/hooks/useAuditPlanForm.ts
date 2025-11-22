@@ -64,6 +64,30 @@ export const useAuditPlanForm = () => {
     setCurrentStep(1);
   };
 
+  // Reset form fields for creating a new plan (keeps form open)
+  const resetFormForCreate = () => {
+    setTitle('');
+    setAuditType('Internal');
+    setGoal('');
+    setPeriodFrom('');
+    setPeriodTo('');
+    setLevel('academy');
+    setSelectedDeptIds([]);
+    setSelectedTemplateId(null);
+    setSelectedCriteriaIds([]);
+    setSelectedLeadId('');
+    setSelectedAuditorIds([]);
+    setSelectedOwnerId('');
+    setKickoffMeeting('');
+    setFieldworkStart('');
+    setEvidenceDue('');
+    setDraftReportDue('');
+    setCapaDue('');
+    setIsEditMode(false);
+    setEditingAuditId(null);
+    setCurrentStep(1);
+  };
+
   // Load plan data for editing
   const loadPlanForEdit = (details: any) => {
     // Activate edit mode & initialize edit context
@@ -207,6 +231,7 @@ export const useAuditPlanForm = () => {
     
     // Actions
     resetForm,
+    resetFormForCreate,
     loadPlanForEdit,
   };
 };

@@ -789,14 +789,13 @@ const SQAStaffAuditPlanning = () => {
 
       // Refresh plans list
       try {
-        const response = await getAuditPlans();
-        const planArray = unwrap(response);
-        setExistingPlans(planArray);
+        const merged = await getPlansWithDepartments();
+        setExistingPlans(merged);
       } catch (refreshErr) {
         console.error('❌ Failed to refresh plans list', refreshErr);
       }
 
-      // Reset form
+      // Reset form (closes form after successful creation)
       formState.resetForm();
 
       const successMsg = formState.isEditMode

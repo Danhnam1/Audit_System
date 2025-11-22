@@ -38,18 +38,23 @@ export default function MultiSelect({ options, value, onChange, placeholder = 'S
   // Display selected labels when available. If options don't contain the
   // selected values (possible when options are loaded async or values are
   // pre-populated), fall back to showing the raw values so the UI isn't blank.
-  // Filter out disabled options when counting
-  const enabledSelectedOptions = options.filter(o => selectedMap.has(o.value) && !o.disabled)
-  const enabledSelectedLabels = enabledSelectedOptions.map(o => o.label)
+  // Include ALL selected options (including disabled) in display
+  const allSelectedOptions = options.filter(o => selectedMap.has(o.value))
+  const allSelectedLabels = allSelectedOptions.map(o => o.label)
+  const enabledSelectedOptions = allSelectedOptions.filter(o => !o.disabled)
   const enabledSelectedCount = enabledSelectedOptions.length
-  const display = enabledSelectedCount === 0
+  const totalSelectedCount = allSelectedOptions.length
+  const display = totalSelectedCount === 0
     ? placeholder
-    : enabledSelectedCount <= 3
-      ? (enabledSelectedLabels.length > 0 ? enabledSelectedLabels.join(', ') : value.filter(v => {
+    : totalSelectedCount <= 3
+      ? (allSelectedLabels.length > 0 ? allSelectedLabels.join(', ') : value.filter(v => {
           const opt = options.find(o => o.value === v)
-          return opt && !opt.disabled
+          return opt
+        }).map(v => {
+          const opt = options.find(o => o.value === v)
+          return opt ? opt.label : v
         }).join(', '))
-      : `${enabledSelectedCount} selected`
+      : `${totalSelectedCount} selected`
 
   return (
     <div ref={ref} className={`relative ${className || ''}`}>
