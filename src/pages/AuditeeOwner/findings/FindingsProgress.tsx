@@ -58,7 +58,12 @@ const FindingsProgress = () => {
         }
 
         const data = await getFindingsByDepartment(deptId);
-        setFindings(data);
+        // Filter out findings with status "Received"
+        const filteredData = data.filter((finding: Finding) => {
+          const statusLower = finding.status?.toLowerCase() || '';
+          return statusLower !== 'received';
+        });
+        setFindings(filteredData);
       } catch (err: any) {
         console.error('Error fetching findings:', err);
         setError(err?.message || 'Failed to load findings');
@@ -215,7 +220,12 @@ const FindingsProgress = () => {
       const deptId = getUserDeptId();
       if (deptId) {
         const data = await getFindingsByDepartment(deptId);
-        setFindings(data);
+        // Filter out findings with status "Received"
+        const filteredData = data.filter((finding: Finding) => {
+          const statusLower = finding.status?.toLowerCase() || '';
+          return statusLower !== 'received';
+        });
+        setFindings(filteredData);
       }
     } catch (err: any) {
       console.error('Error creating action:', err);
