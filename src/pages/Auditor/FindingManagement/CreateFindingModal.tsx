@@ -41,8 +41,8 @@ const CreateFindingModal = ({
     files?: string;
   }>({});
 
-  // Confirmation modal state
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // Confirmation modals
+  const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [showCreateConfirmModal, setShowCreateConfirmModal] = useState(false);
 
   // Load severities on mount
@@ -115,11 +115,6 @@ const CreateFindingModal = ({
 
   const handleConfirmCreate = async () => {
     setShowCreateConfirmModal(false);
-    
-    if (!validateForm()) {
-      return;
-    }
-
     setSubmitting(true);
     
     try {
@@ -203,7 +198,6 @@ const CreateFindingModal = ({
 
       // Mark checklist item as non-compliant
       try {
-        console.log('Marking checklist item as non-compliant:', checklistItem.auditItemId);
         await markChecklistItemNonCompliant(checklistItem.auditItemId);
         console.log('✅ Checklist item marked as non-compliant');
       } catch (markError: any) {
@@ -241,16 +235,16 @@ const CreateFindingModal = ({
 
   const handleClose = () => {
     if (submitting) return;
-    
+
     // Check if form has any data
-    const hasData = description.trim() !== '' || 
-                   severity !== '' || 
-                   deadline !== '' || 
+    const hasData = description.trim() !== '' ||
+                   severity !== '' ||
+                   deadline !== '' ||
                    files.length > 0;
-    
+
     if (hasData) {
       // Show confirmation modal if form has data
-      setShowConfirmModal(true);
+      setShowCancelConfirmModal(true);
     } else {
       // No data, close directly
       setDescription('');
@@ -262,18 +256,18 @@ const CreateFindingModal = ({
     }
   };
 
-  const handleConfirmClose = () => {
+  const handleConfirmCancel = () => {
     setDescription('');
     setSeverity('');
     setDeadline('');
     setFiles([]);
     setErrors({});
-    setShowConfirmModal(false);
+    setShowCancelConfirmModal(false);
     onClose();
   };
 
-  const handleCancelClose = () => {
-    setShowConfirmModal(false);
+  const handleCancelCancel = () => {
+    setShowCancelConfirmModal(false);
   };
 
   if (!isOpen) return null;
@@ -467,13 +461,13 @@ const CreateFindingModal = ({
         </div>
       </div>
 
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
+      {/* Confirmation Modal for Cancel */}
+      {showCancelConfirmModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-            onClick={handleCancelClose}
+            onClick={handleCancelCancel}
           />
           
           {/* Modal */}
@@ -489,14 +483,14 @@ const CreateFindingModal = ({
               <div className="flex items-center justify-end gap-3">
                 <button
                   type="button"
-                  onClick={handleCancelClose}
+                  onClick={handleCancelCancel}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   No, Keep Editing
                 </button>
                 <button
                   type="button"
-                  onClick={handleConfirmClose}
+                  onClick={handleConfirmCancel}
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                 >
                   Yes, Cancel

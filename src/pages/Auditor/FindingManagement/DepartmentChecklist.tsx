@@ -34,6 +34,8 @@ const DepartmentChecklist = () => {
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [findingsMap, setFindingsMap] = useState<Record<string, string>>({}); // auditItemId -> findingId
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
+  const [showCompliantConfirmModal, setShowCompliantConfirmModal] = useState(false);
+  const [itemToMarkCompliant, setItemToMarkCompliant] = useState<ChecklistItem | null>(null);
 
   // Get auditId from location state (passed from parent component)
   const auditId = (location.state as any)?.auditId || '';
@@ -65,6 +67,13 @@ const DepartmentChecklist = () => {
   const isNonCompliant = (status: string) => {
     const statusLower = status?.toLowerCase() || '';
     return statusLower.includes('non') && statusLower.includes('compliant');
+  };
+
+  // Check if item is compliant
+  const isCompliant = (status: string) => {
+    const statusLower = status?.toLowerCase() || '';
+    // Check if it's compliant but NOT non-compliant
+    return (statusLower === 'compliant' || statusLower.includes('compliant')) && !isNonCompliant(status);
   };
 
   // Load findings to map auditItemId to findingId
@@ -103,30 +112,45 @@ const DepartmentChecklist = () => {
     }
   };
 
-  // Handle mark item as compliant
-  const handleMarkCompliant = async (item: ChecklistItem) => {
-    if (updatingItemId) return; // Prevent multiple clicks
+  // Handle mark item as compliant - show confirmation modal first
+  const handleMarkCompliant = (item: ChecklistItem) => {
+    setItemToMarkCompliant(item);
+    setShowCompliantConfirmModal(true);
+  };
+
+  // Confirm and actually mark item as compliant
+  const handleConfirmMarkCompliant = async () => {
+    if (!itemToMarkCompliant || updatingItemId) return; // Prevent multiple clicks
     
-    setUpdatingItemId(item.auditItemId);
+    setUpdatingItemId(itemToMarkCompliant.auditItemId);
+    setShowCompliantConfirmModal(false);
+    
     try {
-      await markChecklistItemCompliant(item.auditItemId);
+      await markChecklistItemCompliant(itemToMarkCompliant.auditItemId);
       
       // Update local state to reflect the change
       setChecklistItems(prevItems =>
         prevItems.map(prevItem =>
-          prevItem.auditItemId === item.auditItemId
+          prevItem.auditItemId === itemToMarkCompliant.auditItemId
             ? { ...prevItem, status: 'Compliant' }
             : prevItem
         )
       );
       
-      console.log('Item marked as compliant:', item.auditItemId);
+      console.log('Item marked as compliant:', itemToMarkCompliant.auditItemId);
     } catch (err: any) {
       console.error('Error marking item as compliant:', err);
       alert(err?.message || 'Failed to mark item as compliant');
     } finally {
       setUpdatingItemId(null);
+      setItemToMarkCompliant(null);
     }
+  };
+
+  // Cancel marking as compliant
+  const handleCancelMarkCompliant = () => {
+    setShowCompliantConfirmModal(false);
+    setItemToMarkCompliant(null);
   };
 
   useEffect(() => {
@@ -237,7 +261,12 @@ const DepartmentChecklist = () => {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                        {isNonCompliant(item.status) ? (
+                        {isCompliant(item.status) ? (
+                          /* Text for Compliant items */
+                          <div className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-100 text-green-700 rounded-lg text-xs sm:text-sm font-semibold">
+                            Meets Requirements
+                          </div>
+                        ) : isNonCompliant(item.status) ? (
                           /* Eye icon for Non-compliant items */
                           <button
                             className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
@@ -362,6 +391,47 @@ const DepartmentChecklist = () => {
           }}
           findingId={selectedFindingId}
         />
+      )}
+
+      {/* Confirmation Modal for Marking as Compliant */}
+      {showCompliantConfirmModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={handleCancelMarkCompliant}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Confirm Compliance
+              </h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure that this item meets all requirements and standards?
+              </p>
+              
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCancelMarkCompliant}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmMarkCompliant}
+                  disabled={updatingItemId !== null}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {updatingItemId ? 'Marking...' : 'Yes, Mark as Compliant'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </MainLayout>
   );
