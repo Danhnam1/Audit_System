@@ -19,4 +19,11 @@ export const getAdminUsers = async (): Promise<AdminUserDto[]> => {
   return values
 }
 
-export default { getAdminUsers }
+// Get users by department ID
+export const getAdminUsersByDepartment = async (deptId: number): Promise<AdminUserDto[]> => {
+  const res: any = await apiClient.get(`/admin/AdminUsers/by-department/${deptId}`)
+  const values: AdminUserDto[] = unwrap(res?.$values || res?.values || res?.data || res)
+  return values
+}
+
+export default { getAdminUsers, getAdminUsersByDepartment }

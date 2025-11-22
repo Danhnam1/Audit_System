@@ -4,8 +4,8 @@ import { useAuth } from '../../../contexts';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getSeverityColor } from '../../../constants/statusColors';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
-import { createAuditAssignment } from '../../../api/auditAssignments';
-import { getDepartmentUsers } from '../../../api/departmentHeads';
+import { createAction } from '../../../api/actions';
+import { getAdminUsersByDepartment } from '../../../api/adminUsers';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
@@ -16,9 +16,9 @@ const FindingsProgress = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedFindingForAssign, setSelectedFindingForAssign] = useState<Finding | null>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [staffMembers, setStaffMembers] = useState<Array<{ id: string; name: string; email?: string }>>([]);
+  const [staffMembers, setStaffMembers] = useState<Array<{ userId: string; fullName: string; email?: string }>>([]);
   const [selectedStaff, setSelectedStaff] = useState('');
-  const [assignNotes, setAssignNotes] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [submittingAssign, setSubmittingAssign] = useState(false);
 
@@ -131,14 +131,22 @@ const FindingsProgress = () => {
     return 'bg-gray-100 text-gray-700';
   };
 
-  // Load staff members for assignment
+  // Load staff members for assignment (only CAPAOwner role)
   const loadStaffMembers = async (deptId?: number) => {
     if (!deptId) return;
     
     setLoadingStaff(true);
     try {
-      const staff = await getDepartmentUsers(deptId);
-      setStaffMembers(staff || []);
+      const users = await getAdminUsersByDepartment(deptId);
+      // Filter only CAPAOwner role
+      const capaOwners = (users || []).filter((user: any) => 
+        user.roleName?.toLowerCase() === 'capaowner'
+      );
+      setStaffMembers(capaOwners.map((user: any) => ({
+        userId: user.userId || user.id,
+        fullName: user.fullName || user.name || user.email || 'Unknown',
+        email: user.email,
+      })));
     } catch (err: any) {
       console.error('Error loading staff members:', err);
       setStaffMembers([]);
@@ -147,10 +155,15 @@ const FindingsProgress = () => {
     }
   };
 
-  // Handle assign finding
+  // Handle assign finding (create action)
   const handleAssign = async () => {
     if (!selectedStaff) {
       alert('Please select a staff member');
+      return;
+    }
+
+    if (!dueDate) {
+      alert('Please select a due date');
       return;
     }
 
@@ -162,19 +175,22 @@ const FindingsProgress = () => {
     try {
       setSubmittingAssign(true);
       
-      await createAuditAssignment({
-        auditId: selectedFindingForAssign.auditId,
-        deptId: selectedFindingForAssign.deptId || 0,
-        auditorId: selectedStaff,
-        notes: assignNotes || '',
-        status: 'Assigned',
+      await createAction({
+        findingId: selectedFindingForAssign.findingId,
+        title: selectedFindingForAssign.title,
+        description: selectedFindingForAssign.description || '',
+        assignedTo: selectedStaff,
+        assignedDeptId: selectedFindingForAssign.deptId || 0,
+        progressPercent: 0,
+        dueDate: new Date(dueDate).toISOString(),
+        reviewFeedback: '',
       });
 
-      alert('Finding assigned successfully!');
+      alert('Action created successfully!');
       
       // Reset form and close modal
       setSelectedStaff('');
-      setAssignNotes('');
+      setDueDate('');
       setSelectedFindingForAssign(null);
       setShowAssignModal(false);
       
@@ -185,8 +201,8 @@ const FindingsProgress = () => {
         setFindings(data);
       }
     } catch (err: any) {
-      console.error('Error assigning finding:', err);
-      alert(`Error: ${err?.message || 'Failed to assign finding'}`);
+      console.error('Error creating action:', err);
+      alert(`Error: ${err?.message || 'Failed to create action'}`);
     } finally {
       setSubmittingAssign(false);
     }
@@ -195,10 +211,13 @@ const FindingsProgress = () => {
   // Handle close assign modal
   const handleCloseAssignModal = () => {
     setSelectedStaff('');
-    setAssignNotes('');
+    setDueDate('');
     setSelectedFindingForAssign(null);
     setShowAssignModal(false);
   };
+
+  // Get today's date in YYYY-MM-DD format for min attribute
+  const today = new Date().toISOString().split('T')[0];
 
   return (
     <MainLayout user={layoutUser}>
@@ -397,12 +416,12 @@ const FindingsProgress = () => {
                   {/* Staff Selection */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                      Staff Member <span className="text-red-500">*</span>
+                      Assign To (CAPA Owner) <span className="text-red-500">*</span>
                     </label>
                     {loadingStaff ? (
                       <div className="flex items-center gap-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
-                        <span className="text-sm text-gray-500">Loading staff members...</span>
+                        <span className="text-sm text-gray-500">Loading CAPA owners...</span>
                       </div>
                     ) : (
                       <select
@@ -410,30 +429,30 @@ const FindingsProgress = () => {
                         onChange={(e) => setSelectedStaff(e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       >
-                        <option value="">Select staff member</option>
+                        <option value="">Select CAPA Owner</option>
                         {staffMembers.map((staff) => (
-                          <option key={staff.id} value={staff.id}>
-                            {staff.name} {staff.email ? `(${staff.email})` : ''}
+                          <option key={staff.userId} value={staff.userId}>
+                            {staff.fullName} {staff.email ? `(${staff.email})` : ''}
                           </option>
                         ))}
                       </select>
                     )}
                     {staffMembers.length === 0 && !loadingStaff && (
-                      <p className="mt-1 text-xs text-gray-500">No staff members found in this department</p>
+                      <p className="mt-1 text-xs text-gray-500">No CAPA Owners found in this department</p>
                     )}
                   </div>
 
-                  {/* Notes */}
+                  {/* Due Date */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                      Notes (Optional)
+                      Due Date <span className="text-red-500">*</span>
                     </label>
-                    <textarea
-                      value={assignNotes}
-                      onChange={(e) => setAssignNotes(e.target.value)}
-                      rows={3}
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      min={today}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      placeholder="Add any additional notes..."
                     />
                   </div>
                 </div>
