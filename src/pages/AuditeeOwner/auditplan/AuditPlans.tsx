@@ -1,24 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import useAuthStore from '../../../store/useAuthStore';
 import { getDepartments } from '../../../api/departments';
-import { getAuditPlans, getAuditScopeDepartments } from '../../../api/audits';
-import { unwrap } from '../../../utils/normalize';
-import { getDepartmentName } from '../../../helpers/auditPlanHelpers';
+import { getAuditPlans, getAuditScopeDepartments, getAuditPlanById } from '../../../api/audits';
+import { unwrap, normalizePlanDetails } from '../../../utils/normalize';
+import { getDepartmentName, getCriterionName } from '../../../helpers/auditPlanHelpers';
 import { getAdminUsers } from '../../../api/adminUsers';
+import { getAuditCriteria } from '../../../api/auditCriteria';
+import { getChecklistTemplates } from '../../../api/checklists';
+import { getStatusColor, getBadgeVariant } from '../../../constants';
+import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
+import { Button } from '../../../components';
 
 const AuditPlans = () => {
 	const { user: layoutCtxUser } = useAuth();
 	const { user: storeUser } = useAuthStore();
 	const layoutUser = layoutCtxUser ? { name: layoutCtxUser.fullName, avatar: undefined } : undefined;
-	const navigate = useNavigate();
 
 	const [plans, setPlans] = useState<any[]>([]);
 	const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
 	const [loading, setLoading] = useState(false);
   const [effectiveDeptId, setEffectiveDeptId] = useState<string | number | null>(null);
+	const [selectedDetails, setSelectedDetails] = useState<any | null>(null);
+	const [criteriaList, setCriteriaList] = useState<any[]>([]);
+	const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
+	const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
+	const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
+	const [currentPage, setCurrentPage] = useState(1);
+	const itemsPerPage = 7;
 
 	const myDeptId = storeUser?.deptId ?? (storeUser as any)?.departmentId ?? (storeUser as any)?.deptCode;
 
@@ -26,11 +36,13 @@ const AuditPlans = () => {
 		const load = async () => {
 			setLoading(true);
 			try {
-				const [plansRes, scopesRes, deptsRes, usersRes] = await Promise.all([
+				const [plansRes, scopesRes, deptsRes, usersRes, critRes, templatesRes] = await Promise.all([
 					getAuditPlans(),
 					getAuditScopeDepartments(),
 					getDepartments(),
 					getAdminUsers(),
+					getAuditCriteria(),
+					getChecklistTemplates(),
 				]);
 				const plansList = unwrap<any>(plansRes);
 				const scopesList = unwrap<any>(scopesRes);
@@ -38,6 +50,14 @@ const AuditPlans = () => {
 					? deptsRes.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
 					: [];
 				setDepartments(deptList);
+				setCriteriaList(Array.isArray(critRes) ? critRes : []);
+				setChecklistTemplates(Array.isArray(templatesRes) ? templatesRes : []);
+
+				const usersArr = Array.isArray(usersRes) ? usersRes : [];
+				const owners = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditee'));
+				const auditors = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditor'));
+				setOwnerOptions(owners);
+				setAuditorOptions(auditors);
 
 				// Resolve effective department id for current user
 				let effDeptId: string | number | null | undefined = myDeptId as any;
@@ -114,48 +134,95 @@ const AuditPlans = () => {
 		return (plans || []).filter(matchesDept).filter(isPublished);
 	}, [plans, effectiveDeptId]);
 
+	const totalPages = Math.ceil(filteredPlans.length / itemsPerPage);
+
+	// Reset to page 1 if current page is out of bounds
+	useEffect(() => {
+		if (currentPage > totalPages && totalPages > 0) {
+			setCurrentPage(1);
+		}
+	}, [filteredPlans.length, totalPages, currentPage]);
+
+	const paginatedPlans = useMemo(() => {
+		const startIndex = (currentPage - 1) * itemsPerPage;
+		const endIndex = startIndex + itemsPerPage;
+		return filteredPlans.slice(startIndex, endIndex);
+	}, [filteredPlans, currentPage]);
+
+	const userDepartmentName = useMemo(() => {
+		if (!effectiveDeptId || departments.length === 0) return '';
+		const dept = departments.find((d) => String(d.deptId) === String(effectiveDeptId));
+		return dept?.name || '';
+	}, [effectiveDeptId, departments]);
+
+	const openDetails = async (plan: any) => {
+		try {
+			const id = String(plan.auditId || plan.id || plan.$id || '');
+			const raw = await getAuditPlanById(id);
+			const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
+			const normalized = normalizePlanDetails(raw, { departments, criteriaList, users: allUsers });
+			setSelectedDetails(normalized);
+		} catch (err) {
+			console.warn('Failed to load full details, using mapped summary', err);
+			// Fallback: basic shape from list
+			setSelectedDetails({
+				...plan,
+				auditId: String(plan.auditId || plan.id || plan.$id || ''),
+				scopeDepartments: { values: plan.scopeDepartments || [] },
+				criteria: { values: [] },
+				auditTeams: { values: [] },
+				schedules: { values: [] },
+				createdByUser: { fullName: 'Unknown', email: '', roleName: 'Unknown' },
+				status: plan.status,
+			});
+		}
+	};
+
 	return (
 		<MainLayout user={layoutUser}>
 			<div className="px-6 py-6 space-y-6">
 				<div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
-					<h1 className="text-2xl font-semibold text-primary-600">Audit Plans</h1>
-					<p className="text-gray-600 mt-1">Các kế hoạch audit liên quan đến phòng ban của bạn</p>
-					{loading && <p className="text-sm text-gray-500 mt-2">Đang tải...</p>}
+					<h1 className="text-2xl font-semibold text-primary-600">
+						Audit Plans{userDepartmentName ? ` of ${userDepartmentName}` : ''}
+					</h1>
+					<p className="text-gray-600 mt-1">Check the plan associated with your room ban</p>
+					{loading && <p className="text-sm text-gray-500 mt-2">Loading...</p>}
 				</div>
 
 				<div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
 					<div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-						<h2 className="text-lg font-semibold text-white">Danh sách kế hoạch</h2>
+						<h2 className="text-lg font-semibold text-white">List of plans</h2>
 					</div>
 					<div className="overflow-x-auto">
 						<table className="w-full">
 							<thead className="bg-gray-50 border-b border-gray-200">
 								<tr>
-									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Plan ID</th>
+									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
 									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Title</th>
-									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Departments</th>
-									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Duration</th>
-									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+									{/* <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Departments</th> */}
+									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Start Date</th>
+									<th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">End Date</th>
+									<th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
 								</tr>
 							</thead>
 							<tbody className="divide-y divide-gray-200">
-								{filteredPlans.map((p: any, idx: number) => {
+								{paginatedPlans.map((p: any, idx: number) => {
 									const id = String(p.auditId || p.id || p.$id || `plan_${idx}`);
-									const scopes = Array.isArray(p?.scopeDepartments) ? p.scopeDepartments : (p?.scopeDepartments?.values || []);
-									const deptNames = (scopes || []).map((sd: any) => sd.deptName || getDepartmentName(String(sd.deptId ?? sd.id ?? sd.$id), departments)).filter(Boolean);
 									const start = p.startDate ? new Date(p.startDate).toISOString().slice(0,10) : '';
 									const end = p.endDate ? new Date(p.endDate).toISOString().slice(0,10) : '';
+									const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
 									return (
 										<tr key={id} className="hover:bg-gray-50">
-											<td className="px-6 py-3 text-sm text-primary-600 font-medium">{id.slice(0,8)}…</td>
+											<td className="px-6 py-3 text-sm text-primary-600 font-medium">{rowNumber}</td>
 											<td className="px-6 py-3 text-sm font-semibold text-gray-900">{p.title || '—'}</td>
-											<td className="px-6 py-3 text-sm text-gray-700">{deptNames.length ? deptNames.join(', ') : '—'}</td>
-											<td className="px-6 py-3 text-sm text-gray-700">{start} {start || end ? '→' : ''} {end}</td>
-											<td className="px-6 py-3 whitespace-nowrap">
-												<div className="flex gap-2">
-													<button onClick={() => navigate(`/auditee-owner/audit-plans/${id}/detail`)} className="text-primary-600 hover:text-primary-700 text-sm font-medium">View</button>
-													<span className="text-gray-300">|</span>
-													<button onClick={() => navigate(`/auditee-owner/audit-plans/${id}/confirm`)} className="text-emerald-600 hover:text-emerald-700 text-sm font-medium">Confirm</button>
+											{/* <td className="px-6 py-3 text-sm text-gray-700">{deptNames.length ? deptNames.join(', ') : '—'}</td> */}
+											<td className="px-6 py-3 text-sm text-gray-700 whitespace-nowrap">{start || '—'}</td>
+											<td className="px-6 py-3 text-sm text-gray-700 whitespace-nowrap">{end || '—'}</td>
+											<td className="px-6 py-3 whitespace-nowrap text-center">
+												<div className="flex items-center justify-center gap-2">
+													<Button onClick={() => openDetails(p)} size="sm" variant="secondary">
+														View
+													</Button>
 												</div>
 											</td>
 										</tr>
@@ -169,8 +236,63 @@ const AuditPlans = () => {
 							</tbody>
 						</table>
 					</div>
+					{/* Pagination */}
+					{filteredPlans.length > 0 && totalPages > 1 && (
+						<div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-center justify-center gap-3">
+							<div className="flex items-center gap-2">
+								<button
+									onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+									disabled={currentPage === 1}
+									className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+								>
+									Previous
+								</button>
+								<div className="flex items-center gap-1">
+									{Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+										<button
+											key={page}
+											onClick={() => setCurrentPage(page)}
+											className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+												currentPage === page
+													? 'bg-primary-600 text-white'
+													: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+											}`}
+										>
+											{page}
+										</button>
+									))}
+								</div>
+								<button
+									onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+									disabled={currentPage === totalPages}
+									className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+								>
+									Next
+								</button>
+							</div>
+							
+						</div>
+					)}
 				</div>
 			</div>
+			{selectedDetails && (
+				<PlanDetailsModal
+					showModal={true}
+					selectedPlanDetails={selectedDetails}
+					onClose={() => setSelectedDetails(null)}
+					getCriterionName={(id: any) => getCriterionName(id, criteriaList)}
+					getDepartmentName={(id: any) => getDepartmentName(id, departments)}
+					getStatusColor={getStatusColor}
+					getBadgeVariant={getBadgeVariant}
+					ownerOptions={ownerOptions}
+					auditorOptions={auditorOptions}
+					getTemplateName={(tid) => {
+						const t = checklistTemplates.find((tpl: any) => String(tpl.templateId || tpl.id || tpl.$id) === String(tid));
+						return t?.name || t?.title || `Template ${String(tid ?? '')}`;
+					}}
+					hideSections={['auditTeam', 'auditCriteria', 'status', 'scopeDepartments']}
+				/>
+			)}
 		</MainLayout>
 	);
 };

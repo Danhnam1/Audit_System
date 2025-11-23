@@ -23,6 +23,8 @@ interface PlanDetailsModalProps {
   ownerOptions: any[];
   auditorOptions?: any[];
   getTemplateName?: (templateId: string | number | null | undefined) => string;
+  // Optional prop to hide specific sections
+  hideSections?: string[];
 }
 
 export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
@@ -42,6 +44,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   ownerOptions,
   auditorOptions = [],
   getTemplateName,
+  hideSections = [],
 }) => {
   if (!showModal || !selectedPlanDetails) return null;
 
@@ -225,22 +228,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 <span className="text-sm text-black font-normal">{selectedPlanDetails.title}</span>
               </div>
               <div className="flex items-start gap-3">
-                <span className="text-sm font-bold text-black min-w-[100px]">Type:</span>
-                <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-light')}`}>
-                  {selectedPlanDetails.type}
-                </span>
-              </div>
-              {selectedPlanDetails.templateId && (
-                <div className="flex items-start gap-3 md:col-span-2">
-                  <span className="text-sm font-bold text-black min-w-[100px]">Template:</span>
-                  <span className="text-sm text-black font-normal">
-                    {getTemplateName
-                      ? getTemplateName(selectedPlanDetails.templateId)
-                      : String(selectedPlanDetails.templateId)}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-start gap-3">
                 <span className="text-sm font-bold text-black min-w-[100px]">Start Date:</span>
                 <span className="text-sm text-black font-normal">
                   {selectedPlanDetails.startDate
@@ -252,6 +239,24 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                     : 'N/A'}
                 </span>
               </div>
+              <div className="flex items-start gap-3">
+                <span className="text-sm font-bold text-black min-w-[100px]">Type:</span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-light')}`}>
+                  {selectedPlanDetails.type}
+                </span>
+              </div>
+              {!hideSections.includes('status') && (
+                <div className="flex items-start gap-3">
+                  <span className="text-sm font-bold text-black min-w-[100px]">Status:</span>
+                  <span
+                    className={`text-xs px-3 py-1 rounded-full font-semibold ${getStatusColor(
+                      selectedPlanDetails.status
+                    )}`}
+                  >
+                    {selectedPlanDetails.status}
+                  </span>
+                </div>
+              )}
               <div className="flex items-start gap-3">
                 <span className="text-sm font-bold text-black min-w-[100px]">End Date:</span>
                 <span className="text-sm text-black font-normal">
@@ -270,16 +275,16 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   {selectedPlanDetails.scope || 'N/A'}
                 </span>
               </div>
-              <div className="flex items-start gap-3">
-                <span className="text-sm font-bold text-black min-w-[100px]">Status:</span>
-                <span
-                  className={`text-xs px-3 py-1 rounded-full font-semibold ${getStatusColor(
-                    selectedPlanDetails.status
-                  )}`}
-                >
-                  {selectedPlanDetails.status}
-                </span>
-              </div>
+              {selectedPlanDetails.templateId && (
+                <div className="flex items-start gap-3 md:col-span-2">
+                  <span className="text-sm font-bold text-black min-w-[100px]">Template:</span>
+                  <span className="text-sm text-black font-normal">
+                    {getTemplateName
+                      ? getTemplateName(selectedPlanDetails.templateId)
+                      : String(selectedPlanDetails.templateId)}
+                  </span>
+                </div>
+              )}
               <div className="flex items-start gap-3 md:col-span-2">
                 <span className="text-sm font-bold text-black min-w-[100px]">Objective:</span>
                 <span className="text-sm text-black font-normal flex-1 leading-relaxed">
@@ -332,7 +337,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Scope Departments Section */}
-          {selectedPlanDetails.scopeDepartments?.values?.length > 0 && (
+          {!hideSections.includes('scopeDepartments') && selectedPlanDetails.scopeDepartments?.values?.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-200">
                 
@@ -377,7 +382,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Audit Criteria Section */}
-          {selectedPlanDetails.criteria?.values?.length > 0 && (
+          {!hideSections.includes('auditCriteria') && selectedPlanDetails.criteria?.values?.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
                
@@ -410,7 +415,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Audit Team Section */}
-          {combinedAuditTeam.length > 0 && (
+          {!hideSections.includes('auditTeam') && combinedAuditTeam.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
                 
