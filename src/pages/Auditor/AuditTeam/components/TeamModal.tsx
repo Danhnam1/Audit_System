@@ -1,5 +1,4 @@
 import React from 'react'
-import { TeamFilterBar } from './TeamFilterBar'
 import { TeamMemberCard } from './TeamMemberCard'
 import { TeamStats } from './TeamStats'
 
@@ -8,15 +7,6 @@ interface TeamModalProps {
   onClose: () => void
   auditTitle: string
   auditInfo: string
-  // Filters
-  from: string
-  to: string
-  role: string
-  search: string
-  onFromChange: (val: string) => void
-  onToChange: (val: string) => void
-  onRoleChange: (val: string) => void
-  onSearchChange: (val: string) => void
   // Data
   teamMembers: any[]
   stats: {
@@ -33,14 +23,6 @@ export const TeamModal: React.FC<TeamModalProps> = ({
   onClose,
   auditTitle,
   auditInfo,
-  from,
-  to,
-  role,
-  search,
-  onFromChange,
-  onToChange,
-  onRoleChange,
-  onSearchChange,
   teamMembers,
   stats,
   loading,
@@ -63,14 +45,14 @@ export const TeamModal: React.FC<TeamModalProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between bg-primary-50">
+          <div className="bg-gradient-primary px-6 py-5 flex items-center justify-between shadow-lg">
             <div>
-              <h2 className="text-xl font-semibold text-primary-700">{auditTitle}</h2>
-              <p className="text-sm text-gray-600 mt-1">{auditInfo}</p>
+              <h2 className="text-xl font-bold text-white">{auditTitle}</h2>
+              <p className="text-sm text-primary-100 mt-1">{auditInfo}</p>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 transition"
+              className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
               aria-label="Close"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -81,22 +63,9 @@ export const TeamModal: React.FC<TeamModalProps> = ({
 
           {/* Body */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-            {/* Filters */}
-            <TeamFilterBar
-              from={from}
-              to={to}
-              role={role}
-              search={search}
-              onFromChange={onFromChange}
-              onToChange={onToChange}
-              onRoleChange={onRoleChange}
-              onSearchChange={onSearchChange}
-            />
-
             {/* Stats */}
             <TeamStats
               total={stats.total}
-              leadNames={stats.leadNames}
               departmentList={stats.departmentList}
             />
 
@@ -111,27 +80,35 @@ export const TeamModal: React.FC<TeamModalProps> = ({
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {teamMembers.map((m: any, idx: number) => (
-                    <TeamMemberCard
-                      key={idx}
-                      fullName={m.fullName}
-                      email={m.email}
-                      roleInTeam={m.roleInTeam}
-                      isLead={m.isLead}
-                      auditTitle={m.auditTitle}
-                      period={m.period}
-                    />
-                  ))}
+                  {teamMembers
+                    .sort((a: any, b: any) => {
+                      // Lead auditors first
+                      if (a.isLead && !b.isLead) return -1
+                      if (!a.isLead && b.isLead) return 1
+                      // Then sort by name
+                      return (a.fullName || '').localeCompare(b.fullName || '')
+                    })
+                    .map((m: any, idx: number) => (
+                      <TeamMemberCard
+                        key={idx}
+                        fullName={m.fullName}
+                        email={m.email}
+                        roleInTeam={m.roleInTeam}
+                        isLead={m.isLead}
+                        auditTitle={m.auditTitle}
+                        period={m.period}
+                      />
+                    ))}
                 </div>
               )
             )}
           </div>
 
           {/* Footer */}
-          <div className="border-t border-gray-200 px-6 py-4 bg-gray-50">
+          <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex justify-end">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition text-sm font-medium"
+              className="px-5 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium shadow-sm hover:shadow-md"
             >
               Close
             </button>

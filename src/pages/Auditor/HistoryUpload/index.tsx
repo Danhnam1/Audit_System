@@ -64,8 +64,38 @@ const HistoryUploadPage = () => {
           const users = await getAdminUsers();
           const map: Record<string, string> = {};
           (users || []).forEach(u => {
-            const id = String(u.userId || u.$id || '').trim();
-            if (id) map[id] = u.fullName || u.email || id;
+            // Map by multiple possible ID fields - prioritize fullName
+            const userId = u.userId || u.$id;
+            const email = u.email;
+            const fullName = u.fullName || '';
+            
+            // Primary mapping: userId -> fullName (prefer fullName over email)
+            if (userId) {
+              const idStr = String(userId).trim();
+              if (idStr && fullName) {
+                // Map exact match
+                map[idStr] = fullName;
+                // Map lowercase for case-insensitive lookup
+                map[idStr.toLowerCase()] = fullName;
+                // Also try with different formats
+                if (!isNaN(Number(idStr))) {
+                  map[String(Number(idStr))] = fullName;
+                }
+              } else if (idStr && email) {
+                // Fallback to email if no fullName
+                map[idStr] = email;
+                map[idStr.toLowerCase()] = email;
+              }
+            }
+            
+            // Also map by email for fallback lookup
+            if (email && fullName) {
+              const emailStr = String(email).trim();
+              if (emailStr) {
+                map[emailStr] = fullName;
+                map[emailStr.toLowerCase()] = fullName;
+              }
+            }
           });
           setUserMap(map);
         } catch (e) {
@@ -119,17 +149,48 @@ const HistoryUploadPage = () => {
                 return null;
               }
 
+              // Resolve uploadedBy name from userId
+              const uploadedById = d.uploadedBy || d.uploadedByUserId || '';
+              const idStr = String(uploadedById || '').trim();
+              let uploadedByName = '';
+              
+              // Try multiple lookup strategies for userId -> fullName
+              if (idStr && Object.keys(userMap).length > 0) {
+                // Strategy 1: Direct lookup
+                uploadedByName = userMap[idStr];
+                
+                // Strategy 2: Case-insensitive lookup
+                if (!uploadedByName) {
+                  uploadedByName = userMap[idStr.toLowerCase()];
+                }
+                
+                // Strategy 3: Try as number if it's numeric
+                if (!uploadedByName && !isNaN(Number(idStr))) {
+                  uploadedByName = userMap[String(Number(idStr))];
+                }
+              }
+              
+              // Fallback to uploadedByUser field (if it's an object with fullName)
+              if (!uploadedByName && d.uploadedByUser) {
+                if (typeof d.uploadedByUser === 'object' && d.uploadedByUser.fullName) {
+                  uploadedByName = d.uploadedByUser.fullName;
+                } else if (typeof d.uploadedByUser === 'string') {
+                  // If it's a string, try to look it up in userMap
+                  uploadedByName = userMap[d.uploadedByUser] || userMap[d.uploadedByUser.toLowerCase()] || d.uploadedByUser;
+                }
+              }
+              
+              // Final fallback - don't show ID, show Unknown instead
+              if (!uploadedByName || uploadedByName.trim() === '') {
+                uploadedByName = 'Unknown';
+              }
+
               return {
                 auditId,
                 id: String(fileName || `${auditId}_${uploadedAt || Date.now()}`),
                 documentType: documentType || fileName || '—',
                 contentType: contentType || '—',
-                uploadedBy: ((): string => {
-                  const uploadedById = d.uploadedBy || '';
-                  const idStr = String(uploadedById || '').trim();
-                  if (idStr && userMap[idStr]) return userMap[idStr];
-                  return d.uploadedByUser || idStr || '—';
-                })(),
+                uploadedBy: uploadedByName,
                 uploadedAt,
                 sizeBytes,
                 status: d.status || '—',
@@ -236,10 +297,7 @@ const HistoryUploadPage = () => {
                   return (
                     <tr key={r.auditId} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-900">{r.title}</span>
-                          <span className="text-xs text-gray-500">{r.auditId}</span>
-                        </div>
+                        <span className="text-sm font-medium text-gray-900">{r.title}</span>
                       </td>
                       <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>{r.status}</span></td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -270,7 +328,9 @@ const HistoryUploadPage = () => {
           {expandedAudit && (
             <div className="border-t border-primary-100">
               <div className="px-6 py-3 flex items-center justify-between bg-gray-50">
-                <h3 className="text-sm font-semibold text-gray-700">Uploads for Audit {expandedAudit}</h3>
+                <h3 className="text-sm font-semibold text-gray-700">
+                  Uploads for {auditRows.find(a => a.auditId === expandedAudit)?.title || 'Audit'}
+                </h3>
                 {loadingDocs && <span className="text-xs text-gray-500">Đang tải lịch sử...</span>}
               </div>
               <div className="overflow-x-auto">
