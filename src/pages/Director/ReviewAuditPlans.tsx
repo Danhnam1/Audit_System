@@ -10,8 +10,7 @@ import { PlanDetailsModal } from '../Auditor/AuditPlanning/components/PlanDetail
 import { getDepartmentName, getCriterionName } from '../../helpers/auditPlanHelpers';
 import { getChecklistTemplates } from '../../api/checklists';
 import { MainLayout } from '../../layouts';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '../../components';
+import { Button, StatCard } from '../../components';
 import { getAuditPlanById as fetchFullPlan } from '../../api/audits';
 
 interface AuditPlan {
@@ -30,7 +29,6 @@ interface AuditPlan {
 }
 
 const ReviewAuditPlans = () => {
-  const navigate = useNavigate();
   const [filter, setFilter] = useState<'All' | 'Pending Review' | 'Approved' | 'Rejected'>('Pending Review');
 
   // Mock data (kept as fallback)
@@ -113,6 +111,12 @@ const ReviewAuditPlans = () => {
     });
 
   const [processingIdStr, setProcessingIdStr] = useState<string | null>(null);
+
+  // Helper function to check if plan can be approved/rejected
+  const canApproveOrReject = (status: string): boolean => {
+    const s = String(status || '').toLowerCase();
+    return s === 'pendingdirectorapproval' || s === 'pending director approval';
+  };
 
   // Fetch plans from backend (prefer plans that were forwarded to Director)
   useEffect(() => {
@@ -321,62 +325,47 @@ const ReviewAuditPlans = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Plans</p>
-                <p className="text-3xl font-bold text-gray-800">{stats.total}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Pending Review</p>
-                <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
-              </div>
-              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Approved</p>
-                <p className="text-3xl font-bold text-green-600">{stats.approved}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Rejected</p>
-                <p className="text-3xl font-bold text-red-600">{stats.rejected}</p>
-              </div>
-              <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <StatCard
+            title="Total Plans"
+            value={stats.total}
+            icon={
+              <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            }
+            variant="primary"
+          />
+          <StatCard
+            title="Pending Review"
+            value={stats.pending}
+            icon={
+              <svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+            variant="primary-light"
+          />
+          <StatCard
+            title="Approved"
+            value={stats.approved}
+            icon={
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+            variant="primary-dark"
+          />
+          <StatCard
+            title="Rejected"
+            value={stats.rejected}
+            icon={
+              <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            }
+            variant="gray"
+          />
         </div>
 
 
@@ -481,7 +470,7 @@ const ReviewAuditPlans = () => {
                           <Button onClick={() => openDetails(plan)} size="sm" variant="secondary">
                             View
                           </Button>
-                          {String(plan.status).toLowerCase() === 'pendingdirectorapproval' || String(plan.status).toLowerCase() === 'pending director approval' ? (
+                          {canApproveOrReject(plan.status) ? (
                             <>
                               <button
                                 onClick={() => handleApprovePlan(plan.planId)}
@@ -516,8 +505,8 @@ const ReviewAuditPlans = () => {
           showModal={true}
           selectedPlanDetails={selectedDetails}
           onClose={() => setSelectedDetails(null)}
-          // Director actions
-          onApprove={async (id, comment) => {
+          // Director actions - only show if plan can still be approved/rejected
+          onApprove={canApproveOrReject(selectedDetails.status || selectedDetails.auditStatus || '') ? async (id, comment) => {
             await approvePlan(String(id), { comment });
             // Refresh local list state using backend status
             let freshStatus: string | undefined;
@@ -532,13 +521,13 @@ const ReviewAuditPlans = () => {
               : p)));
             alert('✅ Approved.');
             setSelectedDetails(null);
-          }}
-          onRejectPlan={async (id, comment) => {
+          } : undefined}
+          onRejectPlan={canApproveOrReject(selectedDetails.status || selectedDetails.auditStatus || '') ? async (id, comment) => {
             await rejectPlanContent(String(id), { comment });
             setAuditPlans(prev => prev.map(p => (String(p.planId) === String(id) ? { ...p, status: 'Rejected' } : p)));
             alert('✅ Rejected.');
             setSelectedDetails(null);
-          }}
+          } : undefined}
           getCriterionName={(id: any) => getCriterionName(id, criteriaList)}
           getDepartmentName={(id: any) => getDepartmentName(id, departments)}
           getStatusColor={getStatusColor}
