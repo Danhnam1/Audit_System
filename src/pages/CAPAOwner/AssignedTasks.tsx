@@ -3,6 +3,7 @@ import { MainLayout } from '../../layouts';
 import { useNavigate } from 'react-router-dom';
 import { getMyAssignedActions, type Action } from '../../api/actions';
 import ActionDetailModal from './ActionDetailModal';
+import StartActionModal from './StartActionModal';
 
 interface Task {
   actionId: string;
@@ -24,6 +25,8 @@ const AssignedTasks = () => {
   const [error, setError] = useState<string | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [selectedStartActionId, setSelectedStartActionId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -113,6 +116,66 @@ const AssignedTasks = () => {
     setShowDetailModal(true);
   };
 
+  const handleStart = (actionId: string) => {
+    setSelectedStartActionId(actionId);
+    setShowStartModal(true);
+  };
+
+  const handleStartSuccess = () => {
+    // Reload tasks after successful start
+    const fetchTasks = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const actions = await getMyAssignedActions();
+        
+        const mappedTasks: Task[] = actions.map((action) => {
+          let uiStatus: 'Pending' | 'In Progress' | 'Completed' | 'Overdue' = 'Pending';
+          
+          if (action.status === 'Closed' || action.closedAt) {
+            uiStatus = 'Completed';
+          } else if (action.progressPercent > 0) {
+            uiStatus = 'In Progress';
+          } else if (action.status === 'Approved' || action.status === 'Open') {
+            if (action.dueDate) {
+              const dueDate = new Date(action.dueDate);
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              dueDate.setHours(0, 0, 0, 0);
+              if (dueDate < today) {
+                uiStatus = 'Overdue';
+              } else {
+                uiStatus = action.progressPercent > 0 ? 'In Progress' : 'Pending';
+              }
+            } else {
+              uiStatus = action.progressPercent > 0 ? 'In Progress' : 'Pending';
+            }
+          }
+          
+          return {
+            actionId: action.actionId,
+            findingId: action.findingId,
+            title: action.title,
+            description: action.description,
+            status: uiStatus,
+            dueDate: action.dueDate || null,
+            assignedBy: action.assignedBy || '',
+            createdAt: action.createdAt || '',
+            progressPercent: action.progressPercent || 0,
+          };
+        });
+        
+        setTasks(mappedTasks);
+      } catch (err: any) {
+        console.error('Error fetching assigned tasks:', err);
+        setError(err?.response?.data?.message || 'Failed to load assigned tasks');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTasks();
+  };
+
   return (
     <MainLayout>
       <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
@@ -198,7 +261,7 @@ const AssignedTasks = () => {
                           </svg>
                         </button>
                         <button
-                          onClick={() => navigate(`/capa-owner/tasks/${task.actionId}/start`)}
+                          onClick={() => handleStart(task.actionId)}
                           className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs sm:text-sm font-medium whitespace-nowrap"
                         >
                           Start
@@ -237,6 +300,19 @@ const AssignedTasks = () => {
               setSelectedActionId(null);
             }}
             actionId={selectedActionId}
+          />
+        )}
+
+        {/* Start Action Modal */}
+        {selectedStartActionId && (
+          <StartActionModal
+            isOpen={showStartModal}
+            onClose={() => {
+              setShowStartModal(false);
+              setSelectedStartActionId(null);
+            }}
+            onSuccess={handleStartSuccess}
+            actionId={selectedStartActionId}
           />
         )}
       </div>

@@ -68,3 +68,20 @@ export const getActionById = async (actionId: string): Promise<Action> => {
   return (res.data || res) as Action;
 };
 
+// Update action status to in-progress
+export const updateActionStatusInProgress = async (actionId: string): Promise<void> => {
+  await apiClient.post(`/Action/${actionId}/status/in-progress`);
+};
+
+// Update action progress percent
+export const updateActionProgressPercent = async (actionId: string, progressPercent: number): Promise<void> => {
+  const payload = { progressPercent };
+  const pascalPayload = toPascalCase(payload);
+  await apiClient.put(`/Action/${actionId}/progress-percent`, pascalPayload);
+};
+
+// Update action status to reviewed
+export const updateActionStatusReviewed = async (actionId: string): Promise<void> => {
+  await apiClient.post(`/Action/${actionId}/status/reviewed`);
+};
+
