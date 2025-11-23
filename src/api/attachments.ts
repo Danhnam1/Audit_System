@@ -17,7 +17,8 @@ export interface Attachment {
   fileName: string;
   fileSize: number;
   contentType: string;
-  filePath: string;
+  filePath?: string;
+  blobPath?: string; // Alternative path field from API
   uploadedAt: string;
   uploadedBy: string;
   status?: string;

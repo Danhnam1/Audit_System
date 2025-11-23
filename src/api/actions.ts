@@ -54,3 +54,17 @@ export const getActionsByFinding = async (findingId: string): Promise<Action[]> 
   return unwrap<Action>(res);
 };
 
+// Get my assigned actions
+export const getMyAssignedActions = async (): Promise<Action[]> => {
+  const res = await apiClient.get('/Action/my-assigned') as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Action>(res);
+};
+
+// Get action by ID
+export const getActionById = async (actionId: string): Promise<Action> => {
+  const res = await apiClient.get(`/Action/${actionId}`);
+  // API returns the object directly, not wrapped in data
+  return (res.data || res) as Action;
+};
+
