@@ -23,10 +23,13 @@ const SQAStaffReports = lazy(() => import("../pages/Auditor/Reports"));
 const SQAStaffAuditReview = lazy(() => import("../pages/Auditor/AuditReview"));
 const SQAStaffLeadReports = lazy(() => import("../pages/Auditor/LeadReports"));
 const SQAStaffRequests = lazy(() => import("../pages/Auditor/Requests"));
+const SQAStaffReviewFindings = lazy(() => import("../pages/Auditor/Requests/ReviewFindings"));
+const SQAStaffReviewFindingDetail = lazy(() => import("../pages/Auditor/Requests/ReviewFindingDetail"));
 const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"));
 
 // Lead Auditor pages
 const LeadAuditorAuditAssignment = lazy(() => import("../pages/LeadAuditor/AuditAssignment"));
+const SQAStaffLeadFinalReview = lazy(() => import("../pages/Auditor/LeadFinalReview/LeadFinalReview"));
 
 // CAPA Owner pages (formerly Department Staff)
 const DepartmentStaffDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard"));
@@ -221,6 +224,15 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
+    
+            <Route
+                path="/auditor/review-findings/:findingId"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffReviewFindingDetail />
+                    </ProtectedRoute>
+                }
+            />
             <Route
                 path="/auditor/history-upload"
                 element={
@@ -237,7 +249,22 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
-
+<Route
+  path="/auditor/lead-final-review"
+  element={
+    <ProtectedRoute allowedRoles={["Auditor"]}>
+      <SQAStaffLeadFinalReview />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/auditor/lead-final-review/:auditId"
+  element={
+    <ProtectedRoute allowedRoles={["Auditor"]}>
+      <SQAStaffLeadFinalReview />
+    </ProtectedRoute>
+  }
+/>
 
             {/* Protected routes - CAPA Owner */}
             <Route
@@ -372,7 +399,7 @@ export function AppRoutes() {
                 }
             />
             <Route
-                path="/auditee-owner/review-evidence/:id"
+                path="/auditee-owner/evidence-detail/:findingId"
                 element={
                     <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadEvidenceDetail />

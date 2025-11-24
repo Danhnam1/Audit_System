@@ -44,7 +44,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
 
     case 'auditor':
       return [
-        // { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITOR },
+         // { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITOR },
         { icon: <AuditIcon />, label: 'Audit Planning', path: `${ROUTES.AUDITOR}/planning` },
         { icon: <UsersIcon />, label: 'My Audit Teams', path: `${ROUTES.AUDITOR}/team` },
         { icon: <DashboardIcon />, label: 'Finding Management', path: `${ROUTES.AUDITOR}/findings` },
@@ -53,6 +53,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <DocumentIcon />, label: 'Review Reports', path: `${ROUTES.AUDITOR}/lead-reports` },
         { icon: <ClipboardCheckIcon />, label: 'Review Audit Plans', path: `${ROUTES.AUDITOR}/audit-review` },
         { icon: <DashboardIcon />, label: 'Requests', path: `${ROUTES.AUDITOR}/requests` },
+        { icon: <AuditIcon />, label: 'Lead Audit Final Review', path: `${ROUTES.AUDITOR}/lead-final-review` },
       ];
 
     case 'auditeeowner':

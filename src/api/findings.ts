@@ -1,4 +1,5 @@
 import { apiClient } from '../hooks/axios';
+import { unwrap } from '../utils';
 
 // Helper function to convert camelCase to PascalCase
 const toPascalCase = (obj: any): any => {
@@ -57,6 +58,13 @@ export const getFindings = async (): Promise<Finding[]> => {
 // Get findings by department ID
 export const getFindingsByDepartment = async (deptId: number): Promise<Finding[]> => {
   const res = await apiClient.get(`/Findings/by-department/${deptId}`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Finding>(res);
+};
+
+// Get findings by creator ID (for Auditor to see their own findings)
+export const getFindingsByCreator = async (createdBy: string): Promise<Finding[]> => {
+  const res = await apiClient.get(`/Findings/by-created-by/${createdBy}`) as any;
   const { unwrap } = await import('../utils/normalize');
   return unwrap<Finding>(res);
 };
@@ -145,10 +153,48 @@ export const deleteFinding = async (findingId: string): Promise<void> => {
   return apiClient.delete(`/Findings/${findingId}`) as any;
 };
 
+// Approve action (Auditor reviews action and approves)
+export const approveFindingAction = async (actionId: string, feedback?: string): Promise<void> => {
+  await apiClient.post(`/ActionReview/${actionId}/approve`, {
+    Feedback: feedback || ''
+  });
+};
+
+export const approveFindingActionHigherLevel = async (actionId: string, feedback?: string): Promise<void> => {
+  await apiClient.put(`/ActionReview/${actionId}/approve/higher-level`, {
+    Feedback: feedback || '',
+  });
+};
+export const getFindingsByAudit = async (auditId: string): Promise<any[]> => {
+  // apiClient interceptor trả về res.data, nhưng unwrap supports either shape
+  const res: any = await apiClient.get(`/Findings/by-audit/${auditId}`);
+  return unwrap(res);
+};
+
+// Return action (Auditor returns action for revision)
+export const returnFindingAction = async (actionId: string, feedback: string): Promise<void> => {
+  await apiClient.post(`/ActionReview/${actionId}/returned`, {
+    Feedback: feedback
+  });
+};
+
+export const rejectFindingActionHigherLevel = async (actionId: string, feedback: string): Promise<void> => {
+  await apiClient.put(`/ActionReview/${actionId}/reject/higher-level`, {
+    Feedback: feedback,
+  });
+};
+
 export default {
   getFindings,
   getFindingById,
+  getFindingsByDepartment,
+  getFindingsByCreator,
   createFinding,
   updateFinding,
   deleteFinding,
+  markFindingAsReceived,
+  approveFindingAction,
+  approveFindingActionHigherLevel,
+  returnFindingAction,
+  rejectFindingActionHigherLevel,
 };

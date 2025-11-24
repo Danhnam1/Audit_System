@@ -9,6 +9,53 @@ import { clearOnLogout } from '../utils/clearOnLogout'
 
 type RoleName = 'Admin' | 'SQAHead'
 
+// Helper to decode JWT and get deptId
+const getDeptIdFromToken = (token: string | null): number | null => {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    const deptId = payload['DeptId'];
+    return deptId ? Number(deptId) : null;
+  } catch (err) {
+    console.error('Failed to decode token', err);
+    return null;
+  }
+};
+
+// Helper to decode JWT and get userId
+const getUserIdFromToken = (token: string | null): string | null => {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    console.log('[getUserIdFromToken] JWT payload:', payload);
+    // Try different possible claim names (the actual claim is the full URL)
+    const userId = payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'] 
+      || payload['nameidentifier']
+      || payload['sub'] 
+      || payload['userId'] 
+      || payload['UserId'] 
+      || payload['nameid'] 
+      || null;
+    console.log('[getUserIdFromToken] Extracted userId:', userId);
+    return userId;
+  } catch (err) {
+    console.error('Failed to decode token for userId', err);
+    return null;
+  }
+};
+
+// Export for use in components
+export const useDeptId = () => {
+  const token = useAuthStore(state => state.token);
+  return getDeptIdFromToken(token);
+};
+
+// Export userId hook
+export const useUserId = () => {
+  const token = useAuthStore(state => state.token);
+  return getUserIdFromToken(token);
+};
+
 interface AuthState {
   user: ProfileResponse | null
   token: string | null
