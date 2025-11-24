@@ -8,3 +8,4 @@ export { StatCard } from './StatCard';
 export * from './charts';
 export { Button } from './Button';
 export { NotificationBell } from './NotificationBell';
+export { Pagination } from './Pagination';

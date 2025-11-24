@@ -11,7 +11,7 @@ import { getAuditCriteria } from '../../../api/auditCriteria';
 import { getChecklistTemplates } from '../../../api/checklists';
 import { getStatusColor, getBadgeVariant } from '../../../constants';
 import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
-import { Button } from '../../../components';
+import { Button, Pagination } from '../../../components';
 
 const AuditPlans = () => {
 	const { user: layoutCtxUser } = useAuth();
@@ -47,7 +47,7 @@ const AuditPlans = () => {
 				const plansList = unwrap<any>(plansRes);
 				const scopesList = unwrap<any>(scopesRes);
 				const deptList = Array.isArray(deptsRes)
-					? deptsRes.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
+					? deptsRes.map((d: any) => ({ deptId: d.deptId , name: d.name || d.code || '—' }))
 					: [];
 				setDepartments(deptList);
 				setCriteriaList(Array.isArray(critRes) ? critRes : []);
@@ -237,40 +237,13 @@ const AuditPlans = () => {
 						</table>
 					</div>
 					{/* Pagination */}
-					{filteredPlans.length > 0 && totalPages > 1 && (
-						<div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-center justify-center gap-3">
-							<div className="flex items-center gap-2">
-								<button
-									onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-									disabled={currentPage === 1}
-									className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-								>
-									Previous
-								</button>
-								<div className="flex items-center gap-1">
-									{Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-										<button
-											key={page}
-											onClick={() => setCurrentPage(page)}
-											className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-												currentPage === page
-													? 'bg-primary-600 text-white'
-													: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-											}`}
-										>
-											{page}
-										</button>
-									))}
-								</div>
-								<button
-									onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-									disabled={currentPage === totalPages}
-									className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-								>
-									Next
-								</button>
-							</div>
-							
+					{filteredPlans.length > 0 && (
+						<div className="px-6 py-4 border-t border-gray-200 flex justify-center">
+							<Pagination
+								currentPage={currentPage}
+								totalPages={totalPages}
+								onPageChange={setCurrentPage}
+							/>
 						</div>
 					)}
 				</div>

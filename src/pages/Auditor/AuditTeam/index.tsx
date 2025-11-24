@@ -6,6 +6,7 @@ import { getDepartments } from '../../../api/departments'
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service'
 import { TeamModal } from './components'
 import { useAuth } from '../../../contexts'
+import { Pagination } from '../../../components'
 
 // Lightweight helpers
 const overlap = (aStart?: string, aEnd?: string, bStart?: string, bEnd?: string) => {
@@ -347,42 +348,13 @@ export default function AuditorTeamPage() {
                   </div>
                   
                   {/* Pagination */}
-                  {myAudits.length > 0 && totalPages > 1 && (
-                    <div className="mt-6 pt-6 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                          disabled={currentPage === 1}
-                          className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Previous
-                        </button>
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                            <button
-                              key={page}
-                              onClick={() => setCurrentPage(page)}
-                              className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                                currentPage === page
-                                  ? 'bg-primary-600 text-white'
-                                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                              }`}
-                            >
-                              {page}
-                            </button>
-                          ))}
-                        </div>
-                        <button
-                          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                          disabled={currentPage === totalPages}
-                          className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Next
-                        </button>
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        Page {currentPage} / {totalPages} ({myAudits.length} plans)
-                      </div>
+                  {myAudits.length > 0 && (
+                    <div className="mt-6 pt-6 border-t border-gray-200 flex justify-center py-4">
+                      <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPageChange={setCurrentPage}
+                      />
                     </div>
                   )}
                 </>

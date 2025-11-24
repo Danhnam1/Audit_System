@@ -1,9 +1,10 @@
 import { MainLayout, DepartmentIcon, UsersIcon, ChartBarIcon } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { useState, useEffect } from 'react';
-import { StatCard } from '../../../components';
+import { useState, useEffect, useMemo } from 'react';
+import { StatCard, Pagination } from '../../../components';
 import { getDepartments, createDepartment, updateDepartment, deleteDepartment } from '../../../api/departments';
 import { getAdminUsers } from '../../../api/adminUsers';
+import { toast } from 'react-toastify';
 
 const AdminDepartmentManagement = () => {
   const { user } = useAuth();
@@ -16,6 +17,10 @@ const AdminDepartmentManagement = () => {
   const [updating, setUpdating] = useState(false);
   const [editingDept, setEditingDept] = useState<{ deptId: number | null } | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 7;
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deptToDelete, setDeptToDelete] = useState<any | null>(null);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -72,9 +77,11 @@ const AdminDepartmentManagement = () => {
       await createDepartment({ name: form.name.trim(), code: form.code.trim(), description: form.description?.trim() || '' })
       setForm({ name: '', code: '', description: '' })
       setShowCreateForm(false)
+      toast.success('Department created successfully!')
       await fetchDepartmentsAndOwners()
     } catch (err) {
       console.error('Failed to create department', err)
+      toast.error('Failed to create department. Please try again.')
     } finally {
       setCreating(false)
     }
@@ -95,29 +102,44 @@ const AdminDepartmentManagement = () => {
       await updateDepartment(editingDept.deptId, { name: form.name.trim(), code: form.code.trim(), description: form.description?.trim() || '' })
       setEditOpen(false)
       setEditingDept(null)
+      toast.success('Department updated successfully!')
       await fetchDepartmentsAndOwners()
     } catch (err) {
       console.error('Failed to update department', err)
+      toast.error('Failed to update department. Please try again.')
     } finally {
       setUpdating(false)
     }
   }
 
-  const handleDelete = async (dept: any) => {
-    const id = dept.deptId ?? dept.id
-    if (!id) return
-    const ok = window.confirm(`Delete department ${dept.name || id}?`)
-    if (!ok) return
+  const openDeleteModal = (dept: any) => {
+    setDeptToDelete(dept);
+    setShowDeleteModal(true);
+  };
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeptToDelete(null);
+  };
+
+  const handleDelete = async () => {
+    if (!deptToDelete) return;
+    const id = deptToDelete.deptId ?? deptToDelete.id;
+    if (!id) return;
+    
     try {
-      setDeletingId(Number(id))
-      await deleteDepartment(id)
-      await fetchDepartmentsAndOwners()
+      setDeletingId(Number(id));
+      await deleteDepartment(id);
+      await fetchDepartmentsAndOwners();
+      closeDeleteModal();
+      toast.success('You have successfully deleted the department.');
     } catch (err) {
-      console.error('Failed to delete department', err)
+      console.error('Failed to delete department', err);
+      toast.error('Failed to delete department. Please try again.');
     } finally {
-      setDeletingId(null)
+      setDeletingId(null);
     }
-  }
+  };
 
   // Using imported getStatusColor from constants
 
@@ -127,6 +149,22 @@ const AdminDepartmentManagement = () => {
     totalStaff: departments.reduce((sum, d) => sum + d.staffCount, 0),
     totalAudits: departments.reduce((sum, d) => sum + d.activeAudits, 0),
   };
+
+  // Pagination logic
+  const totalPages = Math.ceil(departments.length / itemsPerPage);
+
+  // Reset to page 1 if current page is out of bounds
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [departments.length, totalPages, currentPage]);
+
+  const paginatedDepartments = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return departments.slice(startIndex, endIndex);
+  }, [departments, currentPage]);
 
   return (
     <MainLayout user={layoutUser}>
@@ -286,7 +324,7 @@ const AdminDepartmentManagement = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Dept ID</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department Name</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Code</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
@@ -295,15 +333,17 @@ const AdminDepartmentManagement = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {departments.map((dept) => (
+                {paginatedDepartments.map((dept, idx) => {
+                  const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
+                  return (
                   <tr key={dept.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-primary-600">{dept.id}</span>
+                      <span className="text-sm font-medium text-primary-600">{rowNumber}</span>
                     </td>
                     <td className="px-6 py-4">
                       <div>
                         <p className="text-sm font-semibold text-gray-900">{dept.name}</p>
-                        <p className="text-xs text-gray-500">Created: {dept.createdDate}</p>
+                        
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -332,12 +372,10 @@ const AdminDepartmentManagement = () => {
                         <button onClick={() => openEdit(dept)} className="text-primary-600 hover:text-primary-700 text-sm font-medium">
                           Edit
                         </button>
+                        
+                        
                         <span className="text-gray-300">|</span>
-                        <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">
-                          View Staff
-                        </button>
-                        <span className="text-gray-300">|</span>
-                        <button onClick={() => handleDelete(dept)} disabled={deletingId === (dept.deptId ?? dept.id)} className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-60">
+                        <button onClick={() => openDeleteModal(dept)} disabled={deletingId === (dept.deptId ?? dept.id)} className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-60">
                           {deletingId === (dept.deptId ?? dept.id) ? 'Deleting…' : 'Delete'}
                         </button>
                         {dept.status === 'Inactive' && (
@@ -351,57 +389,77 @@ const AdminDepartmentManagement = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
+                {paginatedDepartments.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-6 text-sm text-gray-500 text-center">
+                      Không có department nào
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination Controls */}
+          {departments.length > 0 && (
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-center">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Department Analytics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <h3 className="text-lg font-semibold text-primary-600 mb-4">Top Departments by Staff</h3>
-            <div className="space-y-3">
-              {departments
-                .sort((a, b) => b.staffCount - a.staffCount)
-                .slice(0, 5)
-                .map((dept) => (
-                  <div key={dept.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="px-2 py-1 rounded bg-primary-100 text-primary-700 text-xs font-bold">
-                        {dept.code}
-                      </span>
-                      <span className="text-sm text-gray-700">{dept.name}</span>
-                    </div>
-                    <span className="text-sm font-semibold text-gray-900">{dept.staffCount} staff</span>
-                  </div>
-                ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <h3 className="text-lg font-semibold text-primary-600 mb-4">Top Departments by Active Audits</h3>
-            <div className="space-y-3">
-              {departments
-                .sort((a, b) => b.activeAudits - a.activeAudits)
-                .slice(0, 5)
-                .map((dept) => (
-                  <div key={dept.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="px-2 py-1 rounded bg-primary-100 text-primary-700 text-xs font-bold">
-                        {dept.code}
-                      </span>
-                      <span className="text-sm text-gray-700">{dept.name}</span>
-                    </div>
-                    <span className="text-sm font-semibold text-gray-900">{dept.activeAudits} audits</span>
-                  </div>
-                ))}
-            </div>
-          </div>
+        
+         
         </div>
-      </div>
-    </MainLayout>
-  );
-};
 
-export default AdminDepartmentManagement;
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={closeDeleteModal}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Confirm Delete
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Are you sure to delete this department?
+                </p>
+                
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deletingId !== null}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {deletingId !== null ? 'Deleting...' : 'Delete'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </MainLayout>
+    );
+  };
+  
+  export default AdminDepartmentManagement;

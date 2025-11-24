@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from 'react-toastify';
 
 // Badge variant type matching the constants definition
 type BadgeVariant = 'primary-light' | 'primary-medium' | 'primary-dark' | 'primary-solid' | 'gray-light' | 'gray-medium';
@@ -25,6 +26,10 @@ interface PlanDetailsModalProps {
   getTemplateName?: (templateId: string | number | null | undefined) => string;
   // Optional prop to hide specific sections
   hideSections?: string[];
+  // Optional prop to check if current user is Lead Auditor of THIS specific plan
+  currentUserId?: string | null;
+  // Optional prop to pass audit teams for this specific plan
+  auditTeamsForPlan?: any[];
 }
 
 export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
@@ -45,9 +50,35 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   auditorOptions = [],
   getTemplateName,
   hideSections = [],
+  currentUserId = null,
+  auditTeamsForPlan = [],
 }) => {
   if (!showModal || !selectedPlanDetails) return null;
 
+  // Check if current user is Lead Auditor of THIS specific plan
+  const isLeadAuditor = React.useMemo(() => {
+    if (!currentUserId || !auditTeamsForPlan.length) return false;
+    
+    const currentAuditId = selectedPlanDetails.auditId || selectedPlanDetails.id;
+    if (!currentAuditId) return false;
+    
+    // Check if user has isLead: true in THIS plan's audit team
+    const isLead = auditTeamsForPlan.some((m: any) => {
+      const teamAuditId = String(m?.auditId || '').trim();
+      const teamUserId = String(m?.userId || '').trim();
+      const userIdMatch = teamUserId === String(currentUserId).trim() || 
+                         teamUserId.toLowerCase() === String(currentUserId).trim().toLowerCase();
+      const auditIdMatch = teamAuditId === String(currentAuditId).trim() ||
+                          teamAuditId.toLowerCase() === String(currentAuditId).trim().toLowerCase();
+      const isLeadMatch = m?.isLead === true;
+      return userIdMatch && auditIdMatch && isLeadMatch;
+    });
+    
+    return isLead;
+  }, [currentUserId, auditTeamsForPlan, selectedPlanDetails.auditId, selectedPlanDetails.id]);
+
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showForwardModal, setShowForwardModal] = useState(false);
   const reviewComments = ''; // Review comments for actions
 
   // Debug: Log selectedPlanDetails to check data
@@ -228,6 +259,12 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 <span className="text-sm text-black font-normal">{selectedPlanDetails.title}</span>
               </div>
               <div className="flex items-start gap-3">
+                <span className="text-sm font-bold text-black min-w-[100px]">Type:</span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-light')}`}>
+                  {selectedPlanDetails.type}
+                </span>
+              </div>
+              <div className="flex items-start gap-3">
                 <span className="text-sm font-bold text-black min-w-[100px]">Start Date:</span>
                 <span className="text-sm text-black font-normal">
                   {selectedPlanDetails.startDate
@@ -237,12 +274,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                         day: 'numeric',
                       })
                     : 'N/A'}
-                </span>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-sm font-bold text-black min-w-[100px]">Type:</span>
-                <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-light')}`}>
-                  {selectedPlanDetails.type}
                 </span>
               </div>
               {!hideSections.includes('status') && (
@@ -539,15 +570,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
             {onForwardToDirector && (
               <button
-                onClick={async () => {
-                  try {
-                    await onForwardToDirector(selectedPlanDetails.auditId, reviewComments);
-                    onClose();
-                  } catch (err) {
-                    console.error('Forward to director failed', err);
-                    alert('Failed to forward to Director: ' + (err as any)?.message || String(err));
-                  }
-                }}
+                onClick={() => setShowForwardModal(true)}
                 className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
               >
                 Forward to Director
@@ -608,19 +631,10 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               </button>
             )}
 
-            {/* If the plan is still Draft, allow submitting to Lead Auditor */}
-            {selectedPlanDetails.status === 'Draft' && onSubmitToLead && (
+            {/* If the plan is still Draft, allow submitting to Lead Auditor (but not if current user is Lead Auditor) */}
+            {selectedPlanDetails.status === 'Draft' && onSubmitToLead && !isLeadAuditor && (
               <button
-                onClick={async () => {
-                  if (!window.confirm('Submit this plan to Lead Auditor?')) return;
-                  try {
-                    await onSubmitToLead(selectedPlanDetails.auditId);
-                    onClose();
-                  } catch (err) {
-                    console.error('Failed to submit to lead auditor', err);
-                    alert('Failed to submit to Lead Auditor: ' + (err as any)?.message || String(err));
-                  }
-                }}
+                onClick={() => setShowSubmitModal(true)}
                 className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
               >
                 Submit to Lead Auditor
@@ -635,6 +649,117 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     </div>
   );
 
+  // Submit Confirmation Modal
+  const submitModalContent = showSubmitModal && createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+        onClick={() => setShowSubmitModal(false)}
+      />
+      
+      {/* Modal */}
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Confirm Submit
+          </h3>
+          <p className="text-sm text-gray-600 mb-6">
+            Are you sure to submit this audit plan to Lead Auditor?
+          </p>
+          
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setShowSubmitModal(false)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!onSubmitToLead) return;
+                try {
+                  await onSubmitToLead(selectedPlanDetails.auditId);
+                  setShowSubmitModal(false);
+                  onClose();
+                } catch (err) {
+                  console.error('Failed to submit to lead auditor', err);
+                  const errorMessage = (err as any)?.response?.data?.message || (err as any)?.message || String(err);
+                  toast.error('Failed to submit to Lead Auditor: ' + errorMessage);
+                }
+              }}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              Submit
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+
+  // Forward to Director Confirmation Modal
+  const forwardModalContent = showForwardModal && createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+        onClick={() => setShowForwardModal(false)}
+      />
+      
+      {/* Modal */}
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Confirm Forward
+          </h3>
+          <p className="text-sm text-gray-600 mb-6">
+            Are you sure to submit to Director?
+          </p>
+          
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setShowForwardModal(false)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!onForwardToDirector) return;
+                try {
+                  await onForwardToDirector(selectedPlanDetails.auditId, reviewComments);
+                  setShowForwardModal(false);
+                  toast.success('Submit successfully.');
+                  onClose();
+                } catch (err) {
+                  console.error('Forward to director failed', err);
+                  const errorMessage = (err as any)?.response?.data?.message || (err as any)?.message || String(err);
+                  toast.error('Failed to forward to Director: ' + errorMessage);
+                }
+              }}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              Submit
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+
   // Render modal using Portal to ensure it's outside the DOM hierarchy
-  return createPortal(modalContent, document.body);
+  return (
+    <>
+      {createPortal(modalContent, document.body)}
+      {submitModalContent}
+      {forwardModalContent}
+    </>
+  );
 };
