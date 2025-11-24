@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { toast } from 'react-toastify';
 import { approvePlan, getAuditPlanById, rejectPlanContent } from '../../api/audits';
 import { normalizePlanDetails, unwrap } from '../../utils/normalize';
 import { getDepartments } from '../../api/departments';
@@ -111,6 +113,9 @@ const ReviewAuditPlans = () => {
     });
 
   const [processingIdStr, setProcessingIdStr] = useState<string | null>(null);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectPlanId, setRejectPlanId] = useState<string | null>(null);
+  const [rejectComment, setRejectComment] = useState('');
 
   // Helper function to check if plan can be approved/rejected
   const canApproveOrReject = (status: string): boolean => {
@@ -267,11 +272,27 @@ const ReviewAuditPlans = () => {
     try {
       await rejectPlanContent(String(planId), { comment });
       setAuditPlans(prev => prev.map(p => (String(p.planId) === String(planId) ? { ...p, status: 'Rejected' } : p)));
-      alert('✅ Plan rejected.');
+      toast.success('Rejected the Audit Plan');
+      setShowRejectModal(false);
+      setRejectPlanId(null);
+      setRejectComment('');
     } catch (err: any) {
       console.error('Failed to reject plan', err);
-      alert('Reject failed: ' + (err?.response?.data?.message || err?.message || String(err)));
+      const errorMessage = err?.response?.data?.message || err?.message || String(err);
+      toast.error('Reject failed: ' + errorMessage);
     }
+  };
+
+  const openRejectModal = (planId: string) => {
+    setRejectPlanId(planId);
+    setRejectComment('');
+    setShowRejectModal(true);
+  };
+
+  const closeRejectModal = () => {
+    setShowRejectModal(false);
+    setRejectPlanId(null);
+    setRejectComment('');
   };
 
   const openDetails = async (plan: AuditPlan) => {
@@ -480,10 +501,7 @@ const ReviewAuditPlans = () => {
                                 {processingIdStr === plan.planId ? 'Approving...' : 'Approve'}
                               </button>
                               <button
-                                onClick={() => {
-                                  const c = window.prompt('Nhập lý do từ chối (tùy chọn):') || '';
-                                  handleRejectPlan(plan.planId, c);
-                                }}
+                                onClick={() => openRejectModal(plan.planId)}
                                 className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-red-500 hover:bg-red-600 text-white"
                               >
                                 Reject
@@ -505,29 +523,7 @@ const ReviewAuditPlans = () => {
           showModal={true}
           selectedPlanDetails={selectedDetails}
           onClose={() => setSelectedDetails(null)}
-          // Director actions - only show if plan can still be approved/rejected
-          onApprove={canApproveOrReject(selectedDetails.status || selectedDetails.auditStatus || '') ? async (id, comment) => {
-            await approvePlan(String(id), { comment });
-            // Refresh local list state using backend status
-            let freshStatus: string | undefined;
-            try {
-              const refreshed = await fetchFullPlan(String(id));
-              freshStatus = String(refreshed?.status || refreshed?.auditStatus || '').trim();
-            } catch (e) {
-              console.warn('Modal approve: failed to fetch refreshed plan status', e);
-            }
-            setAuditPlans(prev => prev.map(p => (String(p.planId) === String(id)
-              ? { ...p, status: freshStatus && freshStatus.length ? freshStatus : p.status }
-              : p)));
-            alert('✅ Approved.');
-            setSelectedDetails(null);
-          } : undefined}
-          onRejectPlan={canApproveOrReject(selectedDetails.status || selectedDetails.auditStatus || '') ? async (id, comment) => {
-            await rejectPlanContent(String(id), { comment });
-            setAuditPlans(prev => prev.map(p => (String(p.planId) === String(id) ? { ...p, status: 'Rejected' } : p)));
-            alert('✅ Rejected.');
-            setSelectedDetails(null);
-          } : undefined}
+          // Director actions are only available in the table, not in the modal
           getCriterionName={(id: any) => getCriterionName(id, criteriaList)}
           getDepartmentName={(id: any) => getDepartmentName(id, departments)}
           getStatusColor={getStatusColor}
@@ -539,6 +535,58 @@ const ReviewAuditPlans = () => {
             return t?.name || t?.title || `Template ${String(tid ?? '')}`;
           }}
         />
+      )}
+
+      {/* Reject Confirmation Modal */}
+      {showRejectModal && rejectPlanId && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={closeRejectModal}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Reject Audit Plan
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Please provide a reason for rejection (optional):
+              </p>
+              
+              <textarea
+                value={rejectComment}
+                onChange={(e) => setRejectComment(e.target.value)}
+                placeholder="Enter rejection reason..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 mb-6 min-h-[100px] resize-y"
+              />
+              
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeRejectModal}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (rejectPlanId) {
+                      handleRejectPlan(rejectPlanId, rejectComment || undefined);
+                    }
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </MainLayout>
   );

@@ -8,13 +8,11 @@ import { ProtectedRoute } from "../components";
 const LoginPage = lazy(() => import("../pages/Auth/LoginPage"));
 
 // Admin pages
-const AdminDashboard = lazy(() => import("../pages/Admin/Dashboard"));
 const AdminUserManagement = lazy(() => import("../pages/Admin/UserManagement"));
 const AdminDepartmentManagement = lazy(() => import("../pages/Admin/DepartmentManagement"));
 const AdminBackupRestore = lazy(() => import("../pages/Admin/BackupRestore"));
 
 // Auditor pages
-const SQAStaffDashboard = lazy(() => import("../pages/Auditor/Dashboard"));
 const SQAStaffAuditPlanning = lazy(() => import("../pages/Auditor/AuditPlanning"));
 const SQAStaffAuditTeam = lazy(() => import("../pages/Auditor/AuditTeam"));
 const SQAStaffFindingManagement = lazy(() => import("../pages/Auditor/FindingManagement"));
@@ -104,7 +102,7 @@ export function AppRoutes() {
                 path={ROUTES.ADMIN}
                 element={
                     <ProtectedRoute allowedRoles={["Admin"]}>
-                        <AdminDashboard />
+                        <Navigate to="/admin/departments" replace />
                     </ProtectedRoute>
                 }
             />
@@ -138,7 +136,7 @@ export function AppRoutes() {
                 path={ROUTES.AUDITOR}
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
-                        <SQAStaffDashboard />
+                        <Navigate to="/auditor/planning" replace />
                     </ProtectedRoute>
                 }
             />

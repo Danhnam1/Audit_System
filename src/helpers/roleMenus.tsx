@@ -31,7 +31,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
   switch (normalizedRole) {
     case 'admin':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
+        // { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
         { icon: <UsersIcon />, label: 'Department Management', path: '/admin/departments' },
         { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
         { icon: <AuditIcon />, label: 'Audit Logs', path: '/admin/audit-logs' },

@@ -1,13 +1,14 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import type { AuditPlan, AuditPlanDetails } from '../../../types/auditPlan';
 import { getChecklistTemplates } from '../../../api/checklists';
 import { createAudit, addAuditScopeDepartment } from '../../../api/audits';
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { addCriterionToAudit } from '../../../api/auditCriteriaMap';
 import { getAdminUsers } from '../../../api/adminUsers';
-import { addTeamMember } from '../../../api/auditTeam';
+import { addTeamMember, getAuditTeam } from '../../../api/auditTeam';
 import { getDepartments } from '../../../api/departments';
 import { addAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule';
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
@@ -27,7 +28,7 @@ import { getStatusColor, getBadgeVariant } from '../../../constants';
 import { FilterBar } from './components/FilterBar';
 import { PlanTable } from './components/PlanTable';
 import { PlanDetailsModal } from './components/PlanDetailsModal';
-import { Toast } from './components/Toast';
+import { toast } from 'react-toastify';
 import { Step1BasicInfo } from './components/PlanForm/Step1BasicInfo';
 import { Step2Scope } from './components/PlanForm/Step2Scope';
 import { Step3Checklist } from './components/PlanForm/Step3Checklist';
@@ -48,6 +49,8 @@ const SQAStaffAuditPlanning = () => {
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
+  const [auditTeams, setAuditTeams] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
 
   // Plans data
   const [existingPlans, setExistingPlans] = useState<AuditPlan[]>([]);
@@ -69,13 +72,11 @@ const SQAStaffAuditPlanning = () => {
   // Details modal state
   const [selectedPlanDetails, setSelectedPlanDetails] = useState<AuditPlanDetails | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  
+  // Delete confirmation modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [planToDeleteId, setPlanToDeleteId] = useState<string | null>(null);
 
-  // Toast state
-  const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' | 'info' | 'warning'; isVisible: boolean }>({
-    message: '',
-    type: 'info',
-    isVisible: false,
-  });
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -281,6 +282,7 @@ const SQAStaffAuditPlanning = () => {
 
         try {
           const users = await getAdminUsers();
+          setAllUsers(Array.isArray(users) ? users : []);
           const norm = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, '');
           const auditors = (users || []).filter((u: any) => norm(u.roleName) === 'auditor');
           const owners = (users || []).filter((u: any) => norm(u.roleName) === 'auditeeowner');
@@ -288,6 +290,13 @@ const SQAStaffAuditPlanning = () => {
           setOwnerOptions(owners);
         } catch (e) {
           console.error('Failed to load users for team', e);
+        }
+
+        try {
+          const teams = await getAuditTeam();
+          setAuditTeams(Array.isArray(teams) ? teams : []);
+        } catch (e) {
+          console.error('Failed to load audit teams', e);
         }
       } catch (err) {
         console.error('Failed to load checklist templates', err);
@@ -332,12 +341,6 @@ const SQAStaffAuditPlanning = () => {
         const rawDetails = await getAuditPlanById(auditId);
         
         // Debug: Log raw API response structure
-        console.log('📥 Raw API Response:', {
-          hasAudit: !!rawDetails?.audit,
-          auditTitle: rawDetails?.audit?.title,
-          rawTitle: rawDetails?.title,
-          auditId: rawDetails?.audit?.auditId || rawDetails?.auditId,
-        });
         
         // Fetch schedules separately if not included in main response
         let schedulesData = rawDetails?.schedules;
@@ -348,7 +351,6 @@ const SQAStaffAuditPlanning = () => {
             const schedulesArray = unwrap(schedulesResponse);
             schedulesData = { values: schedulesArray };
           } catch (scheduleErr) {
-            console.warn('⚠️ Failed to fetch schedules separately:', scheduleErr);
             schedulesData = { values: [] };
           }
         }
@@ -365,23 +367,11 @@ const SQAStaffAuditPlanning = () => {
           users: [...auditorOptions, ...ownerOptions],
         });
         
-        // Debug: Log normalized details to check data
-        console.log('📋 Normalized Plan Details:', {
-          title: normalizedDetails.title,
-          type: normalizedDetails.type,
-          startDate: normalizedDetails.startDate,
-          endDate: normalizedDetails.endDate,
-          scope: normalizedDetails.scope,
-          status: normalizedDetails.status,
-          objective: normalizedDetails.objective,
-          schedulesCount: normalizedDetails.schedules?.values?.length || 0,
-        });
         
         setSelectedPlanDetails(normalizedDetails);
         setShowDetailsModal(true);
         return;
       } catch (apiError) {
-        console.warn('⚠️ Full details API failed, using basic data from table:', apiError);
 
         const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
 
@@ -397,7 +387,7 @@ const SQAStaffAuditPlanning = () => {
           const schedulesArray = unwrap(schedulesResponse);
           schedulesData = { values: schedulesArray };
         } catch (scheduleErr) {
-          console.warn('⚠️ Failed to fetch schedules separately:', scheduleErr);
+          // Failed to fetch schedules separately, using empty array
         }
 
         const basicDetails = {
@@ -427,17 +417,13 @@ const SQAStaffAuditPlanning = () => {
     }
   };
 
-  // Handler: Delete plan (only allowed for Draft status)
-  const handleDeletePlan = async (auditId: string) => {
+  // Handler: Open delete confirmation modal
+  const openDeleteModal = (auditId: string) => {
     // Find the plan to check its status
     const planToDelete = existingPlans.find(p => (p.auditId || p.id) === auditId);
     
     if (!planToDelete) {
-      setToast({
-        message: 'Plan not found.',
-        type: 'error',
-        isVisible: true,
-      });
+      toast.error('Plan not found.');
       return;
     }
 
@@ -446,20 +432,29 @@ const SQAStaffAuditPlanning = () => {
     
     // Only allow delete if status is Draft
     if (normalizedStatus !== 'draft') {
-      setToast({
-        message: 'Chỉ có trạng thái Draft mới được delete.',
-        type: 'warning',
-        isVisible: true,
-      });
+      toast.warning('Chỉ có trạng thái Draft mới được delete.');
       return;
     }
 
-    if (!window.confirm('Delete this audit plan permanently?')) return;
+    setPlanToDeleteId(auditId);
+    setShowDeleteModal(true);
+  };
+
+  // Handler: Close delete modal
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setPlanToDeleteId(null);
+  };
+
+  // Handler: Delete plan (only allowed for Draft status)
+  const handleDeletePlan = async () => {
+    if (!planToDeleteId) return;
+    
     try {
-      await deleteAuditPlan(auditId);
+      await deleteAuditPlan(planToDeleteId);
 
       setExistingPlans(prevPlans =>
-        prevPlans.filter(p => (p.auditId || p.id) !== auditId)
+        prevPlans.filter(p => (p.auditId || p.id) !== planToDeleteId)
       );
 
       try {
@@ -468,9 +463,13 @@ const SQAStaffAuditPlanning = () => {
       } catch (err) {
         console.error('Failed to refresh plans after delete', err);
       }
+      
+      closeDeleteModal();
+      toast.success('Audit plan deleted successfully.');
     } catch (error: any) {
       console.error('❌ Failed to delete plan', error);
-      alert('Delete failed: ' + (error?.response?.data?.message || error?.message || 'Unknown error'));
+      const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error';
+      toast.error('Delete failed: ' + errorMessage);
     }
   };
 
@@ -503,7 +502,6 @@ const SQAStaffAuditPlanning = () => {
         };
       } catch (apiError) {
         // If detailed endpoint fails, fall back to using table data so the user can still edit basic fields
-        console.warn('⚠️ Full details API failed, falling back to table data for edit:', apiError);
 
         const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
         const planFromTableAny = planFromTable as any;
@@ -527,7 +525,6 @@ const SQAStaffAuditPlanning = () => {
       // Use formState.loadPlanForEdit with the best-effort details
       formState.loadPlanForEdit(details);
 
-      console.log('✅ Plan loaded for editing successfully');
     } catch (error) {
       console.error('❌ Failed to load plan for editing', error);
       alert('⚠️ Cannot load plan for editing\n\nError: ' + (error as any)?.message);
@@ -547,12 +544,26 @@ const SQAStaffAuditPlanning = () => {
         console.error('Failed to refresh plans after submit', refreshErr);
       }
 
-      alert('✅ Submitted to Lead Auditor successfully.');
+      toast.success('Submit successfully.');
     } catch (err: any) {
       console.error('❌ Failed to submit to Lead Auditor', err);
-      alert('Failed to submit to Lead Auditor: ' + (err?.response?.data?.message || err?.message || String(err)));
+      const errorMessage = err?.response?.data?.message || err?.message || String(err);
+      toast.error('Failed to submit to Lead Auditor: ' + errorMessage);
     }
   };
+
+  // Get current user's userId
+  const currentUserId = useMemo(() => {
+    if (!user?.email || !allUsers.length) return null;
+    
+    const found = allUsers.find((u: any) => {
+      const uEmail = String(u?.email || '').toLowerCase().trim();
+      const userEmail = String(user.email).toLowerCase().trim();
+      return uEmail === userEmail;
+    });
+    
+    return found?.userId ? String(found.userId).trim() : null;
+  }, [user?.email, allUsers]);
 
   // Helper: Check if form has any data entered
   const hasFormData = useMemo(() => {
@@ -597,49 +608,29 @@ const SQAStaffAuditPlanning = () => {
   const handleSubmitPlan = async () => {
     // Client-side validation
     if (!formState.title.trim()) {
-      setToast({
-        message: 'Vui lòng nhập tiêu đề (Title) cho kế hoạch.',
-        type: 'warning',
-        isVisible: true,
-      });
+      toast.warning('Vui lòng nhập tiêu đề (Title) cho kế hoạch.');
       formState.setCurrentStep(1);
       return;
     }
     if (!formState.periodFrom || !formState.periodTo) {
-      setToast({
-        message: 'Vui lòng chọn ngày bắt đầu và kết thúc.',
-        type: 'warning',
-        isVisible: true,
-      });
+      toast.warning('Vui lòng chọn ngày bắt đầu và kết thúc.');
       formState.setCurrentStep(1);
       return;
     }
     // period_from ≤ period_to
     if (new Date(formState.periodFrom).getTime() > new Date(formState.periodTo).getTime()) {
-      setToast({
-        message: 'Khoảng thời gian không hợp lệ: Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.',
-        type: 'warning',
-        isVisible: true,
-      });
+      toast.warning('Khoảng thời gian không hợp lệ: Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.');
       formState.setCurrentStep(1);
       return;
     }
     if (!formState.selectedTemplateId) {
-      setToast({
-        message: 'Vui lòng chọn Checklist Template (Step 3).',
-        type: 'warning',
-        isVisible: true,
-      });
+      toast.warning('Vui lòng chọn Checklist Template (Step 3).');
       formState.setCurrentStep(3);
       return;
     }
     if (formState.level === 'department') {
       if (formState.selectedDeptIds.length === 0) {
-        setToast({
-          message: 'Vui lòng chọn ít nhất 1 phòng ban cho phạm vi Department (Step 2).',
-          type: 'warning',
-          isVisible: true,
-        });
+        toast.warning('Vui lòng chọn ít nhất 1 phòng ban cho phạm vi Department (Step 2).');
         formState.setCurrentStep(2);
         return;
       }
@@ -655,11 +646,7 @@ const SQAStaffAuditPlanning = () => {
     // Schedule constraints: unique dates and strictly increasing order
     const scheduleErrorMessages = Object.values(scheduleErrors).filter(Boolean);
     if (scheduleErrorMessages.length > 0) {
-      setToast({
-        message: 'Lịch không hợp lệ:\n\n' + scheduleErrorMessages.join('\n'),
-        type: 'error',
-        isVisible: true,
-      });
+      toast.error('Lịch không hợp lệ:\n\n' + scheduleErrorMessages.join('\n'));
       formState.setCurrentStep(5);
       return;
     }
@@ -711,7 +698,6 @@ const SQAStaffAuditPlanning = () => {
           );
           const failedDepts = deptResults.filter((r) => r.status === 'rejected');
           if (failedDepts.length > 0) {
-            console.warn('⚠️ Some departments failed to attach:', failedDepts);
           }
           }
         } catch (scopeErr) {
@@ -799,13 +785,9 @@ const SQAStaffAuditPlanning = () => {
       formState.resetForm();
 
       const successMsg = formState.isEditMode
-        ? `Audit plan updated successfully!${formState.title ? ` Plan: ${formState.title}` : ''}`
-        : `Audit plan created successfully!${formState.title ? ` Plan: ${formState.title}` : ''}`;
-      setToast({
-        message: successMsg,
-        type: 'success',
-        isVisible: true,
-      });
+        ? 'Audit plan updated successfully.'
+        : 'Create Audit plan successfully.';
+      toast.success(successMsg);
     } catch (err: any) {
       const serverMsg = err?.response?.data || err?.response || err?.message || err;
       console.error('Create audit failed', err, serverMsg);
@@ -819,11 +801,7 @@ const SQAStaffAuditPlanning = () => {
       } catch (e) {
         errorMessage = err?.message || String(err);
       }
-      setToast({
-        message: errorMessage,
-        type: 'error',
-        isVisible: true,
-      });
+      toast.error(errorMessage);
     }
   };
 
@@ -1014,27 +992,23 @@ const SQAStaffAuditPlanning = () => {
                           let message = '';
                           switch (formState.currentStep) {
                             case 1:
-                              message = 'Vui lòng điền đầy đủ thông tin: Title, Type, Period From, và Period To.';
+                              message = 'Please fill in the information: Title, Type, Period From, and Period To.';
                               break;
                             case 2:
                               message = formState.level === 'department'
-                                ? 'Vui lòng chọn ít nhất 1 phòng ban và 1 tiêu chí kiểm toán.'
-                                : 'Vui lòng chọn ít nhất 1 tiêu chí kiểm toán.';
+                                ? 'Please select at least 1 department and 1 inspection criterion'
+                                : 'Please select at least 1 inspection criterion';
                               break;
                             case 3:
-                              message = 'Vui lòng chọn một Checklist Template.';
+                              message = 'Please select a Checklist Template.';
                               break;
                             case 4:
-                              message = 'Vui lòng chọn Lead Auditor.';
+                              message = 'Please select Lead Auditor.';
                               break;
                             default:
-                              message = 'Vui lòng điền đầy đủ thông tin trước khi tiếp tục.';
+                              message = 'Please fill in all information before continuing.';
                           }
-                          setToast({
-                            message,
-                            type: 'warning',
-                            isVisible: true,
-                          });
+                          toast.warning(message);
                         }
                       }}
                       disabled={!canContinue}
@@ -1103,7 +1077,7 @@ const SQAStaffAuditPlanning = () => {
             loadingPlans={loadingPlans}
             onViewDetails={handleViewDetails}
             onEditPlan={handleEditPlan}
-            onDeletePlan={handleDeletePlan}
+            onDeletePlan={openDeleteModal}
             getStatusColor={getStatusColor}
             getBadgeVariant={getBadgeVariant}
             startIndex={(activePlansTab - 1) * pageSize}
@@ -1144,6 +1118,16 @@ const SQAStaffAuditPlanning = () => {
             onClose={() => setShowDetailsModal(false)}
             onEdit={handleEditPlan}
             onSubmitToLead={handleSubmitToLead}
+            currentUserId={currentUserId}
+            auditTeamsForPlan={(() => {
+              // Get audit teams for the current plan being viewed
+              if (!selectedPlanDetails?.auditId && !selectedPlanDetails?.id) return [];
+              const currentAuditId = String(selectedPlanDetails.auditId || selectedPlanDetails.id).trim();
+              return auditTeams.filter((m: any) => {
+                const teamAuditId = String(m?.auditId || '').trim();
+                return teamAuditId === currentAuditId || teamAuditId.toLowerCase() === currentAuditId.toLowerCase();
+              });
+            })()}
             getCriterionName={(id: string) => getCriterionName(id, criteria)}
             getDepartmentName={(id: string | number) => getDepartmentName(id, departments)}
             getStatusColor={getStatusColor}
@@ -1157,13 +1141,47 @@ const SQAStaffAuditPlanning = () => {
           />
         )}
 
-        {/* Toast Notification */}
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          isVisible={toast.isVisible}
-          onClose={() => setToast({ ...toast, isVisible: false })}
-        />
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && createPortal(
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={closeDeleteModal}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Confirm Delete
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Are you sure you want to delete this audit plan permanently?
+                </p>
+                
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={closeDeleteModal}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeletePlan}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
       </div>
     </MainLayout>
   );

@@ -11,7 +11,7 @@ import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
-import { Toast } from '../AuditPlanning/components/Toast';
+import { toast } from 'react-toastify';
 
 const SQAStaffReports = () => {
   const { user } = useAuth();
@@ -31,11 +31,6 @@ const SQAStaffReports = () => {
   const [uploadLoading, setUploadLoading] = useState<Record<string, boolean>>({});
   const [uploadMsg, setUploadMsg] = useState<Record<string, string | null>>({});
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const [toast, setToast] = useState<{ message: string; type: 'error' | 'success' | 'info' | 'warning'; isVisible: boolean }>({
-    message: '',
-    type: 'info',
-    isVisible: false,
-  });
 
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
@@ -464,11 +459,7 @@ const SQAStaffReports = () => {
         : `Đã tải lên thành công ${files.length} file.`;
       
       setUploadMsg(prev => ({ ...prev, [auditId]: successMessage }));
-      setToast({
-        message: successMessage,
-        type: 'success',
-        isVisible: true,
-      });
+      toast.success(successMessage);
       e.target.value = '';
       // Reload reports to refresh the list
       await reloadReports();
@@ -476,11 +467,7 @@ const SQAStaffReports = () => {
       console.error('Upload signed report failed', err);
       const errorMessage = 'Tải lên thất bại. Vui lòng thử lại.';
       setUploadMsg(prev => ({ ...prev, [auditId]: errorMessage }));
-      setToast({
-        message: errorMessage,
-        type: 'error',
-        isVisible: true,
-      });
+      toast.error(errorMessage);
     } finally {
       setUploadLoading(prev => ({ ...prev, [auditId]: false }));
     }
@@ -1022,14 +1009,6 @@ const SQAStaffReports = () => {
           </div>
         </div> */}
       </div>
-      
-      {/* Toast Notification */}
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={() => setToast({ ...toast, isVisible: false })}
-      />
     </MainLayout>
   );
 };

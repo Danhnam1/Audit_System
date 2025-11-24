@@ -60,16 +60,16 @@ export default function LoginPage() {
         
         switch (roleName) {
           case 'admin':
-            console.log('Navigating to: /admin/users')
-            navigate('/admin/users')
+            console.log('Navigating to: /admin/departments')
+            navigate('/admin/departments')
             break
           case 'leadauditor':
             console.log('Navigating to: /sqahead/dashboard')
             navigate('/sqahead/dashboard')
             break
           case 'auditor':
-            console.log('Navigating to: /sqastaff/dashboard')
-            navigate('/sqastaff/dashboard')
+            console.log('Navigating to: /auditor/planning')
+            navigate('/auditor/planning')
             break
           case 'auditeeowner':
             console.log('Navigating to: /departmenthead/dashboard')
