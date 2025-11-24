@@ -17,6 +17,11 @@ export const getAuditScopeDepartments = async (): Promise<any> => {
   return apiClient.get('/AuditScopeDepartment') as any;
 };
 
+// Get audit scope departments by audit ID
+export const getAuditScopeDepartmentsByAuditId = async (auditId: string): Promise<any> => {
+  return apiClient.get(`/AuditScopeDepartment/departments/${auditId}`) as any;
+};
+
 // Delete audit scope department by ID
 export const deleteAuditScopeDepartment = async (id: string | number): Promise<any> => {
   return apiClient.delete(`/AuditScopeDepartment/${id}`) as any;

@@ -5,6 +5,8 @@ import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
 import './icons.tsx';
 import useAuthStore from '../store/useAuthStore';
 import { getRoleMenu } from '../helpers/roleMenus';
+import { getMyLeadAuditorAudits } from '../api/auditTeam';
+import { AuditIcon } from './icons';
 
 
 export interface Team {
@@ -62,9 +64,51 @@ export const MainLayout = ({
   
   const defaultMenuItems: SidebarMenuItem[] = getRoleMenu(role);
   
+  // Check if user is a lead auditor and add menu item dynamically
+  const [finalMenuItems, setFinalMenuItems] = useState<SidebarMenuItem[]>(defaultMenuItems);
+  
+  useEffect(() => {
+    const checkLeadAuditor = async () => {
+      // If menuItems are provided by parent, don't modify
+      if (menuItems) {
+        setFinalMenuItems(menuItems);
+        return;
+      }
+      
+      // Get fresh menu items based on current role
+      const currentMenuItems = getRoleMenu(role);
+      
+      try {
+        const normalizedRole = role?.toLowerCase().replace(/\s+/g, '') || '';
+        // Only check for Auditor or Lead Auditor roles
+        if (normalizedRole === 'auditor' || normalizedRole === 'leadauditor') {
+          const leadAuditorData = await getMyLeadAuditorAudits();
+          if (leadAuditorData?.isLeadAuditor) {
+            // Add Audit Assignment menu item
+            const auditAssignmentItem: SidebarMenuItem = {
+              icon: <AuditIcon />,
+              label: 'Audit Assignment',
+              path: '/auditor/audit-assignment',
+            };
+            setFinalMenuItems([...currentMenuItems, auditAssignmentItem]);
+          } else {
+            setFinalMenuItems(currentMenuItems);
+          }
+        } else {
+          setFinalMenuItems(currentMenuItems);
+        }
+      } catch (error) {
+        console.error('Failed to check lead auditor status:', error);
+        setFinalMenuItems(currentMenuItems);
+      }
+    };
+
+    checkLeadAuditor();
+  }, [role, menuItems]);
+  
   // Debug: log menu items for roles that reported missing items
   if (role === 'Admin' || role === 'Lead Auditor') {
-    console.debug('[MainLayout] role:', role, 'menuItems:', defaultMenuItems);
+    console.debug('[MainLayout] role:', role, 'menuItems:', finalMenuItems);
   }
 
  
@@ -89,7 +133,7 @@ export const MainLayout = ({
           <div className="hidden md:block">
             <Sidebar
               logo={logo || defaultLogo}
-              menuItems={menuItems || defaultMenuItems}
+              menuItems={menuItems || finalMenuItems}
               user={user || defaultUser}
               theme={sidebarTheme}
             />
@@ -117,7 +161,7 @@ export const MainLayout = ({
                 <div className="flex-1 overflow-y-auto">
                   <Sidebar
                     logo={undefined}
-                    menuItems={menuItems || defaultMenuItems}
+                    menuItems={menuItems || finalMenuItems}
                     user={user || defaultUser}
                     theme={sidebarTheme}
                     className="h-full"

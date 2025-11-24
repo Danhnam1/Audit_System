@@ -23,4 +23,9 @@ export const deleteTeamMember = async (id: string | number) => {
   return apiClient.delete(`/AuditTeam/${id}`)
 }
 
-export default { addTeamMember, getAuditTeam, deleteTeamMember }
+// Get my lead auditor audits
+export const getMyLeadAuditorAudits = async (): Promise<any> => {
+  return apiClient.get('/AuditTeam/my-lead-auditor-audits') as any;
+}
+
+export default { addTeamMember, getAuditTeam, deleteTeamMember, getMyLeadAuditorAudits }
