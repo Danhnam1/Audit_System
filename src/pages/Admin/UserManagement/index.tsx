@@ -5,6 +5,7 @@ import { StatCard } from '../../../components';
 import authService from '../../../hooks/auth';
 import { apiClient } from '../../../hooks/axios';
 import { getDepartments } from '../../../api/departments';
+import { toast } from 'react-toastify';
 
 interface CreateUserForm {
   fullName: string;
@@ -50,8 +51,8 @@ const AdminUserManagement = () => {
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('Active');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   
   const [formData, setFormData] = useState<CreateUserForm>({
     fullName: '',
@@ -65,40 +66,40 @@ const AdminUserManagement = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    setError(''); // Clear error when user types
   };
+  const specialCharRegex = /[!@#$%^&*(),.?":{}|<>]/;
 
   const validateForm = (): boolean => {
     if (!formData.fullName.trim()) {
-      setError('Vui lòng nhập họ và tên');
+      toast.error('Vui lòng nhập họ và tên');
       return false;
     }
     if (!formData.email.trim()) {
-      setError('Vui lòng nhập email');
+      toast.error('Vui lòng nhập email');
       return false;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      setError('Email không hợp lệ');
+      toast.error('Email không hợp lệ');
       return false;
     }
     // For edit mode, password is optional; only validate on create
     if (!editingUserId) {
       if (!formData.password) {
-        setError('Vui lòng nhập mật khẩu');
+        toast.error('Vui lòng nhập mật khẩu');
         return false;
       }
-      if (formData.password.length < 6) {
-        setError('Mật khẩu phải có ít nhất 6 ký tự');
-        return false;
-      }
+     if (formData.password.length < 6 || !specialCharRegex.test(formData.password)) {
+  toast.error('Mật khẩu phải có ít nhất 6 ký tự và chứa ký tự đặc biệt');
+  return false;
+}
     }
     if (!formData.role) {
-      setError('Vui lòng chọn vai trò');
+      toast.error('Vui lòng chọn vai trò');
       return false;
     }
     // if (!formData.deptId) {
-    //   setError('Vui lòng chọn phòng ban');
+    //   toast.error('Vui lòng chọn phòng ban');
     //   return false;
     // }
     return true;
@@ -112,8 +113,6 @@ const AdminUserManagement = () => {
     }
 
     setIsSubmitting(true);
-    setError('');
-    setSuccess('');
 
     try {
       // If editingUserId is set, perform update (PUT) instead of register
@@ -129,15 +128,12 @@ const AdminUserManagement = () => {
 
         await apiClient.put(`/admin/AdminUsers/${editingUserId}`, updatePayload)
 
-        setSuccess('Cập nhật người dùng thành công!')
+        toast.success('Cập nhật người dùng thành công!');
         // refresh list and reset
         await fetchUsers()
         setEditingUserId(null)
         setFormData({ fullName: '', email: '', password: '', role: '', deptId: null })
-        setTimeout(() => {
-          setShowCreateForm(false)
-          setSuccess('')
-        }, 2000)
+        setShowCreateForm(false)
 
         return
       }
@@ -147,7 +143,7 @@ const AdminUserManagement = () => {
         email: formData.email,
         password: formData.password,
         roleName: formData.role,
-        deptId: null,
+        deptId: formData.deptId ? Number(formData.deptId) : null,
       });
 
       console.log('=== Registration Response Debug ===');
@@ -162,7 +158,7 @@ const AdminUserManagement = () => {
       // If we reach here without error, registration was successful
       // The API call didn't throw, so it succeeded
       await fetchUsers()
-      setSuccess('Tạo người dùng thành công!');
+      toast.success('Tạo người dùng thành công!');
       
       // Reset form
       setFormData({
@@ -173,14 +169,10 @@ const AdminUserManagement = () => {
         deptId: null,
       });
    
-      // Close form after 2 seconds
-      setTimeout(() => {
-        setShowCreateForm(false);
-        setSuccess('');
-      }, 2000);
+      setShowCreateForm(false);
     } catch (err: any) {
       console.error('Registration error:', err);
-      setError(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi tạo người dùng');
+      toast.error(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi tạo người dùng');
     } finally {
       setIsSubmitting(false);
     }
@@ -195,8 +187,6 @@ const AdminUserManagement = () => {
       role: '',
       deptId: null,
     });
-    setError('');
-    setSuccess('');
   };
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
@@ -281,8 +271,6 @@ const AdminUserManagement = () => {
     })
     setEditingUserId(u.userId)
     setShowCreateForm(true)
-    setError('')
-    setSuccess('')
   }
 
   const handleDelete = async (id: string) => {
@@ -291,16 +279,14 @@ const AdminUserManagement = () => {
 
     try {
       await apiClient.delete(`/admin/AdminUsers/${id}`)
-      setSuccess('Xóa người dùng thành công!')
+      toast.success('Xóa người dùng thành công!')
       // Refresh list
       fetchUsers()
       // Hide inactive users by default so the deleted (now inactive) user disappears
       setFilterStatus('Active')
-      // clear success after 2s
-      setTimeout(() => setSuccess(''), 2000)
     } catch (err: any) {
       console.error('Delete user failed', err)
-      setError(err?.message || 'Xóa người dùng thất bại')
+      toast.error(err?.message || 'Xóa người dùng thất bại')
     }
   }
 
@@ -323,6 +309,17 @@ const AdminUserManagement = () => {
     const statusMatch = filterStatus === 'all' || u.status === filterStatus;
     return roleMatch && statusMatch;
   });
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterRole, filterStatus]);
 
   const stats = {
     total: users.length,
@@ -367,20 +364,6 @@ const AdminUserManagement = () => {
         {showCreateForm && (
           <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
             <h2 className="text-lg font-semibold text-primary-600 mb-4">{editingUserId ? 'Edit User' : 'Create New User'}</h2>
-            
-            {/* Error Message */}
-            {error && (
-              <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-                {error}
-              </div>
-            )}
-
-            {/* Success Message */}
-            {success && (
-              <div className="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-                {success}
-              </div>
-            )}
 
             <form onSubmit={handleSubmit}>
               <div className="space-y-4">
@@ -449,7 +432,7 @@ const AdminUserManagement = () => {
                         name="password"
                         value={formData.password}
                         onChange={handleInputChange}
-                        placeholder="Enter password (min 6 characters)"
+                        placeholder="Enter password (min 8 characters)"
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                         required
                         minLength={6}
@@ -541,10 +524,10 @@ const AdminUserManagement = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredUsers.map((usr, idx) => (
+                {paginatedUsers.map((usr, idx) => (
                   <tr key={usr.userId || idx} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-primary-600">{idx + 1}</span>
+                      <span className="text-sm font-medium text-primary-600">{startIndex + idx + 1}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -595,6 +578,76 @@ const AdminUserManagement = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {filteredUsers.length > 0 && (
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-gray-700">
+                  Showing {startIndex + 1} to {Math.min(endIndex, filteredUsers.length)} of {filteredUsers.length} users
+                </span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => {
+                    setItemsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value={5}>5 per page</option>
+                  <option value={10}>10 per page</option>
+                  <option value={20}>20 per page</option>
+                  <option value={50}>50 per page</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
+                    // Show first page, last page, current page, and pages around current
+                    if (
+                      page === 1 ||
+                      page === totalPages ||
+                      (page >= currentPage - 1 && page <= currentPage + 1)
+                    ) {
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            currentPage === page
+                              ? 'bg-primary-600 text-white'
+                              : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    } else if (page === currentPage - 2 || page === currentPage + 2) {
+                      return <span key={page} className="px-2 text-gray-500">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </MainLayout>

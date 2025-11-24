@@ -111,14 +111,7 @@ export default function LoginPage() {
     }
   }
 
-  const demoCredentials = [
-    { role: 'Admin', email: 'voduy@gmail.com', password: '123456' },
-    { role: 'Auditor', email: 'auditor@ams.com', password: 'auditor123' },
-    { role: 'Lead Auditor', email: 'leadauditor@ams.com', password: 'lead123' },
-    { role: 'CAPA Owner', email: 'capaowner@ams.com', password: 'capa123' },
-    { role: 'Auditee Owner', email: 'auditeeowner@ams.com', password: 'auditee123' },
-    { role: 'Director', email: 'voduy123@gmail.com', password: '123456' },
-  ]
+ 
 
   const quickLogin = (email: string, password: string) => {
     setEmail(email)
@@ -310,144 +303,17 @@ export default function LoginPage() {
                   </button>
                 </form>
 
-                {/* Demo Credentials Toggle - Mobile */}
-                <div className="mt-6 lg:hidden">
-                  <button
-                    type="button"
-                    onClick={() => setShowCredentials(!showCredentials)}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    {showCredentials ? 'Hide' : 'Show'} Demo Credentials
-                  </button>
-                </div>
+            
               </div>
             </div>
 
-            {/* Demo Credentials Panel - Always visible on desktop, toggleable on mobile */}
-            <div
-              className={`w-full lg:flex-1 lg:max-w-md mx-auto ${
-                showCredentials ? 'block' : 'hidden lg:block'
-              }`}
-            >
-              <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="flex-shrink-0">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <svg
-                        className="w-5 h-5 text-blue-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-800">Demo Credentials</h3>
-                    <p className="text-sm text-gray-600">Click any credential to auto-fill</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {demoCredentials.map((cred, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => quickLogin(cred.email, cred.password)}
-                      className="w-full text-left p-4 border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-medium text-gray-800">{cred.role}</span>
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                              Demo
-                            </span>
-                          </div>
-                          <div className="text-sm text-gray-600 space-y-0.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-gray-500">Email:</span>
-                              <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">
-                                {cred.email}
-                              </code>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-gray-500">Password:</span>
-                              <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">
-                                {cred.password}
-                              </code>
-                            </div>
-                          </div>
-                        </div>
-                        <svg
-                          className="w-5 h-5 text-gray-400 group-hover:text-blue-600 transition-colors flex-shrink-0"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5l7 7-7 7"
-                          />
-                        </svg>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex gap-3">
-                    <svg
-                      className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <div>
-                      <h4 className="text-sm font-medium text-yellow-800 mb-1">
-                        Development Mode
-                      </h4>
-                      <p className="text-xs text-yellow-700">
-                        These credentials are for testing purposes only. In production, use your
-                        actual account credentials.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          
           </div>
 
           {/* Footer */}
           <div className="mt-8 text-center">
             <p className="text-sm text-white/90 drop-shadow-lg">
-              © 2024 Audit Management System. All rights reserved.
+              1.0.0 Audit Management System. All rights reserved.
             </p>
           </div>
         </div>
