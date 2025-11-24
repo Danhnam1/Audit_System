@@ -28,4 +28,11 @@ export const getMyLeadAuditorAudits = async (): Promise<any> => {
   return apiClient.get('/AuditTeam/my-lead-auditor-audits') as any;
 }
 
-export default { addTeamMember, getAuditTeam, deleteTeamMember, getMyLeadAuditorAudits }
+// Get auditors by audit ID
+export const getAuditorsByAuditId = async (auditId: string): Promise<any> => {
+  const res: any = await apiClient.get(`/AuditTeam/auditors/${auditId}`);
+  const values = unwrap(res);
+  return values;
+}
+
+export default { addTeamMember, getAuditTeam, deleteTeamMember, getMyLeadAuditorAudits, getAuditorsByAuditId }

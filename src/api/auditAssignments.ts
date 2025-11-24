@@ -32,8 +32,31 @@ const toPascalCase = (obj: any): any => {
 
 // Get all audit assignments
 export const getAuditAssignments = async (): Promise<AuditAssignment[]> => {
-  const res = await apiClient.get('/AuditAssignment');
-  return res.data;
+  const res: any = await apiClient.get('/AuditAssignment');
+  console.log('🔍 getAuditAssignments raw response:', res);
+  
+  // Handle $values structure
+  if (res?.$values && Array.isArray(res.$values)) {
+    console.log('🔍 Returning res.$values:', res.$values);
+    return res.$values;
+  }
+  if (Array.isArray(res)) {
+    console.log('🔍 Returning res as array:', res);
+    return res;
+  }
+  if (res?.data) {
+    const data = res.data;
+    if (data?.$values && Array.isArray(data.$values)) {
+      console.log('🔍 Returning res.data.$values:', data.$values);
+      return data.$values;
+    }
+    if (Array.isArray(data)) {
+      console.log('🔍 Returning res.data as array:', data);
+      return data;
+    }
+  }
+  console.log('🔍 No valid data found, returning empty array');
+  return [];
 };
 
 // Get assignments by audit ID
