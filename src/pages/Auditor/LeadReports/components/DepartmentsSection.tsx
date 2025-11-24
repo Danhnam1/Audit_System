@@ -146,10 +146,6 @@ const DepartmentsSection: React.FC<Props> = ({
                                   <div className="text-xs text-gray-500">Created By</div>
                                   <div className="text-sm text-gray-800">{f?.createdByUser?.fullName || f?.createdByUser?.email || '—'}</div>
                                 </div>
-                                <div>
-                                  <div className="text-xs text-gray-500">Root Cause</div>
-                                  <div className="text-sm text-gray-800">{f?.rootCause || f?.rootCauseId || '—'}</div>
-                                </div>
                               </div>
                               <div>
                                 <div className="text-xs font-semibold text-gray-700 mb-2">Attachments</div>

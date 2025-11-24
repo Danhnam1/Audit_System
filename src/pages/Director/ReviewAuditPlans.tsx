@@ -116,11 +116,116 @@ const ReviewAuditPlans = () => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectPlanId, setRejectPlanId] = useState<string | null>(null);
   const [rejectComment, setRejectComment] = useState('');
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [approvePlanId, setApprovePlanId] = useState<string | null>(null);
 
   // Helper function to check if plan can be approved/rejected
   const canApproveOrReject = (status: string): boolean => {
     const s = String(status || '').toLowerCase();
     return s === 'pendingdirectorapproval' || s === 'pending director approval';
+  };
+
+  // Function to reload plans
+  const reloadPlans = async () => {
+    try {
+      const [plansRes, deptRes, critRes, usersRes, templatesRes] = await Promise.all([
+        getPlansWithDepartments(),
+        getDepartments(),
+        getAuditCriteria(),
+        getAdminUsers(),
+        getChecklistTemplates(),
+      ]);
+
+      // Build departments map for id->name lookup
+      const deptList = Array.isArray(deptRes)
+        ? deptRes.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
+        : [];
+      const deptMap = deptList.reduce((acc: any, d: any) => {
+        const name = d.name || d.deptName || d.code || String(d.deptId ?? d.$id ?? d.id ?? '');
+        const keys = [d.deptId, d.$id, d.id, Number(d.deptId)].filter((k) => k !== undefined && k !== null);
+        keys.forEach((k: any) => (acc[String(k)] = name));
+        return acc;
+      }, {} as Record<string, string>);
+
+      const usersArr = Array.isArray(usersRes) ? usersRes : [];
+      const userMap = usersArr.reduce((acc: any, u: any) => {
+        const keys = [u.userId, u.id, u.$id, u.email, u.fullName]
+          .filter(Boolean)
+          .map((k: any) => String(k).toLowerCase());
+        keys.forEach((k: string) => (acc[k] = u));
+        return acc;
+      }, {} as any);
+
+      const plansList = Array.isArray(plansRes) ? plansRes : [];
+      const mapped: AuditPlan[] = plansList.map((p: any) => {
+        const scopeArr = unwrap(p.scopeDepartments || p.scope || p.scopeDepartment);
+        const deptNames = (scopeArr || [])
+          .map((d: any) => d.deptName || deptMap[String(d.deptId ?? d.id ?? d.$id ?? d.departmentId)] || d.name)
+          .filter(Boolean);
+
+        let department = deptNames.length ? deptNames.join(', ') : '—';
+        if (department === '—' && p.department) {
+          department = deptMap[String(p.department)] || String(p.department);
+        }
+
+        // Resolve submitter similarly to Lead Auditor page
+        let createdByUser = p.createdByUser;
+        if (createdByUser && typeof createdByUser === 'string') {
+          const lu = userMap[String(createdByUser).toLowerCase()];
+          createdByUser = lu || { fullName: createdByUser };
+        }
+        if (!createdByUser) {
+          const candidate = p.createdBy || p.submittedBy || p.submittedByUser || p.ownerId || p.createdByUserId;
+          if (candidate) {
+            const lu = userMap[String(candidate).toLowerCase()];
+            createdByUser = lu || { fullName: String(candidate) };
+          }
+        }
+        let submittedBy = (createdByUser && createdByUser.fullName) || p.submittedBy || p.createdBy || 'Unknown';
+
+        return {
+          id: String(p.auditId ?? p.id ?? p.$id ?? ''),
+          planId: String(p.auditId ?? p.id ?? p.$id ?? ''),
+          title: p.title || p.name || 'Untitled',
+          department,
+          scope: p.scope || '—',
+          startDate: p.startDate || p.periodFrom || '',
+          endDate: p.endDate || p.periodTo || '',
+          submittedBy,
+          submittedDate: p.createdAt || p.submittedAt || '',
+          status: String(p.status || p.auditStatus || 'Pending Review') as any,
+          objectives: p.objective ? [String(p.objective)] : Array.isArray(p.objectives) ? p.objectives : [],
+          auditTeam: Array.isArray(p.auditTeams)
+            ? p.auditTeams.map((t: any) => t.fullName || t.name || String(t))
+            : p.auditTeams && Array.isArray(p.auditTeams?.values)
+              ? p.auditTeams.values.map((t: any) => t.fullName || t.name)
+              : [],
+        };
+      });
+
+      // Keep plans visible after actions: include PendingDirectorApproval + Approved + Rejected
+      const directorRelevant = mapped.filter((m) => {
+        const s = String(m.status || '').toLowerCase();
+        return (
+          s === 'pendingdirectorapproval' ||
+          s === 'pending director approval' ||
+          s === 'approved' ||
+          s === 'approve' ||
+          s === 'rejected'
+        );
+      });
+
+      setAuditPlans(directorRelevant);
+      setDepartments(deptList);
+      setCriteriaList(Array.isArray(critRes) ? critRes : []);
+      setChecklistTemplates(Array.isArray(templatesRes) ? templatesRes : []);
+      const owners = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditee'));
+      const auditors = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditor'));
+      setOwnerOptions(owners);
+      setAuditorOptions(auditors);
+    } catch (err) {
+      console.error('Failed to reload plans', err);
+    }
   };
 
   // Fetch plans from backend (prefer plans that were forwarded to Director)
@@ -215,8 +320,8 @@ const ReviewAuditPlans = () => {
           );
         });
 
-        if (mounted) setAuditPlans(directorRelevant);
         if (mounted) {
+          setAuditPlans(directorRelevant);
           setDepartments(deptList);
           setCriteriaList(Array.isArray(critRes) ? critRes : []);
           setChecklistTemplates(Array.isArray(templatesRes) ? templatesRes : []);
@@ -236,33 +341,30 @@ const ReviewAuditPlans = () => {
     return () => { mounted = false };
   }, []);
 
-  const handleApprovePlan = async (planId: string) => {
-    if (!window.confirm('Approve this audit plan?')) return;
+  const openApproveModal = (planId: string) => {
+    setApprovePlanId(planId);
+    setShowApproveModal(true);
+  };
+
+  const closeApproveModal = () => {
+    setShowApproveModal(false);
+    setApprovePlanId(null);
+  };
+
+  const handleApprovePlan = async () => {
+    if (!approvePlanId) return;
     try {
-      setProcessingIdStr(planId);
+      setProcessingIdStr(approvePlanId);
       // Call backend API to approve. Send optional comment if needed.
-      await approvePlan(String(planId), { comment: 'Approved by Director' });
-      // Fetch fresh status from backend instead of hardcoding
-      let freshStatus: string | undefined;
-      try {
-        const refreshed = await fetchFullPlan(String(planId));
-        freshStatus = String(refreshed?.status || refreshed?.auditStatus || '').trim();
-      } catch (e) {
-        console.warn('Failed to fetch refreshed plan after approve, fallback to previous status', e);
-      }
-      setAuditPlans(prev => prev.map(p => (String(p.planId) === String(planId)
-        ? { ...p, status: freshStatus && freshStatus.length ? freshStatus : p.status }
-        : p)));
-      alert('✅ Plan approved successfully.');
+      await approvePlan(String(approvePlanId), { comment: 'Approved by Director' });
+      toast.success('Plan approved successfully.');
+      closeApproveModal();
+      // Reload plans to get fresh data
+      await reloadPlans();
     } catch (err: any) {
       console.error('Failed to approve plan', err);
-      const serverMsg = err?.response?.data || err?.message || String(err);
-      try {
-        const pretty = typeof serverMsg === 'object' ? JSON.stringify(serverMsg, null, 2) : String(serverMsg);
-        alert('Failed to approve plan. Server response:\n' + pretty);
-      } catch {
-        alert('Failed to approve plan: ' + (err?.message || String(err)));
-      }
+      const errorMessage = err?.response?.data?.message || err?.message || String(err);
+      toast.error('Failed to approve plan: ' + errorMessage);
     } finally {
       setProcessingIdStr(null);
     }
@@ -271,11 +373,12 @@ const ReviewAuditPlans = () => {
   const handleRejectPlan = async (planId: string, comment?: string) => {
     try {
       await rejectPlanContent(String(planId), { comment });
-      setAuditPlans(prev => prev.map(p => (String(p.planId) === String(planId) ? { ...p, status: 'Rejected' } : p)));
       toast.success('Rejected the Audit Plan');
       setShowRejectModal(false);
       setRejectPlanId(null);
       setRejectComment('');
+      // Reload plans to get fresh data
+      await reloadPlans();
     } catch (err: any) {
       console.error('Failed to reject plan', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
@@ -494,15 +597,15 @@ const ReviewAuditPlans = () => {
                           {canApproveOrReject(plan.status) ? (
                             <>
                               <button
-                                onClick={() => handleApprovePlan(plan.planId)}
+                                onClick={() => openApproveModal(plan.planId)}
                                 disabled={processingIdStr === plan.planId}
-                                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${processingIdStr === plan.planId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved') + ' hover:opacity-90'}`}
                               >
                                 {processingIdStr === plan.planId ? 'Approving...' : 'Approve'}
                               </button>
                               <button
                                 onClick={() => openRejectModal(plan.planId)}
-                                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-red-500 hover:bg-red-600 text-white"
+                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${getStatusColor('Rejected') + ' hover:opacity-90'}`}
                               >
                                 Reject
                               </button>
@@ -535,6 +638,48 @@ const ReviewAuditPlans = () => {
             return t?.name || t?.title || `Template ${String(tid ?? '')}`;
           }}
         />
+      )}
+
+      {/* Approve Confirmation Modal */}
+      {showApproveModal && approvePlanId && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={closeApproveModal}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Approve Audit Plan
+              </h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure to approve Audit Plan?
+              </p>
+              
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeApproveModal}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApprovePlan}
+                  disabled={processingIdStr === approvePlanId}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${processingIdStr === approvePlanId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved') + ' hover:opacity-90'}`}
+                >
+                  {processingIdStr === approvePlanId ? 'Approving...' : 'Approve'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Reject Confirmation Modal */}
@@ -578,7 +723,7 @@ const ReviewAuditPlans = () => {
                       handleRejectPlan(rejectPlanId, rejectComment || undefined);
                     }
                   }}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${getStatusColor('Rejected') + ' hover:opacity-90'}`}
                 >
                   Reject
                 </button>

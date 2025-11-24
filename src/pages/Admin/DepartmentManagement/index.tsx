@@ -1,7 +1,7 @@
 import { MainLayout, DepartmentIcon, UsersIcon, ChartBarIcon } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect, useMemo } from 'react';
-import { StatCard, Pagination } from '../../../components';
+import { StatCard, Pagination, Button } from '../../../components';
 import { getDepartments, createDepartment, updateDepartment, deleteDepartment } from '../../../api/departments';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { toast } from 'react-toastify';
@@ -175,12 +175,13 @@ const AdminDepartmentManagement = () => {
             <h1 className="text-2xl font-semibold text-primary-600">Department Management</h1>
             <p className="text-gray-600 text-sm mt-1">Manage organizational departments and structure</p>
           </div>
-          <button 
+          <Button 
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
+            variant="primary"
+            size="md"
           >
             + Create Department
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -242,16 +243,17 @@ const AdminDepartmentManagement = () => {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={creating} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-70 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">
-                  {creating ? 'Creating…' : 'Create Department'}
-                </button>
-                <button 
+                <Button type="submit" disabled={creating} isLoading={creating} variant="primary" size="md">
+                  Create Department
+                </Button>
+                <Button 
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="border border-gray-300 text-gray-600 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150"
+                  variant="secondary"
+                  size="md"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           </form>
@@ -299,16 +301,17 @@ const AdminDepartmentManagement = () => {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={updating} className="bg-primary-600 hover:bg-primary-700 disabled:opacity-70 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md">
-                  {updating ? 'Saving…' : 'Save Changes'}
-                </button>
-                <button 
+                <Button type="submit" disabled={updating} isLoading={updating} variant="primary" size="md">
+                  Save Changes
+                </Button>
+                <Button 
                   type="button"
                   onClick={() => { setEditOpen(false); setEditingDept(null); }}
-                  className="border border-gray-300 text-gray-600 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150"
+                  variant="secondary"
+                  size="md"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           </form>
@@ -368,23 +371,23 @@ const AdminDepartmentManagement = () => {
                       </span>
                     </td> */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex gap-2">
-                        <button onClick={() => openEdit(dept)} className="text-primary-600 hover:text-primary-700 text-sm font-medium">
+                      <div className="flex items-center justify-center gap-2">
+                        <Button onClick={() => openEdit(dept)} variant="primary" size="sm">
                           Edit
-                        </button>
-                        
-                        
-                        <span className="text-gray-300">|</span>
-                        <button onClick={() => openDeleteModal(dept)} disabled={deletingId === (dept.deptId ?? dept.id)} className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-60">
-                          {deletingId === (dept.deptId ?? dept.id) ? 'Deleting…' : 'Delete'}
-                        </button>
+                        </Button>
+                        <Button 
+                          onClick={() => openDeleteModal(dept)} 
+                          disabled={deletingId === (dept.deptId ?? dept.id)}
+                          isLoading={deletingId === (dept.deptId ?? dept.id)}
+                          variant="danger" 
+                          size="sm"
+                        >
+                          Delete
+                        </Button>
                         {dept.status === 'Inactive' && (
-                          <>
-                            <span className="text-gray-300">|</span>
-                            <button className="text-green-600 hover:text-green-700 text-sm font-medium">
+                          <Button variant="success" size="sm">
                               Activate
-                            </button>
-                          </>
+                          </Button>
                         )}
                       </div>
                     </td>
@@ -416,7 +419,7 @@ const AdminDepartmentManagement = () => {
 
         
          
-        </div>
+          </div>
 
         {/* Delete Confirmation Modal */}
         {showDeleteModal && (
@@ -438,28 +441,31 @@ const AdminDepartmentManagement = () => {
                 </p>
                 
                 <div className="flex items-center justify-end gap-3">
-                  <button
+                  <Button
                     type="button"
                     onClick={closeDeleteModal}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                    variant="secondary"
+                    size="md"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
                     onClick={handleDelete}
                     disabled={deletingId !== null}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    isLoading={deletingId !== null}
+                    variant="danger"
+                    size="md"
                   >
-                    {deletingId !== null ? 'Deleting...' : 'Delete'}
-                  </button>
-                </div>
-              </div>
+                    Delete
+                  </Button>
             </div>
           </div>
+        </div>
+      </div>
         )}
-      </MainLayout>
-    );
-  };
-  
-  export default AdminDepartmentManagement;
+    </MainLayout>
+  );
+};
+
+export default AdminDepartmentManagement;

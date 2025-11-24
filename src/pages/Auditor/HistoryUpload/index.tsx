@@ -6,7 +6,6 @@ import { getAuditDocuments, downloadAuditDocumentById } from '../../../api/audit
 import { getAdminUsers } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 import { exportFile } from '../../../utils/globalUtil';
-import { getStatusColor } from '../../../constants';
 
 interface AuditDocRow {
   auditId: string;
@@ -193,7 +192,6 @@ const HistoryUploadPage = () => {
                 uploadedBy: uploadedByName,
                 uploadedAt,
                 sizeBytes,
-                status: d.status || '—',
                 url,
               } as AuditDocRow | null;
             }).filter(Boolean) as AuditDocRow[];
@@ -217,10 +215,7 @@ const HistoryUploadPage = () => {
     (Array.isArray(audits) ? audits : []).map((a: any, idx: number) => {
       const id = resolveAuditId(a, idx);
       const title = a.title || `Audit ${idx + 1}`;
-      const rawStatus = a.status || a.state || a.approvalStatus || '—';
-      const norm = String(rawStatus).toLowerCase().replace(/\s+/g, '');
-      const status = (norm.includes('approve') || norm.includes('completed')) ? 'Completed' : rawStatus;
-      return { auditId: id, title, status };
+      return { auditId: id, title };
     })
   ), [audits]);
 
@@ -283,14 +278,13 @@ const HistoryUploadPage = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Uploads</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {loadingAudits && (
-                  <tr><td colSpan={4} className="px-6 py-4 text-sm text-gray-500">Đang tải audits...</td></tr>
+                  <tr><td colSpan={3} className="px-6 py-4 text-sm text-gray-500">Đang tải audits...</td></tr>
                 )}
                 {!loadingAudits && visibleAuditRows.map(r => {
                   const docs = documentsMap[r.auditId] || [];
@@ -299,7 +293,6 @@ const HistoryUploadPage = () => {
                       <td className="px-6 py-4">
                         <span className="text-sm font-medium text-gray-900">{r.title}</span>
                       </td>
-                      <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>{r.status}</span></td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center justify-center min-w-[2rem] h-8 rounded-full bg-primary-50 text-primary-700 text-sm font-semibold border border-primary-100">{docs.length}</span>
                       </td>
@@ -314,7 +307,7 @@ const HistoryUploadPage = () => {
                 })}
                 {!loadingAudits && visibleAuditRows.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-6 py-4 text-sm text-gray-500">
+                    <td colSpan={3} className="px-6 py-4 text-sm text-gray-500">
                       {loadingDocs || !docsLoaded
                         ? 'Đang kiểm tra lịch sử upload...'
                         : 'Chỉ hiển thị các audit đã có tài liệu được upload.'}
@@ -342,8 +335,7 @@ const HistoryUploadPage = () => {
                       <th className="px-4 py-2 text-left text-gray-700">Uploaded By</th>
                       <th className="px-4 py-2 text-left text-gray-700">Uploaded At</th>
                       <th className="px-4 py-2 text-left text-gray-700">Size</th>
-                      <th className="px-4 py-2 text-left text-gray-700">Status</th>
-                      <th className="px-4 py-2 text-left text-gray-700">Download</th>
+                      <th className="px-4 py-2 text-left text-gray-700">Link</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -357,7 +349,6 @@ const HistoryUploadPage = () => {
                           <td className="px-4 py-2">{doc.uploadedBy}</td>
                           <td className="px-4 py-2">{dateStr}</td>
                           <td className="px-4 py-2">{sizeKB ? `${sizeKB} KB` : '—'}</td>
-                          <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(doc.status || '')}`}>{doc.status}</span></td>
                           <td className="px-4 py-2">
                             {doc.url ? (
                               <a
@@ -365,19 +356,19 @@ const HistoryUploadPage = () => {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-primary-600 hover:text-primary-700"
-                              >Download</a>
+                              >View</a>
                             ) : (
                               <button
                                 onClick={() => handleDownload(doc)}
                                 className="text-primary-600 hover:text-primary-700"
-                              >Download</button>
+                              >View</button>
                             )}
                           </td>
                         </tr>
                       );
                     })}
                     {(!documentsMap[expandedAudit] || documentsMap[expandedAudit].length === 0) && !loadingDocs && (
-                      <tr><td colSpan={7} className="px-4 py-3 text-center text-gray-500">Chưa có tài liệu nào được upload</td></tr>
+                      <tr><td colSpan={6} className="px-4 py-3 text-center text-gray-500">Chưa có tài liệu nào được upload</td></tr>
                     )}
                   </tbody>
                 </table>

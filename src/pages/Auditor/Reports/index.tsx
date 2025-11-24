@@ -1,12 +1,13 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { getStatusColor } from '../../../constants';
 import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../components';
 import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
 import { getDepartments } from '../../../api/departments';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
-import { uploadAuditDocument, uploadMultipleAuditDocuments } from '../../../api/auditDocuments';
+import { uploadAuditDocument, uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
 import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
@@ -26,11 +27,14 @@ const SQAStaffReports = () => {
   const [showSummary, setShowSummary] = useState(false);
   const summaryRef = useRef<HTMLDivElement | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
-  const [submitMsg, setSubmitMsg] = useState<string | null>(null);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
   const [uploadLoading, setUploadLoading] = useState<Record<string, boolean>>({});
-  const [uploadMsg, setUploadMsg] = useState<Record<string, string | null>>({});
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [showRejectReasonModal, setShowRejectReasonModal] = useState(false);
+  const [rejectReasonText, setRejectReasonText] = useState<string>('');
+  const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
+  const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
 
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
@@ -52,7 +56,6 @@ const SQAStaffReports = () => {
     [severityEntries]
   );
   const deptRows = useMemo(() => unwrap(summary?.byDepartment), [summary]);
-  const rootCauseRows = useMemo(() => unwrap(summary?.byRootCause), [summary]);
   const [search, setSearch] = useState('');
   const monthsFindings = useMemo(() => {
     const raw = unwrap(summary?.findingsByMonth);
@@ -165,6 +168,7 @@ const SQAStaffReports = () => {
       // Get audit IDs where current user is a team member
       const teams = Array.isArray(teamsRes) ? teamsRes : [];
       const userAuditIds = new Set<string>();
+      const leadAuditIdsSet = new Set<string>();
       
       if (normalizedCurrentUserId) {
         teams.forEach((m: any) => {
@@ -182,12 +186,21 @@ const SQAStaffReports = () => {
                   userAuditIds.add(auditIdStr);
                   // Also add lowercase version for case-insensitive matching
                   userAuditIds.add(auditIdStr.toLowerCase());
+                  
+                  // Check if user is Lead Auditor for this audit
+                  if (m?.isLead === true) {
+                    leadAuditIdsSet.add(auditIdStr);
+                    leadAuditIdsSet.add(auditIdStr.toLowerCase());
+                  }
                 }
               }
             }
           }
         });
       }
+      
+      // Set lead audit IDs
+      setLeadAuditIds(leadAuditIdsSet);
       
       // Debug logging (only in development mode)
       if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
@@ -202,7 +215,7 @@ const SQAStaffReports = () => {
       const arr = unwrap(res);
       const isVisibleStatus = (s: any) => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '');
-        return v.includes('open') || v.includes('completed') || v.includes('returned');
+        return v.includes('open') || v.includes('completed') || v.includes('returned') || v.includes('submitted');
       };
       
       // Filter audits: must match status AND user must be in audit team
@@ -241,6 +254,41 @@ const SQAStaffReports = () => {
       });
       
       setAudits(filtered);
+      
+      // Check which audits already have uploaded documents
+      const uploadedSet = new Set<string>();
+      const checkUploads = async () => {
+        const completedAudits = filtered.filter((a: any) => {
+          const status = String(a.status || a.state || a.approvalStatus || '').toLowerCase();
+          return status.includes('completed');
+        });
+        
+        const uploadChecks = await Promise.allSettled(
+          completedAudits.map(async (a: any) => {
+            const auditId = String(a.auditId || a.id || a.$id || '');
+            if (!auditId) return null;
+            try {
+              const docs = await getAuditDocuments(auditId);
+              if (Array.isArray(docs) && docs.length > 0) {
+                return auditId;
+              }
+            } catch (err) {
+              console.error(`Failed to check documents for audit ${auditId}`, err);
+            }
+            return null;
+          })
+        );
+        
+        uploadChecks.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value) {
+            uploadedSet.add(result.value);
+          }
+        });
+        
+        setUploadedAudits(uploadedSet);
+      };
+      
+      checkUploads().catch(err => console.error('Failed to check uploaded documents', err));
       
       // normalize departments list from API
       const deptList = Array.isArray(depts)
@@ -406,12 +454,13 @@ const SQAStaffReports = () => {
     return v.includes('completed') || v.includes('approve');
   };
   const isRejectedStatus = (s: any) => {
-    const v = String(s || '').toLowerCase();
-    return v.includes('reject') || v.includes('return');
+    const v = String(s || '').toLowerCase().trim();
+    // Only consider as rejected if it's explicitly "rejected" or "returned", not "submitted"
+    return (v === 'rejected' || v === 'returned' || v.includes('rejected') || v.includes('returned')) && !v.includes('submit');
   };
   const isSubmittedStatus = (s: any) => {
     const v = String(s || '').toLowerCase().replace(/\s+/g, '');
-    return v.includes('submit');
+    return v.includes('submitted');
   };
 
   const selectedAuditRow = useMemo(() => {
@@ -421,32 +470,70 @@ const SQAStaffReports = () => {
 
   const handleSubmitToLead = async () => {
     if (!selectedAuditId) return;
+    
+    // Validate: Lead Auditor cannot submit
+    const auditIdStr = String(selectedAuditId).trim();
+    const isLeadAuditor = leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase());
+    if (isLeadAuditor) {
+      toast.error('Lead Auditor cannot submit reports. Only regular Auditors can submit.');
+      return;
+    }
+    
     try {
       setSubmitLoading(true);
-      setSubmitMsg(null);
       await submitAudit(selectedAuditId);
-      setSubmitMsg('Sent to Lead Auditor successfully.');
+      toast.success('Submit successfully.');
+      setShowSubmitModal(false);
       // Sau khi submit, danh sách này chỉ hiển thị Open nên cần refresh để loại bỏ audit đã Submitted
       await reloadReports();
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
-      setSubmitMsg('Gửi thất bại. Vui lòng thử lại.');
+      const errorMessage = err?.response?.data?.message || err?.message || String(err);
+      toast.error('Failed to submit to Lead Auditor: ' + errorMessage);
     } finally {
       setSubmitLoading(false);
     }
   };
 
   const onClickUpload = (auditId: string) => {
-    setUploadMsg(prev => ({ ...prev, [auditId]: null }));
+    // Check if already uploaded
+    if (uploadedAudits.has(auditId)) {
+      toast.error('Báo cáo này đã được upload. Không thể upload lại.');
+      return;
+    }
     fileInputRefs.current[auditId]?.click();
   };
 
   const onFileSelected = async (auditId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length === 0 || !auditId) return;
+    if (files.length === 0 || !auditId) {
+      e.target.value = '';
+      return;
+    }
+    
+    // Validate: Check if already uploaded
+    if (uploadedAudits.has(auditId)) {
+      toast.error('Báo cáo này đã được upload. Không thể upload lại.');
+      e.target.value = '';
+      return;
+    }
+    
+    // Double check by fetching documents
+    try {
+      const existingDocs = await getAuditDocuments(auditId);
+      if (Array.isArray(existingDocs) && existingDocs.length > 0) {
+        toast.error('Báo cáo này đã được upload. Không thể upload lại.');
+        e.target.value = '';
+        setUploadedAudits(prev => new Set(prev).add(auditId));
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to check existing documents', err);
+      // Continue with upload if check fails
+    }
+    
     try {
       setUploadLoading(prev => ({ ...prev, [auditId]: true }));
-      setUploadMsg(prev => ({ ...prev, [auditId]: null }));
       
       if (files.length === 1) {
         await uploadAuditDocument(auditId, files[0]);
@@ -458,15 +545,17 @@ const SQAStaffReports = () => {
         ? 'Tải lên báo cáo đã ký thành công.' 
         : `Đã tải lên thành công ${files.length} file.`;
       
-      setUploadMsg(prev => ({ ...prev, [auditId]: successMessage }));
       toast.success(successMessage);
       e.target.value = '';
+      
+      // Mark as uploaded
+      setUploadedAudits(prev => new Set(prev).add(auditId));
+      
       // Reload reports to refresh the list
       await reloadReports();
     } catch (err) {
       console.error('Upload signed report failed', err);
       const errorMessage = 'Tải lên thất bại. Vui lòng thử lại.';
-      setUploadMsg(prev => ({ ...prev, [auditId]: errorMessage }));
       toast.error(errorMessage);
     } finally {
       setUploadLoading(prev => ({ ...prev, [auditId]: false }));
@@ -634,11 +723,11 @@ const SQAStaffReports = () => {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Title</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Findings</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Created</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Findings</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Created</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -646,12 +735,12 @@ const SQAStaffReports = () => {
                   <tr key={report.auditId} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-4 text-xs text-gray-500 whitespace-nowrap">{idx + 1}</td>
                     <td className="px-6 py-4"><span className="text-sm font-medium text-gray-900">{report.title}</span></td>
-                    <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getTypeColor(report.type)}`}>{report.type}</span></td>
-                    <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span></td>
+                    <td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold border ${getTypeColor(report.type)}`}>{report.type}</span></td>
+                    <td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 text-sm font-semibold">{report.findings || 0}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-600">{report.createdDate}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="text-sm text-gray-600">{report.createdDate}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
                         <button 
                           onClick={() => { setSelectedAuditId(String(report.auditId)); setShowSummary(true); }} 
                           className="px-3 py-1.5 rounded-md text-sm font-medium bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
@@ -668,11 +757,11 @@ const SQAStaffReports = () => {
                             </button>
                             <button
                               onClick={() => onClickUpload(String(report.auditId))}
-                              disabled={uploadLoading[String(report.auditId)]}
+                              disabled={uploadLoading[String(report.auditId)] || uploadedAudits.has(String(report.auditId))}
                               className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Tải lên bản PDF/scan đã ký"
+                              title={uploadedAudits.has(String(report.auditId)) ? 'Báo cáo đã được upload. Không thể upload lại.' : 'Tải lên bản PDF/scan đã ký'}
                             >
-                              {uploadLoading[String(report.auditId)] ? 'Uploading...' : 'Upload'}
+                              {uploadLoading[String(report.auditId)] ? 'Uploading...' : uploadedAudits.has(String(report.auditId)) ? 'Uploaded' : 'Upload'}
                             </button>
                             <input 
                               ref={(el) => { fileInputRefs.current[String(report.auditId)] = el; }}
@@ -682,11 +771,6 @@ const SQAStaffReports = () => {
                               className="hidden" 
                               onChange={(e) => onFileSelected(String(report.auditId), e)} 
                             />
-                            {uploadMsg[String(report.auditId)] && (
-                              <span className={`text-xs px-2 py-1 rounded ${uploadMsg[String(report.auditId)]?.includes('thành công') ? 'text-emerald-700 bg-emerald-50' : 'text-red-700 bg-red-50'}`}>
-                                {uploadMsg[String(report.auditId)]}
-                              </span>
-                            )}
                           </>
                         ) : (
                           <>
@@ -732,36 +816,68 @@ const SQAStaffReports = () => {
                 <span className="text-xs text-gray-500">Tổng quan theo audit đã chọn</span>
               </div>
               <div className="flex items-center gap-3">
-                {isRejectedStatus(selectedAuditRow?.status) && (() => {
+                {(() => {
+                  // Only show reject reason if:
+                  // 1. Status is actually rejected/returned (not submitted)
+                  // 2. AND there's a reject note from Lead Auditor
                   const key = String(selectedAuditRow?.auditId || selectedAuditId || '');
                   const noteFromApi = key ? rejectNotes[key] : '';
-                  const reason =
-                    noteFromApi ||
-                    (summary as any)?.reason || (summary as any)?.note
-                      (selectedAuditRow as any)?.reason || (selectedAuditRow as any)?.note;
+                  const hasRejectNote = noteFromApi && noteFromApi.trim().length > 0;
+                  const isRejected = isRejectedStatus(selectedAuditRow?.status);
+                  
+                  // Only show if truly rejected AND has a reject note from Lead Auditor
+                  if (!isRejected || !hasRejectNote) {
+                    return null;
+                  }
+                  
+                  const reason = noteFromApi || 
+                    (summary as any)?.reason || (summary as any)?.note ||
+                    (selectedAuditRow as any)?.reason || (selectedAuditRow as any)?.note;
+                  
                   return (
-                    <span className="text-xs font-medium px-2 py-1 rounded bg-red-50 text-red-700 border border-red-200">
-                      Report rejected{reason ? `: ${String(reason)}` : ' - edit and resubmit.'}
-                    </span>
+                    <button
+                      onClick={() => {
+                        setRejectReasonText(reason ? String(reason) : 'No reason provided. Please edit and resubmit.');
+                        setShowRejectReasonModal(true);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 border border-red-200 hover:bg-red-100 hover:border-red-300 transition-colors cursor-pointer"
+                    >
+                      <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      <span className="text-sm font-medium text-red-800">Reject reason</span>
+                      <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </button>
                   );
                 })()}
-                {submitMsg && <span className="text-sm text-gray-700">{submitMsg}</span>}
                 {(() => {
                   const st = selectedAuditRow?.status || selectedAuditRow?.state || selectedAuditRow?.approvalStatus;
                   const submitted = isSubmittedStatus(st);
                   const completed = isCompletedStatus(st);
                   const rejected = isRejectedStatus(st);
-                  const disabled = submitLoading || !selectedAuditId || submitted || completed;
+                  const auditIdStr = String(selectedAuditId || '').trim();
+                  const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
+                  
+                  // Don't show submit button if user is Lead Auditor or status is Completed
+                  if (isLeadAuditor || completed) {
+                    return null;
+                  }
+                  
+                  const disabled = submitLoading || !selectedAuditId || submitted;
                   const label = submitLoading
-                    ? 'Đang gửi...'
+                    ? 'sending...'
                     : submitted
                       ? 'Submitted'
                       : rejected
                         ? 'Resubmit to Lead Auditor'
                         : 'Submit to Lead Auditor';
+                  
                   return (
                     <button
-                      onClick={handleSubmitToLead}
+                      onClick={() => setShowSubmitModal(true)}
                       disabled={disabled}
                       className={`px-3 py-2 rounded-md text-sm font-medium shadow-sm ${disabled ? 'bg-amber-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'} text-white`}
                     >
@@ -839,8 +955,8 @@ const SQAStaffReports = () => {
               </div>
             </div>
 
-            {/* Tables: Department and Root Cause */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            {/* Table: Department */}
+            <div className="mt-6">
               <div className="rounded-lg border border-gray-100 p-4">
                 <div className="text-sm font-semibold text-gray-700 mb-2">BY DEPARTMENT</div>
                 <div className="overflow-x-auto">
@@ -863,31 +979,6 @@ const SQAStaffReports = () => {
                         );
                       })}
                       {deptRows.length === 0 && (
-                        <tr><td className="px-3 py-2 text-gray-500" colSpan={2}>No data</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-gray-100 p-4">
-                <div className="text-sm font-semibold text-gray-700 mb-2">By ROOT CAUSE</div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="text-left px-3 py-2 text-gray-700">Root Cause</th>
-                        <th className="text-right px-3 py-2 text-gray-700">Findings</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {rootCauseRows.map((it: any, idx: number) => (
-                        <tr key={`${it.rootCause || idx}`}>
-                          <td className="px-3 py-2">{it.rootCause || '—'}</td>
-                          <td className="px-3 py-2 text-right">{Number(it.count || 0)}</td>
-                        </tr>
-                      ))}
-                      {rootCauseRows.length === 0 && (
                         <tr><td className="px-3 py-2 text-gray-500" colSpan={2}>No data</td></tr>
                       )}
                     </tbody>
@@ -1008,6 +1099,100 @@ const SQAStaffReports = () => {
             </div>
           </div>
         </div> */}
+
+        {/* Submit to Lead Auditor Confirmation Modal */}
+        {showSubmitModal && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => setShowSubmitModal(false)}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Submit to Lead Auditor
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Are you sure to submit to Lead Auditor?
+                </p>
+                
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowSubmitModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmitToLead}
+                    disabled={submitLoading}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitLoading ? 'Submitting...' : 'Submit'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Reject Reason Modal */}
+        {showRejectReasonModal && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => setShowRejectReasonModal(false)}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-auto">
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Rejection Reason
+                    </h3>
+                    <p className="text-xs text-gray-500">Report has been rejected by Lead Auditor</p>
+                  </div>
+                </div>
+                
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Reason for rejection:
+                  </label>
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                      {rejectReasonText}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowRejectReasonModal(false)}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     </MainLayout>
   );
