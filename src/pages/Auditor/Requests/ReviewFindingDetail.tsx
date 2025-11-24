@@ -65,7 +65,7 @@ const ReviewFindingDetail = () => {
       setActions(actionsWithDetails);
     } catch (err: any) {
       console.error('Failed to fetch data', err);
-      toast.error('Không thể tải dữ liệu');
+      toast.error('Unable to load data');
     } finally {
       setLoading(false);
     }
@@ -93,7 +93,7 @@ const ReviewFindingDetail = () => {
     if (!selectedAction) return;
 
     if (feedbackType === 'return' && !feedback.trim()) {
-      toast.error('Vui lòng nhập feedback khi trả lại action');
+      toast.error('Please enter feedback when returning an action');
       return;
     }
 
@@ -101,10 +101,10 @@ const ReviewFindingDetail = () => {
     try {
       if (feedbackType === 'approve') {
         await approveFindingAction(selectedAction.actionId, feedback);
-        toast.success('Đã phê duyệt action thành công!');
+        toast.success('Action approved successfully!');
       } else {
         await returnFindingAction(selectedAction.actionId, feedback);
-        toast.success('Đã trả lại action để xử lý!');
+        toast.success('Action sent back for updates!');
       }
 
       setShowFeedbackModal(false);
@@ -113,7 +113,7 @@ const ReviewFindingDetail = () => {
       await fetchData();
     } catch (err: any) {
       console.error('Failed to process action', err);
-      toast.error(err?.response?.data?.message || 'Không thể xử lý action');
+      toast.error(err?.response?.data?.message || 'Unable to process action');
     } finally {
       setProcessing(false);
     }
@@ -121,15 +121,15 @@ const ReviewFindingDetail = () => {
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      'Open': { label: 'Mở', color: 'bg-blue-100 text-blue-700' },
-      'Active': { label: 'Hoạt động', color: 'bg-blue-100 text-blue-700' },
-      'InProgress': { label: 'Đang xử lý', color: 'bg-yellow-100 text-yellow-700' },
-      'Reviewed': { label: 'Đã xem xét', color: 'bg-purple-100 text-purple-700' },
-      'Approved': { label: 'Đã duyệt', color: 'bg-green-100 text-green-700' },
-      'ApprovedAuditor': { label: 'Auditor đã duyệt', color: 'bg-teal-100 text-teal-700' },
-      'Rejected': { label: 'Đã từ chối', color: 'bg-red-100 text-red-700' },
-      'Returned': { label: 'Đã trả lại', color: 'bg-orange-100 text-orange-700' },
-      'Closed': { label: 'Đã đóng', color: 'bg-gray-100 text-gray-700' },
+      Open: { label: 'Open', color: 'bg-blue-100 text-blue-700' },
+      Active: { label: 'Active', color: 'bg-blue-100 text-blue-700' },
+      InProgress: { label: 'In progress', color: 'bg-yellow-100 text-yellow-700' },
+      Reviewed: { label: 'Reviewed', color: 'bg-purple-100 text-purple-700' },
+      Approved: { label: 'Approved', color: 'bg-green-100 text-green-700' },
+      ApprovedAuditor: { label: 'Approved by auditor', color: 'bg-teal-100 text-teal-700' },
+      Rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700' },
+      Returned: { label: 'Returned', color: 'bg-orange-100 text-orange-700' },
+      Closed: { label: 'Closed', color: 'bg-gray-100 text-gray-700' },
     };
     const info = statusMap[status] || { label: status, color: 'bg-gray-100 text-gray-700' };
     return (
@@ -142,7 +142,7 @@ const ReviewFindingDetail = () => {
   const formatDate = (dateStr: string): string => {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('vi-VN', {
+    return date.toLocaleDateString('en-US', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -163,7 +163,7 @@ const ReviewFindingDetail = () => {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-600">Đang tải dữ liệu...</div>
+          <div className="text-gray-600">Loading data...</div>
         </div>
       </MainLayout>
     );
@@ -173,7 +173,7 @@ const ReviewFindingDetail = () => {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-600">Không tìm thấy finding</div>
+          <div className="text-gray-600">Finding not found</div>
         </div>
       </MainLayout>
     );
@@ -191,9 +191,9 @@ const ReviewFindingDetail = () => {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Quay lại
+            Back
           </button>
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Chi tiết Finding & Actions</h1>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Finding & Actions Detail</h1>
         </div>
 
         {/* Finding Details */}
@@ -264,7 +264,7 @@ const ReviewFindingDetail = () => {
           </div>
 
           {actions.length === 0 ? (
-            <div className="p-6 text-center text-gray-600">Không có action nào</div>
+            <div className="p-6 text-center text-gray-600">No actions available</div>
           ) : (
             <div className="divide-y divide-gray-200">
               {actions.map((action) => (
@@ -296,7 +296,7 @@ const ReviewFindingDetail = () => {
                       </div>
                       {action.reviewFeedback && (
                         <div className="mt-3 p-2 sm:p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-1">💬 Phản hồi đánh giá:</p>
+                          <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-1">💬 Review feedback:</p>
                           <p className="text-xs sm:text-sm text-gray-600">{action.reviewFeedback}</p>
                         </div>
                       )}
@@ -310,14 +310,14 @@ const ReviewFindingDetail = () => {
                           disabled={processing}
                           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
-                          ✓ Phê duyệt
+                          ✓ Approve
                         </button>
                         <button
                           onClick={() => handleReturnClick(action)}
                           disabled={processing}
                           className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
-                          ↩ Trả lại
+                          ↩ Return
                         </button>
                       </div>
                     )}
@@ -372,7 +372,7 @@ const ReviewFindingDetail = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-4 sm:p-6">
             <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">
-              {feedbackType === 'approve' ? '✓ Phê duyệt Action' : '↩ Trả lại Action'}
+              {feedbackType === 'approve' ? '✓ Approve Action' : '↩ Return Action'}
             </h3>
             
             <div className="mb-4 p-3 bg-gray-50 rounded-lg">
@@ -382,15 +382,15 @@ const ReviewFindingDetail = () => {
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {feedbackType === 'return' ? 'Feedback (Bắt buộc)' : 'Feedback (Tùy chọn)'}
+                {feedbackType === 'return' ? 'Feedback (required)' : 'Feedback (optional)'}
               </label>
               <textarea
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={4}
                 placeholder={feedbackType === 'return' 
-                  ? 'Nhập lý do trả lại action...' 
-                  : 'Nhập feedback nếu cần...'}
+                  ? 'Enter a reason for returning the action...' 
+                  : 'Enter feedback if needed...'}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               />
             </div>
@@ -403,7 +403,7 @@ const ReviewFindingDetail = () => {
                   feedbackType === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'
                 }`}
               >
-                {processing ? 'Đang xử lý...' : feedbackType === 'approve' ? 'Xác nhận phê duyệt' : 'Xác nhận trả lại'}
+                {processing ? 'Processing...' : feedbackType === 'approve' ? 'Confirm approval' : 'Confirm return'}
               </button>
               <button
                 onClick={() => {
@@ -414,7 +414,7 @@ const ReviewFindingDetail = () => {
                 disabled={processing}
                 className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium disabled:opacity-50"
               >
-                Hủy
+                Cancel
               </button>
             </div>
           </div>

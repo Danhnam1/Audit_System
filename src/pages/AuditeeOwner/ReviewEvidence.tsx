@@ -28,7 +28,7 @@ const ReviewEvidence = () => {
   // Fetch findings with all related data
   const fetchFindings = async () => {
     if (!deptId) {
-      toast.error('Không tìm thấy thông tin phòng ban');
+      toast.error('Department information not found');
       return;
     }
 
@@ -102,7 +102,7 @@ const ReviewEvidence = () => {
       console.log('[ReviewEvidence] Findings with actions:', findingsWithDetails.filter(f => f.actions.length > 0).length);
     } catch (err: any) {
       console.error('Failed to fetch findings', err);
-      toast.error('Không thể tải danh sách findings');
+      toast.error('Unable to load findings');
     } finally {
       setLoading(false);
     }
@@ -131,15 +131,15 @@ const ReviewEvidence = () => {
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      'Open': { label: 'Mở', color: 'bg-blue-100 text-blue-700' },
-      'Active': { label: 'Hoạt động', color: 'bg-blue-100 text-blue-700' },
-      'InProgress': { label: 'Đang xử lý', color: 'bg-yellow-100 text-yellow-700' },
-      'Reviewed': { label: 'Đã xem xét', color: 'bg-purple-100 text-purple-700' },
-      'Approved': { label: 'Đã duyệt', color: 'bg-green-100 text-green-700' },
-      'ApprovedAuditor': { label: 'Auditor đã duyệt', color: 'bg-teal-100 text-teal-700' },
-      'Rejected': { label: 'Đã từ chối', color: 'bg-red-100 text-red-700' },
-      'Closed': { label: 'Đã đóng', color: 'bg-gray-100 text-gray-700' },
-      'Received': { label: 'Đã nhận', color: 'bg-indigo-100 text-indigo-700' },
+      Open: { label: 'Open', color: 'bg-blue-100 text-blue-700' },
+      Active: { label: 'Active', color: 'bg-blue-100 text-blue-700' },
+      InProgress: { label: 'In progress', color: 'bg-yellow-100 text-yellow-700' },
+      Reviewed: { label: 'Reviewed', color: 'bg-purple-100 text-purple-700' },
+      Approved: { label: 'Approved', color: 'bg-green-100 text-green-700' },
+      ApprovedAuditor: { label: 'Approved by auditor', color: 'bg-teal-100 text-teal-700' },
+      Rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700' },
+      Closed: { label: 'Closed', color: 'bg-gray-100 text-gray-700' },
+      Received: { label: 'Received', color: 'bg-indigo-100 text-indigo-700' },
     };
     const info = statusMap[status] || { label: status, color: 'bg-gray-100 text-gray-700' };
     return (
@@ -160,7 +160,7 @@ const ReviewEvidence = () => {
   const formatDate = (dateStr: string): string => {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('vi-VN', {
+    return date.toLocaleDateString('en-US', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -194,7 +194,7 @@ const ReviewEvidence = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Review evidence </h1>
-            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-gray-600">Xem xét và phê duyệt minh chứng từ nhân viên</p>
+            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-gray-600">Review and approve evidence submitted by staff</p>
           </div>
         </div>
 
@@ -206,7 +206,7 @@ const ReviewEvidence = () => {
               filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Tất cả ({findings.length})
+            All ({findings.length})
           </button>
           <button
             onClick={() => setFilter('pending')}
@@ -214,7 +214,7 @@ const ReviewEvidence = () => {
               filter === 'pending' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Chờ duyệt ({stats.pending})
+            Pending ({stats.pending})
           </button>
           <button
             onClick={() => setFilter('approved')}
@@ -222,7 +222,7 @@ const ReviewEvidence = () => {
               filter === 'approved' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Đã duyệt ({stats.approved})
+            Approved ({stats.approved})
           </button>
           <button
             onClick={() => setFilter('rejected')}
@@ -230,22 +230,22 @@ const ReviewEvidence = () => {
               filter === 'rejected' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Đã từ chối ({stats.rejected})
+            Rejected ({stats.rejected})
           </button>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Chờ duyệt</div>
+            <div className="text-xs sm:text-sm text-gray-600">Pending</div>
             <div className="text-xl sm:text-2xl font-bold text-yellow-600 mt-1">{stats.pending}</div>
           </div>
           <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Đã duyệt</div>
+            <div className="text-xs sm:text-sm text-gray-600">Approved</div>
             <div className="text-xl sm:text-2xl font-bold text-green-600 mt-1">{stats.approved}</div>
           </div>
           <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Đã từ chối</div>
+            <div className="text-xs sm:text-sm text-gray-600">Rejected</div>
             <div className="text-xl sm:text-2xl font-bold text-red-600 mt-1">{stats.rejected}</div>
           </div>
         </div>
@@ -253,13 +253,13 @@ const ReviewEvidence = () => {
         {/* Evidence List */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Danh sách Findings & Actions</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Findings & Actions List</h2>
           </div>
           
           {loading ? (
-            <div className="p-6 text-center text-gray-600">Đang tải dữ liệu...</div>
+            <div className="p-6 text-center text-gray-600">Loading data...</div>
           ) : filteredFindings.length === 0 ? (
-            <div className="p-6 text-center text-gray-600">Không có dữ liệu</div>
+            <div className="p-6 text-center text-gray-600">No data available</div>
           ) : (
             <div className="divide-y divide-gray-200">
               {filteredFindings.map((finding) => (
@@ -329,7 +329,7 @@ const ReviewEvidence = () => {
                                   </div>
                                   {action.reviewFeedback && (
                                     <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                                      <p className="font-semibold text-gray-700 mb-1">💬 Phản hồi đánh giá:</p>
+                                      <p className="font-semibold text-gray-700 mb-1">💬 Review feedback:</p>
                                       <p className="text-gray-600">{action.reviewFeedback}</p>
                                     </div>
                                   )}
@@ -365,14 +365,14 @@ const ReviewEvidence = () => {
                           ))}
                         </div>
                       ) : (
-                        <div className="mt-4 text-sm text-gray-500 italic">Không có action nào</div>
+                        <div className="mt-4 text-sm text-gray-500 italic">No actions available</div>
                       )}
                     </div>
                     <button
                       onClick={() => handleViewDetail(finding.findingId)}
                       className="w-full sm:w-auto sm:ml-0 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm whitespace-nowrap"
                     >
-                      Xem chi tiết
+                      View detail
                     </button>
                   </div>
                 </div>

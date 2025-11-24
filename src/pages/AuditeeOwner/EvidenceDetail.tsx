@@ -15,7 +15,7 @@ interface ActionWithAttachments extends Action {
 const EvidenceDetail = () => {
   const { findingId } = useParams<{ findingId: string }>();
   const navigate = useNavigate();
-  
+
   const [finding, setFinding] = useState<Finding | null>(null);
   const [findingAttachments, setFindingAttachments] = useState<Attachment[]>([]);
   const [actions, setActions] = useState<ActionWithAttachments[]>([]);
@@ -49,7 +49,7 @@ const EvidenceDetail = () => {
           try {
             const attachments = await getAttachments('Action', action.actionId);
             let assignedUserName = action.assignedTo;
-            
+
             // Fetch user name if assignedTo is a valid GUID
             if (action.assignedTo && action.assignedTo.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
               try {
@@ -62,7 +62,7 @@ const EvidenceDetail = () => {
                 console.warn(`Failed to fetch user info for ${action.assignedTo}`, err);
               }
             }
-            
+
             return { ...action, attachments, assignedUserName };
           } catch (err) {
             console.warn(`Failed to fetch attachments for action ${action.actionId}`, err);
@@ -74,7 +74,7 @@ const EvidenceDetail = () => {
       setActions(actionsWithAttachments);
     } catch (err: any) {
       console.error('Failed to fetch data', err);
-      toast.error('Không thể tải dữ liệu');
+      toast.error('Unable to load data');
     } finally {
       setLoading(false);
     }
@@ -95,14 +95,14 @@ const EvidenceDetail = () => {
     setProcessingActionId(pendingApproveActionId);
     try {
       await approveActionWithFeedback(pendingApproveActionId, feedbackValue);
-      toast.success('Đã phê duyệt action thành công!');
+      toast.success('Action approved successfully!');
       setShowFeedbackModal(false);
       setPendingApproveActionId(null);
       setFeedbackValue('');
       await fetchData();
     } catch (err: any) {
       console.error('Failed to approve action', err);
-      toast.error(err?.response?.data?.message || 'Không thể phê duyệt action');
+      toast.error(err?.response?.data?.message || 'Unable to approve action');
     } finally {
       setProcessingActionId(null);
     }
@@ -119,14 +119,14 @@ const EvidenceDetail = () => {
     setProcessingActionId(pendingRejectActionId);
     try {
       await rejectAction(pendingRejectActionId, feedbackValue);
-      toast.success('Đã từ chối action!');
+      toast.success('Action rejected!');
       setShowRejectModal(false);
       setPendingRejectActionId(null);
       setFeedbackValue('');
       await fetchData();
     } catch (err: any) {
       console.error('Failed to reject action', err);
-      toast.error(err?.response?.data?.message || 'Không thể từ chối action');
+      toast.error(err?.response?.data?.message || 'Unable to reject action');
     } finally {
       setProcessingActionId(null);
     }
@@ -134,15 +134,15 @@ const EvidenceDetail = () => {
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      'Open': { label: 'Mở', color: 'bg-blue-100 text-blue-700' },
-      'Active': { label: 'Hoạt động', color: 'bg-blue-100 text-blue-700' },
-      'InProgress': { label: 'Đang xử lý', color: 'bg-yellow-100 text-yellow-700' },
-      'Reviewed': { label: 'Đã xem xét', color: 'bg-purple-100 text-purple-700' },
-      'Approved': { label: 'Đã duyệt', color: 'bg-green-100 text-green-700' },
-      'ApprovedAuditor': { label: 'Auditor đã duyệt', color: 'bg-teal-100 text-teal-700' },
-      'Rejected': { label: 'Đã từ chối', color: 'bg-red-100 text-red-700' },
-      'Closed': { label: 'Đã đóng', color: 'bg-gray-100 text-gray-700' },
-      'Received': { label: 'Đã nhận', color: 'bg-indigo-100 text-indigo-700' },
+      Open: { label: 'Open', color: 'bg-blue-100 text-blue-700' },
+      Active: { label: 'Active', color: 'bg-blue-100 text-blue-700' },
+      InProgress: { label: 'In progress', color: 'bg-yellow-100 text-yellow-700' },
+      Reviewed: { label: 'Reviewed', color: 'bg-purple-100 text-purple-700' },
+      Approved: { label: 'Approved', color: 'bg-green-100 text-green-700' },
+      ApprovedAuditor: { label: 'Approved by auditor', color: 'bg-teal-100 text-teal-700' },
+      Rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700' },
+      Closed: { label: 'Closed', color: 'bg-gray-100 text-gray-700' },
+      Received: { label: 'Received', color: 'bg-indigo-100 text-indigo-700' },
     };
     const info = statusMap[status] || { label: status, color: 'bg-gray-100 text-gray-700' };
     return (
@@ -163,7 +163,7 @@ const EvidenceDetail = () => {
   const formatDate = (dateStr: string): string => {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('vi-VN', {
+    return date.toLocaleDateString('en-US', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -176,7 +176,7 @@ const EvidenceDetail = () => {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-600">Đang tải dữ liệu...</div>
+          <div className="text-gray-600">Loading data...</div>
         </div>
       </MainLayout>
     );
@@ -186,7 +186,7 @@ const EvidenceDetail = () => {
     return (
       <MainLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-600">Không tìm thấy finding</div>
+          <div className="text-gray-600">Finding not found</div>
         </div>
       </MainLayout>
     );
@@ -204,9 +204,9 @@ const EvidenceDetail = () => {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Quay lại
+            Back
           </button>
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Chi tiết Finding & Actions</h1>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Finding & Actions Detail</h1>
         </div>
 
         {/* Finding Details */}
@@ -277,7 +277,7 @@ const EvidenceDetail = () => {
           </div>
 
           {actions.length === 0 ? (
-            <div className="p-6 text-center text-gray-600">Không có action nào</div>
+            <div className="p-6 text-center text-gray-600">No actions available</div>
           ) : (
             <div className="divide-y divide-gray-200">
               {actions.map((action) => (
@@ -310,7 +310,7 @@ const EvidenceDetail = () => {
                       </div>
                       {action.reviewFeedback && (
                         <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <p className="text-sm font-semibold text-gray-700 mb-1">💬 Phản hồi đánh giá:</p>
+                          <p className="text-sm font-semibold text-gray-700 mb-1">💬 Review feedback:</p>
                           <p className="text-sm text-gray-600">{action.reviewFeedback}</p>
                         </div>
                       )}
@@ -324,114 +324,114 @@ const EvidenceDetail = () => {
                           disabled={processingActionId === action.actionId}
                           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
-                          {processingActionId === action.actionId ? 'Đang xử lý...' : 'Phê duyệt'}
+                          {processingActionId === action.actionId ? 'Processing...' : 'Approve'}
                         </button>
                         <button
                           onClick={() => handleReject(action.actionId)}
                           disabled={processingActionId === action.actionId}
                           className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
-                          {processingActionId === action.actionId ? 'Đang xử lý...' : 'Từ chối'}
+                          {processingActionId === action.actionId ? 'Processing...' : 'Reject'}
                         </button>
                       </div>
                     )}
-                              {/* Feedback Modal for Approve */}
-                              {showFeedbackModal && (
-                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-                                  <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-                                    <h3 className="text-lg font-semibold mb-4">Nhập phản hồi khi phê duyệt</h3>
-                                    <textarea
-                                      className="w-full border border-gray-300 rounded p-2 mb-4 min-h-[80px]"
-                                      placeholder="Nhập phản hồi (tuỳ chọn)"
-                                      value={feedbackValue}
-                                      onChange={e => setFeedbackValue(e.target.value)}
-                                      autoFocus
-                                    />
-                                    <div className="flex justify-end gap-2">
-                                      <button
-                                        className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-                                        onClick={() => { setShowFeedbackModal(false); setPendingApproveActionId(null); }}
-                                        type="button"
-                                      >
-                                        Huỷ
-                                      </button>
-                                      <button
-                                        className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                                        onClick={handleSubmitFeedback}
-                                        disabled={processingActionId === pendingApproveActionId}
-                                        type="button"
-                                      >
-                                        {processingActionId === pendingApproveActionId ? 'Đang xử lý...' : 'Xác nhận phê duyệt'}
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Feedback Modal for Reject */}
-                              {showRejectModal && (
-                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-                                  <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-                                    <h3 className="text-lg font-semibold mb-4">Nhập lý do từ chối</h3>
-                                    <textarea
-                                      className="w-full border border-gray-300 rounded p-2 mb-4 min-h-[80px]"
-                                      placeholder="Nhập lý do từ chối (bắt buộc)"
-                                      value={feedbackValue}
-                                      onChange={e => setFeedbackValue(e.target.value)}
-                                      autoFocus
-                                    />
-                                    <div className="flex justify-end gap-2">
-                                      <button
-                                        className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-                                        onClick={() => { setShowRejectModal(false); setPendingRejectActionId(null); }}
-                                        type="button"
-                                      >
-                                        Huỷ
-                                      </button>
-                                      <button
-                                        className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
-                                        onClick={handleSubmitRejectFeedback}
-                                        disabled={processingActionId === pendingRejectActionId || !feedbackValue.trim()}
-                                        type="button"
-                                      >
-                                        {processingActionId === pendingRejectActionId ? 'Đang xử lý...' : 'Xác nhận từ chối'}
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                        {/* Feedback Modal */}
-                        {showFeedbackModal && (
-                          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-                            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-                              <h3 className="text-lg font-semibold mb-4">Nhập phản hồi khi phê duyệt</h3>
-                              <textarea
-                                className="w-full border border-gray-300 rounded p-2 mb-4 min-h-[80px]"
-                                placeholder="Nhập phản hồi (tuỳ chọn)"
-                                value={feedbackValue}
-                                onChange={e => setFeedbackValue(e.target.value)}
-                                autoFocus
-                              />
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
-                                  onClick={() => { setShowFeedbackModal(false); setPendingApproveActionId(null); }}
-                                  type="button"
-                                >
-                                  Huỷ
-                                </button>
-                                <button
-                                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                                  onClick={handleSubmitFeedback}
-                                  disabled={processingActionId === pendingApproveActionId}
-                                  type="button"
-                                >
-                                  {processingActionId === pendingApproveActionId ? 'Đang xử lý...' : 'Xác nhận phê duyệt'}
-                                </button>
-                              </div>
-                            </div>
+                    {/* Feedback Modal for Approve */}
+                    {showFeedbackModal && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+                        <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+                          <h3 className="text-lg font-semibold mb-4">Enter feedback for approval</h3>
+                          <textarea
+                            className="w-full border border-gray-300 rounded p-2 mb-4 min-h-[80px]"
+                            placeholder="Add feedback (optional)"
+                            value={feedbackValue}
+                            onChange={e => setFeedbackValue(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+                              onClick={() => { setShowFeedbackModal(false); setPendingApproveActionId(null); }}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                              onClick={handleSubmitFeedback}
+                              disabled={processingActionId === pendingApproveActionId}
+                              type="button"
+                            >
+                              {processingActionId === pendingApproveActionId ? 'Processing...' : 'Confirm approval'}
+                            </button>
                           </div>
-                        )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Feedback Modal for Reject */}
+                    {showRejectModal && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+                        <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+                          <h3 className="text-lg font-semibold mb-4">Enter rejection reason</h3>
+                          <textarea
+                            className="w-full border border-gray-300 rounded p-2 mb-4 min-h-[80px]"
+                            placeholder="Provide a rejection reason (required)"
+                            value={feedbackValue}
+                            onChange={e => setFeedbackValue(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+                              onClick={() => { setShowRejectModal(false); setPendingRejectActionId(null); }}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                              onClick={handleSubmitRejectFeedback}
+                              disabled={processingActionId === pendingRejectActionId || !feedbackValue.trim()}
+                              type="button"
+                            >
+                              {processingActionId === pendingRejectActionId ? 'Processing...' : 'Confirm rejection'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Feedback Modal */}
+                    {showFeedbackModal && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+                        <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+                          <h3 className="text-lg font-semibold mb-4">Enter feedback for approval</h3>
+                          <textarea
+                            className="w-full border border-gray-300 rounded p-2 mb-4 min-h-[80px]"
+                            placeholder="Add feedback (optional)"
+                            value={feedbackValue}
+                            onChange={e => setFeedbackValue(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+                              onClick={() => { setShowFeedbackModal(false); setPendingApproveActionId(null); }}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                              onClick={handleSubmitFeedback}
+                              disabled={processingActionId === pendingApproveActionId}
+                              type="button"
+                            >
+                              {processingActionId === pendingApproveActionId ? 'Processing...' : 'Confirm approval'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Progress Bar */}

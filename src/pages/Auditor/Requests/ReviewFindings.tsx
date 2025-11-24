@@ -34,7 +34,7 @@ const ReviewFindings = () => {
     console.log('[ReviewFindings] Current userId:', userId);
     
     if (!userId) {
-      toast.error('Không tìm thấy thông tin user');
+      toast.error('User information not found');
       console.error('[ReviewFindings] userId is missing');
       return;
     }
@@ -93,7 +93,7 @@ const ReviewFindings = () => {
       setFindings(findingsWithActions);
     } catch (err: any) {
       console.error('Failed to fetch findings', err);
-      toast.error('Không thể tải danh sách findings');
+      toast.error('Unable to load findings list');
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,7 @@ const ReviewFindings = () => {
     if (!selectedAction) return;
 
     if (feedbackType === 'return' && !feedback.trim()) {
-      toast.error('Vui lòng nhập feedback khi trả lại action');
+      toast.error('Please enter feedback when returning an action');
       return;
     }
 
@@ -133,10 +133,10 @@ const ReviewFindings = () => {
     try {
       if (feedbackType === 'approve') {
         await approveFindingAction(selectedAction.actionId, feedback);
-        toast.success('Đã phê duyệt action thành công!');
+        toast.success('Action approved successfully!');
       } else {
         await returnFindingAction(selectedAction.actionId, feedback);
-        toast.success('Đã trả lại action để xử lý!');
+        toast.success('Action sent back for updates!');
       }
 
       setShowFeedbackModal(false);
@@ -145,7 +145,7 @@ const ReviewFindings = () => {
       await fetchFindings();
     } catch (err: any) {
       console.error('Failed to process action', err);
-      toast.error(err?.response?.data?.message || 'Không thể xử lý action');
+      toast.error(err?.response?.data?.message || 'Unable to process action');
     } finally {
       setProcessing(false);
     }
@@ -153,15 +153,15 @@ const ReviewFindings = () => {
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      'Open': { label: 'Mở', color: 'bg-blue-100 text-blue-700' },
-      'Active': { label: 'Hoạt động', color: 'bg-blue-100 text-blue-700' },
-      'InProgress': { label: 'Đang xử lý', color: 'bg-yellow-100 text-yellow-700' },
-      'Reviewed': { label: 'Đã xem xét', color: 'bg-purple-100 text-purple-700' },
-      'Approved': { label: 'Đã duyệt', color: 'bg-green-100 text-green-700' },
-      'ApprovedAuditor': { label: 'Auditor đã duyệt', color: 'bg-teal-100 text-teal-700' },
-      'Rejected': { label: 'Đã từ chối', color: 'bg-red-100 text-red-700' },
-      'Returned': { label: 'Đã trả lại', color: 'bg-orange-100 text-orange-700' },
-      'Closed': { label: 'Đã đóng', color: 'bg-gray-100 text-gray-700' },
+      Open: { label: 'Open', color: 'bg-blue-100 text-blue-700' },
+      Active: { label: 'Active', color: 'bg-blue-100 text-blue-700' },
+      InProgress: { label: 'In progress', color: 'bg-yellow-100 text-yellow-700' },
+      Reviewed: { label: 'Reviewed', color: 'bg-purple-100 text-purple-700' },
+      Approved: { label: 'Approved', color: 'bg-green-100 text-green-700' },
+      ApprovedAuditor: { label: 'Approved by auditor', color: 'bg-teal-100 text-teal-700' },
+      Rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700' },
+      Returned: { label: 'Returned', color: 'bg-orange-100 text-orange-700' },
+      Closed: { label: 'Closed', color: 'bg-gray-100 text-gray-700' },
     };
     const info = statusMap[status] || { label: status, color: 'bg-gray-100 text-gray-700' };
     return (
@@ -174,7 +174,7 @@ const ReviewFindings = () => {
   const formatDate = (dateStr: string): string => {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
-    return date.toLocaleDateString('vi-VN', {
+    return date.toLocaleDateString('en-US', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -215,7 +215,7 @@ const ReviewFindings = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Review Findings</h1>
-            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-gray-600">Xem xét và phê duyệt actions từ Auditee</p>
+            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-gray-600">Review and approve actions from auditees</p>
           </div>
         </div>
 
@@ -227,7 +227,7 @@ const ReviewFindings = () => {
               filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Tất cả ({findings.length})
+            All ({findings.length})
           </button>
           <button
             onClick={() => setFilter('pending')}
@@ -235,7 +235,7 @@ const ReviewFindings = () => {
               filter === 'pending' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Chờ duyệt ({stats.pending})
+            Pending ({stats.pending})
           </button>
           <button
             onClick={() => setFilter('approved')}
@@ -243,7 +243,7 @@ const ReviewFindings = () => {
               filter === 'approved' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Đã duyệt ({stats.approved})
+            Approved ({stats.approved})
           </button>
           <button
             onClick={() => setFilter('returned')}
@@ -251,22 +251,22 @@ const ReviewFindings = () => {
               filter === 'returned' ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Đã trả lại ({stats.returned})
+            Returned ({stats.returned})
           </button>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Chờ duyệt</div>
+            <div className="text-xs sm:text-sm text-gray-600">Pending</div>
             <div className="text-xl sm:text-2xl font-bold text-yellow-600 mt-1">{stats.pending}</div>
           </div>
           <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Đã duyệt</div>
+            <div className="text-xs sm:text-sm text-gray-600">Approved</div>
             <div className="text-xl sm:text-2xl font-bold text-green-600 mt-1">{stats.approved}</div>
           </div>
           <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Đã trả lại</div>
+            <div className="text-xs sm:text-sm text-gray-600">Returned</div>
             <div className="text-xl sm:text-2xl font-bold text-orange-600 mt-1">{stats.returned}</div>
           </div>
         </div>
@@ -278,9 +278,9 @@ const ReviewFindings = () => {
           </div>
 
           {loading ? (
-            <div className="p-6 text-center text-gray-600">Đang tải dữ liệu...</div>
+            <div className="p-6 text-center text-gray-600">Loading data...</div>
           ) : filteredFindings.length === 0 ? (
-            <div className="p-6 text-center text-gray-600">Không có dữ liệu</div>
+            <div className="p-6 text-center text-gray-600">No data available</div>
           ) : (
             <div className="divide-y divide-gray-200">
               {filteredFindings.map((finding) => (
@@ -361,13 +361,13 @@ const ReviewFindings = () => {
                                     onClick={() => handleApproveClick(action)}
                                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm whitespace-nowrap"
                                   >
-                                    ✓ Phê duyệt
+                                    ✓ Approve
                                   </button>
                                   <button
                                     onClick={() => handleReturnClick(action)}
                                     className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium text-sm whitespace-nowrap"
                                   >
-                                    ↩ Trả lại
+                                    ↩ Return
                                   </button>
                                 </div>
                               )}
@@ -409,7 +409,7 @@ const ReviewFindings = () => {
                     onClick={() => handleViewDetail(finding.findingId)}
                     className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm whitespace-nowrap"
                       >
-                        Xem chi tiết
+                        View detail
                       </button>
                     </div>
                   </div>
@@ -425,7 +425,7 @@ const ReviewFindings = () => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-4 sm:p-6">
             <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">
-              {feedbackType === 'approve' ? '✓ Phê duyệt Action' : '↩ Trả lại Action'}
+              {feedbackType === 'approve' ? '✓ Approve Action' : '↩ Return Action'}
             </h3>
             
             <div className="mb-4 p-3 bg-gray-50 rounded-lg">
@@ -435,15 +435,15 @@ const ReviewFindings = () => {
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                {feedbackType === 'return' ? 'Feedback (Bắt buộc)' : 'Feedback (Tùy chọn)'}
+                {feedbackType === 'return' ? 'Feedback (required)' : 'Feedback (optional)'}
               </label>
               <textarea
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 rows={4}
                 placeholder={feedbackType === 'return' 
-                  ? 'Nhập lý do trả lại action...' 
-                  : 'Nhập feedback nếu cần...'}
+                  ? 'Enter a reason for returning the action...' 
+                  : 'Enter feedback if needed...'}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
               />
             </div>
@@ -456,7 +456,7 @@ const ReviewFindings = () => {
                   feedbackType === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'
                 }`}
               >
-                {processing ? 'Đang xử lý...' : feedbackType === 'approve' ? 'Xác nhận phê duyệt' : 'Xác nhận trả lại'}
+                {processing ? 'Processing...' : feedbackType === 'approve' ? 'Confirm approval' : 'Confirm return'}
               </button>
               <button
                 onClick={() => {
@@ -467,7 +467,7 @@ const ReviewFindings = () => {
                 disabled={processing}
                 className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium disabled:opacity-50"
               >
-                Hủy
+                Cancel
               </button>
             </div>
           </div>

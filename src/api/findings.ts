@@ -1,4 +1,5 @@
 import { apiClient } from '../hooks/axios';
+import { unwrap } from '../utils';
 
 // Helper function to convert camelCase to PascalCase
 const toPascalCase = (obj: any): any => {
@@ -154,15 +155,32 @@ export const deleteFinding = async (findingId: string): Promise<void> => {
 
 // Approve action (Auditor reviews action and approves)
 export const approveFindingAction = async (actionId: string, feedback?: string): Promise<void> => {
-  await apiClient.post(`/ActionReview/${actionId}/approve`, { 
-    Feedback: feedback || '' 
+  await apiClient.post(`/ActionReview/${actionId}/approve`, {
+    Feedback: feedback || ''
   });
+};
+
+export const approveFindingActionHigherLevel = async (actionId: string, feedback?: string): Promise<void> => {
+  await apiClient.put(`/ActionReview/${actionId}/approve/higher-level`, {
+    Feedback: feedback || '',
+  });
+};
+export const getFindingsByAudit = async (auditId: string): Promise<any[]> => {
+  // apiClient interceptor trả về res.data, nhưng unwrap supports either shape
+  const res: any = await apiClient.get(`/Findings/by-audit/${auditId}`);
+  return unwrap(res);
 };
 
 // Return action (Auditor returns action for revision)
 export const returnFindingAction = async (actionId: string, feedback: string): Promise<void> => {
-  await apiClient.post(`/ActionReview/${actionId}/returned`, { 
-    Feedback: feedback 
+  await apiClient.post(`/ActionReview/${actionId}/returned`, {
+    Feedback: feedback
+  });
+};
+
+export const rejectFindingActionHigherLevel = async (actionId: string, feedback: string): Promise<void> => {
+  await apiClient.put(`/ActionReview/${actionId}/reject/higher-level`, {
+    Feedback: feedback,
   });
 };
 
@@ -176,5 +194,7 @@ export default {
   deleteFinding,
   markFindingAsReceived,
   approveFindingAction,
+  approveFindingActionHigherLevel,
   returnFindingAction,
+  rejectFindingActionHigherLevel,
 };
