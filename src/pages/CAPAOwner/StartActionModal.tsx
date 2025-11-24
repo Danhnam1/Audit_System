@@ -94,11 +94,14 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
         await updateActionProgressPercent(actionId, selectedProgress);
         await updateActionStatusInProgress(actionId);
       } else if (selectedProgress === 100) {
-        // If progress = 100%, call reviewed API (no need to update progress-percent as it's already 100%)
+        // If progress = 100%, update progress percent first, then call reviewed API
+        await updateActionProgressPercent(actionId, selectedProgress);
         await updateActionStatusReviewed(actionId);
       }
 
       // Success - close modal and refresh
+      // Small delay to ensure API has updated
+      await new Promise(resolve => setTimeout(resolve, 500));
       onSuccess();
       handleClose();
     } catch (err: any) {

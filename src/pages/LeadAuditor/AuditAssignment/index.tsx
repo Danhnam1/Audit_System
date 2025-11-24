@@ -71,7 +71,6 @@ export default function AuditAssignment() {
         }
 
         // Set assignments
-        console.log('Loaded assignments:', assignmentsData);
         setAssignments(assignmentsData || []);
 
         // Fetch departments for all audits
@@ -200,19 +199,9 @@ export default function AuditAssignment() {
       return normalized === 'assigned' || normalized === 'asiggned' || normalized.includes('assign');
     };
     
-    const result = assignments.some(
+    return assignments.some(
       (assignment) => assignment.deptId === deptId && isAssignedStatus(assignment.status)
     );
-    
-    // Debug log
-    if (result) {
-      const matchingAssignment = assignments.find(
-        (assignment) => assignment.deptId === deptId && isAssignedStatus(assignment.status)
-      );
-      console.log(`Department ${deptId} is assigned. Status: "${matchingAssignment?.status}"`);
-    }
-    
-    return result;
   };
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;

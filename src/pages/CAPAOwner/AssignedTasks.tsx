@@ -98,6 +98,14 @@ const AssignedTasks = () => {
     }
   };
 
+  const getProgressColor = (percent: number) => {
+    if (percent === 0) return 'bg-gray-300';
+    if (percent <= 25) return 'bg-red-500';
+    if (percent <= 50) return 'bg-yellow-500';
+    if (percent <= 75) return 'bg-blue-500';
+    return 'bg-green-500';
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A';
     try {
@@ -260,12 +268,18 @@ const AssignedTasks = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
                         </button>
-                        <button
-                          onClick={() => handleStart(task.actionId)}
-                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs sm:text-sm font-medium whitespace-nowrap"
-                        >
-                          Start
-                        </button>
+                        {task.progressPercent === 100 ? (
+                          <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap">
+                            Đã hoàn thành
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleStart(task.actionId)}
+                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs sm:text-sm font-medium whitespace-nowrap"
+                          >
+                            Start
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -278,7 +292,7 @@ const AssignedTasks = () => {
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-1.5">
                           <div
-                            className="bg-blue-600 h-1.5 rounded-full transition-all"
+                            className={`${getProgressColor(task.progressPercent)} h-1.5 rounded-full transition-all`}
                             style={{ width: `${task.progressPercent}%` }}
                           ></div>
                         </div>

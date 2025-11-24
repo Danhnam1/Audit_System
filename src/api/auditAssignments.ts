@@ -33,29 +33,23 @@ const toPascalCase = (obj: any): any => {
 // Get all audit assignments
 export const getAuditAssignments = async (): Promise<AuditAssignment[]> => {
   const res: any = await apiClient.get('/AuditAssignment');
-  console.log('🔍 getAuditAssignments raw response:', res);
   
   // Handle $values structure
   if (res?.$values && Array.isArray(res.$values)) {
-    console.log('🔍 Returning res.$values:', res.$values);
     return res.$values;
   }
   if (Array.isArray(res)) {
-    console.log('🔍 Returning res as array:', res);
     return res;
   }
   if (res?.data) {
     const data = res.data;
     if (data?.$values && Array.isArray(data.$values)) {
-      console.log('🔍 Returning res.data.$values:', data.$values);
       return data.$values;
     }
     if (Array.isArray(data)) {
-      console.log('🔍 Returning res.data as array:', data);
       return data;
     }
   }
-  console.log('🔍 No valid data found, returning empty array');
   return [];
 };
 
@@ -105,11 +99,6 @@ export const getMyAssignments = async (): Promise<any> => {
     // apiClient uses axios interceptor that returns response.data
     // But we need to handle the case where response might still be full axios response
     const res: any = await apiClient.get('/AuditAssignment/my-assignments');
-    console.log('🔍 API Response from /AuditAssignment/my-assignments:', res);
-    console.log('🔍 Response type:', typeof res);
-    console.log('🔍 Has data property?', !!res?.data);
-    console.log('🔍 Has $values?', !!res?.$values);
-    console.log('🔍 Has data.$values?', !!res?.data?.$values);
     
     // If interceptor worked, res should be response.data already
     // But if we got full response, extract data
@@ -119,10 +108,9 @@ export const getMyAssignments = async (): Promise<any> => {
       data = res.data;
     }
     
-    console.log('🔍 Extracted data:', data);
     return data;
   } catch (error) {
-    console.error('❌ Error in getMyAssignments:', error);
+    console.error('Error in getMyAssignments:', error);
     throw error;
   }
 };
