@@ -48,8 +48,14 @@ export const createAction = async (dto: CreateActionDto): Promise<Action> => {
 };
 
 // Get actions by finding ID
-export const getActionsByFinding = async (findingId: string): Promise<Action[]> => {
+export const getActionsByFinding1 = async (findingId: string): Promise<Action[]> => {
   const res = await apiClient.get(`/Action/finding/${findingId}`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Action>(res);
+};
+// Get actions by finding ID
+export const getActionsByFinding = async (findingId: string): Promise<Action[]> => {
+    const res = await apiClient.get(`/Action/by-finding/${findingId}`) as any;
   const { unwrap } = await import('../utils/normalize');
   return unwrap<Action>(res);
 };
@@ -83,5 +89,16 @@ export const updateActionProgressPercent = async (actionId: string, progressPerc
 // Update action status to reviewed
 export const updateActionStatusReviewed = async (actionId: string): Promise<void> => {
   await apiClient.post(`/Action/${actionId}/status/reviewed`);
+};
+
+
+// Approve action (Auditee Owner) with feedback (new API)
+export const approveActionWithFeedback = async (actionId: string, feedback: string): Promise<void> => {
+  await apiClient.post(`/ActionReview/${actionId}/verified`, { Feedback: feedback });
+};
+
+// Reject action (Auditee Owner) with feedback (new API)
+export const rejectAction = async (actionId: string, feedback: string): Promise<void> => {
+  await apiClient.post(`/ActionReview/${actionId}/declined`, { Feedback: feedback });
 };
 

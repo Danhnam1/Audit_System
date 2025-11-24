@@ -61,6 +61,13 @@ export const getFindingsByDepartment = async (deptId: number): Promise<Finding[]
   return unwrap<Finding>(res);
 };
 
+// Get findings by creator ID (for Auditor to see their own findings)
+export const getFindingsByCreator = async (createdBy: string): Promise<Finding[]> => {
+  const res = await apiClient.get(`/Findings/by-created-by/${createdBy}`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Finding>(res);
+};
+
 // Get finding by ID
 export const getFindingById = async (findingId: string): Promise<Finding> => {
   return apiClient.get(`/Findings/${findingId}`) as any;
@@ -145,10 +152,29 @@ export const deleteFinding = async (findingId: string): Promise<void> => {
   return apiClient.delete(`/Findings/${findingId}`) as any;
 };
 
+// Approve action (Auditor reviews action and approves)
+export const approveFindingAction = async (actionId: string, feedback?: string): Promise<void> => {
+  await apiClient.post(`/ActionReview/${actionId}/approve`, { 
+    Feedback: feedback || '' 
+  });
+};
+
+// Return action (Auditor returns action for revision)
+export const returnFindingAction = async (actionId: string, feedback: string): Promise<void> => {
+  await apiClient.post(`/ActionReview/${actionId}/returned`, { 
+    Feedback: feedback 
+  });
+};
+
 export default {
   getFindings,
   getFindingById,
+  getFindingsByDepartment,
+  getFindingsByCreator,
   createFinding,
   updateFinding,
   deleteFinding,
+  markFindingAsReceived,
+  approveFindingAction,
+  returnFindingAction,
 };
