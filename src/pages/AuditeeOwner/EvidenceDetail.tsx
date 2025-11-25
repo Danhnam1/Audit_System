@@ -6,6 +6,7 @@ import { getActionsByFinding, approveActionWithFeedback, rejectAction, type Acti
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { toast } from 'react-toastify';
+import { fetchAuditSummary, type AuditSummary } from '../../utils/auditSummary';
 
 interface ActionWithAttachments extends Action {
   attachments: Attachment[];
@@ -26,6 +27,7 @@ const EvidenceDetail = () => {
   const [pendingApproveActionId, setPendingApproveActionId] = useState<string | null>(null);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [pendingRejectActionId, setPendingRejectActionId] = useState<string | null>(null);
+  const [auditSummary, setAuditSummary] = useState<AuditSummary | null>(null);
 
   const fetchData = async () => {
     if (!findingId) return;
@@ -35,6 +37,9 @@ const EvidenceDetail = () => {
       // Fetch finding
       const findingData = await getFindingById(findingId);
       setFinding(findingData);
+      if (findingData?.auditId) {
+        fetchAuditSummary(findingData.auditId).then(setAuditSummary);
+      }
 
       // Fetch finding attachments
       const findingAtts = await getAttachments('finding', findingId);
@@ -207,6 +212,11 @@ const EvidenceDetail = () => {
             Back
           </button>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Finding & Actions Detail</h1>
+          {auditSummary && (
+            <p className="text-xs sm:text-sm text-gray-500">
+              Audit: <span className="font-semibold text-gray-800">{auditSummary.title}</span> • {auditSummary.status}
+            </p>
+          )}
         </div>
 
         {/* Finding Details */}

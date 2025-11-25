@@ -1,12 +1,22 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { MainLayout } from '../../layouts';
 import { getFindingsByDepartment, type Finding } from '../../api/findings';
-import { getActionsByFinding, type Action } from '../../api/actions';
+import { getActionsByFinding, approveActionWithFeedback, rejectAction, type Action } from '../../api/actions';
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { useDeptId } from '../../store/useAuthStore';
 import { toast } from 'react-toastify';
+import { fetchAuditSummaries, type AuditSummary } from '../../utils/auditSummary';
+import { getAuditPlanById } from '../../api/audits';
+import { getDepartments } from '../../api/departments';
+import { AuditDetailsModal } from '../Auditor/LeadFinalReview/components/AuditDetailsModal';
+import type { AuditMetadata, Finding as FindingType, ActionWithDetails } from '../Auditor/LeadFinalReview/types';
+
+type GroupedAudit = {
+  auditId: string;
+  summary: AuditSummary | null;
+  findings: FindingWithDetails[];
+};
 
 interface ActionWithUserName extends Action {
   assignedUserName?: string;
@@ -18,12 +28,36 @@ interface FindingWithDetails extends Finding {
   actionAttachments: Record<string, Attachment[]>; // actionId -> attachments
 }
 
+const isGuid = (v?: string) => !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+const normalizeArray = (payload: any) => {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (payload.$values && Array.isArray(payload.$values)) return payload.$values;
+  if (payload.values && Array.isArray(payload.values)) return payload.values;
+  return [];
+};
+
 const ReviewEvidence = () => {
-  const navigate = useNavigate();
   const deptId = useDeptId();
   const [findings, setFindings] = useState<FindingWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [auditSummaries, setAuditSummaries] = useState<Record<string, AuditSummary>>({});
+  const [query, setQuery] = useState('');
+  const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [modalAudit, setModalAudit] = useState<{ auditId: string; title: string } | null>(null);
+  const [modalFindings, setModalFindings] = useState<FindingType[]>([]);
+  const [modalAuditDetail, setModalAuditDetail] = useState<AuditMetadata | null>(null);
+  const [loadingAuditDetail, setLoadingAuditDetail] = useState(false);
+  const [departmentsLookup, setDepartmentsLookup] = useState<Record<string, string>>({});
+  const userNameCacheRef = useRef<Record<string, string>>({});
+  
+  // State for approve/reject actions
+  const [processingActionId, setProcessingActionId] = useState<string | null>(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [selectedAction, setSelectedAction] = useState<ActionWithDetails | null>(null);
+  const [feedbackType, setFeedbackType] = useState<'approve' | 'reject'>('approve');
+  const [feedbackValue, setFeedbackValue] = useState('');
 
   // Fetch findings with all related data
   const fetchFindings = async () => {
@@ -98,6 +132,20 @@ const ReviewEvidence = () => {
       );
 
       setFindings(findingsWithDetails);
+      const auditIds = Array.from(
+        new Set(findingsWithDetails.map(f => f.auditId).filter((id): id is string => !!id))
+      );
+      if (auditIds.length > 0) {
+        fetchAuditSummaries(auditIds)
+          .then(result => {
+            if (Object.keys(result).length > 0) {
+              setAuditSummaries(prev => ({ ...prev, ...result }));
+            }
+          })
+          .catch(err => {
+            console.warn('[ReviewEvidence] Failed to load audit summaries', err);
+          });
+      }
       console.log('[ReviewEvidence] Total findings loaded:', findingsWithDetails.length);
       console.log('[ReviewEvidence] Findings with actions:', findingsWithDetails.filter(f => f.actions.length > 0).length);
     } catch (err: any) {
@@ -125,67 +173,295 @@ const ReviewEvidence = () => {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [deptId]);
 
-  const handleViewDetail = (findingId: string) => {
-    navigate(`/auditee-owner/evidence-detail/${findingId}`);
-  };
-
-  const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; color: string }> = {
-      Open: { label: 'Open', color: 'bg-blue-100 text-blue-700' },
-      Active: { label: 'Active', color: 'bg-blue-100 text-blue-700' },
-      InProgress: { label: 'In progress', color: 'bg-yellow-100 text-yellow-700' },
-      Reviewed: { label: 'Reviewed', color: 'bg-purple-100 text-purple-700' },
-      Approved: { label: 'Approved', color: 'bg-green-100 text-green-700' },
-      ApprovedAuditor: { label: 'Approved by auditor', color: 'bg-teal-100 text-teal-700' },
-      Rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700' },
-      Closed: { label: 'Closed', color: 'bg-gray-100 text-gray-700' },
-      Received: { label: 'Received', color: 'bg-indigo-100 text-indigo-700' },
+  // Preload department names
+  useEffect(() => {
+    let mounted = true;
+    const loadDepartments = async () => {
+      try {
+        const list = await getDepartments();
+        if (!mounted) return;
+        const map: Record<string, string> = {};
+        (list || []).forEach(dept => {
+          if (dept?.deptId !== undefined && dept?.deptId !== null) {
+            map[String(dept.deptId)] = dept.name || `Department ${dept.deptId}`;
+          }
+        });
+        setDepartmentsLookup(map);
+      } catch (err) {
+        console.warn('Unable to load departments', err);
+      }
     };
-    const info = statusMap[status] || { label: status, color: 'bg-gray-100 text-gray-700' };
-    return (
-      <span className={`px-3 py-1 rounded-full text-xs font-medium ${info.color}`}>
-        {info.label}
-      </span>
+    loadDepartments();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const resolveUserName = useCallback(
+    async (userId?: string) => {
+      if (!userId) return '';
+      const key = String(userId).toLowerCase();
+      if (userNameCacheRef.current[key]) return userNameCacheRef.current[key];
+      if (!isGuid(userId)) return '';
+      try {
+        const user = await getUserById(userId);
+        const name = user?.fullName || user?.email || '';
+        if (name) {
+          userNameCacheRef.current[key] = name;
+        }
+        return name;
+      } catch (err) {
+        console.warn('Unable to load user info', userId, err);
+        return '';
+      }
+    },
+    []
+  );
+
+  const buildAuditMetadata = useCallback(
+    async (raw: any): Promise<AuditMetadata> => {
+      const auditNode = raw?.audit || raw || {};
+      const deptItems = normalizeArray(raw?.scopeDepartments).map((dept: any, idx: number) => {
+        const hasId = dept?.deptId !== undefined && dept?.deptId !== null;
+        const key = hasId ? String(dept.deptId) : '';
+        const fallbackName = key ? `Department ${key}` : `Department ${idx + 1}`;
+        return {
+          deptId: dept?.deptId,
+          name: dept?.deptName || (key && departmentsLookup[key]) || fallbackName,
+          status: dept?.status,
+        };
+      });
+
+      const criteriaItems = normalizeArray(raw?.criteria).map((crit: any, idx: number) => ({
+        criteriaId: crit?.criteriaId || crit?.id || crit?.auditCriteriaMapId || `criteria_${idx}`,
+        name: crit?.criteriaName || crit?.name || crit?.criterionName || `Criteria ${idx + 1}`,
+        status: crit?.status,
+      }));
+
+      const scheduleItems = normalizeArray(raw?.schedules).map((sch: any, idx: number) => ({
+        scheduleId: sch?.scheduleId || sch?.id || `schedule_${idx}`,
+        milestoneName: sch?.milestoneName || sch?.name || sch?.milestone || `Milestone ${idx + 1}`,
+        dueDate: sch?.dueDate,
+        status: sch?.status,
+        notes: sch?.notes,
+      }));
+
+      const teamRaw = normalizeArray(raw?.auditTeams);
+      const team = await Promise.all(
+        teamRaw.map(async (member: any, idx: number) => {
+          let name = member?.fullName || member?.name;
+          if (!name) {
+            const fetched = await resolveUserName(member?.userId);
+            if (fetched) name = fetched;
+          }
+          return {
+            userId: member?.userId,
+            name: name || `Team member ${idx + 1}`,
+            roleInTeam: member?.roleInTeam,
+            isLead: member?.isLead,
+            email: member?.email,
+          };
+        })
+      );
+
+      return {
+        auditId: auditNode?.auditId || auditNode?.id || raw?.auditId || '',
+        title: auditNode?.title || raw?.title || '',
+        type: auditNode?.type || raw?.type || '',
+        scope: auditNode?.scope || raw?.scope || '',
+        objective: auditNode?.objective || raw?.objective || '',
+        startDate: auditNode?.startDate || auditNode?.periodFrom,
+        endDate: auditNode?.endDate || auditNode?.periodTo,
+        status: auditNode?.status || raw?.status || '',
+        createdAt: auditNode?.createdAt || raw?.createdAt || '',
+        createdByName:
+          raw?.createdBy?.fullName ||
+          raw?.createdByUser?.fullName ||
+          auditNode?.createdBy?.fullName ||
+          auditNode?.createdByUser?.fullName ||
+          '',
+        createdByEmail:
+          raw?.createdBy?.email ||
+          raw?.createdByUser?.email ||
+          auditNode?.createdBy?.email ||
+          auditNode?.createdByUser?.email ||
+          '',
+        departments: deptItems,
+        criteria: criteriaItems,
+        team,
+        schedules: scheduleItems,
+      };
+    },
+    [departmentsLookup, resolveUserName]
+  );
+
+  const openAuditModal = async (group: GroupedAudit) => {
+    setModalAudit({
+      auditId: group.auditId,
+      title: group.summary?.title || group.auditId,
+    });
+    setModalFindings(
+      group.findings.map(f => ({
+        findingId: f.findingId,
+        auditId: f.auditId,
+        title: f.title,
+        description: f.description,
+        severity: f.severity,
+        status: f.status,
+        deadline: f.deadline,
+        createdAt: f.createdAt,
+        actions: f.actions.map(a => ({
+          actionId: a.actionId,
+          title: a.title,
+          description: a.description,
+          assignedTo: a.assignedTo,
+          assignedUserName: a.assignedUserName,
+          status: a.status,
+          progressPercent: a.progressPercent,
+          dueDate: a.dueDate,
+          createdAt: a.createdAt,
+          reviewFeedback: a.reviewFeedback,
+          attachments: f.actionAttachments[a.actionId] || [],
+        })) as ActionWithDetails[],
+        findingAttachments: f.findingAttachments,
+      })) as FindingType[]
     );
+    setLoadingAuditDetail(true);
+    try {
+      const detailRes = await getAuditPlanById(group.auditId);
+      const detail = detailRes?.data?.data ?? detailRes?.data ?? detailRes;
+      if (detail) {
+        const normalized = await buildAuditMetadata(detail);
+        setModalAuditDetail(normalized);
+      } else {
+        setModalAuditDetail(null);
+      }
+    } catch (err) {
+      console.warn('Failed to load audit details', err);
+      setModalAuditDetail(null);
+    } finally {
+      setLoadingAuditDetail(false);
+    }
+    setAuditModalOpen(true);
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+  const closeAuditModal = () => {
+    setAuditModalOpen(false);
+    setModalAudit(null);
+    setModalAuditDetail(null);
+    setModalFindings([]);
   };
 
-  const formatDate = (dateStr: string): string => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+  // Update modal findings from current findings state
+  const updateModalFindings = useCallback(() => {
+    if (!modalAudit) return;
+    const auditFindings = findings.filter(f => f.auditId === modalAudit.auditId);
+    setModalFindings(
+      auditFindings.map(f => ({
+        findingId: f.findingId,
+        auditId: f.auditId,
+        title: f.title,
+        description: f.description,
+        severity: f.severity,
+        status: f.status,
+        deadline: f.deadline,
+        createdAt: f.createdAt,
+        actions: f.actions.map(a => ({
+          actionId: a.actionId,
+          title: a.title,
+          description: a.description,
+          assignedTo: a.assignedTo,
+          assignedUserName: a.assignedUserName,
+          status: a.status,
+          progressPercent: a.progressPercent,
+          dueDate: a.dueDate,
+          createdAt: a.createdAt,
+          reviewFeedback: a.reviewFeedback,
+          attachments: f.actionAttachments[a.actionId] || [],
+        })) as ActionWithDetails[],
+        findingAttachments: f.findingAttachments,
+      })) as FindingType[]
+    );
+  }, [findings, modalAudit]);
+
+  // Auto-update modal findings when findings state changes (e.g., after approve/reject)
+  useEffect(() => {
+    if (auditModalOpen && modalAudit && findings.length > 0) {
+      updateModalFindings();
+    }
+  }, [findings, auditModalOpen, modalAudit, updateModalFindings]);
+
+  const handleActionDecision = async (action: ActionWithDetails, type: 'approve' | 'reject') => {
+    setSelectedAction(action);
+    setFeedbackType(type);
+    setFeedbackValue('');
+    setShowFeedbackModal(true);
+  };
+
+  const closeFeedbackModal = () => {
+    setShowFeedbackModal(false);
+    setSelectedAction(null);
+    setFeedbackValue('');
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!selectedAction) return;
+    if (feedbackType === 'reject' && !feedbackValue.trim()) {
+      toast.error('Please enter feedback when rejecting an action');
+      return;
+    }
+    setProcessingActionId(selectedAction.actionId);
+    try {
+      if (feedbackType === 'approve') {
+        await approveActionWithFeedback(selectedAction.actionId, feedbackValue || '');
+        toast.success('Action approved successfully!');
+      } else {
+        await rejectAction(selectedAction.actionId, feedbackValue.trim());
+        toast.success('Action rejected!');
+      }
+      closeFeedbackModal();
+      // Refresh findings data
+      await fetchFindings();
+      // Update modal findings with fresh data (findings state will be updated by fetchFindings)
+      // Use useEffect to watch for findings changes and update modal
+    } catch (err: any) {
+      console.error('Failed to process action', err);
+      toast.error(err?.response?.data?.message || 'Unable to process action');
+    } finally {
+      setProcessingActionId(null);
+    }
+  };
+
+
+  const groupedAudits = useMemo<GroupedAudit[]>(() => {
+    const groups = new Map<string, GroupedAudit>();
+
+    findings.forEach(finding => {
+      const key = finding.auditId || 'unknown';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          auditId: key,
+          summary: (finding.auditId && auditSummaries[finding.auditId]) || null,
+          findings: [],
+        });
+      }
+      groups.get(key)!.findings.push(finding);
     });
-  };
 
-  // Filter findings based on action status
-  const filteredFindings = findings.filter(finding => {
-    if (filter === 'all') return true;
-    // Check if any action has the matching status
-    return finding.actions.some(action => {
-      if (filter === 'pending') return action.status === 'InProgress' || action.status === 'Reviewed';
-      if (filter === 'approved') return action.status === 'Approved' || action.status === 'ApprovedAuditor';
-      if (filter === 'rejected') return action.status === 'Rejected';
-      return false;
-    });
-  });
+    return Array.from(groups.values());
+  }, [findings, auditSummaries]);
 
-  const stats = {
-    pending: findings.filter(f => f.actions.some(a => a.status === 'InProgress' || a.status === 'Reviewed')).length,
-    approved: findings.filter(f => f.actions.some(a => a.status === 'Approved' || a.status === 'ApprovedAuditor')).length,
-    rejected: findings.filter(f => f.actions.some(a => a.status === 'Rejected')).length,
-  };
+  const filteredAudits = useMemo(() => {
+    if (!query.trim()) return groupedAudits;
+    const q = query.toLowerCase();
+    return groupedAudits.filter(
+      group =>
+        group.summary?.title?.toLowerCase().includes(q) ||
+        group.auditId.toLowerCase().includes(q) ||
+        group.summary?.type?.toLowerCase().includes(q) ||
+        group.summary?.scope?.toLowerCase().includes(q)
+    );
+  }, [groupedAudits, query]);
 
   return (
     <MainLayout>
@@ -198,182 +474,58 @@ const ReviewEvidence = () => {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors ${
-              filter === 'all' ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            All ({findings.length})
-          </button>
-          <button
-            onClick={() => setFilter('pending')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              filter === 'pending' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            Pending ({stats.pending})
-          </button>
-          <button
-            onClick={() => setFilter('approved')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              filter === 'approved' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            Approved ({stats.approved})
-          </button>
-          <button
-            onClick={() => setFilter('rejected')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              filter === 'rejected' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
-            }`}
-          >
-            Rejected ({stats.rejected})
-          </button>
+        {/* Search */}
+        <div className="mb-4 flex items-center gap-4">
+          <input
+            className="border rounded px-3 py-2 flex-1"
+            placeholder="Search audits by name or ID..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Pending</div>
-            <div className="text-xl sm:text-2xl font-bold text-yellow-600 mt-1">{stats.pending}</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Approved</div>
-            <div className="text-xl sm:text-2xl font-bold text-green-600 mt-1">{stats.approved}</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Rejected</div>
-            <div className="text-xl sm:text-2xl font-bold text-red-600 mt-1">{stats.rejected}</div>
-          </div>
-        </div>
-
-        {/* Evidence List */}
+        {/* Audits list */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Findings & Actions List</h2>
+          <div className="px-4 sm:px-6 py-3 border-b border-gray-200 flex items-center justify-between">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Audits</h2>
+            <span className="text-xs text-gray-500">{filteredAudits.length} records</span>
           </div>
-          
+
           {loading ? (
             <div className="p-6 text-center text-gray-600">Loading data...</div>
-          ) : filteredFindings.length === 0 ? (
+          ) : filteredAudits.length === 0 ? (
             <div className="p-6 text-center text-gray-600">No data available</div>
           ) : (
-            <div className="divide-y divide-gray-200">
-              {filteredFindings.map((finding) => (
-                <div key={finding.findingId} className="p-3 sm:p-4 lg:p-6 hover:bg-gray-50">
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
-                    <div className="flex-1">
-                      {/* Finding Info */}
-                      <div className="mb-3 sm:mb-4">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-                          <span className="text-base sm:text-lg font-semibold text-gray-900">
-                            Finding: {finding.title}
+            <div className="divide-y divide-gray-100">
+              {filteredAudits.map(group => (
+                <div key={group.auditId} className="p-4 sm:p-6 space-y-3">
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <h3 className="text-sm sm:text-base font-semibold text-gray-900">
+                          {group.summary?.title || group.auditId}
+                        </h3>
+                        {group.summary?.status && (
+                          <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
+                            {group.summary.status}
                           </span>
-                          {getStatusBadge(finding.status)}
-                        </div>
-                        <p className="text-sm text-gray-600 mb-2">{finding.description}</p>
-                        <div className="text-sm text-gray-500">
-                          <p>Severity: <span className="font-medium">{finding.severity}</span></p>
-                          <p>Deadline: <span className="font-medium">{formatDate(finding.deadline || '')}</span></p>
-                          <p>Created: {formatDate(finding.createdAt)}</p>
-                        </div>
+                        )}
                       </div>
-
-                      {/* Finding Attachments */}
-                      {finding.findingAttachments.length > 0 && (
-                        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                          <p className="text-sm font-medium text-gray-700 mb-2">
-                            📎 Finding Attachments ({finding.findingAttachments.length}):
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {finding.findingAttachments.map((file) => (
-                              <a
-                                key={file.attachmentId}
-                                href={file.filePath || file.blobPath}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg text-sm hover:bg-blue-100 transition-colors"
-                              >
-                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                <span className="text-gray-700">{file.fileName}</span>
-                                <span className="text-gray-500 text-xs">({formatFileSize(file.fileSize)})</span>
-                              </a>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Actions */}
-                      {finding.actions.length > 0 ? (
-                        <div className="mt-4 space-y-3">
-                          <p className="text-sm font-semibold text-gray-700">Actions ({finding.actions.length}):</p>
-                          {finding.actions.map((action) => (
-                            <div key={action.actionId} className="p-3 bg-gray-50 rounded-lg">
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-sm font-medium text-gray-900">{action.title}</span>
-                                    {getStatusBadge(action.status)}
-                                  </div>
-                                  <p className="text-xs text-gray-600">{action.description}</p>
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    <p>Assigned To: <span className="font-medium text-gray-700">{action.assignedUserName || action.assignedTo}</span></p>
-                                    <p>Progress: {action.progressPercent}%</p>
-                                    <p>Due: {formatDate(action.dueDate || '')}</p>
-                                    <p className="text-gray-400">Status: {action.status}</p>
-                                  </div>
-                                  {action.reviewFeedback && (
-                                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                                      <p className="font-semibold text-gray-700 mb-1">💬 Review feedback:</p>
-                                      <p className="text-gray-600">{action.reviewFeedback}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Action Attachments */}
-                              {finding.actionAttachments[action.actionId]?.length > 0 && (
-                                <div className="mt-2">
-                                  <p className="text-xs font-medium text-gray-700 mb-1">
-                                    📎 Action Evidence ({finding.actionAttachments[action.actionId].length}):
-                                  </p>
-                                  <div className="flex flex-wrap gap-1">
-                                    {finding.actionAttachments[action.actionId].map((file) => (
-                                      <a
-                                        key={file.attachmentId}
-                                        href={file.filePath || file.blobPath}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-1 px-2 py-1 bg-white rounded text-xs hover:bg-gray-100 transition-colors"
-                                      >
-                                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                        </svg>
-                                        <span className="text-gray-700">{file.fileName}</span>
-                                        <span className="text-gray-500">({formatFileSize(file.fileSize)})</span>
-                                      </a>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mt-4 text-sm text-gray-500 italic">No actions available</div>
-                      )}
+                      <p className="text-xs sm:text-sm text-gray-500">
+                        Type: {group.summary?.type || '-'} • Scope: {group.summary?.scope || '-'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Findings: <span className="font-medium text-gray-900">{group.findings.length}</span>
+                      </p>
                     </div>
-                    <button
-                      onClick={() => handleViewDetail(finding.findingId)}
-                      className="w-full sm:w-auto sm:ml-0 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm whitespace-nowrap"
-                    >
-                      View detail
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        onClick={() => openAuditModal(group)}
+                        className="text-sm bg-green-600 text-white px-3 py-1 rounded"
+                      >
+                        View
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -381,6 +533,67 @@ const ReviewEvidence = () => {
           )}
         </div>
       </div>
+      <AuditDetailsModal
+        open={auditModalOpen && !!modalAudit}
+        audit={modalAudit || { auditId: '', title: '' }}
+        auditDetail={modalAuditDetail || null}
+        findings={modalFindings}
+        loading={false}
+        loadingAuditDetail={loadingAuditDetail}
+        processingAction={processingActionId !== null}
+        showActionControls={true}
+        auditeeOwnerMode={true}
+        onClose={closeAuditModal}
+        onActionDecision={handleActionDecision}
+      />
+      
+      {/* Feedback Modal (approve/reject) */}
+      {showFeedbackModal && selectedAction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-4 sm:p-6">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">
+              {feedbackType === 'approve' ? '✓ Approve Action' : '✕ Reject Action'}
+            </h3>
+
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm font-medium text-gray-700 mb-1">Action: {selectedAction.title}</p>
+              <p className="text-xs text-gray-600">{selectedAction.description}</p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {feedbackType === 'reject' ? 'Feedback (Required)' : 'Feedback (Optional)'}
+              </label>
+              <textarea
+                value={feedbackValue}
+                onChange={(e) => setFeedbackValue(e.target.value)}
+                rows={4}
+                placeholder={feedbackType === 'reject' ? 'Enter a reason for rejection...' : 'Enter feedback if needed...'}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              <button
+                onClick={handleSubmitFeedback}
+                disabled={processingActionId !== null || (feedbackType === 'reject' && !feedbackValue.trim())}
+                className={`flex-1 px-4 py-2 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
+                  feedbackType === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'
+                }`}
+              >
+                {processingActionId !== null ? 'Processing...' : feedbackType === 'approve' ? 'Confirm approval' : 'Confirm rejection'}
+              </button>
+              <button
+                onClick={closeFeedbackModal}
+                disabled={processingActionId !== null}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 };

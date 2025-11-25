@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { MainLayout } from '../../../layouts';
@@ -7,6 +7,15 @@ import { getActionsByFinding, type Action } from '../../../api/actions';
 import { getAttachments, type Attachment } from '../../../api/attachments';
 import { getUserById } from '../../../api/adminUsers';
 import { useUserId } from '../../../store/useAuthStore';
+import { fetchAuditSummaries, type AuditSummary } from '../../../utils/auditSummary';
+import { getAuditPlanById } from '../../../api/audits';
+import { unwrap } from '../../../utils/normalize';
+import { AuditDetailsModal } from '../LeadFinalReview/components/AuditDetailsModal';
+import type {
+  Audit as LeadAudit,
+  AuditMetadata,
+  Finding as LeadFinding,
+} from '../LeadFinalReview/types';
 
 interface ActionWithDetails extends Action {
   attachments: Attachment[];
@@ -17,6 +26,72 @@ interface FindingWithActions extends Finding {
   actions: ActionWithDetails[];
   findingAttachments: Attachment[];
 }
+
+type GroupedAudit = {
+  auditId: string;
+  summary: AuditSummary | null;
+  findings: FindingWithActions[];
+};
+
+const buildAuditMetadata = (detail: any): AuditMetadata => {
+  const auditNode = detail?.audit || detail || {};
+
+  const departments = unwrap(detail?.scopeDepartments).map((dept: any, idx: number) => ({
+    deptId: dept?.deptId ?? `dept_${idx}`,
+    name: dept?.deptName || dept?.name || `Department ${idx + 1}`,
+    status: dept?.status,
+  }));
+
+  const criteria = unwrap(detail?.criteria).map((crit: any, idx: number) => ({
+    criteriaId: crit?.criteriaId || crit?.id || `criteria_${idx}`,
+    name: crit?.criteriaName || crit?.name || `Criterion ${idx + 1}`,
+    status: crit?.status,
+  }));
+
+  const schedules = unwrap(detail?.schedules).map((schedule: any, idx: number) => ({
+    scheduleId: schedule?.scheduleId || schedule?.id || `schedule_${idx}`,
+    milestoneName: schedule?.milestoneName || schedule?.name || `Milestone ${idx + 1}`,
+    dueDate: schedule?.dueDate,
+    status: schedule?.status,
+    notes: schedule?.notes,
+  }));
+
+  const team = unwrap(detail?.auditTeams).map((member: any, idx: number) => ({
+    userId: member?.userId,
+    name: member?.fullName || member?.name || `Member ${idx + 1}`,
+    roleInTeam: member?.roleInTeam,
+    isLead: member?.isLead,
+    email: member?.email,
+  }));
+
+  return {
+    auditId: auditNode?.auditId || auditNode?.id || detail?.auditId || '',
+    title: auditNode?.title || auditNode?.auditTitle || detail?.title || '',
+    type: auditNode?.type || detail?.type || '',
+    scope: auditNode?.scope || detail?.scope || '',
+    objective: auditNode?.objective || detail?.objective || '',
+    startDate: auditNode?.startDate || auditNode?.periodFrom || detail?.startDate || detail?.periodFrom,
+    endDate: auditNode?.endDate || auditNode?.periodTo || detail?.endDate || detail?.periodTo,
+    status: auditNode?.status || detail?.status || '',
+    createdByName:
+      detail?.createdBy?.fullName ||
+      detail?.createdByUser?.fullName ||
+      auditNode?.createdBy?.fullName ||
+      auditNode?.createdByUser?.fullName ||
+      '',
+    createdByEmail:
+      detail?.createdBy?.email ||
+      detail?.createdByUser?.email ||
+      auditNode?.createdBy?.email ||
+      auditNode?.createdByUser?.email ||
+      '',
+    createdAt: auditNode?.createdAt || detail?.createdAt || '',
+    departments,
+    criteria,
+    team,
+    schedules,
+  };
+};
 
 const ReviewFindings = () => {
   const userId = useUserId();
@@ -29,6 +104,13 @@ const ReviewFindings = () => {
   const [feedbackType, setFeedbackType] = useState<'approve' | 'return'>('approve');
   const [feedback, setFeedback] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [auditSummaries, setAuditSummaries] = useState<Record<string, AuditSummary>>({});
+  const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [modalAudit, setModalAudit] = useState<LeadAudit | null>(null);
+  const [modalFindings, setModalFindings] = useState<LeadFinding[]>([]);
+  const [modalAuditDetail, setModalAuditDetail] = useState<AuditMetadata | null>(null);
+  const [loadingAuditDetail, setLoadingAuditDetail] = useState(false);
+  const [query, setQuery] = useState('');
 
   const fetchFindings = async () => {
     console.log('[ReviewFindings] Current userId:', userId);
@@ -91,6 +173,20 @@ const ReviewFindings = () => {
       );
 
       setFindings(findingsWithActions);
+      const uniqueAuditIds = Array.from(
+        new Set(findingsWithActions.map(f => f.auditId).filter((id): id is string => !!id))
+      );
+      if (uniqueAuditIds.length > 0) {
+        fetchAuditSummaries(uniqueAuditIds)
+          .then(result => {
+            if (Object.keys(result).length > 0) {
+              setAuditSummaries(prev => ({ ...prev, ...result }));
+            }
+          })
+          .catch(err => {
+            console.warn('[ReviewFindings] Failed to load audit summaries', err);
+          });
+      }
     } catch (err: any) {
       console.error('Failed to fetch findings', err);
       toast.error('Unable to load findings list');
@@ -121,6 +217,12 @@ const ReviewFindings = () => {
     setShowFeedbackModal(true);
   };
 
+  const closeFeedbackModal = () => {
+    setShowFeedbackModal(false);
+    setSelectedAction(null);
+    setFeedback('');
+  };
+
   const handleSubmitFeedback = async () => {
     if (!selectedAction) return;
 
@@ -139,9 +241,8 @@ const ReviewFindings = () => {
         toast.success('Action sent back for updates!');
       }
 
-      setShowFeedbackModal(false);
-      setSelectedAction(null);
-      setFeedback('');
+      closeFeedbackModal();
+      // Refresh findings data - useEffect will automatically update modal findings
       await fetchFindings();
     } catch (err: any) {
       console.error('Failed to process action', err);
@@ -183,30 +284,83 @@ const ReviewFindings = () => {
     });
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-  };
-
   // Filter findings based on action status
   const filteredFindings = findings.filter(finding => {
     if (filter === 'all') return true;
     return finding.actions.some(action => {
-      if (filter === 'pending') return action.status === 'Approved'; // Approved by AuditeeOwner, pending Auditor review
-      if (filter === 'approved') return action.status === 'ApprovedAuditor';
+      if (filter === 'pending') return action.status === 'Verified'; // Verified by AuditeeOwner, pending Auditor review
+      if (filter === 'approved') return action.status === 'Approved'; // Approved by Auditor, pending Lead Auditor review
       if (filter === 'returned') return action.status === 'Returned';
       return false;
     });
   });
 
   const stats = {
-    pending: findings.filter(f => f.actions.some(a => a.status === 'Approved')).length,
-    approved: findings.filter(f => f.actions.some(a => a.status === 'ApprovedAuditor')).length,
+    pending: findings.filter(f => f.actions.some(a => a.status === 'Verified')).length,
+    approved: findings.filter(f => f.actions.some(a => a.status === 'Approved')).length,
     returned: findings.filter(f => f.actions.some(a => a.status === 'Returned')).length,
   };
+
+  const groupedAudits = useMemo<GroupedAudit[]>(() => {
+    const groups = new Map<string, GroupedAudit>();
+
+    filteredFindings.forEach(finding => {
+      const key = finding.auditId || 'unknown';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          auditId: key,
+          summary: (finding.auditId && auditSummaries[finding.auditId]) || null,
+          findings: [],
+        });
+      }
+      groups.get(key)!.findings.push(finding);
+    });
+
+    return Array.from(groups.values());
+  }, [filteredFindings, auditSummaries]);
+
+  const openAuditModal = async (group: GroupedAudit) => {
+    if (!group.auditId) return;
+    setModalAudit({
+      auditId: group.auditId,
+      title: group.summary?.title || group.auditId,
+      status: group.summary?.status || '-',
+    });
+    setModalFindings(group.findings as LeadFinding[]);
+    setAuditModalOpen(true);
+    setLoadingAuditDetail(true);
+    try {
+      const res = await getAuditPlanById(group.auditId);
+      const detail = res?.data?.data ?? res?.data ?? res;
+      setModalAuditDetail(buildAuditMetadata(detail));
+    } catch (err) {
+      console.warn('Failed to load audit detail', group.auditId, err);
+      setModalAuditDetail(null);
+    } finally {
+      setLoadingAuditDetail(false);
+    }
+  };
+
+  const closeAuditModal = () => {
+    setAuditModalOpen(false);
+    setModalAudit(null);
+    setModalAuditDetail(null);
+    setModalFindings([]);
+  };
+
+  // Update modal findings from current findings state
+  const updateModalFindings = useCallback(() => {
+    if (!modalAudit) return;
+    const auditFindings = findings.filter(f => f.auditId === modalAudit.auditId);
+    setModalFindings(auditFindings as LeadFinding[]);
+  }, [findings, modalAudit]);
+
+  // Auto-update modal findings when findings state changes (e.g., after approve/reject)
+  useEffect(() => {
+    if (auditModalOpen && modalAudit && findings.length > 0) {
+      updateModalFindings();
+    }
+  }, [findings, auditModalOpen, modalAudit, updateModalFindings]);
 
   return (
     <MainLayout>
@@ -220,7 +374,7 @@ const ReviewFindings = () => {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-2">
+        {/* <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setFilter('all')}
             className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-medium transition-colors ${
@@ -253,172 +407,111 @@ const ReviewFindings = () => {
           >
             Returned ({stats.returned})
           </button>
-        </div>
+        </div> */}
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Pending</div>
-            <div className="text-xl sm:text-2xl font-bold text-yellow-600 mt-1">{stats.pending}</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Approved</div>
-            <div className="text-xl sm:text-2xl font-bold text-green-600 mt-1">{stats.approved}</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-3 sm:p-4">
-            <div className="text-xs sm:text-sm text-gray-600">Returned</div>
-            <div className="text-xl sm:text-2xl font-bold text-orange-600 mt-1">{stats.returned}</div>
-          </div>
+<div className="mb-4 flex items-center gap-4">
+          <input
+            className="border rounded px-3 py-2 flex-1"
+            placeholder="Search audits by name or ID..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
+      
         </div>
-
-        {/* Findings List */}
+        {/* Audits list */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900">My Findings & Actions</h2>
+          <div className="px-4 sm:px-6 py-3 border-b border-gray-200 flex items-center justify-between">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Audits</h2>
+            <span className="text-xs text-gray-500">{groupedAudits.length} records</span>
           </div>
 
           {loading ? (
             <div className="p-6 text-center text-gray-600">Loading data...</div>
-          ) : filteredFindings.length === 0 ? (
+          ) : groupedAudits.length === 0 ? (
             <div className="p-6 text-center text-gray-600">No data available</div>
           ) : (
-            <div className="divide-y divide-gray-200">
-              {filteredFindings.map((finding) => (
-                <div key={finding.findingId} className="p-3 sm:p-4 lg:p-6 hover:bg-gray-50">
-                  <div className="flex flex-col gap-3 sm:gap-4">
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                      <div className="flex-1 space-y-3 sm:space-y-4">
-                    {/* Finding Info */}
-                    <div>
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-                        <h3 className="text-base sm:text-lg font-semibold text-gray-900">{finding.title}</h3>
-                        {getStatusBadge(finding.status)}
+            <div className="divide-y divide-gray-100">
+              {groupedAudits.map(group => (
+                <div key={group.auditId} className="p-4 sm:p-6 space-y-3">
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <h3 className="text-sm sm:text-base font-semibold text-gray-900">
+                          {group.summary?.title || group.auditId}
+                        </h3>
+                        {group.summary?.status && (
+                          <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
+                            {group.summary.status}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs sm:text-sm text-gray-600 mb-2">{finding.description}</p>
-                      <div className="text-xs sm:text-sm text-gray-500 space-y-1">
-                        <p>Severity: <span className="font-medium">{finding.severity}</span></p>
-                        <p>Deadline: <span className="font-medium">{formatDate(finding.deadline || '')}</span></p>
-                      </div>
+                      <p className="text-xs sm:text-sm text-gray-500">
+                        Type: {group.summary?.type || '-'} • Scope: {group.summary?.scope || '-'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Findings: <span className="font-medium text-gray-900">{group.findings.length}</span>
+                      </p>
                     </div>
-
-                    {/* Finding Attachments */}
-                    {finding.findingAttachments.length > 0 && (
-                      <div className="p-3 bg-blue-50 rounded-lg">
-                        <p className="text-xs sm:text-sm font-medium text-gray-700 mb-2">
-                          📎 Finding Attachments ({finding.findingAttachments.length})
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {finding.findingAttachments.map((file) => (
-                            <a
-                              key={file.attachmentId}
-                              href={file.filePath || file.blobPath}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 px-2 sm:px-3 py-2 bg-white rounded-lg text-xs sm:text-sm hover:bg-blue-100 transition-colors"
-                            >
-                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                              <span className="text-gray-700 truncate max-w-[150px] sm:max-w-none">{file.fileName}</span>
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    {finding.actions.length > 0 && (
-                      <div className="space-y-3">
-                        <p className="text-xs sm:text-sm font-semibold text-gray-700">Actions ({finding.actions.length})</p>
-                        {finding.actions.map((action) => {
-                          console.log('[Action]', action.title, 'Status:', action.status);
-                          return (
-                          <div key={action.actionId} className="p-3 bg-gray-50 rounded-lg space-y-3">
-                            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-                              <div className="flex-1 space-y-2">
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                  <span className="text-sm font-medium text-gray-900">{action.title}</span>
-                                  {getStatusBadge(action.status)}
-                                </div>
-                                <p className="text-xs text-gray-600">{action.description}</p>
-                                <div className="text-xs text-gray-500 space-y-1">
-                                  <p>Assigned: <span className="font-medium text-gray-700">{action.assignedUserName || action.assignedTo}</span></p>
-                                  <p>Progress: {action.progressPercent}%</p>
-                                  <p>Due: {formatDate(action.dueDate || '')}</p>
-                                </div>
-                                {action.reviewFeedback && (
-                                  <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                                    <p className="font-semibold text-gray-700 mb-1">💬 Feedback:</p>
-                                    <p className="text-gray-600">{action.reviewFeedback}</p>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Action Buttons - Only show for Approved status (waiting for Auditor review) */}
-                              {action.status === 'Approved' && (
-                                <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-                                  <button
-                                    onClick={() => handleApproveClick(action)}
-                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm whitespace-nowrap"
-                                  >
-                                    ✓ Approve
-                                  </button>
-                                  <button
-                                    onClick={() => handleReturnClick(action)}
-                                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium text-sm whitespace-nowrap"
-                                  >
-                                    ↩ Return
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Action Attachments */}
-                            {action.attachments.length > 0 && (
-                              <div className="p-2 bg-green-50 rounded">
-                                <p className="text-xs font-medium text-gray-700 mb-2">
-                                  📎 Evidence ({action.attachments.length})
-                                </p>
-                                <div className="flex flex-wrap gap-1">
-                                  {action.attachments.map((file) => (
-                                    <a
-                                      key={file.attachmentId}
-                                      href={file.filePath || file.blobPath}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center gap-1 px-2 py-1 bg-white rounded text-xs hover:bg-green-100 transition-colors"
-                                    >
-                                      <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                      </svg>
-                                      <span className="text-gray-700 truncate max-w-[100px]">{file.fileName}</span>
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                      
-                  {/* View Detail Button */}
-                  <button
-                    onClick={() => handleViewDetail(finding.findingId)}
-                    className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm whitespace-nowrap"
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        onClick={() => openAuditModal(group)}
+                        className="text-sm bg-green-600 text-white px-3 py-1 rounded"
                       >
-                        View detail
+                        View 
                       </button>
                     </div>
                   </div>
+
+                  {/* <div className="space-y-3">
+                    {group.findings.map(finding => (
+                      <div key={finding.findingId} className="border border-gray-100 rounded-lg p-3 sm:p-4">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                              <span className="text-sm font-semibold text-gray-900">{finding.title}</span>
+                              {getStatusBadge(finding.status)}
+                            </div>
+                            <p className="text-xs sm:text-sm text-gray-600 line-clamp-2">{finding.description}</p>
+                            <div className="text-xs text-gray-500 space-y-0.5">
+                              <p>Severity: <span className="font-medium">{finding.severity}</span></p>
+                              <p>Deadline: <span className="font-medium">{formatDate(finding.deadline || '')}</span></p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleViewDetail(finding.findingId)}
+                            className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs sm:text-sm font-medium whitespace-nowrap"
+                          >
+                            View detail
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div> */}
                 </div>
               ))}
             </div>
           )}
         </div>
       </div>
+      <AuditDetailsModal
+        open={auditModalOpen && !!modalAudit}
+        audit={modalAudit || { auditId: '', title: '' }}
+        auditDetail={modalAuditDetail || null}
+        findings={modalFindings}
+        loading={false}
+        loadingAuditDetail={loadingAuditDetail}
+        processingAction={processing}
+        onClose={closeAuditModal}
+        onActionDecision={(action, type) => {
+          if (type === 'approve') {
+            handleApproveClick(action as ActionWithDetails);
+          } else {
+            handleReturnClick(action as ActionWithDetails);
+          }
+        }}
+        showActionControls={true}
+        auditorMode={true}
+      />
 
       {/* Feedback Modal */}
       {showFeedbackModal && selectedAction && (
@@ -459,11 +552,7 @@ const ReviewFindings = () => {
                 {processing ? 'Processing...' : feedbackType === 'approve' ? 'Confirm approval' : 'Confirm return'}
               </button>
               <button
-                onClick={() => {
-                  setShowFeedbackModal(false);
-                  setSelectedAction(null);
-                  setFeedback('');
-                }}
+                onClick={closeFeedbackModal}
                 disabled={processing}
                 className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium disabled:opacity-50"
               >

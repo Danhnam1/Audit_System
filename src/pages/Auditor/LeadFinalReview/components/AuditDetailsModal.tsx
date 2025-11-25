@@ -11,6 +11,9 @@ type AuditDetailsModalProps = {
   processingAction: boolean;
   onClose: () => void;
   onActionDecision: (action: ActionWithDetails, type: 'approve' | 'reject') => void;
+  showActionControls?: boolean;
+  auditeeOwnerMode?: boolean; // When true, show approve buttons for Reviewed/InProgress/Active/Open statuses
+  auditorMode?: boolean; // When true, show approve buttons for Verified status (approved by AuditeeOwner, pending Auditor review)
 };
 
 const statusMap: Record<
@@ -29,6 +32,7 @@ const statusMap: Record<
   Rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700' },
   Returned: { label: 'Returned', color: 'bg-orange-100 text-orange-700' },
   Closed: { label: 'Closed', color: 'bg-gray-100 text-gray-700' },
+  Completed: { label: 'Completed', color: 'bg-green-100 text-gray-700' },
 };
 
 const getStatusBadge = (status?: string) => {
@@ -64,6 +68,9 @@ export const AuditDetailsModal = ({
   processingAction,
   onClose,
   onActionDecision,
+  showActionControls = true,
+  auditeeOwnerMode = false,
+  auditorMode = false,
 }: AuditDetailsModalProps) => {
   const stats = useMemo(() => {
     const actions = findings.flatMap(f => f.actions || []);
@@ -361,21 +368,32 @@ export const AuditDetailsModal = ({
                                 )}
                               </div>
 
-                              {action.status === 'Approved' && (
+                                  {showActionControls && (() => {
+                                // For AuditeeOwner: show buttons for Reviewed/InProgress/Active/Open (not yet approved by AuditeeOwner)
+                                if (auditeeOwnerMode) {
+                                  return ['Reviewed', 'InProgress', 'Active', 'Open'].includes(action.status || '');
+                                }
+                                // For Auditor: show buttons for Verified (approved by AuditeeOwner, pending Auditor review)
+                                if (auditorMode) {
+                                  return action.status === 'Verified';
+                                }
+                                // For Lead Auditor: show buttons only for Approved (already approved by Auditor, ready for final review)
+                                return action.status === 'Approved';
+                              })() && (
                                 <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                                   <button
                                     onClick={() => onActionDecision(action, 'approve')}
                                     disabled={processingAction}
                                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm disabled:opacity-50"
                                   >
-                                    ✓ Approve
+                                     Approve
                                   </button>
                                   <button
                                     onClick={() => onActionDecision(action, 'reject')}
                                     disabled={processingAction}
                                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-sm disabled:opacity-50"
                                   >
-                                    ✕ Reject
+                                     Reject
                                   </button>
                                 </div>
                               )}

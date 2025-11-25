@@ -456,7 +456,7 @@ export default function LeadFinalReview() {
                   <td className="px-4 py-3 text-sm">{a.status || '-'}</td>
                   <td className="px-4 py-3">
                     <button className="text-sm bg-green-600 text-white px-3 py-1 rounded" onClick={() => loadFindingsForAudit(a)}>
-                      View details
+                      View 
                     </button>
                   </td>
                 </tr>

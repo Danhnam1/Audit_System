@@ -6,6 +6,71 @@ import { getFindingById, approveFindingAction, returnFindingAction, type Finding
 import { getActionsByFinding, type Action } from '../../../api/actions';
 import { getAttachments, type Attachment } from '../../../api/attachments';
 import { getUserById } from '../../../api/adminUsers';
+import { fetchAuditSummary, type AuditSummary } from '../../../utils/auditSummary';
+import { getAuditPlanById } from '../../../api/audits';
+import { unwrap } from '../../../utils/normalize';
+import { AuditDetailsModal } from '../LeadFinalReview/components/AuditDetailsModal';
+import type { Audit as LeadAudit, AuditMetadata, Finding as LeadFinding } from '../LeadFinalReview/types';
+
+const buildAuditMetadata = (detail: any): AuditMetadata => {
+  const auditNode = detail?.audit || detail || {};
+
+  const departments = unwrap(detail?.scopeDepartments).map((dept: any, idx: number) => ({
+    deptId: dept?.deptId ?? `dept_${idx}`,
+    name: dept?.deptName || dept?.name || `Department ${idx + 1}`,
+    status: dept?.status,
+  }));
+
+  const criteria = unwrap(detail?.criteria).map((crit: any, idx: number) => ({
+    criteriaId: crit?.criteriaId || crit?.id || `criteria_${idx}`,
+    name: crit?.criteriaName || crit?.name || `Criterion ${idx + 1}`,
+    status: crit?.status,
+  }));
+
+  const schedules = unwrap(detail?.schedules).map((schedule: any, idx: number) => ({
+    scheduleId: schedule?.scheduleId || schedule?.id || `schedule_${idx}`,
+    milestoneName: schedule?.milestoneName || schedule?.name || `Milestone ${idx + 1}`,
+    dueDate: schedule?.dueDate,
+    status: schedule?.status,
+    notes: schedule?.notes,
+  }));
+
+  const team = unwrap(detail?.auditTeams).map((member: any, idx: number) => ({
+    userId: member?.userId,
+    name: member?.fullName || member?.name || `Member ${idx + 1}`,
+    roleInTeam: member?.roleInTeam,
+    isLead: member?.isLead,
+    email: member?.email,
+  }));
+
+  return {
+    auditId: auditNode?.auditId || auditNode?.id || detail?.auditId || '',
+    title: auditNode?.title || auditNode?.auditTitle || detail?.title || '',
+    type: auditNode?.type || detail?.type || '',
+    scope: auditNode?.scope || detail?.scope || '',
+    objective: auditNode?.objective || detail?.objective || '',
+    startDate: auditNode?.startDate || auditNode?.periodFrom || detail?.startDate || detail?.periodFrom,
+    endDate: auditNode?.endDate || auditNode?.periodTo || detail?.endDate || detail?.periodTo,
+    status: auditNode?.status || detail?.status || '',
+    createdByName:
+      detail?.createdBy?.fullName ||
+      detail?.createdByUser?.fullName ||
+      auditNode?.createdBy?.fullName ||
+      auditNode?.createdByUser?.fullName ||
+      '',
+    createdByEmail:
+      detail?.createdBy?.email ||
+      detail?.createdByUser?.email ||
+      auditNode?.createdBy?.email ||
+      auditNode?.createdByUser?.email ||
+      '',
+    createdAt: auditNode?.createdAt || detail?.createdAt || '',
+    departments,
+    criteria,
+    team,
+    schedules,
+  };
+};
 
 interface ActionWithDetails extends Action {
   attachments: Attachment[];
@@ -25,6 +90,11 @@ const ReviewFindingDetail = () => {
   const [feedbackType, setFeedbackType] = useState<'approve' | 'return'>('approve');
   const [feedback, setFeedback] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [auditSummary, setAuditSummary] = useState<AuditSummary | null>(null);
+  const [auditModalOpen, setAuditModalOpen] = useState(false);
+  const [modalAudit, setModalAudit] = useState<LeadAudit | null>(null);
+  const [modalAuditDetail, setModalAuditDetail] = useState<AuditMetadata | null>(null);
+  const [loadingAuditDetail, setLoadingAuditDetail] = useState(false);
 
   const fetchData = async () => {
     if (!findingId) return;
@@ -34,6 +104,9 @@ const ReviewFindingDetail = () => {
       // Fetch finding
       const findingData = await getFindingById(findingId);
       setFinding(findingData);
+      if (findingData?.auditId) {
+        fetchAuditSummary(findingData.auditId).then(setAuditSummary);
+      }
 
       // Fetch finding attachments
       const findingAtts = await getAttachments('finding', findingId);
@@ -47,6 +120,7 @@ const ReviewFindingDetail = () => {
         actionsData.map(async (action) => {
           let assignedUserName = action.assignedTo;
           const attachments = await getAttachments('Action', action.actionId).catch(() => []);
+          console.log("STATUS OF ACTION:", action.status);
 
           // Fetch user name if GUID
           if (action.assignedTo && action.assignedTo.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
@@ -63,11 +137,14 @@ const ReviewFindingDetail = () => {
       );
 
       setActions(actionsWithDetails);
+    
     } catch (err: any) {
       console.error('Failed to fetch data', err);
       toast.error('Unable to load data');
+
     } finally {
       setLoading(false);
+
     }
   };
 
@@ -119,6 +196,33 @@ const ReviewFindingDetail = () => {
     }
   };
 
+  const handleOpenAuditModal = async () => {
+    if (!finding?.auditId) return;
+    setModalAudit({
+      auditId: finding.auditId,
+      title: auditSummary?.title || finding.auditId,
+      status: auditSummary?.status || finding.status,
+    });
+    setAuditModalOpen(true);
+    setLoadingAuditDetail(true);
+    try {
+      const res = await getAuditPlanById(finding.auditId);
+      const detail = res?.data?.data ?? res?.data ?? res;
+      setModalAuditDetail(buildAuditMetadata(detail));
+    } catch (err) {
+      console.warn('Failed to load audit detail', finding.auditId, err);
+      setModalAuditDetail(null);
+    } finally {
+      setLoadingAuditDetail(false);
+    }
+  };
+
+  const closeAuditModal = () => {
+    setAuditModalOpen(false);
+    setModalAudit(null);
+    setModalAuditDetail(null);
+  };
+
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
       Open: { label: 'Open', color: 'bg-blue-100 text-blue-700' },
@@ -130,6 +234,7 @@ const ReviewFindingDetail = () => {
       Rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700' },
       Returned: { label: 'Returned', color: 'bg-orange-100 text-orange-700' },
       Closed: { label: 'Closed', color: 'bg-gray-100 text-gray-700' },
+      Completed: { label: 'Completed', color: 'bg-green-100 text-gray-700' },
     };
     const info = statusMap[status] || { label: status, color: 'bg-gray-100 text-gray-700' };
     return (
@@ -184,16 +289,31 @@ const ReviewFindingDetail = () => {
       <div className="space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-2">
-          <button
-            onClick={() => navigate('/auditor/review-findings')}
-            className="text-blue-600 hover:text-blue-700 flex items-center gap-1 text-sm sm:text-base w-fit"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back
-          </button>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <button
+              onClick={() => navigate('/auditor/review-findings')}
+              className="text-blue-600 hover:text-blue-700 flex items-center gap-1 text-sm sm:text-base w-fit"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
+            {finding?.auditId && (
+              <button
+                onClick={handleOpenAuditModal}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-xs sm:text-sm font-medium w-fit"
+              >
+                View audit details
+              </button>
+            )}
+          </div>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Finding & Actions Detail</h1>
+          {auditSummary && (
+            <p className="text-xs sm:text-sm text-gray-500">
+              Audit: <span className="font-semibold text-gray-800">{auditSummary.title}</span> • {auditSummary.status}
+            </p>
+          )}
         </div>
 
         {/* Finding Details */}
@@ -303,21 +423,22 @@ const ReviewFindingDetail = () => {
                     </div>
 
                     {/* Action Buttons */}
-                    {action.status === 'Approved' && (
+                    {/* Auditor approves actions with Verified status (approved by AuditeeOwner) */}
+                    {action.status === 'Verified' && (
                       <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto lg:ml-4">
                         <button
                           onClick={() => handleApproveClick(action)}
                           disabled={processing}
                           className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
-                          ✓ Approve
+                          Approve
                         </button>
                         <button
                           onClick={() => handleReturnClick(action)}
                           disabled={processing}
                           className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                         >
-                          ↩ Return
+                          Return
                         </button>
                       </div>
                     )}
@@ -420,6 +541,26 @@ const ReviewFindingDetail = () => {
           </div>
         </div>
       )}
+
+      <AuditDetailsModal
+        open={auditModalOpen && !!modalAudit}
+        audit={modalAudit || { auditId: '', title: '' }}
+        auditDetail={modalAuditDetail || null}
+        findings={finding ? ([{ ...finding, actions, findingAttachments }] as LeadFinding[]) : []}
+        loading={false}
+        loadingAuditDetail={loadingAuditDetail}
+        processingAction={processing}
+        onClose={closeAuditModal}
+        onActionDecision={(action, type) => {
+          if (type === 'approve') {
+            handleApproveClick(action as ActionWithDetails);
+          } else {
+            handleReturnClick(action as ActionWithDetails);
+          }
+        }}
+        showActionControls={true}
+        auditorMode={true}
+      />
     </MainLayout>
   );
 };
