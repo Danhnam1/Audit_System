@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom';
 import { Pagination, Button } from '../../../components';
 import { getAuditCriteria, createAuditCriterion, updateAuditCriterion, deleteAuditCriterion, type AuditCriterionDto, type CreateCriterionDto } from '../../../api/auditCriteria';
 import { toast } from 'react-toastify';
-import { getStatusColor } from '../../../constants';
 
 const AdminCriteriaManagement = () => {
   const { user } = useAuth();
@@ -55,7 +54,7 @@ const AdminCriteriaManagement = () => {
         name: form.name.trim(),
         description: form.description?.trim() || undefined,
         referenceCode: form.referenceCode?.trim() || undefined,
-        publishedBy: form.publishedBy?.trim() || null,
+        publishedBy: '', // Always send empty string as backend requires this field
       });
       setForm({ name: '', description: '', referenceCode: '', publishedBy: null });
       setShowCreateForm(false);
@@ -94,7 +93,7 @@ const AdminCriteriaManagement = () => {
         name: form.name.trim(),
         description: form.description?.trim() || undefined,
         referenceCode: form.referenceCode?.trim() || undefined,
-        publishedBy: form.publishedBy?.trim() || null,
+        publishedBy: '', // Always send empty string as backend requires this field
       });
       setEditOpen(false);
       setEditingCriterion(null);
@@ -150,13 +149,12 @@ const AdminCriteriaManagement = () => {
             <h1 className="text-2xl font-semibold text-primary-600">Criteria Management</h1>
             <p className="text-gray-600 text-sm mt-1">Create, update, and manage audit criteria (standards)</p>
           </div>
-          <Button
+          <button
             onClick={() => setShowCreateForm(true)}
-            variant="primary"
-            size="md"
+            className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
           >
             + Create Criteria
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -202,16 +200,8 @@ const AdminCriteriaManagement = () => {
                 ></textarea>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Published By</label>
-                <input
-                  value={form.publishedBy || ''}
-                  onChange={(e) => setForm({ ...form, publishedBy: e.target.value || null })}
-                  type="text"
-                  placeholder="e.g., CAAV, ICAO"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                />
-              </div>
+              {/* Published By field hidden but sent as empty string to backend */}
+              <input type="hidden" value="" />
 
               <div className="flex gap-3 pt-2">
                 <Button type="submit" disabled={creating} isLoading={creating} variant="primary" size="md">
@@ -270,16 +260,8 @@ const AdminCriteriaManagement = () => {
                 ></textarea>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Published By</label>
-                <input
-                  value={form.publishedBy || ''}
-                  onChange={(e) => setForm({ ...form, publishedBy: e.target.value || null })}
-                  type="text"
-                  placeholder="Published by"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                />
-              </div>
+              {/* Published By field hidden but sent as empty string to backend */}
+              <input type="hidden" value="" />
 
               <div className="flex gap-3 pt-2">
                 <Button type="submit" disabled={updating} isLoading={updating} variant="primary" size="md">
@@ -316,8 +298,7 @@ const AdminCriteriaManagement = () => {
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Reference Code</th>
                       <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Published By</th>
-                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                      
                       <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -338,30 +319,27 @@ const AdminCriteriaManagement = () => {
                           <td className="px-6 py-4">
                             <p className="text-sm text-gray-700 line-clamp-2">{criterion.description || '—'}</p>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm text-gray-700">{criterion.publishedBy || '—'}</span>
-                          </td>
-                          <td className="px-6 py-4 text-center whitespace-nowrap">
-                            <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(criterion.status || 'Active')}`}>
-                              {criterion.status || 'Active'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-2">
-                              <Button
+                          
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="flex items-center justify-center gap-3">
+                              <button
                                 onClick={() => openEdit(criterion)}
-                                variant="primary"
-                                size="sm"
+                                className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                                title="Edit"
                               >
-                                Edit
-                              </Button>
-                              <Button
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                              <button
                                 onClick={() => openDeleteModal(criterion)}
-                                variant="danger"
-                                size="sm"
+                                className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Delete"
                               >
-                                Delete
-                              </Button>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -378,7 +356,7 @@ const AdminCriteriaManagement = () => {
                 </table>
               </div>
 
-              {totalPages > 1 && (
+              {criteria.length > 0 && (
                 <div className="px-6 py-4 border-t border-gray-200 flex justify-center">
                   <Pagination
                     currentPage={currentPage}

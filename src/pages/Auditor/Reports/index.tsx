@@ -832,7 +832,7 @@ const SQAStaffReports = () => {
                   
                   const reason = noteFromApi || 
                     (summary as any)?.reason || (summary as any)?.note ||
-                    (selectedAuditRow as any)?.reason || (selectedAuditRow as any)?.note;
+                      (selectedAuditRow as any)?.reason || (selectedAuditRow as any)?.note;
                   
                   return (
                     <button

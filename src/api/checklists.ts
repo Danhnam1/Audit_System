@@ -1,4 +1,5 @@
-import { apiClient } from './index';
+import apiClient from './client';
+import { unwrap } from '../utils/normalize';
 
 const unwrapArray = (data: any): any[] => {
   if (!data) return [];
@@ -13,14 +14,123 @@ const unwrapArray = (data: any): any[] => {
   return [];
 };
 
-export const getChecklistTemplates = async () => {
-  const res = await apiClient.get('/ChecklistTemplates');
-  return unwrapArray(res.data);
+// ChecklistTemplate interfaces
+export interface ChecklistTemplateDto {
+  $id?: string;
+  templateId?: string;
+  name: string;
+  version?: string;
+  description?: string;
+  createdBy?: string;
+  createdAt?: string;
+  status?: string;
+  isActive?: boolean;
+}
+
+export interface CreateChecklistTemplateDto {
+  name: string;
+  version?: string;
+  description?: string;
+  status?: string;
+  isActive?: boolean;
+}
+
+export interface UpdateChecklistTemplateDto {
+  name?: string;
+  version?: string;
+  description?: string;
+  status?: string;
+  isActive?: boolean;
+}
+
+// ChecklistItem interfaces
+export interface ChecklistItemDto {
+  $id?: string;
+  itemId?: string;
+  templateId: string;
+  section?: string;
+  order?: number;
+  questionText: string;
+  answerType?: string;
+  status?: string;
+  severityDefault?: string;
+}
+
+export interface CreateChecklistItemDto {
+  templateId: string;
+  section?: string;
+  order?: number;
+  questionText: string;
+  answerType?: string;
+  status?: string;
+  severityDefault?: string;
+}
+
+export interface UpdateChecklistItemDto {
+  section?: string;
+  order?: number;
+  questionText?: string;
+  answerType?: string;
+  status?: string;
+  severityDefault?: string;
+}
+
+// ChecklistTemplate CRUD
+export const getChecklistTemplates = async (): Promise<ChecklistTemplateDto[]> => {
+  const res: any = await apiClient.get('/ChecklistTemplates');
+  const values: ChecklistTemplateDto[] = unwrap(res?.$values || res?.values || res?.data || res);
+  return values;
 };
 
-export const getChecklistItemsByTemplate = async (templateId: string) => {
-  const res = await apiClient.get(`/ChecklistItems/template/${templateId}`);
-  return unwrapArray(res.data);
+export const getChecklistTemplateById = async (id: string): Promise<ChecklistTemplateDto> => {
+  const res: any = await apiClient.get(`/ChecklistTemplates/${id}`);
+  return res.data || res;
+};
+
+export const createChecklistTemplate = async (data: CreateChecklistTemplateDto): Promise<ChecklistTemplateDto> => {
+  const res: any = await apiClient.post('/ChecklistTemplates', data);
+  return res.data || res;
+};
+
+export const updateChecklistTemplate = async (id: string, data: UpdateChecklistTemplateDto): Promise<ChecklistTemplateDto> => {
+  const res: any = await apiClient.put(`/ChecklistTemplates/${id}`, data);
+  return res.data || res;
+};
+
+export const deleteChecklistTemplate = async (id: string): Promise<void> => {
+  await apiClient.delete(`/ChecklistTemplates/${id}`);
+};
+
+// ChecklistItem CRUD
+export const getChecklistItems = async (): Promise<ChecklistItemDto[]> => {
+  const res: any = await apiClient.get('/ChecklistItems');
+  const values: ChecklistItemDto[] = unwrap(res?.$values || res?.values || res?.data || res);
+  return values;
+};
+
+export const getChecklistItemsByTemplate = async (templateId: string): Promise<ChecklistItemDto[]> => {
+  const res: any = await apiClient.get(`/ChecklistItems/template/${templateId}`);
+  const values: ChecklistItemDto[] = unwrapArray(res?.data || res);
+  return values;
+};
+
+export const getChecklistItemById = async (id: string): Promise<ChecklistItemDto> => {
+  const res: any = await apiClient.get(`/ChecklistItems/${id}`);
+  return res.data || res;
+};
+
+export const createChecklistItem = async (data: CreateChecklistItemDto): Promise<ChecklistItemDto> => {
+  const res: any = await apiClient.post('/ChecklistItems', data);
+  return res.data || res;
+};
+
+export const updateChecklistItem = async (id: string, data: UpdateChecklistItemDto): Promise<ChecklistItemDto> => {
+  const res: any = await apiClient.put(`/ChecklistItems/${id}`, data);
+  return res.data || res;
+};
+
+export const deleteChecklistItem = async (id: string): Promise<void> => {
+  await apiClient.delete(`/ChecklistItems/${id}`);
 };
 
 export const getAuditChecklistItems = async (auditId: string) => {

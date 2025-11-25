@@ -36,6 +36,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <UsersIcon />, label: 'Department Management', path: '/admin/departments' },
         { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
         { icon: <QualityIcon />, label: 'Criteria Management', path: '/admin/criteria' },
+        { icon: <ClipboardCheckIcon />, label: 'Checklist Management', path: '/admin/checklists' },
         { icon: <AuditIcon />, label: 'Audit Logs', path: '/admin/audit-logs' },
         { icon: <ReportsIcon />, label: 'Reports', path: '/admin/reports' },
         { icon: <DatabaseIcon />, label: 'Database', path: '/admin/database' },
