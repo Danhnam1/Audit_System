@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { toast } from 'react-toastify';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getAuditPlans, getAuditSummary, approveAuditReport, rejectAuditReport } from '../../../api/audits';
@@ -29,6 +31,11 @@ const AuditorLeadReports = () => {
   const [reportSearch, setReportSearch] = useState<string>('');
   const [findingsSearch, setFindingsSearch] = useState<string>('');
   const [findingsSeverity, setFindingsSeverity] = useState<string>('all');
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [approveAuditId, setApproveAuditId] = useState<string | null>(null);
+  const [rejectAuditId, setRejectAuditId] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState('');
 
   const isRelevantToLead = (status: string) => {
     const s = String(status || '').toLowerCase();
@@ -155,38 +162,66 @@ const AuditorLeadReports = () => {
     return s.includes('submit') || s.includes('pending') || s.includes('underreview') || s.includes('under review');
   };
 
-  const handleApprove = async (auditId: string) => {
-    setActionLoading(auditId);
+  const openApproveModal = (auditId: string) => {
+    setApproveAuditId(auditId);
+    setShowApproveModal(true);
+  };
+
+  const openRejectModal = (auditId: string) => {
+    setRejectAuditId(auditId);
+    setRejectNote('');
+    setShowRejectModal(true);
+  };
+
+  const closeApproveModal = () => {
+    setShowApproveModal(false);
+    setApproveAuditId(null);
+  };
+
+  const closeRejectModal = () => {
+    setShowRejectModal(false);
+    setRejectAuditId(null);
+    setRejectNote('');
+  };
+
+  const handleApprove = async () => {
+    if (!approveAuditId) return;
+    setActionLoading(approveAuditId);
     setActionMsg(null);
     try {
-      await approveAuditReport(auditId);
-      setAudits(prev => prev.map(a => String(a.auditId || a.id || a.$id) === auditId ? { ...a, status: 'Completed' } : a));
-      const title = rows.find(r => r.auditId === auditId)?.title || 'Audit';
-      setActionMsg(`${title} status changed to Completed.`);
-    } catch (err) {
+      await approveAuditReport(approveAuditId);
+      setAudits(prev => prev.map(a => String(a.auditId || a.id || a.$id) === approveAuditId ? { ...a, status: 'Completed' } : a));
+      const title = rows.find(r => r.auditId === approveAuditId)?.title || 'Audit';
+      toast.success('Approved the Audit Report successfully.');
+      closeApproveModal();
+      await reload();
+    } catch (err: any) {
       console.error('Approve failed', err);
-      setActionMsg('Approve thất bại. Vui lòng thử lại.');
+      const errorMessage = err?.response?.data?.message || err?.message || String(err);
+      toast.error('Approve failed: ' + errorMessage);
     } finally {
       setActionLoading('');
     }
   };
 
-  const handleReject = async (auditId: string) => {
-    const reason = (window.prompt('Nhập lý do từ chối (note cho Auditor):', '') || '').trim();
-    if (!reason) {
-      alert('Vui lòng nhập lý do từ chối.');
+  const handleReject = async () => {
+    if (!rejectAuditId) return;
+    if (!rejectNote.trim()) {
+      toast.error('Vui lòng nhập lý do từ chối.');
       return;
     }
-    setActionLoading(auditId);
+    setActionLoading(rejectAuditId);
     setActionMsg(null);
     try {
-      await rejectAuditReport(auditId, { reason });
-      setAudits(prev => prev.map(a => String(a.auditId || a.id || a.$id) === auditId ? { ...a, status: 'Returned' } : a));
-      const title = rows.find(r => r.auditId === auditId)?.title || 'Audit';
-      setActionMsg(`${title} đã bị returned. Lý do: ${reason}`);
-    } catch (err) {
+      await rejectAuditReport(rejectAuditId, { note: rejectNote.trim() });
+      setAudits(prev => prev.map(a => String(a.auditId || a.id || a.$id) === rejectAuditId ? { ...a, status: 'Returned' } : a));
+      toast.success('Rejected the Audit Report successfully.');
+      closeRejectModal();
+      await reload();
+    } catch (err: any) {
       console.error('Reject failed', err);
-      setActionMsg('Reject thất bại. Vui lòng thử lại.');
+      const errorMessage = err?.response?.data?.message || err?.message || String(err);
+      toast.error('Reject failed: ' + errorMessage);
     } finally {
       setActionLoading('');
     }
@@ -324,8 +359,8 @@ const AuditorLeadReports = () => {
           setStatusFilter={setStatusFilter}
           needsDecision={needsDecision}
           onView={(id: string) => { setSelectedAuditId(id); setShowSummary(true); }}
-          onApprove={handleApprove}
-          onReject={handleReject}
+          onApprove={openApproveModal}
+          onReject={openRejectModal}
           actionLoading={actionLoading}
           actionMsg={actionMsg}
           getStatusColor={getStatusColor}
@@ -366,6 +401,91 @@ const AuditorLeadReports = () => {
               />
             )}
           </div>
+        )}
+
+        {/* Approve Confirmation Modal */}
+        {showApproveModal && approveAuditId && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={closeApproveModal}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Approve Audit Report
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Are you sure you want to approve this audit report?
+                </p>
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={closeApproveModal}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleApprove}
+                    disabled={actionLoading === approveAuditId}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${actionLoading === approveAuditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved') + ' hover:opacity-90'}`}
+                  >
+                    {actionLoading === approveAuditId ? 'Approving...' : 'Approve'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Reject Confirmation Modal */}
+        {showRejectModal && rejectAuditId && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={closeRejectModal}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Reject Audit Report
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Please provide a reason for rejecting this audit report:
+                </p>
+                <textarea
+                  value={rejectNote}
+                  onChange={(e) => setRejectNote(e.target.value)}
+                  placeholder="Enter rejection reason (note)..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                  rows={4}
+                />
+                <div className="flex gap-3 justify-end mt-6">
+                  <button
+                    onClick={closeRejectModal}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleReject}
+                    disabled={actionLoading === rejectAuditId}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${actionLoading === rejectAuditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Rejected') + ' hover:opacity-90'}`}
+                  >
+                    {actionLoading === rejectAuditId ? 'Rejecting...' : 'Reject'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
       </div>
     </MainLayout>

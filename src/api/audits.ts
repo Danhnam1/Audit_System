@@ -84,6 +84,12 @@ export const rejectPlanContent = async (auditId: string, payload: { comment?: st
   const body = { auditId, comment: payload.comment ?? '' };
   return apiClient.post(`/Audits/${auditId}/reject-plan-content`, body) as any;
 };
+export const declinedPlanContent = async (auditId: string, payload: { comment?: string } = {}): Promise<any> => {
+  // Ensure comment is always a string (sending empty string if undefined)
+
+  const body = { auditId, comment: payload.comment ?? '' };
+  return apiClient.post(`/Audits/${auditId}/declined-plan-content`, body) as any;
+};
 
 // Approve plan (Director approves plan)
 export const approvePlan = async (auditId: string, payload: { comment?: string } = {}): Promise<any> => {
@@ -125,25 +131,24 @@ export const submitAudit = async (auditId: string): Promise<any> => {
 };
 
 // Approve audit report (Lead Auditor action)
-// New canonical endpoint per Swagger: /api/AuditReports/{auditId}/approve
 export const approveAuditReport = async (auditId: string): Promise<any> => {
-  return apiClient.post(`/AuditReports/${auditId}/approve`) as any;
+  return apiClient.post(`/AuditReports/${auditId}/approve`, {}) as any;
 };
 
 // Reject audit report (Lead Auditor action)
-// New canonical endpoint per Swagger: /api/AuditReports/{auditId}/reject
 export const rejectAuditReport = async (
   auditId: string,
-  payload: { reason?: string; comment?: string } = {}
+  payload: { note?: string; reason?: string; comment?: string } = {}
 ): Promise<any> => {
-  const reason = payload.reason ?? payload.comment ?? '';
+  // Priority: note > reason > comment
+  const note = payload.note ?? payload.reason ?? payload.comment ?? '';
   try {
-    // Primary (per Swagger): PUT with { reason }
-    return await apiClient.put(`/AuditReports/${auditId}/reject`, { reason }) as any;
+    // Primary (per Swagger): PUT with { note }
+    return await apiClient.put(`/AuditReports/${auditId}/reject`, { note }) as any;
   } catch (err) {
     // Fallback (legacy): POST with { auditId, comment }
     try {
-      return await apiClient.post(`/AuditReports/${auditId}/reject`, { auditId, comment: reason }) as any;
+      return await apiClient.post(`/AuditReports/${auditId}/reject`, { auditId, comment: note }) as any;
     } catch (err2) {
       throw err2;
     }

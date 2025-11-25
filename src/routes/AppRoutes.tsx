@@ -11,6 +11,8 @@ const LoginPage = lazy(() => import("../pages/Auth/LoginPage"));
 const AdminUserManagement = lazy(() => import("../pages/Admin/UserManagement"));
 const AdminDepartmentManagement = lazy(() => import("../pages/Admin/DepartmentManagement"));
 const AdminBackupRestore = lazy(() => import("../pages/Admin/BackupRestore"));
+const AdminCriteriaManagement = lazy(() => import("../pages/Admin/CriteriaManagement"));
+const AdminChecklistManagement = lazy(() => import("../pages/Admin/ChecklistManagement"));
 
 // Auditor pages
 const SQAStaffAuditPlanning = lazy(() => import("../pages/Auditor/AuditPlanning"));
@@ -122,6 +124,22 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Admin"]}>
                         <AdminDepartmentManagement />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/admin/criteria"
+                element={
+                    <ProtectedRoute allowedRoles={["Admin"]}>
+                        <AdminCriteriaManagement />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/admin/checklists"
+                element={
+                    <ProtectedRoute allowedRoles={["Admin"]}>
+                        <AdminChecklistManagement />
                     </ProtectedRoute>
                 }
             />

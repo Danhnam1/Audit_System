@@ -5,6 +5,8 @@ interface StatCardProps {
   value: number | string;
   icon: React.ReactNode;
   variant?: 'primary' | 'primary-light' | 'primary-medium' | 'primary-dark' | 'gray';
+  textColor?: string;
+  iconBgColor?: string;
   className?: string;
 }
 
@@ -13,6 +15,8 @@ export const StatCard: React.FC<StatCardProps> = ({
   value, 
   icon, 
   variant = 'primary-light',
+  textColor,
+  iconBgColor,
   className = '' 
 }) => {
   const getVariantStyles = () => {
@@ -57,15 +61,17 @@ export const StatCard: React.FC<StatCardProps> = ({
   };
 
   const styles = getVariantStyles();
+  const finalTextColor = textColor || styles.text;
+  const finalIconBg = iconBgColor || styles.iconBg;
 
   return (
     <div className={`bg-white rounded-xl border ${styles.border} shadow-md p-5 ${className}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600 font-medium">{title}</p>
-          <p className={`text-3xl font-bold ${styles.text} mt-1`}>{value}</p>
+          <p className={`text-3xl font-bold ${finalTextColor} mt-1`}>{value}</p>
         </div>
-        <div className={`${styles.iconBg} p-3 rounded-lg`}>
+        <div className={`${finalIconBg} p-3 rounded-lg`}>
           {icon}
         </div>
       </div>
