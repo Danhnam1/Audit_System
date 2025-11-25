@@ -1,4 +1,5 @@
 import React from 'react';
+import { Button } from '../../../../components';
 
 interface Row {
   auditId: string;
@@ -71,7 +72,7 @@ const AuditReportsTable: React.FC<Props> = ({
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit Title</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Created</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+              <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -82,20 +83,30 @@ const AuditReportsTable: React.FC<Props> = ({
                 <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>{r.status}</span></td>
                 <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-600">{r.createdDate}</span></td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex gap-3 items-center">
-                    <button onClick={() => onView(r.auditId)} className="text-primary-600 hover:text-primary-700 text-sm font-medium">View</button>
+                  <div className="flex gap-3 items-center justify-center">
+                    <Button 
+                      onClick={() => onView(r.auditId)} 
+                      size="sm" 
+                      variant="secondary"
+                    >
+                      View
+                    </Button>
                     {needsDecision(r.status) && (
                       <>
                         <button
                           onClick={() => onApprove(r.auditId)}
                           disabled={actionLoading === r.auditId}
-                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${actionLoading === r.auditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved')}`}
-                        >{actionLoading === r.auditId ? 'Đang duyệt...' : 'Approve'}</button>
+                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${actionLoading === r.auditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved') + ' hover:opacity-90'}`}
+                        >
+                          {actionLoading === r.auditId ? 'Approving...' : 'Approve'}
+                        </button>
                         <button
                           onClick={() => onReject(r.auditId)}
                           disabled={actionLoading === r.auditId}
-                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${actionLoading === r.auditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Rejected')}`}
-                        >{actionLoading === r.auditId ? 'Đang xử lý...' : 'Reject'}</button>
+                          className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${actionLoading === r.auditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Rejected') + ' hover:opacity-90'}`}
+                        >
+                          {actionLoading === r.auditId ? 'Rejecting...' : 'Reject'}
+                        </button>
                       </>
                     )}
                   </div>

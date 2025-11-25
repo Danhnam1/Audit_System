@@ -9,10 +9,12 @@ export const STATUS_COLORS = {
   // Completed/Success States - Xanh lục/Teal (Positive outcomes)
   'Approve': 'bg-sky-100 text-sky-700',
   'Approved': 'bg-sky-100 text-sky-700',
+  'Completed': 'bg-green-100 text-green-700',
   'Resolved': 'bg-green-600 text-white',
   'Verified': 'bg-teal-400 text-white',
   'Distributed': 'bg-teal-600 text-white',
   'Closed': 'bg-green-700 text-white',
+  'Published': 'bg-teal-500 text-white',
   
   // Validated/Confirmed States - Primary đậm
   'Validated': 'bg-primary-700 text-white',
@@ -45,11 +47,11 @@ export const STATUS_COLORS = {
 
   // Rejected/Negative States - Đỏ/Red
   'Rejected': 'bg-red-100 text-red-700',
-  'Returned': 'bg-gray-600 text-white',
+  'Returned': 'bg-orange-100 text-orange-700',
   
   // Special States
   'Reopened': 'bg-primary-800 text-white',
-  'Overdue': 'bg-primary-900 text-white',
+  'Overdue': 'bg-red-500 text-white',
   
   // User/System States
   'Active': 'bg-teal-500 text-white',

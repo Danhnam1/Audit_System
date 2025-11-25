@@ -1,6 +1,8 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { toast } from 'react-toastify';
 import AuditReviewList from './components/AuditReviewList';
 import { FilterBar } from './components/FilterBar';
 import { getAuditPlanById, approveForwardDirector, rejectPlanContent } from '../../../api/audits';
@@ -14,6 +16,7 @@ import { getDepartmentName } from '../../../helpers/auditPlanHelpers';
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { getAuditTeam } from '../../../api/auditTeam';
+import { StatCard } from '../../../components';
 
 const AuditorAuditReview = () => {
   const { user } = useAuth();
@@ -33,6 +36,13 @@ const AuditorAuditReview = () => {
   const [filterDepartment, setFilterDepartment] = useState<string>('');
   const [sortDateOrder, setSortDateOrder] = useState<string>('desc'); // Default: newest first
   const [filterStatus, setFilterStatus] = useState<string>('');
+
+  // Modal states for actions
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [rejectPlanId, setRejectPlanId] = useState<string | null>(null);
+  const [forwardPlanId, setForwardPlanId] = useState<string | null>(null);
+  const [rejectComment, setRejectComment] = useState('');
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -346,15 +356,18 @@ const AuditorAuditReview = () => {
     setFilterStatus('');
   };
 
-  const handleForwardToDirector = async (auditId: string, comment?: string) => {
+  const handleForwardToDirector = async (auditId: string) => {
     try {
-      await approveForwardDirector(auditId, { comment });
+      await approveForwardDirector(auditId, { comment: '' });
       await loadPlans();
-  alert('✅ Plan forwarded to Director successfully.');
-  setSelectedPlanFull(null);
+      toast.success('Plan forwarded to Director successfully.');
+      setShowForwardModal(false);
+      setForwardPlanId(null);
+      setSelectedPlanFull(null);
     } catch (err: any) {
       console.error('Failed to forward to director', err);
-      alert('Failed to forward to Director: ' + (err?.response?.data?.message || err?.message || String(err)));
+      const errorMessage = err?.response?.data?.message || err?.message || String(err);
+      toast.error('Failed to forward to Director: ' + errorMessage);
     }
   };
 
@@ -362,17 +375,38 @@ const AuditorAuditReview = () => {
     try {
       await rejectPlanContent(auditId, { comment });
       await loadPlans();
-  alert('✅ Plan rejected successfully.');
-  setSelectedPlanFull(null);
+      toast.success('Rejected the Audit Plan');
+      setShowRejectModal(false);
+      setRejectPlanId(null);
+      setRejectComment('');
+      setSelectedPlanFull(null);
     } catch (err: any) {
       console.error('Failed to reject plan', err);
-      const status = err?.response?.status;
-      const data = err?.response?.data;
-      alert(
-        `Failed to reject plan. HTTP ${status || ''}\n` +
-          (data ? JSON.stringify(data, null, 2) : (err?.message || String(err)))
-      );
+      const errorMessage = err?.response?.data?.message || err?.message || String(err);
+      toast.error('Reject failed: ' + errorMessage);
     }
+  };
+
+  const openRejectModal = (auditId: string) => {
+    setRejectPlanId(auditId);
+    setRejectComment('');
+    setShowRejectModal(true);
+  };
+
+  const openForwardModal = (auditId: string) => {
+    setForwardPlanId(auditId);
+    setShowForwardModal(true);
+  };
+
+  const closeRejectModal = () => {
+    setShowRejectModal(false);
+    setRejectPlanId(null);
+    setRejectComment('');
+  };
+
+  const closeForwardModal = () => {
+    setShowForwardModal(false);
+    setForwardPlanId(null);
   };
 
   const handleSelectPlan = async (auditId: string) => {
@@ -418,61 +452,46 @@ const AuditorAuditReview = () => {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Plans</p>
-                <p className="text-3xl font-bold text-gray-800">{stats.total}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Pending Review</p>
-                <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
-              </div>
-              <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Approved</p>
-                <p className="text-3xl font-bold text-green-600">{stats.approved}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Rejected</p>
-                <p className="text-3xl font-bold text-red-600">{stats.rejected}</p>
-              </div>
-              <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-            </div>
-          </div>
+          <StatCard
+            title="Total Plans"
+            value={stats.total}
+            icon={
+              <svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            }
+            variant="primary"
+          />
+          <StatCard
+            title="Pending Review"
+            value={stats.pending}
+            icon={
+              <svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+            variant="primary-light"
+          />
+          <StatCard
+            title="Approved"
+            value={stats.approved}
+            icon={
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            }
+            variant="primary-dark"
+          />
+          <StatCard
+            title="Rejected"
+            value={stats.rejected}
+            icon={
+              <svg className="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            }
+            variant="gray"
+          />
         </div>
 
         {/* Status Tabs */}
@@ -538,6 +557,8 @@ const AuditorAuditReview = () => {
               title={activeTab === 'pending' ? 'Pending Audit Plans' : activeTab === 'approved' ? 'Approved Audit Plans' : 'Rejected Audit Plans'}
               plans={currentFilteredPlans}
               onSelect={(id) => void handleSelectPlan(id)}
+              onApprove={activeTab === 'pending' ? (id) => openForwardModal(id) : undefined}
+              onReject={activeTab === 'pending' ? (id) => openRejectModal(id) : undefined}
               getDepartmentName={(id:any)=> getDepartmentName(id, departments)}
             />
             {loading && <p className="text-sm text-gray-500 mt-2 px-6 pb-4">Loading...</p>}
@@ -548,15 +569,6 @@ const AuditorAuditReview = () => {
               showModal={true}
               selectedPlanDetails={selectedPlanFull}
               onClose={() => setSelectedPlanFull(null)}
-              {
-                ...(() => {
-                  const st = String(selectedPlanFull?.status || '').toLowerCase().replace(/\s+/g, '');
-                  const isApproved = st.includes('approved') || st === 'approve' || st.includes('pendingdirectorapproval');
-                  const isRejected = st.includes('rejected') || st === 'reject';
-                  const alreadyReviewed = isApproved || isRejected;
-                  return alreadyReviewed ? {} : { onForwardToDirector: handleForwardToDirector, onRejectPlan: handleReject };
-                })()
-              }
               getCriterionName={(id: any) => String(id)}
               getDepartmentName={(id: any) => getDepartmentName(id, departments)}
               getStatusColor={getStatusColor}
@@ -569,6 +581,103 @@ const AuditorAuditReview = () => {
               }}
             />
           </>
+        )}
+
+        {/* Reject Confirmation Modal */}
+        {showRejectModal && rejectPlanId && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={closeRejectModal}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Reject Audit Plan
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Please provide a reason for rejection (optional):
+                </p>
+                
+                <textarea
+                  value={rejectComment}
+                  onChange={(e) => setRejectComment(e.target.value)}
+                  placeholder="Enter rejection reason..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 mb-6 min-h-[100px] resize-y"
+                />
+                
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={closeRejectModal}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (rejectPlanId) {
+                        handleReject(rejectPlanId, rejectComment || undefined);
+                      }
+                    }}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${getStatusColor('Rejected') + ' hover:opacity-90'}`}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Forward to Director Confirmation Modal */}
+        {showForwardModal && forwardPlanId && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={closeForwardModal}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Forward to Director
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Are you sure to submit to Director?
+                </p>
+                
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={closeForwardModal}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (forwardPlanId) {
+                        handleForwardToDirector(forwardPlanId);
+                      }
+                    }}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                  >
+                    Forward
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
       </div>
     </MainLayout>
