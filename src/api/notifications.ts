@@ -30,8 +30,13 @@ export const markNotificationRead = async (notificationId: string): Promise<Admi
   return res?.data || res;
 };
 
+export const deleteNotification = async (notificationId: string): Promise<void> => {
+  await apiClient.delete(`/admin/AdminNotification/${notificationId}`);
+};
+
 export default {
   getNotifications,
   getNotificationById,
   markNotificationRead,
+  deleteNotification,
 };

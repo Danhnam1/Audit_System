@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./contexts";
+import { SignalRProvider } from "./contexts/SignalRContext";
 import { Navigation } from "./components";
 import { AppRoutes } from "./routes/AppRoutes";
 import "./App.css";
@@ -19,10 +20,12 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Navigation />
-        <Suspense fallback={<LoadingSpinner />}>
-          <AppRoutes />
-        </Suspense>
+        <SignalRProvider>
+          <Navigation />
+          <Suspense fallback={<LoadingSpinner />}>
+            <AppRoutes />
+          </Suspense>
+        </SignalRProvider>
       </AuthProvider>
     </BrowserRouter>
   );

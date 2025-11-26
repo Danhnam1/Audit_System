@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import useAuthStore from "../store/useAuthStore";
+import { NotificationBell } from "./NotificationBell";
 
 export const Navigation = () => {
   const { token, user, logout } = useAuthStore();
@@ -85,6 +86,9 @@ export const Navigation = () => {
               </svg>
               <span className="text-sm font-medium">{user?.role}</span>
             </div>
+
+            {/* Notification Bell */}
+            <NotificationBell />
 
             {/* Logout Button */}
             <button
