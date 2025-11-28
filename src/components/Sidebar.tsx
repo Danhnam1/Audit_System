@@ -124,7 +124,7 @@ export const Sidebar = ({ logo, menuItems, teams, user, theme, className = '' }:
       </nav>
 
       {/* User Profile */}
-      {user && (
+      {/* {user && (
         <div className="border-t border-gray-200 p-4">
           <button className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 transition-colors">
             {user.avatar ? (
@@ -141,7 +141,7 @@ export const Sidebar = ({ logo, menuItems, teams, user, theme, className = '' }:
             <span className="text-sm font-medium text-gray-700">{user.name}</span>
           </button>
         </div>
-      )}
+      )} */}
     </aside>
   );
 };

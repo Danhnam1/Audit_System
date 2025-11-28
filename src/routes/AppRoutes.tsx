@@ -54,7 +54,6 @@ const DepartmentHeadEvidenceDetail = lazy(() => import("../pages/AuditeeOwner/Ev
 const DepartmentHeadFindingsProgress = lazy(() => import("../pages/AuditeeOwner/findings/FindingsProgress"));
 
 // Director pages
-const DirectorDashboard = lazy(() => import("../pages/Director/Dashboard"));
 const DirectorReviewAuditPlans = lazy(() => import("../pages/Director/ReviewAuditPlans"));
 const DirectorAuditPlanDetail = lazy(() => import("../pages/Director/AuditPlanDetail"));
 const DirectorReviewAuditResults = lazy(() => import("../pages/Director/ReviewAuditResults"));
@@ -76,7 +75,7 @@ export function AppRoutes() {
             auditor: ROUTES.AUDITOR,
             capaowner: ROUTES.CAPA_OWNER,
             auditeeowner: ROUTES.AUDITEE_OWNER,
-            director: ROUTES.DIRECTOR,
+            director: '/director/review-plans',
         };
 
         // Debug log to inspect user role
@@ -429,7 +428,7 @@ export function AppRoutes() {
                 path={ROUTES.DIRECTOR}
                 element={
                     <ProtectedRoute allowedRoles={["Director"]}>
-                        <DirectorDashboard />
+                        <Navigate to="/director/review-plans" replace />
                     </ProtectedRoute>
                 }
             />

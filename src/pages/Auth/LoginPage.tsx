@@ -80,8 +80,8 @@ export default function LoginPage() {
             navigate('/departmentstaff/dashboard')
             break
           case 'director':
-            console.log('Navigating to: /director/dashboard')
-            navigate('/director/dashboard')
+            console.log('Navigating to: /director/review-plans')
+            navigate('/director/review-plans')
             break
           default:
             console.warn('Unknown role:', roleName, '- Navigating to home')
