@@ -128,7 +128,7 @@ const AdminUserManagement = () => {
 
         await apiClient.put(`/admin/AdminUsers/${editingUserId}`, updatePayload)
 
-        toast.success('Cập nhật người dùng thành công!');
+        toast.success('Edit user sucessfully');
         // refresh list and reset
         await fetchUsers()
         setEditingUserId(null)

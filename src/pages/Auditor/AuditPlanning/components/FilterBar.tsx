@@ -85,10 +85,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         >
           Clear all filters
         </button>
-        <span className="text-sm text-gray-600">
-          Showing <span className="font-semibold text-gray-900">{filteredCount}</span> of{' '}
-          <span className="font-semibold text-gray-900">{totalCount}</span> plans
-        </span>
+        
       </div>
     </div>
   );

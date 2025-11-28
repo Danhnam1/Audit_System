@@ -89,17 +89,32 @@ export const NotificationBell: React.FC = () => {
     }).length;
   }, [items]);
 
-  const load = async () => {
-    setLoading(true);
+  // Load user ID once on mount
+  useEffect(() => {
+    if (!myUserId && user?.email) {
+      const loadUserId = async () => {
+        try {
+          const admins = await getAdminUsers();
+          const me = (admins || []).find((a: any) => String(a.email || '').toLowerCase() === String(user?.email || '').toLowerCase());
+          if (me) {
+            const meId = String(me.userId || me.$id || me.email);
+            setMyUserId(meId || null);
+            console.log('[NotificationBell] Resolved current userId for notifications', { meId });
+          }
+        } catch (error) {
+          console.error('[NotificationBell] Failed to load user ID:', error);
+        }
+      };
+      void loadUserId();
+    }
+  }, [myUserId, user?.email]);
+
+  const load = useCallback(async (silent = false) => {
+    console.log('[NotificationBell] Loading notifications', { silent });
+    if (!silent) setLoading(true);
     try {
-      // Map current auth user to admin userId (backend ids)
-      let meId = myUserId;
-      if (!meId) {
-        const admins = await getAdminUsers();
-  const me = (admins || []).find((a: any) => String(a.email || '').toLowerCase() === String(user?.email || '').toLowerCase());
-  if (me) meId = String(me.userId || me.$id || me.email);
-        setMyUserId(meId || null);
-      }
+      // Use current myUserId state
+      const meId = myUserId; 
 
       const res = await getNotifications();
       const all = unwrap<AdminNotificationDTO>(res);
@@ -131,16 +146,20 @@ export const NotificationBell: React.FC = () => {
         })
         .sort((a: any, b: any) => (b.createdAtDate?.getTime() || 0) - (a.createdAtDate?.getTime() || 0));
       setItems(sorted);
+      console.log('[NotificationBell] Notifications loaded', { count: sorted.length });
+    } catch (error) {
+      console.error('[NotificationBell] Failed to load notifications:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  };
+  }, [myUserId, user?.email]);
 
-  // Load notifications from API on mount
+  // Load notifications from API when user ID is ready or email changes
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.email]);
+    if (myUserId || user?.email) {
+      void load();
+    }
+  }, [load, myUserId, user?.email]);
 
   // Handle click outside to close dropdown
   useEffect(() => {
@@ -161,49 +180,31 @@ export const NotificationBell: React.FC = () => {
 
   // Handle real-time notifications from SignalR
   useEffect(() => {
-    const handleNewNotification = (data: NotificationData) => {
+    const handleNewNotification = async (data: NotificationData) => {
       console.log('[NotificationBell] Received notification from SignalR:', data);
       
-      // Use functional update to check if notification already exists
-      setItems((prev) => {
-        // Check if notification already exists
-        const exists = prev.some(
-          (item) => item.notificationId === data.notificationId
-        );
-
-        if (exists) {
-          console.log('[NotificationBell] Notification already exists, skipping');
-          return prev;
-        }
-
-        // Add new notification to the list
-        const newItem: NotificationItem = {
-          ...data,
-          createdAtDate: data.createdAt 
-            ? new Date(data.createdAt) 
-            : new Date(),
-        };
-        
-        console.log('[NotificationBell] Adding new notification to list');
-        
-        // Show toast notification
-        toast.info(data.title || 'New notification', {
-          position: 'top-right',
-          autoClose: 5000,
-        });
-        
-        return [newItem, ...prev];
+      // Show toast notification immediately
+      toast.info(data.title || 'New notification', {
+        position: 'top-right',
+        autoClose: 5000,
       });
+      
+      // Reload notifications from API to get the latest data
+      // This ensures we have complete and up-to-date information from the server
+      console.log('[NotificationBell] Reloading notifications from API...');
+      await load(true); // Silent reload (don't show loading spinner)
     };
 
-    // Register callback
+    // Register callback - this will also trigger any pending notification
+    console.log('[NotificationBell] Subscribing to SignalR notifications');
     onNotification(handleNewNotification);
 
     // Cleanup
     return () => {
+      console.log('[NotificationBell] Unsubscribing from SignalR notifications');
       offNotification();
     };
-  }, [onNotification, offNotification]);
+  }, [onNotification, offNotification, load]);
 
   const handleMarkRead = async (id: string) => {
     // Save to localStorage immediately (works even without backend)

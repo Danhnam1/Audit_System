@@ -23,6 +23,36 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
   const [latestNotification, setLatestNotification] = useState<NotificationData | null>(null);
   const notificationCallbackRef = useRef<((data: NotificationData) => void) | null>(null);
 
+  // Helper function to register handler with current callback
+  const registerHandler = useCallback(() => {
+    const connected = signalRService.isConnected();
+    console.log('[SignalRContext] registerHandler invoked', { connected, hasCallback: !!notificationCallbackRef.current });
+    if (!connected) {
+      console.log('[SignalRContext] Connection not ready, skipping handler registration');
+      return;
+    }
+
+    // Create handler that always uses the latest callback ref
+    const handler = (data: NotificationData) => {
+      console.log('[SignalRContext] Incoming notification payload', data);
+      setLatestNotification(data);
+      // Always check the latest callback ref
+      if (notificationCallbackRef.current) {
+        console.log('[SignalRContext] Dispatching notification to registered callback');
+        try {
+          notificationCallbackRef.current(data);
+        } catch (error) {
+          console.error('[SignalRContext] Error in notification callback:', error);
+        }
+      } else {
+        console.warn('[SignalRContext] No callback registered yet; storing notification in latestNotification');
+      }
+    };
+
+    signalRService.onReceiveNotification(handler);
+    console.log('[SignalRContext] SignalR handler registered');
+  }, []);
+
   // Initialize SignalR connection when user is authenticated
   useEffect(() => {
     if (!token || !user) {
@@ -38,24 +68,13 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
       try {
         await signalRService.start();
         const state = signalRService.getState();
-        setIsConnected(signalRService.isConnected());
+        const connected = signalRService.isConnected();
+        setIsConnected(connected);
         setConnectionState(state?.toString() || null);
 
         // Register notification handler immediately after connection
-        const handler = (data: NotificationData) => {
-          console.log('[SignalRContext] New notification received:', data);
-          setLatestNotification(data);
-          // Trigger callback if registered
-          if (notificationCallbackRef.current) {
-            console.log('[SignalRContext] Triggering callback for notification');
-            notificationCallbackRef.current(data);
-          } else {
-            console.warn('[SignalRContext] No callback registered yet');
-          }
-        };
-
-        signalRService.onReceiveNotification(handler);
-        console.log('[SignalRContext] Notification handler registered');
+        registerHandler();
+        console.log('[SignalRContext] Connection established; handler registration attempted');
       } catch (error) {
         console.error('[SignalRContext] Failed to connect:', error);
         setIsConnected(false);
@@ -86,11 +105,33 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
     return () => clearInterval(interval);
   }, [token, user]);
 
+  // Re-register handler when connection state changes to connected
+  useEffect(() => {
+    if (isConnected && signalRService.isConnected()) {
+      registerHandler();
+    }
+  }, [isConnected, registerHandler]);
+
   const onNotification = useCallback((callback: (data: NotificationData) => void) => {
+    console.log('[SignalRContext] Registering notification callback');
     notificationCallbackRef.current = callback;
-  }, []);
+    
+    // Re-register handler immediately to use new callback
+    registerHandler();
+    
+    // If there's a pending notification (arrived before callback was registered), trigger it now
+    if (latestNotification) {
+      console.log('[SignalRContext] Triggering callback for pending notification');
+      try {
+        callback(latestNotification);
+      } catch (error) {
+        console.error('[SignalRContext] Error triggering callback for pending notification:', error);
+      }
+    }
+  }, [registerHandler, latestNotification]);
 
   const offNotification = useCallback(() => {
+    console.log('[SignalRContext] Unregistering notification callback');
     notificationCallbackRef.current = null;
   }, []);
 

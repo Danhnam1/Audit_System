@@ -432,7 +432,7 @@ const SQAStaffAuditPlanning = () => {
     
     // Only allow delete if status is Draft
     if (normalizedStatus !== 'draft') {
-      toast.warning('Chỉ có trạng thái Draft mới được delete.');
+      toast.warning('Only Draft status can be deleted.');
       return;
     }
 
