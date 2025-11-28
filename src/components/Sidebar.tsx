@@ -2,10 +2,11 @@ import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 
 export interface SidebarMenuItem {
-  icon: ReactNode;
+  icon?: ReactNode;
   label: string;
-  path: string;
+  path?: string;
   badge?: string | number;
+  children?: SidebarMenuItem[];
 }
 
 export interface SidebarTeam {
@@ -42,6 +43,13 @@ export interface SidebarProps {
   className?: string;
 }
 
+const depthIndentClasses = ['pl-0', 'pl-4', 'pl-6', 'pl-8'];
+
+const getIndentClass = (depth: number) => {
+  const index = Math.min(depthIndentClasses.length - 1, depth);
+  return depthIndentClasses[index];
+};
+
 export const Sidebar = ({ logo, menuItems, teams, user, theme, className = '' }: SidebarProps) => {
   // Default theme (Aviation Blue - Primary colors)
   const defaultTheme: SidebarTheme = {
@@ -59,37 +67,37 @@ export const Sidebar = ({ logo, menuItems, teams, user, theme, className = '' }:
 
   return (
     <aside className={`w-[280px] h-screen bg-white border-r border-gray-200 flex flex-col ${className}`}>
-      {/* Logo */}
-      {logo && (
-        <div className="h-16 flex items-center px-6 border-b border-gray-200">
-          {logo}
-        </div>
-      )}
+      
 
       {/* Menu Items */}
       <nav className="flex-1 overflow-y-auto py-4">
         <div className="px-3 space-y-1">
-          {menuItems.map((item, index) => (
-            <NavLink
-              key={index}
-              to={item.path}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? `${currentTheme.activeBg} ${currentTheme.activeText}`
-                    : `${currentTheme.inactiveText} ${currentTheme.hoverBg}`
-                }`
-              }
-            >
-              <span className="w-5 h-5 flex items-center justify-center">{item.icon}</span>
-              <span className="flex-1">{item.label}</span>
-              {item.badge && (
-                <span className={`px-2 py-0.5 text-xs font-medium ${currentTheme.badgeBg} ${currentTheme.badgeText} rounded`}>
-                  {item.badge}
-                </span>
-              )}
-            </NavLink>
-          ))}
+          {menuItems.map((item, index) =>
+            item.children && item.children.length > 0 ? (
+              <div key={`group-${index}`} className="pt-4">
+                <div className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  {item.label}
+                </div>
+                <div className="space-y-1">
+                  {item.children.map((child, childIndex) => (
+                    <MenuLink
+                      key={child.path || `${child.label}-${childIndex}`}
+                      item={child}
+                      depth={1}
+                      currentTheme={currentTheme}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <MenuLink
+                key={item.path || `${item.label}-${index}`}
+                item={item}
+                depth={0}
+                currentTheme={currentTheme}
+              />
+            )
+          )}
         </div>
 
         {/* Teams Section */}
@@ -135,5 +143,38 @@ export const Sidebar = ({ logo, menuItems, teams, user, theme, className = '' }:
         </div>
       )}
     </aside>
+  );
+};
+
+interface MenuLinkProps {
+  item: SidebarMenuItem;
+  depth: number;
+  currentTheme: SidebarTheme;
+}
+
+const MenuLink = ({ item, depth, currentTheme }: MenuLinkProps) => {
+  if (!item.path) return null;
+
+  const indentClass = getIndentClass(depth);
+
+  return (
+    <NavLink
+      to={item.path}
+      className={({ isActive }) =>
+        `flex items-center gap-3 ${indentClass} pr-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          isActive
+            ? `${currentTheme.activeBg} ${currentTheme.activeText}`
+            : `${currentTheme.inactiveText} ${currentTheme.hoverBg}`
+        }`
+      }
+    >
+      {item.icon && <span className="w-5 h-5 flex items-center justify-center">{item.icon}</span>}
+      <span className="flex-1">{item.label}</span>
+      {item.badge && (
+        <span className={`px-2 py-0.5 text-xs font-medium ${currentTheme.badgeBg} ${currentTheme.badgeText} rounded`}>
+          {item.badge}
+        </span>
+      )}
+    </NavLink>
   );
 };
