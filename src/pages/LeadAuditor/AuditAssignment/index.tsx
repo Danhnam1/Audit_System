@@ -252,7 +252,7 @@ export default function AuditAssignment() {
                       <div className="ml-4">
                         {isDepartmentAssigned(dept.deptId) ? (
                           <span className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg">
-                            Đã assign
+                            Assigned
                           </span>
                         ) : (
                           <button

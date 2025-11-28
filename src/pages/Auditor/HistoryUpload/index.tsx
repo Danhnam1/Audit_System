@@ -3,7 +3,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getAuditPlans } from '../../../api/audits';
 import { getAuditDocuments, downloadAuditDocumentById } from '../../../api/auditDocuments';
-import { getAdminUsers } from '../../../api/adminUsers';
+import { getAdminUsers, getUserById } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 import { exportFile } from '../../../utils/globalUtil';
 
@@ -110,6 +110,55 @@ const HistoryUploadPage = () => {
     loadAudits();
   }, []);
 
+  // Helper function to resolve user name from userId with lookup strategies
+  const resolveUserName = (userId: string | null | undefined, currentUserMap: Record<string, string>, doc?: any): string => {
+    if (!userId) {
+      // Fallback to uploadedByUser field if available
+      if (doc?.uploadedByUser) {
+        if (typeof doc.uploadedByUser === 'object' && doc.uploadedByUser.fullName) {
+          return doc.uploadedByUser.fullName;
+        }
+      }
+      return 'Unknown';
+    }
+    
+    const idStr = String(userId).trim();
+    if (!idStr) return 'Unknown';
+
+    let userName = '';
+    
+    // Strategy 1: Direct lookup
+    if (idStr && Object.keys(currentUserMap).length > 0) {
+      userName = currentUserMap[idStr];
+      
+      // Strategy 2: Case-insensitive lookup
+      if (!userName) {
+        userName = currentUserMap[idStr.toLowerCase()];
+      }
+      
+      // Strategy 3: Try as number if it's numeric
+      if (!userName && !isNaN(Number(idStr))) {
+        userName = currentUserMap[String(Number(idStr))];
+      }
+    }
+    
+    // Fallback to uploadedByUser field (if it's an object with fullName)
+    if (!userName && doc?.uploadedByUser) {
+      if (typeof doc.uploadedByUser === 'object' && doc.uploadedByUser.fullName) {
+        userName = doc.uploadedByUser.fullName;
+      } else if (typeof doc.uploadedByUser === 'string') {
+        userName = currentUserMap[doc.uploadedByUser] || currentUserMap[doc.uploadedByUser.toLowerCase()] || doc.uploadedByUser;
+      }
+    }
+    
+    // Final fallback
+    if (!userName || userName.trim() === '') {
+      return 'Unknown';
+    }
+    
+    return userName;
+  };
+
   // Load documents for all audits when audits list changes
   useEffect(() => {
     if (!audits.length) {
@@ -128,7 +177,77 @@ const HistoryUploadPage = () => {
           return;
         }
         lastDocFetchKeyRef.current = fetchKey;
+        
+        // Fetch all documents
         const results = await Promise.allSettled(auditIds.map(id => getAuditDocuments(id)));
+        
+        // First pass: collect all documents and extract unique userIds
+        const allDocs: Array<{ doc: any; auditId: string }> = [];
+        results.forEach((res, idx) => {
+          const auditId = auditIds[idx];
+          if (res.status === 'fulfilled') {
+            const rows = Array.isArray(res.value) ? res.value : [res.value];
+            rows.filter(Boolean).forEach((d: any) => {
+              const documentType = d.documentType || '';
+              const contentType = d.contentType || '';
+              const uploadedAt = d.uploadedAt || '';
+              const sizeBytes = Number(d.sizeBytes ?? 0) || 0;
+              const fileName = d.fileName || d.originalFileName || d.originalName || d.name || '';
+              const url = d.blobPath || '';
+              const hasDownload = Boolean(url);
+              const hasInfo = hasDownload || sizeBytes > 0 || Boolean(fileName.trim());
+
+              if (hasInfo) {
+                allDocs.push({ doc: d, auditId });
+              }
+            });
+          }
+        });
+
+        // Collect unique userIds that need to be resolved (GUIDs not in userMap)
+        const userIdsToResolve = new Set<string>();
+        allDocs.forEach(({ doc }) => {
+          const uploadedById = doc.uploadedBy || doc.uploadedByUserId || '';
+          const idStr = String(uploadedById || '').trim();
+          if (idStr) {
+            const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr);
+            const notInMap = !userMap[idStr] && !userMap[idStr.toLowerCase()];
+            
+            // If it's a GUID and not in map, fetch it
+            if (isGuid && notInMap) {
+              userIdsToResolve.add(idStr);
+            }
+          }
+        });
+
+        // Fetch all missing user info in parallel and update userMap
+        let finalUserMap = { ...userMap };
+        if (userIdsToResolve.size > 0) {
+          const userPromises = Array.from(userIdsToResolve).map(async (userId) => {
+            try {
+              const userInfo = await getUserById(userId);
+              const fullName = userInfo?.fullName || userInfo?.email || 'Unknown';
+              return { userId, fullName };
+            } catch (err) {
+              console.warn(`Failed to fetch user info for ${userId}`, err);
+              return { userId, fullName: 'Unknown' };
+            }
+          });
+
+          const userResults = await Promise.allSettled(userPromises);
+          userResults.forEach((result) => {
+            if (result.status === 'fulfilled') {
+              const { userId, fullName } = result.value;
+              finalUserMap[userId] = fullName;
+              finalUserMap[userId.toLowerCase()] = fullName;
+            }
+          });
+          
+          // Update userMap state for future use
+          setUserMap(finalUserMap);
+        }
+
+        // Second pass: map documents with resolved user names
         const next: Record<string, AuditDocRow[]> = {};
         results.forEach((res, idx) => {
           const auditId = auditIds[idx];
@@ -150,39 +269,7 @@ const HistoryUploadPage = () => {
 
               // Resolve uploadedBy name from userId
               const uploadedById = d.uploadedBy || d.uploadedByUserId || '';
-              const idStr = String(uploadedById || '').trim();
-              let uploadedByName = '';
-              
-              // Try multiple lookup strategies for userId -> fullName
-              if (idStr && Object.keys(userMap).length > 0) {
-                // Strategy 1: Direct lookup
-                uploadedByName = userMap[idStr];
-                
-                // Strategy 2: Case-insensitive lookup
-                if (!uploadedByName) {
-                  uploadedByName = userMap[idStr.toLowerCase()];
-                }
-                
-                // Strategy 3: Try as number if it's numeric
-                if (!uploadedByName && !isNaN(Number(idStr))) {
-                  uploadedByName = userMap[String(Number(idStr))];
-                }
-              }
-              
-              // Fallback to uploadedByUser field (if it's an object with fullName)
-              if (!uploadedByName && d.uploadedByUser) {
-                if (typeof d.uploadedByUser === 'object' && d.uploadedByUser.fullName) {
-                  uploadedByName = d.uploadedByUser.fullName;
-                } else if (typeof d.uploadedByUser === 'string') {
-                  // If it's a string, try to look it up in userMap
-                  uploadedByName = userMap[d.uploadedByUser] || userMap[d.uploadedByUser.toLowerCase()] || d.uploadedByUser;
-                }
-              }
-              
-              // Final fallback - don't show ID, show Unknown instead
-              if (!uploadedByName || uploadedByName.trim() === '') {
-                uploadedByName = 'Unknown';
-              }
+              const uploadedByName = resolveUserName(uploadedById, finalUserMap, d);
 
               return {
                 auditId,

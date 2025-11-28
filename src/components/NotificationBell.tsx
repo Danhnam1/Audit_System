@@ -341,7 +341,7 @@ export const NotificationBell: React.FC = () => {
                       : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                   }`}
                 >
-                  {status === 'All' ? 'All' : status === 'Unread' ? 'Chưa đọc' : 'Đã đọc'}
+                  {status === 'All' ? 'All' : status === 'Unread' ? 'Unread' : 'Read '}
                 </button>
               ))}
             </div>
