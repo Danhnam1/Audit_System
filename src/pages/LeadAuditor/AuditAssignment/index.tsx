@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts';
 import { getMyLeadAuditorAudits, getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
 import { createAuditAssignment, getAuditAssignments } from '../../../api/auditAssignments';
+import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
 import { unwrap } from '../../../utils/normalize';
 
 interface Department {
@@ -169,6 +170,14 @@ export default function AuditAssignment() {
 
     setSubmitting(true);
     try {
+      // Log values for debugging
+      console.log('=== Assign Button Clicked ===');
+      console.log('selectedAuditId:', selectedAuditId);
+      console.log('selectedDepartment:', selectedDepartment);
+      console.log('selectedDepartment.deptId:', selectedDepartment.deptId);
+      console.log('selectedAuditorId:', selectedAuditorId);
+      
+      // Create audit assignment
       await createAuditAssignment({
         auditId: selectedAuditId,
         deptId: selectedDepartment.deptId,
@@ -176,6 +185,19 @@ export default function AuditAssignment() {
         notes: notes || '',
         status: 'Assigned',
       });
+      
+      // Create audit checklist items from template
+      try {
+        console.log('=== Calling createAuditChecklistItemsFromTemplate ===');
+        console.log('auditId:', selectedAuditId);
+        console.log('deptId:', selectedDepartment.deptId);
+        await createAuditChecklistItemsFromTemplate(selectedAuditId, selectedDepartment.deptId);
+        console.log('Audit checklist items created from template successfully');
+      } catch (checklistErr: any) {
+        console.error('Failed to create checklist items from template:', checklistErr);
+        // Don't fail the whole assignment if checklist creation fails
+        // Just log the error
+      }
       
       // Success - close modals and refresh assignments
       handleCloseModal();

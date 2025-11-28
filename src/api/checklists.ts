@@ -168,6 +168,43 @@ export const markChecklistItemNonCompliant = async (auditItemId: string) => {
   return res.data;
 };
 
+// Create audit checklist items from template
+export const createAuditChecklistItemsFromTemplate = async (auditId: string, deptId: number) => {
+  console.log('=== createAuditChecklistItemsFromTemplate called ===');
+  console.log('auditId parameter:', auditId);
+  console.log('deptId parameter:', deptId);
+  console.log('deptId type:', typeof deptId);
+  
+  // Try POST with query params in URL first (as per user's original request)
+  const params = new URLSearchParams({
+    auditId: auditId,
+    deptId: deptId.toString(),
+  });
+  
+  const urlWithParams = `/AuditChecklistItems/from-template?${params.toString()}`;
+  console.log('Trying POST with query params in URL:', urlWithParams);
+  
+  try {
+    const res = await apiClient.post(urlWithParams, {});
+    console.log('API Response (POST with query params):', res);
+    return res.data || res;
+  } catch (error: any) {
+    console.log('POST with query params failed, trying POST with body...', error);
+    
+    // Fallback: POST with body (PascalCase for .NET)
+    const url = `/AuditChecklistItems/from-template`;
+    const payload = {
+      AuditId: auditId,
+      DeptId: deptId,
+    };
+    
+    console.log('Trying POST with body:', url, payload);
+    const res = await apiClient.post(url, payload);
+    console.log('API Response (POST with body):', res);
+    return res.data || res;
+  }
+};
+
 export default {
   getChecklistTemplates,
   getChecklistItemsByTemplate,
@@ -175,4 +212,5 @@ export default {
   getChecklistItemsByDepartment,
   markChecklistItemCompliant,
   markChecklistItemNonCompliant,
+  createAuditChecklistItemsFromTemplate,
 };
