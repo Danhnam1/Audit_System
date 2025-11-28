@@ -18,7 +18,7 @@ const AssignTasks = () => {
     {
       id: '1',
       code: '#007',
-      title: 'Thiếu hồ sơ instructor',
+      title: 'Missing instructor records',
       priority: 'major',
       deadline: '28/10/2025',
       status: 'pending',
@@ -26,20 +26,20 @@ const AssignTasks = () => {
     {
       id: '2',
       code: '#005',
-      title: 'Cập nhật training record',
+      title: 'Update training record',
       priority: 'minor',
       deadline: '30/10/2025',
       status: 'assigned',
-      assignedTo: 'Nguyễn Thị C',
+      assignedTo: 'Nguyen Thi C',
     },
     {
       id: '3',
       code: '#012',
-      title: 'Scan hồ sơ học viên',
+      title: 'Scan trainee records',
       priority: 'minor',
       deadline: '01/11/2025',
       status: 'in-progress',
-      assignedTo: 'Trần Văn D',
+      assignedTo: 'Tran Van D',
     },
   ]);
 
@@ -67,10 +67,10 @@ const AssignTasks = () => {
 
   const getStatusBadge = (status: Finding['status']) => {
     const statusMap = {
-      pending: { label: 'Chờ phân công', color: 'bg-gray-100 text-gray-700' },
-      assigned: { label: 'Đã phân công', color: 'bg-blue-100 text-blue-700' },
-      'in-progress': { label: 'Đang xử lý', color: 'bg-yellow-100 text-yellow-700' },
-      completed: { label: 'Hoàn thành', color: 'bg-green-100 text-green-700' },
+      pending: { label: 'Pending assignment', color: 'bg-gray-100 text-gray-700' },
+      assigned: { label: 'Assigned', color: 'bg-blue-100 text-blue-700' },
+      'in-progress': { label: 'In progress', color: 'bg-yellow-100 text-yellow-700' },
+      completed: { label: 'Completed', color: 'bg-green-100 text-green-700' },
     };
     const info = statusMap[status];
     return (
@@ -86,37 +86,37 @@ const AssignTasks = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">📋 Phân công Nhiệm vụ</h1>
-            <p className="mt-2 text-gray-600">Quản lý và phân công findings cho nhân viên</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">📋 Task Assignment</h1>
+            <p className="mt-2 text-gray-600">Manage and assign findings to staff.</p>
           </div>
           <button
             onClick={handleViewFindings}
             className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 font-medium"
           >
-            Xem danh sách findings
+            View findings list
           </button>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg shadow p-4">
-            <div className="text-sm text-gray-600">Tổng Findings</div>
+            <div className="text-sm text-gray-600">Total Findings</div>
             <div className="text-2xl font-bold text-gray-900 mt-1">{findings.length}</div>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
-            <div className="text-sm text-gray-600">Chờ phân công</div>
+            <div className="text-sm text-gray-600">Pending assignment</div>
             <div className="text-2xl font-bold text-gray-900 mt-1">
               {findings.filter((f) => f.status === 'pending').length}
             </div>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
-            <div className="text-sm text-gray-600">Đã phân công</div>
+            <div className="text-sm text-gray-600">Assigned</div>
             <div className="text-2xl font-bold text-green-600 mt-1">
               {findings.filter((f) => f.status === 'assigned' || f.status === 'in-progress').length}
             </div>
           </div>
           <div className="bg-white rounded-lg shadow p-4">
-            <div className="text-sm text-gray-600">Hoàn thành</div>
+            <div className="text-sm text-gray-600">Completed</div>
             <div className="text-2xl font-bold text-blue-600 mt-1">
               {findings.filter((f) => f.status === 'completed').length}
             </div>
@@ -126,32 +126,32 @@ const AssignTasks = () => {
         {/* Findings List */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Danh sách Findings</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Findings List</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Mã
+                    Code
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Tiêu đề
+                    Title
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Độ ưu tiên
+                    Priority
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     Deadline
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Trạng thái
+                    Status
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Người được giao
+                    Assignee
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                    Hành động
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -176,14 +176,14 @@ const AssignTasks = () => {
                           onClick={() => handleAssignStaff(finding.id)}
                           className="text-blue-600 hover:text-blue-900"
                         >
-                          Phân công
+                          Assign
                         </button>
                       ) : (
                         <button
                           onClick={() => handleAssignStaff(finding.id)}
                           className="text-gray-600 hover:text-gray-900"
                         >
-                          Xem/Sửa
+                          View/Edit
                         </button>
                       )}
                     </td>

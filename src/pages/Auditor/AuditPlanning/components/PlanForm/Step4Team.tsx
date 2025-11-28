@@ -83,7 +83,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
             Auditors *
           </label>
           {(() => {
-            // Đảm bảo user hiện tại luôn nằm đầu danh sách, luôn disabled
+            // Ensure current user is always at the top of the list and always disabled
             const filteredOptions = auditorOptions.filter((u: any) => String(u.userId) !== selectedLeadId);
             const currentUserOption = auditorOptions.find((u: any) => String(u.userId) === currentUserId);
             const optionsRaw = [
@@ -108,12 +108,12 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
               disabled: boolean;
             }[];
 
-            // Đảm bảo value luôn chứa user hiện tại (luôn ở đầu danh sách)
+            // Ensure the value always contains the current user (always at the top of the list)
             const valueWithCurrent = currentUserId
               ? Array.from(new Set([currentUserId, ...selectedAuditorIds.filter(id => String(id) !== String(currentUserId))]))
               : selectedAuditorIds;
 
-            // Tính số auditors thực tế
+            // Calculate the actual number of auditors
             const actualAuditorCount = valueWithCurrent.length;
 
             return (
@@ -160,7 +160,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
               {selectedDeptIds.length === 0 ? (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                   <p className="text-sm text-gray-500">
-                    Vui lòng chọn phòng ban ở Step 2 để xem Department Heads.
+                    Please select departments in Step 2 to view Department Heads.
                   </p>
                 </div>
               ) : (

@@ -12,7 +12,7 @@ const SummaryTab: React.FC<Props> = ({ summary, severityEntries, severityTotal }
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-lg font-semibold text-primary-600">Summary Findings</h2>
-          <span className="text-xs text-gray-500">Tổng quan theo audit đã chọn</span>
+        <span className="text-xs text-gray-500">Overview for the selected audit.</span>
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

@@ -43,7 +43,7 @@ const ReviewAuditPlans = () => {
       scope: 'Document Control, Training Records, Internal Audit Process',
       startDate: '2024-11-20',
       endDate: '2024-11-25',
-      submittedBy: 'Nguyễn Văn A (Lead Auditor)',
+      submittedBy: 'Nguyen Van A (Lead Auditor)',
       submittedDate: '2024-11-01',
       status: 'Pending Review',
       objectives: [
@@ -51,7 +51,7 @@ const ReviewAuditPlans = () => {
         'Assess effectiveness of quality management processes',
         'Identify areas for improvement',
       ],
-      auditTeam: ['Trần Thị B', 'Lê Văn C', 'Phạm Thị D'],
+      auditTeam: ['Tran Thi B', 'Le Van C', 'Pham Thi D'],
     },
     {
       id: '2',
@@ -61,7 +61,7 @@ const ReviewAuditPlans = () => {
       scope: 'Access Control, Data Protection, Security Policies',
       startDate: '2024-11-15',
       endDate: '2024-11-18',
-      submittedBy: 'Nguyễn Văn A (Lead Auditor)',
+      submittedBy: 'Nguyen Van A (Lead Auditor)',
       submittedDate: '2024-10-28',
       status: 'Pending Review',
       objectives: [
@@ -69,7 +69,7 @@ const ReviewAuditPlans = () => {
         'Review access management procedures',
         'Assess compliance with security policies',
       ],
-      auditTeam: ['Hoàng Văn E', 'Nguyễn Thị F'],
+      auditTeam: ['Hoang Van E', 'Nguyen Thi F'],
     },
     {
       id: '3',
@@ -79,7 +79,7 @@ const ReviewAuditPlans = () => {
       scope: 'Financial Controls, Reporting Procedures',
       startDate: '2024-10-20',
       endDate: '2024-10-25',
-      submittedBy: 'Nguyễn Văn A (Lead Auditor)',
+      submittedBy: 'Nguyen Van A (Lead Auditor)',
       submittedDate: '2024-10-15',
       status: 'Approved',
       objectives: [
@@ -87,7 +87,7 @@ const ReviewAuditPlans = () => {
         'Assess reporting accuracy',
         'Identify cost optimization opportunities',
       ],
-      auditTeam: ['Trần Văn G', 'Lê Thị H'],
+      auditTeam: ['Tran Van G', 'Le Thi H'],
     },
   ];
 
@@ -548,7 +548,7 @@ const ReviewAuditPlans = () => {
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Start Date</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">End Date</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Submitted By</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -584,11 +584,7 @@ const ReviewAuditPlans = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm text-gray-700">{plan.submittedBy}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(plan.status)}`}>
-                          {plan.status}
-                        </span>
-                      </td>
+                      
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
                           <Button onClick={() => openDetails(plan)} size="sm" variant="secondary">

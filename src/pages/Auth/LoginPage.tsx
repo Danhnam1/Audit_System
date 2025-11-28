@@ -89,7 +89,7 @@ export default function LoginPage() {
         }
       } else {
         console.error('No user data in response')
-        setError('Đăng nhập thất bại. Không nhận được dữ liệu người dùng.')
+        setError('Login failed. User data was not received.')
       }
     } catch (err: any) {
       console.error('=== LOGIN ERROR ===')
@@ -104,7 +104,7 @@ export default function LoginPage() {
       setError(
         typeof serverMsg === 'string'
           ? serverMsg
-          : 'Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.'
+          : 'Login failed. Please check your email and password.'
       )
     } finally {
       setIsLoading(false)
@@ -154,7 +154,7 @@ export default function LoginPage() {
                   <h1 className="text-2xl sm:text-3xl font-bold text-gray-600 mb-2">
                     AMS
                   </h1>
-                  <p className="text-sm sm:text-base text-gray-600">Đăng nhập hệ thống</p>
+                  <p className="text-sm sm:text-base text-gray-600">Sign in to the system</p>
                 </div>
 
                 {/* Error Message */}

@@ -425,7 +425,7 @@ const AuditorAuditReview = () => {
       setRejectedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
     } catch (err) {
       console.error('Failed to load plan details', err);
-      alert('Không thể tải chi tiết kế hoạch. Vui lòng thử lại.');
+      alert('Unable to load plan details. Please try again.');
     } finally {
       setLoading(false);
     }

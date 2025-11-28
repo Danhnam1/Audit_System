@@ -71,35 +71,35 @@ const AdminUserManagement = () => {
 
   const validateForm = (): boolean => {
     if (!formData.fullName.trim()) {
-      toast.error('Vui lòng nhập họ và tên');
+      toast.error('Please enter the full name.');
       return false;
     }
     if (!formData.email.trim()) {
-      toast.error('Vui lòng nhập email');
+      toast.error('Please enter the email.');
       return false;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
-      toast.error('Email không hợp lệ');
+      toast.error('Invalid email address.');
       return false;
     }
     // For edit mode, password is optional; only validate on create
     if (!editingUserId) {
       if (!formData.password) {
-        toast.error('Vui lòng nhập mật khẩu');
+        toast.error('Please enter the password.');
         return false;
       }
      if (formData.password.length < 6 || !specialCharRegex.test(formData.password)) {
-  toast.error('Mật khẩu phải có ít nhất 6 ký tự và chứa ký tự đặc biệt');
+  toast.error('Password must be at least 6 characters and contain at least one special character.');
   return false;
 }
     }
     if (!formData.role) {
-      toast.error('Vui lòng chọn vai trò');
+      toast.error('Please select a role.');
       return false;
     }
     // if (!formData.deptId) {
-    //   toast.error('Vui lòng chọn phòng ban');
+    //   toast.error('Please select a department.');
     //   return false;
     // }
     return true;
@@ -158,7 +158,7 @@ const AdminUserManagement = () => {
       // If we reach here without error, registration was successful
       // The API call didn't throw, so it succeeded
       await fetchUsers()
-      toast.success('Tạo người dùng thành công!');
+      toast.success('User created successfully!');
       
       // Reset form
       setFormData({
@@ -172,7 +172,7 @@ const AdminUserManagement = () => {
       setShowCreateForm(false);
     } catch (err: any) {
       console.error('Registration error:', err);
-      toast.error(err.response?.data?.message || err.message || 'Có lỗi xảy ra khi tạo người dùng');
+      toast.error(err.response?.data?.message || err.message || 'An error occurred while creating the user.');
     } finally {
       setIsSubmitting(false);
     }
@@ -274,19 +274,19 @@ const AdminUserManagement = () => {
   }
 
   const handleDelete = async (id: string) => {
-    const confirmed = window.confirm('Bạn có chắc muốn xóa người dùng này?')
+    const confirmed = window.confirm('Are you sure you want to delete this user?')
     if (!confirmed) return
 
     try {
       await apiClient.delete(`/admin/AdminUsers/${id}`)
-      toast.success('Xóa người dùng thành công!')
+      toast.success('User deleted successfully!')
       // Refresh list
       fetchUsers()
       // Hide inactive users by default so the deleted (now inactive) user disappears
       setFilterStatus('Active')
     } catch (err: any) {
       console.error('Delete user failed', err)
-      toast.error(err?.message || 'Xóa người dùng thất bại')
+      toast.error(err?.message || 'Failed to delete user.')
     }
   }
 
@@ -349,7 +349,7 @@ const AdminUserManagement = () => {
       <div className="px-6 pb-6 space-y-6">
         {loadingUsers && (
           <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg">
-            Đang tải danh sách người dùng...
+            Loading user list...
           </div>
         )}
         {/* Stats Cards */}

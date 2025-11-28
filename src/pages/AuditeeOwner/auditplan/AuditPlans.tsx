@@ -230,7 +230,7 @@ const AuditPlans = () => {
 								})}
 								{filteredPlans.length === 0 && !loading && (
 									<tr>
-										<td className="px-6 py-6 text-center text-gray-500" colSpan={5}>Không có kế hoạch đã publish phù hợp với phòng ban của bạn</td>
+										<td className="px-6 py-6 text-center text-gray-500" colSpan={5}>There are no published plans that match your department.</td>
 									</tr>
 								)}
 							</tbody>

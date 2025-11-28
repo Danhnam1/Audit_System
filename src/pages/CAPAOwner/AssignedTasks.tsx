@@ -270,7 +270,7 @@ const AssignedTasks = () => {
                         </button>
                         {task.progressPercent === 100 ? (
                           <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap">
-                            Đã hoàn thành
+                            Completed
                           </span>
                         ) : (
                           <button

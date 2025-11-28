@@ -6,7 +6,7 @@
 
 // Status color mapping using primary colors
 export const STATUS_COLORS = {
-  // Completed/Success States - Xanh lục/Teal (Positive outcomes)
+  // Completed/Success States - Green/Teal (Positive outcomes)
   'Approve': 'bg-sky-100 text-sky-700',
   'Approved': 'bg-sky-100 text-sky-700',
   'Completed': 'bg-green-100 text-green-700',
@@ -16,21 +16,21 @@ export const STATUS_COLORS = {
   'Closed': 'bg-green-700 text-white',
   'Published': 'bg-teal-500 text-white',
   
-  // Validated/Confirmed States - Primary đậm
+  // Validated/Confirmed States - Strong primary tone
   'Validated': 'bg-primary-700 text-white',
   'Registered': 'bg-primary-600 text-white',
   
-  // In Progress/Active States - Primary vừa
+  // In Progress/Active States - Medium primary tone
   'In Progress': 'bg-primary-500 text-white',
   'InProgress': 'bg-primary-500 text-white',
   
-  // Under Review States - Primary nhạt 
+  // Under Review States - Light primary tone
   'Under Review': 'bg-primary-200 text-primary-800',
   'UnderReview': 'bg-primary-200 text-primary-800',
   'Pending Review': 'bg-primary-200 text-primary-800',
   'PendingReview': 'bg-primary-200 text-primary-800',
   
-  // Pending/Waiting States - Primary rất nhạt
+  // Pending/Waiting States - Very light primary tone
   'Pending': 'bg-primary-100 text-primary-700',
   'Submitted': 'bg-primary-100 text-primary-700',
   // Director/Lead review specific pending states
@@ -39,13 +39,13 @@ export const STATUS_COLORS = {
   'PendingLeadApproval': 'bg-primary-200 text-primary-800',
   'Pending Lead Approval': 'bg-primary-200 text-primary-800',
   
-  // Draft/Initial States - Xám nhạt
+  // Draft/Initial States - Light gray
   'Draft': 'bg-gray-200 text-gray-700',
   'Open': 'bg-gray-300 text-gray-800',
   
 
 
-  // Rejected/Negative States - Đỏ/Red
+  // Rejected/Negative States - Red
   'Rejected': 'bg-red-100 text-red-700',
   'Returned': 'bg-orange-100 text-orange-700',
   

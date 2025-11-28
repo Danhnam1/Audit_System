@@ -27,23 +27,23 @@ const AuditPlanConfirm = () => {
                   </svg>
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
-                  Xác nhận đã nhận kế hoạch
+                  Confirm receipt of the audit plan
                 </h3>
                 <p className="text-sm text-gray-600 text-center mb-6">
-                  Bạn có chắc chắn đã đọc và hiểu rõ yêu cầu của kế hoạch audit này?
+                  Are you sure you have read and understood the requirements of this audit plan?
                 </p>
                 <div className="flex gap-3">
                   <button
                     onClick={() => navigate(`/auditee-owner/audit-plans/${id}/detail`)}
                     className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
                   >
-                    Quay lại
+                    Back
                   </button>
                   <button
                     onClick={handleConfirm}
                     className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
                   >
-                    Xác nhận
+                    Confirm
                   </button>
                 </div>
               </div>
@@ -61,16 +61,16 @@ const AuditPlanConfirm = () => {
                 </svg>
               </div>
               <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                Đã xác nhận thành công!
+                Confirmation successful!
               </h2>
               <p className="text-gray-600 mb-6">
-                Kế hoạch audit đã được xác nhận. Bạn sẽ nhận được thông báo khi có cập nhật.
+                The audit plan has been confirmed. You will receive notifications when there are updates.
               </p>
               <button
                 onClick={() => navigate('/auditee-owner/audit-plans')}
                 className="px-6 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 font-medium"
               >
-                Quay về danh sách
+                Back to list
               </button>
             </div>
           </div>

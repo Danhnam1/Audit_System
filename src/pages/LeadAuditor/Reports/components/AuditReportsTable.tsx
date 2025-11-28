@@ -90,12 +90,12 @@ const AuditReportsTable: React.FC<Props> = ({
                           onClick={() => onApprove(r.auditId)}
                           disabled={actionLoading === r.auditId}
                           className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${actionLoading === r.auditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved')}`}
-                        >{actionLoading === r.auditId ? 'Đang duyệt...' : 'Approve'}</button>
+                        >{actionLoading === r.auditId ? 'Approving...' : 'Approve'}</button>
                         <button
                           onClick={() => onReject(r.auditId)}
                           disabled={actionLoading === r.auditId}
                           className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${actionLoading === r.auditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Rejected')}`}
-                        >{actionLoading === r.auditId ? 'Đang xử lý...' : 'Reject'}</button>
+                        >{actionLoading === r.auditId ? 'Processing...' : 'Reject'}</button>
                       </>
                     )}
                   </div>
@@ -104,7 +104,7 @@ const AuditReportsTable: React.FC<Props> = ({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td className="px-6 py-6 text-sm text-gray-500" colSpan={5}>Không có báo cáo phù hợp</td>
+                <td className="px-6 py-6 text-sm text-gray-500" colSpan={5}>No matching reports.</td>
               </tr>
             )}
           </tbody>

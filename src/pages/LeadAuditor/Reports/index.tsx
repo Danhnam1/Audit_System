@@ -129,16 +129,16 @@ const LeadAuditorReports = () => {
       setActionMsg(`${title} status changed to Completed.`);
     } catch (err) {
       console.error('Approve failed', err);
-      setActionMsg('Approve thất bại. Vui lòng thử lại.');
+      setActionMsg('Approve failed. Please try again.');
     } finally {
       setActionLoading('');
     }
   };
 
   const handleReject = async (auditId: string) => {
-    const reason = (window.prompt('Nhập lý do từ chối (note cho Auditor):', '') || '').trim();
+    const reason = (window.prompt('Enter a reason for rejection (note for Auditor):', '') || '').trim();
     if (!reason) {
-      alert('Vui lòng nhập lý do từ chối.');
+      alert('Please enter a reason for rejection.');
       return;
     }
     setActionLoading(auditId);
@@ -147,10 +147,10 @@ const LeadAuditorReports = () => {
       await rejectAuditReport(auditId, { reason });
       setAudits(prev => prev.map(a => String(a.auditId || a.id || a.$id) === auditId ? { ...a, status: 'Returned' } : a));
       const title = rows.find(r => r.auditId === auditId)?.title || 'Audit';
-      setActionMsg(`${title} đã bị returned. Lý do: ${reason}`);
+      setActionMsg(`${title} has been returned. Reason: ${reason}`);
     } catch (err) {
       console.error('Reject failed', err);
-      setActionMsg('Reject thất bại. Vui lòng thử lại.');
+      setActionMsg('Reject failed. Please try again.');
     } finally {
       setActionLoading('');
     }

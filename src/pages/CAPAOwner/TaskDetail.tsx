@@ -30,7 +30,7 @@ const TaskDetail = () => {
     priority: 'High',
     status: 'Pending',
     dueDate: '2024-11-15',
-    assignedBy: 'Nguyễn Văn A',
+    assignedBy: 'Nguyen Van A',
     createdAt: '2024-11-01',
     requirements: [
       'Review all controlled documents',

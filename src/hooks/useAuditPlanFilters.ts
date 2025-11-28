@@ -7,7 +7,7 @@ import { useState, useMemo } from 'react';
 export const useAuditPlanFilters = (existingPlans: any[] = []) => {
   // Filter state
   const [filterDepartment, setFilterDepartment] = useState<string>('');
-  const [sortDateOrder, setSortDateOrder] = useState<string>(''); // 'desc' (mới đến cũ), 'asc' (cũ đến mới), '' (không sort)
+  const [sortDateOrder, setSortDateOrder] = useState<string>(''); // 'desc' (newest to oldest), 'asc' (oldest to newest), '' (no sort)
   const [filterStatus, setFilterStatus] = useState<string>('');
 
   // Filter audit plans based on filter criteria
@@ -56,10 +56,10 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
         const dateB = b.startDate ? new Date(b.startDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
         
         if (sortDateOrder === 'desc') {
-          // Từ mới đến cũ (ngày lớn đến bé)
+          // Newest to oldest (larger date to smaller date)
           return dateB - dateA;
         } else if (sortDateOrder === 'asc') {
-          // Từ cũ đến mới (ngày bé đến lớn)
+          // Oldest to newest (smaller date to larger date)
           return dateA - dateB;
         }
       }

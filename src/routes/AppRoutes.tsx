@@ -61,7 +61,7 @@ const DirectorReviewAuditResults = lazy(() => import("../pages/Director/ReviewAu
 const DirectorSummaryReport = lazy(() => import("../pages/Director/SummaryReport"));
 
 
-// AppRoutes component - chỉ chứa các route definitions
+// AppRoutes component - contains only route definitions
 export function AppRoutes() {
     const { token, user } = useAuthStore();
     const isAuthenticated = !!token;
@@ -79,7 +79,7 @@ export function AppRoutes() {
             director: ROUTES.DIRECTOR,
         };
 
-        // Debug log để xem user role
+        // Debug log to inspect user role
         console.log('Current user:', user);
         const rawRole = (user?.role || user?.roleName || '');
         const normalized = String(rawRole).toLowerCase().replace(/\s+/g, '');

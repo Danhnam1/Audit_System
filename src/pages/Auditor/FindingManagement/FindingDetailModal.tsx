@@ -240,7 +240,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                         alt={attachment.fileName}
                                         className="w-full h-auto max-h-96 object-contain rounded-lg border border-gray-200 bg-white cursor-pointer hover:opacity-90 transition-opacity"
                                         onError={(e) => {
-                                          // Fallback nếu ảnh không load được
+                                          // Fallback if the image fails to load
                                           const target = e.target as HTMLImageElement;
                                           target.style.display = 'none';
                                           const parent = target.parentElement;

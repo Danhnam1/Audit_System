@@ -102,7 +102,7 @@ const HistoryUploadPage = () => {
         }
       } catch (e) {
         console.error('Load audits failed', e);
-        setError('Không tải được danh sách audit');
+        setError('Failed to load audit list');
       } finally {
         setLoadingAudits(false);
       }
@@ -336,7 +336,7 @@ const HistoryUploadPage = () => {
       const filename = `${base}-${doc.auditId || 'audit'}.${ext}`;
       exportFile(blob, filename);
     } catch (e) {
-      alert('Tải xuống thất bại');
+      alert('Download failed');
       // eslint-disable-next-line no-console
       console.error('download document failed', e);
     }
@@ -371,7 +371,7 @@ const HistoryUploadPage = () => {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {loadingAudits && (
-                  <tr><td colSpan={3} className="px-6 py-4 text-sm text-gray-500">Đang tải audits...</td></tr>
+                  <tr><td colSpan={3} className="px-6 py-4 text-sm text-gray-500">Loading audits...</td></tr>
                 )}
                 {!loadingAudits && visibleAuditRows.map(r => {
                   const docs = documentsMap[r.auditId] || [];
@@ -396,8 +396,8 @@ const HistoryUploadPage = () => {
                   <tr>
                     <td colSpan={3} className="px-6 py-4 text-sm text-gray-500">
                       {loadingDocs || !docsLoaded
-                        ? 'Đang kiểm tra lịch sử upload...'
-                        : 'Chỉ hiển thị các audit đã có tài liệu được upload.'}
+                        ? 'Checking upload history...'
+                        : 'Only audits with uploaded documents are displayed.'}
                     </td>
                   </tr>
                 )}
@@ -411,7 +411,7 @@ const HistoryUploadPage = () => {
                 <h3 className="text-sm font-semibold text-gray-700">
                   Uploads for {auditRows.find(a => a.auditId === expandedAudit)?.title || 'Audit'}
                 </h3>
-                {loadingDocs && <span className="text-xs text-gray-500">Đang tải lịch sử...</span>}
+                {loadingDocs && <span className="text-xs text-gray-500">Loading history...</span>}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -455,7 +455,7 @@ const HistoryUploadPage = () => {
                       );
                     })}
                     {(!documentsMap[expandedAudit] || documentsMap[expandedAudit].length === 0) && !loadingDocs && (
-                      <tr><td colSpan={6} className="px-4 py-3 text-center text-gray-500">Chưa có tài liệu nào được upload</td></tr>
+                      <tr><td colSpan={6} className="px-4 py-3 text-center text-gray-500">No documents have been uploaded yet.</td></tr>
                     )}
                   </tbody>
                 </table>

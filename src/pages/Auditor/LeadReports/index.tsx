@@ -207,7 +207,7 @@ const AuditorLeadReports = () => {
   const handleReject = async () => {
     if (!rejectAuditId) return;
     if (!rejectNote.trim()) {
-      toast.error('Vui lòng nhập lý do từ chối.');
+      toast.error('Please enter a reason for rejection.');
       return;
     }
     setActionLoading(rejectAuditId);

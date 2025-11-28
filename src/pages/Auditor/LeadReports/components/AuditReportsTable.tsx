@@ -115,7 +115,7 @@ const AuditReportsTable: React.FC<Props> = ({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td className="px-6 py-6 text-sm text-gray-500" colSpan={5}>Không có báo cáo phù hợp</td>
+                <td className="px-6 py-6 text-sm text-gray-500" colSpan={5}>No matching reports.</td>
               </tr>
             )}
           </tbody>

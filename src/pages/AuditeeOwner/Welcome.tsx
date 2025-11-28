@@ -81,17 +81,17 @@ const DepartmentHeadWelcome = () => {
           <div className="space-y-3">
             <div className="p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
               <p className="text-sm text-gray-700">
-                • Audit Plan Q1/2025 đã được phê duyệt - <span className="text-blue-600 font-medium cursor-pointer hover:underline">Xem ngay</span>
+                • Audit Plan Q1/2025 has been approved - <span className="text-blue-600 font-medium cursor-pointer hover:underline">View now</span>
               </p>
             </div>
             <div className="p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded">
               <p className="text-sm text-gray-700">
-                • 4 minh chứng đang chờ bạn duyệt
+                • 4 pieces of evidence are waiting for your review
               </p>
             </div>
             <div className="p-4 bg-orange-50 border-l-4 border-orange-500 rounded">
               <p className="text-sm text-gray-700">
-                • Finding #003 sắp đến hạn (còn 2 ngày)
+                • Finding #003 is approaching its deadline (2 days remaining)
               </p>
             </div>
           </div>
@@ -103,7 +103,7 @@ const DepartmentHeadWelcome = () => {
           <div className="space-y-4">
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-gray-900">Nguyễn Thị C</span>
+                <span className="font-medium text-gray-900">Nguyen Thi C</span>
                 <span className="text-sm text-gray-600">80% - 4/5 findings completed</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -112,7 +112,7 @@ const DepartmentHeadWelcome = () => {
             </div>
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-gray-900">Trần Văn D</span>
+                <span className="font-medium text-gray-900">Tran Van D</span>
                 <span className="text-sm text-gray-600">60% - 3/5 findings completed</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -121,7 +121,7 @@ const DepartmentHeadWelcome = () => {
             </div>
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-gray-900">Lê Thị E</span>
+                <span className="font-medium text-gray-900">Le Thi E</span>
                 <span className="text-sm text-gray-600">100% - 3/3 findings completed</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -138,32 +138,32 @@ const DepartmentHeadWelcome = () => {
             <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-medium text-red-900">#007 - Thiếu hồ sơ instructor</p>
-                  <p className="text-sm text-gray-600 mt-1">MAJOR - Còn 1 ngày</p>
+                  <p className="font-medium text-red-900">#007 - Missing instructor records</p>
+                  <p className="text-sm text-gray-600 mt-1">MAJOR - 1 day remaining</p>
                 </div>
                 <button className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700">
-                  Xem ngay
+                  View now
                 </button>
               </div>
             </div>
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-medium text-yellow-900">4 minh chứng chờ duyệt</p>
-                  <p className="text-sm text-gray-600 mt-1">Cần xem xét và phê duyệt</p>
+                  <p className="font-medium text-yellow-900">4 pieces of evidence waiting for review</p>
+                  <p className="text-sm text-gray-600 mt-1">Need to be reviewed and approved</p>
                 </div>
                 <button className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700">
-                  Duyệt
+                  Approve
                 </button>
               </div>
             </div>
           </div>
           <div className="mt-4 flex gap-2">
             <button className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 text-sm font-medium">
-              Xem tất cả findings
+              View all findings
             </button>
             <button className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium">
-              Phân công công việc
+              Assign tasks
             </button>
           </div>
         </div>

@@ -76,7 +76,7 @@ export const TeamModal: React.FC<TeamModalProps> = ({
             {!loading && !error && (
               teamMembers.length === 0 ? (
                 <p className="text-sm text-gray-600 text-center py-8">
-                  Không có thành viên nào phù hợp với bộ lọc.
+                  No team members match the selected filters.
                 </p>
               ) : (
                 <div className="space-y-3">

@@ -402,7 +402,7 @@ const AdminDepartmentManagement = () => {
                 {paginatedDepartments.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-6 text-sm text-gray-500 text-center">
-                      Không có department nào
+                      No departments available.
                     </td>
                   </tr>
                 )}

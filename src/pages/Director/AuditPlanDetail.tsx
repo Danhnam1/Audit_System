@@ -19,7 +19,7 @@ const AuditPlanDetail = () => {
     scope: 'Document Control, Training Records, Internal Audit Process',
     startDate: '2024-11-20',
     endDate: '2024-11-25',
-  submittedBy: 'Nguyễn Văn A (Lead Auditor)',
+  submittedBy: 'Nguyen Van A (Lead Auditor)',
     submittedDate: '2024-11-01',
     status: 'Pending Review',
     objectives: [
@@ -28,7 +28,7 @@ const AuditPlanDetail = () => {
       'Identify areas for improvement',
       'Review documentation and record-keeping practices',
     ],
-    auditTeam: ['Trần Thị B', 'Lê Văn C', 'Phạm Thị D'],
+    auditTeam: ['Tran Thi B', 'Le Van C', 'Pham Thi D'],
     methodology: 'Document review, interviews, process observation, and sampling techniques',
     expectedOutcomes: [
       'Compliance assessment report',

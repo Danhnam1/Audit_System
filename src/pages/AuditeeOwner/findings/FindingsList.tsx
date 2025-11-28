@@ -81,20 +81,20 @@ const FindingsList = () => {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Quay lại
+            Back
           </button>
         </div>
 
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Danh sách Findings của Phòng ban</h1>
-          <p className="text-gray-600">Xem và phân công findings cho nhân viên xử lý</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Department Findings List</h1>
+          <p className="text-gray-600">View and assign findings for staff to handle.</p>
         </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Đang tải findings...</p>
+              <p className="text-gray-600">Loading findings...</p>
             </div>
           </div>
         ) : error ? (
@@ -103,13 +103,13 @@ const FindingsList = () => {
           </div>
         ) : findings.length === 0 ? (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-12 text-center">
-            <p className="text-gray-600 text-lg">Chưa có findings nào cho phòng ban của bạn</p>
+            <p className="text-gray-600 text-lg">There are no findings for your department yet.</p>
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">
-                Tất cả Findings ({findings.length})
+                All Findings ({findings.length})
               </h2>
               <span className="text-sm text-gray-600">
                 Department ID: {getUserDeptId()}
@@ -155,7 +155,7 @@ const FindingsList = () => {
                                     ? 'text-orange-600' 
                                     : 'text-green-600'
                                 }`}>
-                                  {daysRemaining < 0 ? `Quá hạn ${Math.abs(daysRemaining)} ngày` : `Còn ${daysRemaining} ngày`}
+                                  {daysRemaining < 0 ? `Overdue by ${Math.abs(daysRemaining)} day(s)` : `${daysRemaining} day(s) remaining`}
                                 </span>
                               )}
                             </>
@@ -166,7 +166,7 @@ const FindingsList = () => {
                         onClick={() => handleAssign(finding.findingId)}
                         className="ml-4 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 font-medium transition-all shadow-md hover:shadow-lg shrink-0"
                       >
-                        👤 Phân công Staff
+                        👤 Assign Staff
                       </button>
                     </div>
                   </div>

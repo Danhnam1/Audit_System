@@ -62,7 +62,7 @@ const AssignStaff = () => {
 
   const handleAssign = async () => {
     if (!selectedStaff) {
-      alert('⚠️ Vui lòng chọn nhân viên');
+      alert('⚠️ Please select a staff member');
       return;
     }
 
@@ -83,11 +83,11 @@ const AssignStaff = () => {
         status: 'Assigned',
       });
 
-      alert('✅ Đã phân công thành công!');
+      alert('✅ Assignment created successfully!');
       navigate('/auditee-owner/findings');
     } catch (err: any) {
       console.error('Error creating assignment:', err);
-      alert(`❌ Lỗi: ${err?.message || 'Failed to assign'}`);
+      alert(`❌ Error: ${err?.message || 'Failed to assign'}`);
     } finally {
       setSubmitting(false);
     }
@@ -105,13 +105,13 @@ const AssignStaff = () => {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Quay lại
+            Back
           </button>
         </div>
 
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Phân công Xử lý Findings</h1>
-          <p className="mt-2 text-gray-600">Phân công finding cho nhân viên và đặt deadline</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Assign Finding for CAPA</h1>
+          <p className="mt-2 text-gray-600">Assign the finding to staff and set a deadline.</p>
         </div>
 
         {/* Finding Info */}
@@ -120,16 +120,16 @@ const AssignStaff = () => {
             <h2 className="text-lg font-semibold text-gray-900 mb-2">
               Finding: {finding.code} - {finding.title} ({finding.priority})
             </h2>
-            <p className="text-sm text-gray-600">Deadline SQA: {finding.deadline} (còn 4 ngày)</p>
+            <p className="text-sm text-gray-600">SQA deadline: {finding.deadline} (4 days remaining)</p>
           </div>
 
           <div className="mb-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">📝 Mô tả Finding (từ Audit)</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-2">📝 Finding description (from Audit)</h3>
             <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{finding.description}</p>
           </div>
 
           <div className="mb-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">🎯 Corrective Action Yêu cầu</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-2">🎯 Required Corrective Actions</h3>
             <ul className="space-y-1">
               {finding.correctiveAction.map((action, index) => (
                 <li key={index} className="text-sm text-gray-700 flex items-start gap-2">
@@ -143,20 +143,20 @@ const AssignStaff = () => {
 
         {/* Assignment Form */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Phân công</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Assignment</h2>
 
           <div className="space-y-4">
             {/* Select Staff */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                👤 Phân công cho
+                👤 Assign to
               </label>
               <select
                 value={selectedStaff}
                 onChange={(e) => setSelectedStaff(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">Chọn staff...</option>
+                <option value="">Select staff...</option>
                 {staffMembers.map((staff) => (
                   <option key={staff.id} value={staff.id}>
                     {staff.name} ({staff.role})
@@ -168,29 +168,29 @@ const AssignStaff = () => {
             {/* Internal Deadline */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                📅 Deadline nội bộ
+                📅 Internal deadline
               </label>
               <input
                 type="date"
                 value={internalDeadline}
                 onChange={(e) => setInternalDeadline(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="27/10/2025 (1 ngày trước deadline SQA)"
+                placeholder="2025-10-27 (1 day before SQA deadline)"
               />
-              <p className="mt-1 text-xs text-gray-500">Nên đặt trước deadline SQA 1 ngày</p>
+              <p className="mt-1 text-xs text-gray-500">It is recommended to set it 1 day before the SQA deadline.</p>
             </div>
 
             {/* Instructions */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                💬 Hướng dẫn cho Staff
+                💬 Instructions for staff
               </label>
               <textarea
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Liên hệ ngay với các instructor sau: John Smith, Nguyễn Văn G, Trần Thị H. Cần medical cert còn hạn ít nhất 6 tháng."
+                placeholder="Contact the following instructors: John Smith, Nguyen Van G, Tran Thi H. Medical certificate must be valid for at least 6 months."
               />
             </div>
 
@@ -203,7 +203,7 @@ const AssignStaff = () => {
                   onChange={(e) => setSendEmail(e.target.checked)}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <span className="text-sm text-gray-700">Gửi email thông báo đến staff</span>
+                <span className="text-sm text-gray-700">Send email notification to staff</span>
               </label>
               <label className="flex items-center gap-2">
                 <input
@@ -212,7 +212,7 @@ const AssignStaff = () => {
                   onChange={(e) => setSetReminder(e.target.checked)}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <span className="text-sm text-gray-700">Đặt reminder trước deadline 1 ngày</span>
+                <span className="text-sm text-gray-700">Set a reminder 1 day before the deadline</span>
               </label>
             </div>
           </div>
@@ -224,7 +224,7 @@ const AssignStaff = () => {
             onClick={() => navigate('/auditee-owner/assign-tasks')}
             className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
           >
-            Hủy
+            Cancel
           </button>
           <button
             onClick={handleAssign}
@@ -235,7 +235,7 @@ const AssignStaff = () => {
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
           >
-            Giao việc
+            Assign task
           </button>
         </div>
       </div>

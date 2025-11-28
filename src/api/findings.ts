@@ -166,7 +166,7 @@ export const approveFindingActionHigherLevel = async (actionId: string, feedback
   });
 };
 export const getFindingsByAudit = async (auditId: string): Promise<any[]> => {
-  // apiClient interceptor trả về res.data, nhưng unwrap supports either shape
+  // apiClient interceptor returns res.data, but unwrap supports either shape
   const res: any = await apiClient.get(`/Findings/by-audit/${auditId}`);
   return unwrap(res);
 };

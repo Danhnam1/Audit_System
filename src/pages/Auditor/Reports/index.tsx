@@ -484,7 +484,7 @@ const SQAStaffReports = () => {
       await submitAudit(selectedAuditId);
       toast.success('Submit successfully.');
       setShowSubmitModal(false);
-      // Sau khi submit, danh sách này chỉ hiển thị Open nên cần refresh để loại bỏ audit đã Submitted
+      // After submit, this list only shows Open audits so we refresh to remove the submitted one
       await reloadReports();
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
@@ -498,7 +498,7 @@ const SQAStaffReports = () => {
   const onClickUpload = (auditId: string) => {
     // Check if already uploaded
     if (uploadedAudits.has(auditId)) {
-      toast.error('Báo cáo này đã được upload. Không thể upload lại.');
+      toast.error('This report has already been uploaded. It cannot be uploaded again.');
       return;
     }
     fileInputRefs.current[auditId]?.click();
@@ -513,7 +513,7 @@ const SQAStaffReports = () => {
     
     // Validate: Check if already uploaded
     if (uploadedAudits.has(auditId)) {
-      toast.error('Báo cáo này đã được upload. Không thể upload lại.');
+      toast.error('This report has already been uploaded. It cannot be uploaded again.');
       e.target.value = '';
       return;
     }
@@ -522,7 +522,7 @@ const SQAStaffReports = () => {
     try {
       const existingDocs = await getAuditDocuments(auditId);
       if (Array.isArray(existingDocs) && existingDocs.length > 0) {
-        toast.error('Báo cáo này đã được upload. Không thể upload lại.');
+        toast.error('This report has already been uploaded. It cannot be uploaded again.');
         e.target.value = '';
         setUploadedAudits(prev => new Set(prev).add(auditId));
         return;
@@ -542,8 +542,8 @@ const SQAStaffReports = () => {
       }
       
       const successMessage = files.length === 1 
-        ? 'Tải lên báo cáo đã ký thành công.' 
-        : `Đã tải lên thành công ${files.length} file.`;
+        ? 'Signed report uploaded successfully.' 
+        : `Successfully uploaded ${files.length} file(s).`;
       
       toast.success(successMessage);
       e.target.value = '';
@@ -555,7 +555,7 @@ const SQAStaffReports = () => {
       await reloadReports();
     } catch (err) {
       console.error('Upload signed report failed', err);
-      const errorMessage = 'Tải lên thất bại. Vui lòng thử lại.';
+      const errorMessage = 'Upload failed. Please try again.';
       toast.error(errorMessage);
     } finally {
       setUploadLoading(prev => ({ ...prev, [auditId]: false }));
@@ -575,7 +575,7 @@ const SQAStaffReports = () => {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Export PDF failed', err);
-      alert('Xuất PDF thất bại. Vui lòng thử lại.');
+      alert('Export PDF failed. Please try again.');
     }
   };
 
@@ -670,7 +670,7 @@ const SQAStaffReports = () => {
                 </option>
               ))}
             </select>
-            {loadingCharts && <span className="text-xs text-gray-500">Đang tải biểu đồ...</span>}
+            {loadingCharts && <span className="text-xs text-gray-500">Loading chart...</span>}
           </div>
         </div>
 
@@ -759,7 +759,7 @@ const SQAStaffReports = () => {
                               onClick={() => onClickUpload(String(report.auditId))}
                               disabled={uploadLoading[String(report.auditId)] || uploadedAudits.has(String(report.auditId))}
                               className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title={uploadedAudits.has(String(report.auditId)) ? 'Báo cáo đã được upload. Không thể upload lại.' : 'Tải lên bản PDF/scan đã ký'}
+                              title={uploadedAudits.has(String(report.auditId)) ? 'This report has already been uploaded. It cannot be uploaded again.' : 'Upload the signed PDF/scan report'}
                             >
                               {uploadLoading[String(report.auditId)] ? 'Uploading...' : uploadedAudits.has(String(report.auditId)) ? 'Uploaded' : 'Upload'}
                             </button>
@@ -777,14 +777,14 @@ const SQAStaffReports = () => {
                             <button 
                               disabled 
                               className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed" 
-                              title="Chỉ được export khi báo cáo đã Completed"
+                              title="Export is only available when the report is Completed."
                             >
                               Export PDF
                             </button>
                             <button
                               disabled
                               className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed"
-                              title="Chỉ tải lên sau khi Lead Auditor đã approve"
+                              title="Upload is only allowed after the Lead Auditor has approved."
                             >
                               Upload
                             </button>
@@ -800,7 +800,7 @@ const SQAStaffReports = () => {
                   </tr>
                 ))}
                 {filteredReportRows.length === 0 && (
-                  <tr><td colSpan={7} className="px-6 py-6 text-sm text-gray-500">Không có báo cáo phù hợp</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-6 text-sm text-gray-500">No matching reports.</td></tr>
                 )}
               </tbody>
             </table>
@@ -813,7 +813,7 @@ const SQAStaffReports = () => {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold text-primary-600">Summary Findings</h2>
-                <span className="text-xs text-gray-500">Tổng quan theo audit đã chọn</span>
+                <span className="text-xs text-gray-500">Overview for the selected audit.</span>
               </div>
               <div className="flex items-center gap-3">
                 {(() => {
@@ -1021,7 +1021,7 @@ const SQAStaffReports = () => {
             {(filteredMonths.length ? filteredMonths : monthsFindings).map((m) => (
               <div key={m.key} className="mb-6 last:mb-0">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-gray-700">Tháng {isNaN(m.monthNum) || m.monthNum < 1 ? m.label : m.monthNum}</div>
+                  <div className="text-sm font-semibold text-gray-700">Month {isNaN(m.monthNum) || m.monthNum < 1 ? m.label : m.monthNum}</div>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">Total: {m.total}</span>
                     <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Open: {m.open}</span>
@@ -1064,7 +1064,7 @@ const SQAStaffReports = () => {
                       ))}
                       {m.items.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-3 py-4 text-center text-gray-500">Không có dữ liệu</td>
+                          <td colSpan={6} className="px-3 py-4 text-center text-gray-500">No data available.</td>
                         </tr>
                       )}
                     </tbody>
@@ -1074,7 +1074,7 @@ const SQAStaffReports = () => {
             ))}
 
             {(!monthsFindings || monthsFindings.length === 0) && (
-              <div className="text-sm text-center text-gray-500">Không có dữ liệu</div>
+              <div className="text-sm text-center text-gray-500">No data available.</div>
             )}
           </div>
         )}

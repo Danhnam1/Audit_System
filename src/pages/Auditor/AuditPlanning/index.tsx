@@ -436,6 +436,7 @@ const SQAStaffAuditPlanning = () => {
       return;
     }
 
+    
     setPlanToDeleteId(auditId);
     setShowDeleteModal(true);
   };
@@ -608,35 +609,35 @@ const SQAStaffAuditPlanning = () => {
   const handleSubmitPlan = async () => {
     // Client-side validation
     if (!formState.title.trim()) {
-      toast.warning('Vui lòng nhập tiêu đề (Title) cho kế hoạch.');
+      toast.warning('Please enter a title for the plan.');
       formState.setCurrentStep(1);
       return;
     }
     if (!formState.periodFrom || !formState.periodTo) {
-      toast.warning('Vui lòng chọn ngày bắt đầu và kết thúc.');
+      toast.warning('Please select the start and end dates.');
       formState.setCurrentStep(1);
       return;
     }
     // period_from ≤ period_to
     if (new Date(formState.periodFrom).getTime() > new Date(formState.periodTo).getTime()) {
-      toast.warning('Khoảng thời gian không hợp lệ: Ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc.');
+      toast.warning('Invalid period: Start date must be earlier than or equal to the end date.');
       formState.setCurrentStep(1);
       return;
     }
     if (!formState.selectedTemplateId) {
-      toast.warning('Vui lòng chọn Checklist Template (Step 3).');
+      toast.warning('Please select a Checklist Template (Step 3).');
       formState.setCurrentStep(3);
       return;
     }
     if (formState.level === 'department') {
       if (formState.selectedDeptIds.length === 0) {
-        toast.warning('Vui lòng chọn ít nhất 1 phòng ban cho phạm vi Department (Step 2).');
+        toast.warning('Please select at least one department for the Department scope (Step 2).');
         formState.setCurrentStep(2);
         return;
       }
       const ownersForDepts = ownerOptions.filter((o: any) => formState.selectedDeptIds.includes(String(o.deptId ?? '')));
       if (ownersForDepts.length === 0) {
-        if (!window.confirm('⚠️ Các phòng ban đã chọn chưa có Auditee Owner.\n\nBạn có muốn tiếp tục tạo audit plan không?')) {
+        if (!window.confirm('⚠️ The selected departments do not have an Auditee Owner yet.\n\nDo you want to continue creating the audit plan?')) {
           formState.setCurrentStep(4);
           return;
         }
@@ -646,7 +647,7 @@ const SQAStaffAuditPlanning = () => {
     // Schedule constraints: unique dates and strictly increasing order
     const scheduleErrorMessages = Object.values(scheduleErrors).filter(Boolean);
     if (scheduleErrorMessages.length > 0) {
-      toast.error('Lịch không hợp lệ:\n\n' + scheduleErrorMessages.join('\n'));
+      toast.error('Invalid schedule:\n\n' + scheduleErrorMessages.join('\n'));
       formState.setCurrentStep(5);
       return;
     }
