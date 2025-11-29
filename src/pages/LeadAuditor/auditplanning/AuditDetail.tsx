@@ -76,6 +76,7 @@ const AuditDetail = () => {
             ...action,
             findingId: finding.findingId,
             findingTitle: finding.title,
+            findingSeverity: finding.severity,
           }));
         } catch (err) {
           console.error(`Failed to load actions for finding ${finding.findingId}`, err);
@@ -119,29 +120,25 @@ const AuditDetail = () => {
     }
   };
 
+  const getSeverityColor = (severity: string) => {
+    const severityLower = severity?.toLowerCase() || '';
+    if (severityLower.includes('high') || severityLower.includes('critical')) {
+      return 'bg-red-100 text-red-800 border-red-300';
+    }
+    if (severityLower.includes('medium')) {
+      return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+    }
+    if (severityLower.includes('low') || severityLower.includes('minor')) {
+      return 'bg-green-100 text-green-800 border-green-300';
+    }
+    return 'bg-gray-100 text-gray-800 border-gray-300';
+  };
+
   // Define columns for actions table
   const actionColumns: TableColumn<any>[] = useMemo(() => [
     {
-      key: 'no',
-      header: 'No.',
-      cellClassName: 'whitespace-nowrap',
-      align: 'center',
-      render: (_, index) => (
-        <span className="text-sm font-semibold text-primary-700">{index + 1}</span>
-      ),
-    },
-    {
-      key: 'finding',
-      header: 'Non-compliance',
-      render: (action) => (
-        <div className="max-w-[300px]">
-          <p className="text-sm font-semibold text-gray-900">{action.findingTitle || 'N/A'}</p>
-        </div>
-      ),
-    },
-    {
       key: 'title',
-      header: 'Action Title',
+      header: 'Title',
       render: (action) => (
         <div className="max-w-[300px]">
           <p className="text-sm font-medium text-gray-900">{action.title || 'Untitled Action'}</p>
@@ -149,22 +146,13 @@ const AuditDetail = () => {
       ),
     },
     {
-      key: 'description',
-      header: 'Description',
-      render: (action) => (
-        <div className="max-w-[400px]">
-          <p className="text-sm text-gray-700 line-clamp-2">
-            {action.description || 'No description'}
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: 'assignedTo',
-      header: 'Assigned To',
+      key: 'severity',
+      header: 'Severity',
       cellClassName: 'whitespace-nowrap',
       render: (action) => (
-        <p className="text-sm text-gray-900">{action.assignedTo || action.assignedUserName || 'N/A'}</p>
+        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getSeverityColor(action.findingSeverity || '')}`}>
+          {action.findingSeverity || 'N/A'}
+        </span>
       ),
     },
     {
@@ -189,27 +177,8 @@ const AuditDetail = () => {
       },
     },
     {
-      key: 'progress',
-      header: 'Progress',
-      cellClassName: 'whitespace-nowrap',
-      render: (action) => {
-        const progress = action.progressPercent || 0;
-        return (
-          <div className="w-32">
-            <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-green-500 h-2 rounded-full transition-all"
-                style={{ width: `${progress}%` }}
-              ></div>
-            </div>
-            <p className="text-xs text-gray-600 mt-1">{progress}%</p>
-          </div>
-        );
-      },
-    },
-    {
-      key: 'dueDate',
-      header: 'Due Date',
+      key: 'deadline',
+      header: 'Deadline',
       cellClassName: 'whitespace-nowrap',
       render: (action) => (
         <p className="text-sm text-gray-900">{action.dueDate ? formatDate(action.dueDate) : 'N/A'}</p>
