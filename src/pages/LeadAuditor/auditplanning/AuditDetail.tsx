@@ -5,26 +5,31 @@ import { getFindingsByAudit, type Finding } from '../../../api/findings';
 import { getAuditPlanById, getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
 import { getUserById } from '../../../api/adminUsers';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
+import { getCriteriaForAudit } from '../../../api/auditCriteriaMap';
+import { getAuditCriterionById } from '../../../api/auditCriteria';
 import { toast } from 'react-toastify';
 import { unwrap } from '../../../utils/normalize';
 import FindingsTab from './components/FindingsTab';
 import DepartmentTab from './components/DepartmentTab';
 import AuditTeamTab from './components/AuditTeamTab';
+import CriteriaTab from './components/CriteriaTab';
 
 const AuditDetail = () => {
   const { auditId } = useParams<{ auditId: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'findings' | 'department' | 'auditteam'>('findings');
+  const [activeTab, setActiveTab] = useState<'findings' | 'department' | 'auditteam' | 'criteria'>('findings');
   const [findings, setFindings] = useState<Finding[]>([]);
   const [auditDetails, setAuditDetails] = useState<any>(null);
   const [departments, setDepartments] = useState<any[]>([]);
   const [auditors, setAuditors] = useState<any[]>([]);
+  const [criteria, setCriteria] = useState<any[]>([]);
   const [createdByFullName, setCreatedByFullName] = useState<string>('');
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [loadingAuditors, setLoadingAuditors] = useState(false);
+  const [loadingCriteria, setLoadingCriteria] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,6 +38,7 @@ const AuditDetail = () => {
       loadAuditDetails();
       loadDepartments();
       loadAuditors();
+      loadCriteria();
     }
   }, [auditId]);
 
@@ -109,6 +115,68 @@ const AuditDetail = () => {
       toast.error('Failed to load audit team: ' + (err?.message || 'Unknown error'));
     } finally {
       setLoadingAuditors(false);
+    }
+  };
+
+  const loadCriteria = async () => {
+    if (!auditId) return;
+    
+    setLoadingCriteria(true);
+    try {
+      // Get criteria mapping for this audit
+      const criteriaMap = await getCriteriaForAudit(auditId);
+      const criteriaList = unwrap(criteriaMap);
+      
+      if (!Array.isArray(criteriaList) || criteriaList.length === 0) {
+        setCriteria([]);
+        return;
+      }
+
+      // Fetch detailed information for each criterion using getAuditCriterionById
+      const criteriaDetails = await Promise.allSettled(
+        criteriaList.map(async (item: any) => {
+          try {
+            const response = await getAuditCriterionById(item.criteriaId);
+            console.log('Criterion detail response for', item.criteriaId, ':', response);
+            
+            // hooks/axios interceptor already returns response.data, so response is the actual data
+            const detail = response || {};
+            
+            console.log('Processed criterion detail:', detail);
+            
+            return {
+              criteriaId: detail.criteriaId || item.criteriaId,
+              name: detail.name || 'N/A',
+              description: detail.description || 'No description',
+              referenceCode: detail.referenceCode || 'N/A',
+              status: item.status || detail.status || 'Active',
+            };
+          } catch (err: any) {
+            console.error(`Failed to load criterion ${item.criteriaId}:`, err);
+            console.error('Error details:', err?.response?.data || err?.message);
+            // Return basic info if detail fetch fails
+            return {
+              criteriaId: item.criteriaId,
+              name: 'N/A',
+              description: 'No description',
+              referenceCode: 'N/A',
+              status: item.status || 'Active',
+            };
+          }
+        })
+      );
+
+      const validCriteria = criteriaDetails
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => (result as PromiseFulfilledResult<any>).value);
+
+      setCriteria(validCriteria);
+    } catch (err: any) {
+      console.error('Failed to load criteria', err);
+      toast.error('Failed to load criteria: ' + (err?.message || 'Unknown error'));
+      setCriteria([]);
+    } finally {
+      setLoadingCriteria(false);
     }
   };
 
@@ -196,6 +264,16 @@ const AuditDetail = () => {
               >
                 Audit Team
               </button>
+              <button
+                onClick={() => setActiveTab('criteria')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'criteria'
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Criteria
+              </button>
             </nav>
           </div>
 
@@ -215,6 +293,12 @@ const AuditDetail = () => {
               <AuditTeamTab 
                 auditors={auditors} 
                 loading={loadingAuditors}
+              />
+            )}
+            {activeTab === 'criteria' && (
+              <CriteriaTab 
+                criteria={criteria} 
+                loading={loadingCriteria}
               />
             )}
           </div>
