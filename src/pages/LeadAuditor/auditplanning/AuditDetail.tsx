@@ -1,36 +1,36 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../../layouts';
 import { getFindingsByAudit, type Finding } from '../../../api/findings';
-import { getAuditPlanById } from '../../../api/audits';
-import { getActionsByFinding } from '../../../api/actions';
+import { getAuditPlanById, getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
+import { getUserById } from '../../../api/adminUsers';
 import { toast } from 'react-toastify';
-import { DataTable, type TableColumn } from '../../../components/DataTable';
+import { unwrap } from '../../../utils/normalize';
+import FindingsTab from './components/FindingsTab';
+import DepartmentTab from './components/DepartmentTab';
 
 const AuditDetail = () => {
   const { auditId } = useParams<{ auditId: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'action' | 'rejectAction' | 'actionCompleted'>('action');
+  const [activeTab, setActiveTab] = useState<'findings' | 'department'>('findings');
   const [findings, setFindings] = useState<Finding[]>([]);
   const [auditDetails, setAuditDetails] = useState<any>(null);
-  const [allActions, setAllActions] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [createdByFullName, setCreatedByFullName] = useState<string>('');
+  const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  const [loadingActions, setLoadingActions] = useState(false);
+  const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (auditId) {
       loadFindings();
       loadAuditDetails();
+      loadDepartments();
     }
   }, [auditId]);
 
-  useEffect(() => {
-    if (findings.length > 0 && (activeTab === 'action' )) {
-      loadAllActions();
-    }
-  }, [findings, activeTab]);
 
   const loadFindings = async () => {
     if (!auditId) return;
@@ -56,6 +56,17 @@ const AuditDetail = () => {
     try {
       const data = await getAuditPlanById(auditId);
       setAuditDetails(data);
+      
+      // Load createdBy user info to get fullName
+      if (data?.createdBy) {
+        try {
+          const user = await getUserById(data.createdBy);
+          setCreatedByFullName(user?.fullName || 'N/A');
+        } catch (err) {
+          console.error('Failed to load user info', err);
+          setCreatedByFullName('N/A');
+        }
+      }
     } catch (err: any) {
       console.error('Failed to load audit details', err);
       toast.error('Failed to load audit details: ' + (err?.message || 'Unknown error'));
@@ -64,48 +75,21 @@ const AuditDetail = () => {
     }
   };
 
-  const loadAllActions = async () => {
-    if (!auditId || findings.length === 0) return;
+  const loadDepartments = async () => {
+    if (!auditId) return;
     
-    setLoadingActions(true);
+    setLoadingDepartments(true);
     try {
-      const actionsPromises = findings.map(async (finding) => {
-        try {
-          const actions = await getActionsByFinding(finding.findingId);
-          return actions.map((action: any) => ({
-            ...action,
-            findingId: finding.findingId,
-            findingTitle: finding.title,
-            findingSeverity: finding.severity,
-          }));
-        } catch (err) {
-          console.error(`Failed to load actions for finding ${finding.findingId}`, err);
-          return [];
-        }
-      });
-      
-      const actionsArrays = await Promise.all(actionsPromises);
-      const flattened = actionsArrays.flat();
-      setAllActions(flattened);
+      const data = await getAuditScopeDepartmentsByAuditId(auditId);
+      const deptList = unwrap(data);
+      setDepartments(Array.isArray(deptList) ? deptList : []);
     } catch (err: any) {
-      console.error('Failed to load actions', err);
-      toast.error('Failed to load actions: ' + (err?.message || 'Unknown error'));
+      console.error('Failed to load departments', err);
+      toast.error('Failed to load departments: ' + (err?.message || 'Unknown error'));
     } finally {
-      setLoadingActions(false);
+      setLoadingDepartments(false);
     }
   };
-
-  // Filter actions based on active tab
-  const filteredActions = useMemo(() => {
-    if (activeTab === 'action') {
-      // Show actions that are not rejected and not completed
-      return allActions.filter(action => {
-        const status = (action.status || '').toLowerCase();
-        return status !== 'rejected' && status !== 'completed' && status !== 'closed';
-      });
-    }
-    return [];
-  }, [allActions, activeTab]);
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
@@ -120,71 +104,20 @@ const AuditDetail = () => {
     }
   };
 
-  const getSeverityColor = (severity: string) => {
-    const severityLower = severity?.toLowerCase() || '';
-    if (severityLower.includes('high') || severityLower.includes('critical')) {
-      return 'bg-red-100 text-red-800 border-red-300';
+  const formatDateTime = (dateString?: string) => {
+    if (!dateString) return 'N/A';
+    try {
+      return new Date(dateString).toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch {
+      return dateString;
     }
-    if (severityLower.includes('medium')) {
-      return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-    }
-    if (severityLower.includes('low') || severityLower.includes('minor')) {
-      return 'bg-green-100 text-green-800 border-green-300';
-    }
-    return 'bg-gray-100 text-gray-800 border-gray-300';
   };
-
-  // Define columns for actions table
-  const actionColumns: TableColumn<any>[] = useMemo(() => [
-    {
-      key: 'title',
-      header: 'Title',
-      render: (action) => (
-        <div className="max-w-[300px]">
-          <p className="text-sm font-medium text-gray-900">{action.title || 'Untitled Action'}</p>
-        </div>
-      ),
-    },
-    {
-      key: 'severity',
-      header: 'Severity',
-      cellClassName: 'whitespace-nowrap',
-      render: (action) => (
-        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getSeverityColor(action.findingSeverity || '')}`}>
-          {action.findingSeverity || 'N/A'}
-        </span>
-      ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      cellClassName: 'whitespace-nowrap',
-      render: (action) => {
-        const status = (action.status || '').toLowerCase();
-        let colorClass = 'bg-gray-100 text-gray-800';
-        if (status === 'completed' || status === 'closed') {
-          colorClass = 'bg-green-100 text-green-800';
-        } else if (status === 'rejected' || status === 'returned') {
-          colorClass = 'bg-red-100 text-red-800';
-        } else if (status === 'in progress' || status === 'in-progress') {
-          colorClass = 'bg-yellow-100 text-yellow-800';
-        }
-        return (
-          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${colorClass}`}>
-            {action.status || 'N/A'}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'deadline',
-      header: 'Deadline',
-      cellClassName: 'whitespace-nowrap',
-      render: (action) => (
-        <p className="text-sm text-gray-900">{action.dueDate ? formatDate(action.dueDate) : 'N/A'}</p>
-      ),
-    },
-  ], []);
 
   return (
     <MainLayout>
@@ -215,63 +148,143 @@ const AuditDetail = () => {
           <div className="border-b border-gray-200">
             <nav className="flex space-x-8 px-6" aria-label="Tabs">
               <button
-                onClick={() => setActiveTab('action')}
+                onClick={() => setActiveTab('findings')}
                 className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === 'action'
+                  activeTab === 'findings'
                     ? 'border-primary-500 text-primary-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Action
+                Findings
               </button>
-              
-            
+              <button
+                onClick={() => setActiveTab('department')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'department'
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Department
+              </button>
             </nav>
           </div>
 
           {/* Tab Content */}
           <div className="p-6">
-            {loadingActions ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-                  <p className="mt-4 text-gray-600">Loading actions...</p>
-                </div>
-              </div>
-            ) : filteredActions.length === 0 ? (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-12 text-center">
-                <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                <p className="text-gray-600 text-lg font-medium">No actions found</p>
-                <p className="text-gray-500 text-sm mt-2">
-                  {activeTab === 'action' && 'No active actions for this audit.'}
-                  {activeTab === 'rejectAction' && 'No rejected actions for this audit.'}
-                  {activeTab === 'actionCompleted' && 'No completed actions for this audit.'}
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="mb-6">
-                  <p className="text-sm text-gray-600">
-                    Total {activeTab === 'action' ? 'active' : activeTab === 'rejectAction' ? 'rejected' : 'completed'} actions: 
-                    <span className="font-semibold text-gray-900 ml-1">{filteredActions.length}</span>
-                  </p>
-                </div>
-                <DataTable
-                  columns={actionColumns}
-                  data={filteredActions}
-                  loading={false}
-                  loadingMessage="Loading actions..."
-                  emptyState="No actions found."
-                  rowKey={(action, index) => action.actionId || index}
-                  getRowClassName={() => 'transition-colors hover:bg-gray-50'}
-                />
-              </div>
+            {activeTab === 'findings' && (
+              <FindingsTab findings={findings} loading={loading} />
+            )}
+            {activeTab === 'department' && (
+              <DepartmentTab 
+                departments={departments} 
+                loading={loadingDepartments}
+                onViewAuditDetail={() => setShowAuditDetailModal(true)}
+              />
             )}
           </div>
         </div>
       </div>
+
+      {/* Audit Detail Modal */}
+      {showAuditDetailModal && auditDetails && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] overflow-hidden flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-primary-600 via-primary-700 to-primary-800 px-8 py-6 shadow-lg">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-2xl font-bold text-white">Audit Details</h3>
+                  <p className="text-sm text-white/90 mt-1">Complete audit information</p>
+                </div>
+                <button
+                  onClick={() => setShowAuditDetailModal(false)}
+                  className="text-white hover:bg-white/20 rounded-lg p-2 transition-all duration-200"
+                  title="Close"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white p-8">
+              <div className="space-y-6">
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Audit ID</span>
+                      <p className="text-sm text-gray-900 mt-1">{auditDetails.auditId || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Title</span>
+                      <p className="text-sm text-gray-900 mt-1">{auditDetails.title || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Type</span>
+                      <p className="text-sm text-gray-900 mt-1">{auditDetails.type || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Scope</span>
+                      <p className="text-sm text-gray-900 mt-1">{auditDetails.scope || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Status</span>
+                      <p className="text-sm text-gray-900 mt-1">{auditDetails.status || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Template ID</span>
+                      <p className="text-sm text-gray-900 mt-1">{auditDetails.templateId || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Start Date</span>
+                      <p className="text-sm text-gray-900 mt-1">{formatDate(auditDetails.startDate)}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">End Date</span>
+                      <p className="text-sm text-gray-900 mt-1">{formatDate(auditDetails.endDate)}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Created By</span>
+                      <p className="text-sm text-gray-900 mt-1">{createdByFullName || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Created At</span>
+                      <p className="text-sm text-gray-900 mt-1">{formatDateTime(auditDetails.createdAt)}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Published</span>
+                      <p className="text-sm text-gray-900 mt-1">{auditDetails.isPublished ? 'Yes' : 'No'}</p>
+                    </div>
+                  </div>
+                  {auditDetails.objective && (
+                    <div className="mt-4">
+                      <span className="text-xs font-semibold text-gray-500 uppercase">Objective</span>
+                      <p className="text-sm text-gray-900 mt-1 whitespace-pre-wrap">{auditDetails.objective}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-gradient-to-r from-gray-50 to-white px-8 py-5 border-t border-gray-200 shadow-lg">
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowAuditDetailModal(false)}
+                  className="px-6 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </MainLayout>
   );
 };
