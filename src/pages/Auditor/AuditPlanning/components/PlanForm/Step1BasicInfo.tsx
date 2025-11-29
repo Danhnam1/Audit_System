@@ -25,9 +25,15 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
   onPeriodFromChange,
   onPeriodToChange,
 }) => {
-  // Calculate min date for Period - To
-  // Must be: 1) not in the past, 2) greater than Period - From
-  const today = new Date().toISOString().split('T')[0];
+  // Calculate min/max dates for Period fields
+  // - Period From: today → today + 6 months (~180 days)
+  // - Period To:   at least the day after Period From (and not in the past)
+  const todayObj = new Date();
+  const today = todayObj.toISOString().split('T')[0];
+
+  const sixMonthsFromToday = new Date(todayObj);
+  sixMonthsFromToday.setDate(sixMonthsFromToday.getDate() + 180);
+  const maxStartDate = sixMonthsFromToday.toISOString().split('T')[0];
   const getPeriodToMin = () => {
     if (!periodFrom) {
       // If Period - From is not set, min is today
@@ -90,7 +96,8 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
               onChange={(e) => onPeriodFromChange(e.target.value)}
               type="date"
               placeholder="dd/mm/yyyy"
-              min={new Date().toISOString().split('T')[0]}
+            min={today}
+            max={maxStartDate}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>

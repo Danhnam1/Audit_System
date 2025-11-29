@@ -154,16 +154,71 @@ const SQAStaffAuditPlanning = () => {
   ]);
 
   // Validation functions for each step
+  const validatePlanPeriod = useMemo(() => {
+    const validator = (periodFrom?: string, periodTo?: string, showToast = true): boolean => {
+      if (!periodFrom || !periodTo) return true;
+
+      const periodStart = new Date(periodFrom).getTime();
+      const periodEnd = new Date(periodTo).getTime();
+
+      if (Number.isNaN(periodStart) || Number.isNaN(periodEnd)) return true;
+
+      const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+      const today = new Date();
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+      const startDay = new Date(new Date(periodFrom).getFullYear(), new Date(periodFrom).getMonth(), new Date(periodFrom).getDate()).getTime();
+
+      if (startDay < todayStart) {
+        if (showToast) {
+          toast.warning('Start date cannot be in the past.');
+        }
+        return false;
+      }
+
+      const MAX_START_OFFSET_DAYS = 180;
+      const daysFromToday = Math.floor((startDay - todayStart) / MS_PER_DAY);
+      if (daysFromToday > MAX_START_OFFSET_DAYS) {
+        if (showToast) {
+          toast.warning('Start date cannot be more than 180 days from today.');
+        }
+        return false;
+      }
+
+      if (periodStart > periodEnd) {
+        if (showToast) {
+          toast.warning('Invalid period: Start date must be earlier than or equal to the end date.');
+        }
+        return false;
+      }
+
+      const MAX_PLAN_DURATION_DAYS = 90;
+      const durationInDays = Math.ceil((periodEnd - periodStart) / MS_PER_DAY);
+      if (durationInDays > MAX_PLAN_DURATION_DAYS) {
+        if (showToast) {
+          toast.warning('Audit plans cannot span more than 90 days.');
+        }
+        return false;
+      }
+
+      return true;
+    };
+
+    return validator;
+  }, []);
+
   const validateStep1 = useMemo(() => {
-    return (
-      formState.title.trim() !== '' &&
-      formState.auditType.trim() !== '' &&
-      formState.goal.trim() !== '' &&
-      formState.periodFrom !== '' &&
-      formState.periodTo !== '' &&
-      new Date(formState.periodFrom).getTime() <= new Date(formState.periodTo).getTime()
-    );
-  }, [formState.title, formState.auditType, formState.goal, formState.periodFrom, formState.periodTo]);
+    if (
+      formState.title.trim() === '' ||
+      formState.auditType.trim() === '' ||
+      formState.goal.trim() === '' ||
+      formState.periodFrom === '' ||
+      formState.periodTo === ''
+    ) {
+      return false;
+    }
+    return validatePlanPeriod(formState.periodFrom, formState.periodTo, false);
+  }, [formState.title, formState.auditType, formState.goal, formState.periodFrom, formState.periodTo, validatePlanPeriod]);
 
   const validateStep2 = useMemo(() => {
     if (formState.level === 'department') {
@@ -605,6 +660,7 @@ const SQAStaffAuditPlanning = () => {
     formState.capaDue,
   ]);
 
+
   // Handler: Submit plan
   const handleSubmitPlan = async () => {
     // Client-side validation
@@ -618,9 +674,8 @@ const SQAStaffAuditPlanning = () => {
       formState.setCurrentStep(1);
       return;
     }
-    // period_from ≤ period_to
-    if (new Date(formState.periodFrom).getTime() > new Date(formState.periodTo).getTime()) {
-      toast.warning('Invalid period: Start date must be earlier than or equal to the end date.');
+
+    if (!validatePlanPeriod(formState.periodFrom, formState.periodTo, true)) {
       formState.setCurrentStep(1);
       return;
     }
@@ -891,8 +946,14 @@ const SQAStaffAuditPlanning = () => {
                   onTitleChange={formState.setTitle}
                   onAuditTypeChange={formState.setAuditType}
                   onGoalChange={formState.setGoal}
-                  onPeriodFromChange={formState.setPeriodFrom}
-                  onPeriodToChange={formState.setPeriodTo}
+                  onPeriodFromChange={(value: string) => {
+                    formState.setPeriodFrom(value);
+                    validatePlanPeriod(value, formState.periodTo, true);
+                  }}
+                  onPeriodToChange={(value: string) => {
+                    formState.setPeriodTo(value);
+                    validatePlanPeriod(formState.periodFrom, value, true);
+                  }}
                 />
               )}
 
