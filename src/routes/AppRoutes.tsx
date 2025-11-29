@@ -256,8 +256,8 @@ export function AppRoutes() {
             <Route
                 path="/auditor/audit-assignment"
                 element={
-                    <ProtectedRoute allowedRoles={["Auditor"]}>
-                        <LeadAuditorAuditPlanning />
+                    <ProtectedRoute allowedRoles={["Auditor", "Lead Auditor"]}>
+                        <LeadAuditorAuditAssignment />
                     </ProtectedRoute>
                 }
             />

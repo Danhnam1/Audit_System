@@ -67,7 +67,6 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
             { icon: <DashboardIcon />, label: 'Finding Management', path: `${ROUTES.AUDITOR}/findings` },
             { icon: <DashboardIcon />, label: 'Requests', path: `${ROUTES.AUDITOR}/requests` },
             { icon: <AuditIcon />, label: 'Lead Audit Final Review', path: `${ROUTES.AUDITOR}/lead-final-review` },
-            { icon: <AuditIcon />, label: 'Audit Assignment', path: `${ROUTES.AUDITOR}/audit-assignment` },
           ],
         },
       ];
@@ -97,6 +96,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
     case 'leadauditor':
       return [
         { icon: <AuditIcon />, label: 'Audit Planning', path: '/lead-auditor/auditplanning' },
+        { icon: <AuditIcon />, label: 'Audit Assignment', path: '/auditor/audit-assignment' },
       ];
 
     default:
