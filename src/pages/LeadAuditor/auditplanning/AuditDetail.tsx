@@ -1,40 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../../layouts';
-import { getFindingsByAudit, type Finding } from '../../../api/findings';
 import { getAuditPlanById, getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
 import { getUserById } from '../../../api/adminUsers';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getCriteriaForAudit } from '../../../api/auditCriteriaMap';
 import { getAuditCriterionById } from '../../../api/auditCriteria';
+import { getChecklistTemplateById, type ChecklistTemplateDto } from '../../../api/checklists';
+import { getFindingsByAudit } from '../../../api/findings';
 import { toast } from 'react-toastify';
 import { unwrap } from '../../../utils/normalize';
-import FindingsTab from './components/FindingsTab';
 import DepartmentTab from './components/DepartmentTab';
 import AuditTeamTab from './components/AuditTeamTab';
 import CriteriaTab from './components/CriteriaTab';
+import FindingsTab from './components/FindingsTab';
 
 const AuditDetail = () => {
   const { auditId } = useParams<{ auditId: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'findings' | 'department' | 'auditteam' | 'criteria'>('findings');
-  const [findings, setFindings] = useState<Finding[]>([]);
+  const [activeTab, setActiveTab] = useState<'department' | 'auditteam' | 'criteria' | 'template' | 'findings'>('department');
   const [auditDetails, setAuditDetails] = useState<any>(null);
   const [departments, setDepartments] = useState<any[]>([]);
   const [auditors, setAuditors] = useState<any[]>([]);
   const [criteria, setCriteria] = useState<any[]>([]);
+  const [template, setTemplate] = useState<ChecklistTemplateDto | null>(null);
+  const [findings, setFindings] = useState<any[]>([]);
   const [createdByFullName, setCreatedByFullName] = useState<string>('');
+  const [templateCreatedByFullName, setTemplateCreatedByFullName] = useState<string>('');
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [loadingAuditors, setLoadingAuditors] = useState(false);
   const [loadingCriteria, setLoadingCriteria] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadingTemplate, setLoadingTemplate] = useState(false);
+  const [loadingFindings, setLoadingFindings] = useState(false);
 
   useEffect(() => {
     if (auditId) {
-      loadFindings();
       loadAuditDetails();
       loadDepartments();
       loadAuditors();
@@ -42,31 +44,57 @@ const AuditDetail = () => {
     }
   }, [auditId]);
 
-
-  const loadFindings = async () => {
-    if (!auditId) return;
+  // Load template when audit details are loaded
+  useEffect(() => {
+    const templateId = auditDetails?.audit?.templateId || auditDetails?.templateId;
+    console.log('[useEffect Template] auditDetails:', auditDetails);
+    console.log('[useEffect Template] auditDetails?.audit?.templateId:', auditDetails?.audit?.templateId);
+    console.log('[useEffect Template] auditDetails?.templateId:', auditDetails?.templateId);
+    console.log('[useEffect Template] Final templateId:', templateId);
     
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getFindingsByAudit(auditId);
-      setFindings(Array.isArray(data) ? data : []);
-    } catch (err: any) {
-      console.error('Failed to load findings', err);
-      setError(err?.message || 'Failed to load findings');
-      toast.error('Failed to load findings: ' + (err?.message || 'Unknown error'));
-    } finally {
-      setLoading(false);
+    if (templateId && !template && !loadingTemplate) {
+      console.log('[useEffect Template] Calling loadTemplate');
+      loadTemplate();
+    } else {
+      console.log('[useEffect Template] No templateId found or template already loaded');
     }
-  };
+  }, [auditDetails?.audit?.templateId, auditDetails?.templateId]);
+
+  // Load template when Template tab is clicked
+  useEffect(() => {
+    const templateId = auditDetails?.audit?.templateId || auditDetails?.templateId;
+    if (activeTab === 'template' && templateId && !template && !loadingTemplate) {
+      console.log('[useEffect ActiveTab] Template tab active, loading template');
+      loadTemplate();
+    }
+  }, [activeTab, auditDetails?.audit?.templateId, auditDetails?.templateId, template, loadingTemplate]);
+
+  // Load findings when audit is approved and findings tab is active
+  useEffect(() => {
+    const auditStatus = auditDetails?.audit?.status || auditDetails?.status;
+    if (activeTab === 'findings' && auditStatus === 'Approved' && auditId && findings.length === 0 && !loadingFindings) {
+      loadFindings();
+    }
+  }, [activeTab, auditDetails?.audit?.status, auditDetails?.status, auditId]);
 
   const loadAuditDetails = async () => {
     if (!auditId) return;
     
+    console.log('[loadAuditDetails] Starting to load audit details for auditId:', auditId);
     setLoadingDetails(true);
     try {
       const data = await getAuditPlanById(auditId);
+      console.log('[loadAuditDetails] Audit data:', data);
+      console.log('[loadAuditDetails] TemplateId:', data?.templateId);
+      console.log('[loadAuditDetails] Data keys:', data ? Object.keys(data) : 'null');
       setAuditDetails(data);
+      
+      // Template will be loaded by useEffect when auditDetails is set
+      if (data?.templateId) {
+        console.log('[loadAuditDetails] TemplateId found:', data.templateId);
+      } else {
+        console.log('[loadAuditDetails] No templateId in audit data');
+      }
       
       // Load createdBy user info to get fullName
       if (data?.createdBy) {
@@ -180,6 +208,81 @@ const AuditDetail = () => {
     }
   };
 
+  const loadTemplate = async () => {
+    // templateId is nested in auditDetails.audit.templateId
+    const templateId = auditDetails?.audit?.templateId || auditDetails?.templateId;
+    
+    if (!templateId) {
+      console.log('[loadTemplate] No templateId found in auditDetails');
+      console.log('[loadTemplate] auditDetails.audit:', auditDetails?.audit);
+      return;
+    }
+
+    console.log('[loadTemplate] Starting to load template');
+    console.log('[loadTemplate] TemplateId from audit:', templateId);
+    
+    setLoadingTemplate(true);
+    try {
+      // Call API directly with templateId
+      console.log('[loadTemplate] Calling API: /ChecklistTemplates/' + templateId);
+      const data = await getChecklistTemplateById(templateId);
+      console.log('[loadTemplate] API response:', data);
+      
+      // Handle response - could be direct data or wrapped
+      const templateData = data?.data || data;
+      console.log('[loadTemplate] Processed template data:', templateData);
+      console.log('[loadTemplate] Template data keys:', templateData ? Object.keys(templateData) : 'null');
+      
+      if (templateData) {
+        setTemplate(templateData);
+        
+        // Load createdBy user info to get fullName
+        if (templateData.createdBy) {
+          try {
+            const user = await getUserById(templateData.createdBy);
+            setTemplateCreatedByFullName(user?.fullName || 'N/A');
+          } catch (err) {
+            console.error('Failed to load template creator info', err);
+            setTemplateCreatedByFullName('N/A');
+          }
+        }
+      } else {
+        console.error('[loadTemplate] No template data received');
+        setTemplate(null);
+        toast.error('Template data not found');
+      }
+    } catch (err: any) {
+      console.error('[loadTemplate] Failed to load template:', err);
+      console.error('[loadTemplate] Error details:', {
+        message: err?.message,
+        response: err?.response?.data,
+        status: err?.response?.status,
+        url: err?.config?.url
+      });
+      toast.error('Failed to load template: ' + (err?.response?.data?.message || err?.message || 'Unknown error'));
+      setTemplate(null);
+    } finally {
+      setLoadingTemplate(false);
+    }
+  };
+
+  const loadFindings = async () => {
+    if (!auditId) return;
+    
+    setLoadingFindings(true);
+    try {
+      const data = await getFindingsByAudit(auditId);
+      const findingsList = Array.isArray(data) ? data : [];
+      setFindings(findingsList);
+    } catch (err: any) {
+      console.error('Failed to load findings', err);
+      toast.error('Failed to load findings: ' + (err?.message || 'Unknown error'));
+      setFindings([]);
+    } finally {
+      setLoadingFindings(false);
+    }
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     try {
@@ -235,16 +338,6 @@ const AuditDetail = () => {
           <div className="border-b border-gray-200">
             <nav className="flex space-x-8 px-6" aria-label="Tabs">
               <button
-                onClick={() => setActiveTab('findings')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  activeTab === 'findings'
-                    ? 'border-primary-500 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Findings
-              </button>
-              <button
                 onClick={() => setActiveTab('department')}
                 className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === 'department'
@@ -274,14 +367,34 @@ const AuditDetail = () => {
               >
                 Criteria
               </button>
+              <button
+                onClick={() => setActiveTab('template')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'template'
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Template
+              </button>
+              {/* Only show Findings tab when audit status is Approved */}
+              {((auditDetails?.audit?.status || auditDetails?.status) === 'Approved') && (
+                <button
+                  onClick={() => setActiveTab('findings')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'findings'
+                      ? 'border-primary-500 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Findings
+                </button>
+              )}
             </nav>
           </div>
 
           {/* Tab Content */}
           <div className="p-6">
-            {activeTab === 'findings' && (
-              <FindingsTab findings={findings} loading={loading} />
-            )}
             {activeTab === 'department' && (
               <DepartmentTab 
                 departments={departments} 
@@ -300,6 +413,91 @@ const AuditDetail = () => {
                 criteria={criteria} 
                 loading={loadingCriteria}
               />
+            )}
+            {activeTab === 'findings' && (
+              <FindingsTab 
+                findings={findings} 
+                loading={loadingFindings}
+              />
+            )}
+            {activeTab === 'template' && (
+              <div>
+                {(() => {
+                  console.log('=== TEMPLATE TAB DEBUG ===');
+                  console.log('[Template Tab Render] auditId from URL:', auditId);
+                  console.log('[Template Tab Render] auditDetails:', auditDetails);
+                  // templateId is nested in audit.audit.templateId
+                  const templateId = auditDetails?.audit?.templateId || auditDetails?.templateId;
+                  console.log('[Template Tab Render] auditDetails?.audit?.templateId:', auditDetails?.audit?.templateId);
+                  console.log('[Template Tab Render] auditDetails?.templateId:', auditDetails?.templateId);
+                  console.log('[Template Tab Render] Final templateId:', templateId);
+                  console.log('[Template Tab Render] auditDetails keys:', auditDetails ? Object.keys(auditDetails) : 'null');
+                  console.log('[Template Tab Render] loadingTemplate:', loadingTemplate);
+                  console.log('[Template Tab Render] template:', template);
+                  console.log('[Template Tab Render] template?.templateId:', template?.templateId);
+                  
+                  // Check if we can get templateId
+                  if (auditDetails) {
+                    console.log('[Template Tab Render] ✅ auditDetails exists');
+                    if (templateId) {
+                      console.log('[Template Tab Render] ✅ templateId found:', templateId);
+                    } else {
+                      console.log('[Template Tab Render] ❌ templateId NOT found in auditDetails');
+                    }
+                  } else {
+                    console.log('[Template Tab Render] ❌ auditDetails is null/undefined');
+                  }
+                  
+                  // Load template if not loaded yet and templateId exists
+                  if (!template && !loadingTemplate && templateId) {
+                    console.log('[Template Tab Render] Triggering loadTemplate from render');
+                    setTimeout(() => {
+                      loadTemplate();
+                    }, 0);
+                  }
+                  
+                  return null;
+                })()}
+                {loadingTemplate ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    <span className="ml-3 text-gray-600">Loading template...</span>
+                  </div>
+                ) : !template ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No template found for this audit</p>
+                    <p className="text-xs text-gray-400 mt-2">Template ID: {auditDetails?.templateId || 'N/A'}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-6">Template Information</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            Name
+                          </label>
+                          <p className="text-sm text-gray-900 font-medium">{template.name || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            Version
+                          </label>
+                          <p className="text-sm text-gray-900">{template.version || 'N/A'}</p>
+                        </div>
+                        {template.description && (
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                              Description
+                            </label>
+                            <p className="text-sm text-gray-900 whitespace-pre-wrap">{template.description}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
