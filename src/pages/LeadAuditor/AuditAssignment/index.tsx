@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getMyLeadAuditorAudits, getAuditorsByAuditId } from '../../../api/auditTeam';
-import { getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
+import { getAuditScopeDepartmentsByAuditId, getAuditPlans } from '../../../api/audits';
 import { createAuditAssignment, getAuditAssignments } from '../../../api/auditAssignments';
 import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
 import { unwrap } from '../../../utils/normalize';
+import { getStatusColor } from '../../../constants';
 
 interface Department {
   deptId: number;
@@ -28,17 +29,31 @@ interface Assignment {
   status: string;
 }
 
+interface Audit {
+  auditId: string;
+  title: string;
+  type: string;
+  scope: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  objective?: string;
+  isPublished?: boolean;
+}
+
 export default function AuditAssignment() {
   const { user } = useAuth();
+  const [audits, setAudits] = useState<Audit[]>([]);
+  const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [loadingAudits, setLoadingAudits] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   
   // Modal state
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
-  const [selectedAuditId, setSelectedAuditId] = useState<string>('');
   const [auditors, setAuditors] = useState<Auditor[]>([]);
   const [selectedAuditorId, setSelectedAuditorId] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
@@ -46,67 +61,53 @@ export default function AuditAssignment() {
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  // Load audits first
   useEffect(() => {
-    const loadData = async () => {
+    const loadAudits = async () => {
+      setLoadingAudits(true);
+      setError(null);
+      try {
+        const auditsData = await getAuditPlans();
+        const auditsList = unwrap<Audit>(auditsData);
+        setAudits(Array.isArray(auditsList) ? auditsList : []);
+      } catch (err: any) {
+        console.error('[AuditAssignment] Failed to load audits:', err);
+        setError(err?.message || 'Failed to load audits');
+      } finally {
+        setLoadingAudits(false);
+      }
+    };
+
+    loadAudits();
+  }, []);
+
+  // Load departments when an audit is selected
+  useEffect(() => {
+    if (!selectedAuditId) {
+      setDepartments([]);
+      return;
+    }
+
+    const loadDepartments = async () => {
       setLoading(true);
       setError(null);
       try {
-        // Load assignments and departments in parallel
-        const [leadAuditorData, assignmentsData] = await Promise.all([
-          getMyLeadAuditorAudits(),
-          getAuditAssignments().catch(() => []), // Don't fail if assignments API fails
-        ]);
-        
-        if (!leadAuditorData?.isLeadAuditor) {
-          setError('You are not a lead auditor for any audits.');
-          setLoading(false);
-          return;
-        }
-
-        const auditIds = unwrap<string>(leadAuditorData?.auditIds);
-        
-        if (!auditIds || auditIds.length === 0) {
-          setError('No audits found.');
-          setLoading(false);
-          return;
-        }
-
-        // Set assignments
+        // Load assignments
+        const assignmentsData = await getAuditAssignments().catch(() => []);
         setAssignments(assignmentsData || []);
 
-        // Fetch departments for all audits
-        const departmentPromises = auditIds.map(async (auditId: string) => {
-          try {
-            const deptData = await getAuditScopeDepartmentsByAuditId(auditId);
-            return unwrap<Department>(deptData);
-          } catch (err) {
-            console.error(`Failed to load departments for audit ${auditId}:`, err);
-            return [];
-          }
-        });
-
-        const departmentsArrays = await Promise.all(departmentPromises);
+        // Fetch departments for selected audit
+        const deptData = await getAuditScopeDepartmentsByAuditId(selectedAuditId);
+        const deptList = unwrap<Department>(deptData);
+        const deptArray = Array.isArray(deptList) ? deptList : [];
         
-        // Flatten and group by deptId, keeping track of auditIds
-        const allDepartments = departmentsArrays.flat();
-        const deptMap = new Map<number, { dept: Department; auditIds: Set<string> }>();
-        
-        auditIds.forEach((auditId: string, index: number) => {
-          const depts = departmentsArrays[index] || [];
-          depts.forEach((dept: Department) => {
-            if (!deptMap.has(dept.deptId)) {
-              deptMap.set(dept.deptId, { dept, auditIds: new Set() });
-            }
-            deptMap.get(dept.deptId)!.auditIds.add(auditId);
-          });
-        });
-
-        const uniqueDepartments: Department[] = Array.from(deptMap.values()).map(({ dept, auditIds }) => ({
+        // Map departments with auditIds
+        const mappedDepartments: Department[] = deptArray.map((dept: Department) => ({
           ...dept,
-          auditIds: Array.from(auditIds),
+          auditIds: [selectedAuditId],
         }));
 
-        setDepartments(uniqueDepartments);
+        setDepartments(mappedDepartments);
       } catch (err: any) {
         console.error('[AuditAssignment] Load failed:', err);
         setError(err?.message || 'Failed to load departments');
@@ -115,18 +116,17 @@ export default function AuditAssignment() {
       }
     };
 
-    loadData();
-  }, []);
+    loadDepartments();
+  }, [selectedAuditId]);
 
   const handleOpenAssignModal = (dept: Department) => {
     setSelectedDepartment(dept);
-    // Use first auditId by default
-    const firstAuditId = dept.auditIds[0] || '';
-    setSelectedAuditId(firstAuditId);
+    // Use selected auditId (should be the same as the one we're viewing)
+    const auditId = selectedAuditId || dept.auditIds[0] || '';
     setSelectedAuditorId('');
     setNotes('');
     setIsAssignModalOpen(true);
-    loadAuditors(firstAuditId);
+    loadAuditors(auditId);
   };
 
   const loadAuditors = async (auditId: string) => {
@@ -142,12 +142,6 @@ export default function AuditAssignment() {
     } finally {
       setLoadingAuditors(false);
     }
-  };
-
-  const handleAuditIdChange = (auditId: string) => {
-    setSelectedAuditId(auditId);
-    setSelectedAuditorId('');
-    loadAuditors(auditId);
   };
 
   const handleCloseModal = () => {
@@ -177,7 +171,7 @@ export default function AuditAssignment() {
       console.log('selectedDepartment.deptId:', selectedDepartment.deptId);
       console.log('selectedAuditorId:', selectedAuditorId);
       
-      // Create audit assignment
+      // Create audit assignment - use selectedAuditId from state
       await createAuditAssignment({
         auditId: selectedAuditId,
         deptId: selectedDepartment.deptId,
@@ -228,68 +222,145 @@ export default function AuditAssignment() {
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
+  const handleAuditSelect = (auditId: string) => {
+    setSelectedAuditId(auditId);
+  };
+
+  const handleBackToAudits = () => {
+    setSelectedAuditId(null);
+    setDepartments([]);
+  };
+
   return (
     <MainLayout user={layoutUser}>
       <div className="space-y-6">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 shadow-sm">
           <div className="px-4 sm:px-6 lg:px-8 py-4">
-            <h1 className="text-2xl font-semibold text-gray-900">Audit Assignment</h1>
-            <p className="text-gray-600 text-sm mt-1">Departments assigned to your audits</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-semibold text-gray-900">Audit Assignment</h1>
+                <p className="text-gray-600 text-sm mt-1">
+                  {selectedAuditId ? 'Select department to assign auditor' : 'Select an audit to assign departments'}
+                </p>
+              </div>
+              {selectedAuditId && (
+                <button
+                  onClick={handleBackToAudits}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  Back to Audits
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Content */}
         <div className="px-4 sm:px-6 lg:px-8">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-              <span className="ml-3 text-gray-600">Loading departments...</span>
-            </div>
-          ) : error ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-800">{error}</p>
-            </div>
-          ) : departments.length === 0 ? (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-yellow-800">No departments found for your audits.</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-              <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-medium text-gray-900">
-                  Departments ({departments.length})
-                </h2>
-              </div>
-              <div className="divide-y divide-gray-200">
-                {departments.map((dept) => (
-                  <div
-                    key={dept.deptId}
-                    className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <h3 className="text-base font-medium text-gray-900">{dept.name}</h3>
+          {!selectedAuditId ? (
+            // Show audit cards
+            <>
+              {loadingAudits ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                  <span className="ml-3 text-gray-600">Loading audits...</span>
+                </div>
+              ) : error ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-red-800">{error}</p>
+                </div>
+              ) : audits.length === 0 ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p className="text-yellow-800">No audits found.</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+                  <div className="divide-y divide-gray-100">
+                    {audits.map((audit) => (
+                      <div
+                        key={audit.auditId}
+                        onClick={() => handleAuditSelect(audit.auditId)}
+                        className="px-6 py-5 hover:bg-primary-50 transition-all duration-200 cursor-pointer group border-l-4 border-transparent hover:border-primary-500"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4 flex-1">
+                            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary-100 group-hover:bg-primary-200 flex items-center justify-center transition-colors duration-200">
+                              <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 transition-colors duration-200">
+                              {audit.title}
+                            </h3>
+                          </div>
+                          <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600 transition-colors duration-200 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
                       </div>
-                      <div className="ml-4">
-                        {isDepartmentAssigned(dept.deptId) ? (
-                          <span className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg">
-                            Assigned
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => handleOpenAssignModal(dept)}
-                            className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                          >
-                            Assign
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              )}
+            </>
+          ) : (
+            // Show departments for selected audit
+            <>
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                  <span className="ml-3 text-gray-600">Loading departments...</span>
+                </div>
+              ) : error ? (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-red-800">{error}</p>
+                </div>
+              ) : departments.length === 0 ? (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <p className="text-yellow-800">No departments found for this audit.</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                  <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+                    <h2 className="text-lg font-medium text-gray-900">
+                      Departments ({departments.length})
+                    </h2>
+                  </div>
+                  <div className="divide-y divide-gray-200">
+                    {departments.map((dept) => (
+                      <div
+                        key={dept.deptId}
+                        className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h3 className="text-base font-medium text-gray-900">{dept.name}</h3>
+                          </div>
+                          <div className="ml-4">
+                            {isDepartmentAssigned(dept.deptId) ? (
+                              <span className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg">
+                                Assigned
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenAssignModal(dept)}
+                                className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                              >
+                                Assign
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -331,23 +402,15 @@ export default function AuditAssignment() {
                   </p>
                 </div>
 
-                {/* Audit Selection (if multiple audits) */}
-                {selectedDepartment.auditIds.length > 1 && (
+                {/* Audit Info (read-only since we're viewing a specific audit) */}
+                {selectedAuditId && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Select Audit
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Audit
                     </label>
-                    <select
-                      value={selectedAuditId}
-                      onChange={(e) => handleAuditIdChange(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    >
-                      {selectedDepartment.auditIds.map((auditId) => (
-                        <option key={auditId} value={auditId}>
-                          Audit {auditId.substring(0, 8)}...
-                        </option>
-                      ))}
-                    </select>
+                    <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                      {audits.find(a => a.auditId === selectedAuditId)?.title || `Audit ${selectedAuditId.substring(0, 8)}...`}
+                    </p>
                   </div>
                 )}
 
