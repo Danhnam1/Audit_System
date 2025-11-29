@@ -67,12 +67,7 @@ const DepartmentTab: React.FC<DepartmentTabProps> = ({ departments, loading, onV
         </div>
       ) : (
         <div>
-          <div className="mb-6">
-            <p className="text-sm text-gray-600">
-              Total departments: 
-              <span className="font-semibold text-gray-900 ml-1">{departments.length}</span>
-            </p>
-          </div>
+         
           <DataTable
             columns={departmentColumns}
             data={departments}

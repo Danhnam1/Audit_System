@@ -188,7 +188,7 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
           onClick={() => handleViewFindingDetail(finding)}
           className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
         >
-          Chi tiết
+          view
         </button>
       ),
     },

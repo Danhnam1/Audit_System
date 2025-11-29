@@ -4,23 +4,27 @@ import { MainLayout } from '../../../layouts';
 import { getFindingsByAudit, type Finding } from '../../../api/findings';
 import { getAuditPlanById, getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
 import { getUserById } from '../../../api/adminUsers';
+import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { toast } from 'react-toastify';
 import { unwrap } from '../../../utils/normalize';
 import FindingsTab from './components/FindingsTab';
 import DepartmentTab from './components/DepartmentTab';
+import AuditTeamTab from './components/AuditTeamTab';
 
 const AuditDetail = () => {
   const { auditId } = useParams<{ auditId: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'findings' | 'department'>('findings');
+  const [activeTab, setActiveTab] = useState<'findings' | 'department' | 'auditteam'>('findings');
   const [findings, setFindings] = useState<Finding[]>([]);
   const [auditDetails, setAuditDetails] = useState<any>(null);
   const [departments, setDepartments] = useState<any[]>([]);
+  const [auditors, setAuditors] = useState<any[]>([]);
   const [createdByFullName, setCreatedByFullName] = useState<string>('');
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
+  const [loadingAuditors, setLoadingAuditors] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,6 +32,7 @@ const AuditDetail = () => {
       loadFindings();
       loadAuditDetails();
       loadDepartments();
+      loadAuditors();
     }
   }, [auditId]);
 
@@ -91,6 +96,22 @@ const AuditDetail = () => {
     }
   };
 
+  const loadAuditors = async () => {
+    if (!auditId) return;
+    
+    setLoadingAuditors(true);
+    try {
+      const data = await getAuditorsByAuditId(auditId);
+      const auditorList = unwrap(data);
+      setAuditors(Array.isArray(auditorList) ? auditorList : []);
+    } catch (err: any) {
+      console.error('Failed to load auditors', err);
+      toast.error('Failed to load audit team: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setLoadingAuditors(false);
+    }
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     try {
@@ -137,9 +158,7 @@ const AuditDetail = () => {
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
               {loadingDetails ? 'Loading...' : auditDetails?.title || 'Audit Detail'}
             </h1>
-            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-gray-600">
-              Review findings and actions for this audit
-            </p>
+           
           </div>
         </div>
 
@@ -167,6 +186,16 @@ const AuditDetail = () => {
               >
                 Department
               </button>
+              <button
+                onClick={() => setActiveTab('auditteam')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'auditteam'
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Audit Team
+              </button>
             </nav>
           </div>
 
@@ -180,6 +209,12 @@ const AuditDetail = () => {
                 departments={departments} 
                 loading={loadingDepartments}
                 onViewAuditDetail={() => setShowAuditDetailModal(true)}
+              />
+            )}
+            {activeTab === 'auditteam' && (
+              <AuditTeamTab 
+                auditors={auditors} 
+                loading={loadingAuditors}
               />
             )}
           </div>
