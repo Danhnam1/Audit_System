@@ -30,6 +30,7 @@ const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"
 
 // Lead Auditor pages
 const LeadAuditorAuditAssignment = lazy(() => import("../pages/LeadAuditor/AuditAssignment"));
+const LeadAuditorAuditPlanning = lazy(() => import("../pages/LeadAuditor/auditplanning"));
 const SQAStaffLeadFinalReview = lazy(() => import("../pages/Auditor/LeadFinalReview/LeadFinalReview"));
 
 // CAPA Owner pages (formerly Department Staff)
@@ -77,6 +78,7 @@ export function AppRoutes() {
             capaowner: ROUTES.CAPA_OWNER,
             auditeeowner: ROUTES.AUDITEE_OWNER,
             director: '/director/review-plans',
+            leadauditor: '/lead-auditor/auditplanning',
         };
 
         // Debug log to inspect user role
@@ -254,7 +256,7 @@ export function AppRoutes() {
                 path="/auditor/audit-assignment"
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
-                        <LeadAuditorAuditAssignment />
+                        <LeadAuditorAuditPlanning />
                     </ProtectedRoute>
                 }
             />
@@ -470,6 +472,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Director"]}>
                         <DirectorSummaryReport />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/auditplanning"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <LeadAuditorAuditPlanning />
                     </ProtectedRoute>
                 }
             />

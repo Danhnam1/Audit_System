@@ -94,6 +94,10 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         // { icon: <AuditIcon />, label: 'Review Audit Results', path: '/director/review-results' },
         // { icon: <ReportsIcon />, label: 'Summary Report', path: '/director/summary-report' },
       ];
+    case 'leadauditor':
+      return [
+        { icon: <AuditIcon />, label: 'Audit Planning', path: '/lead-auditor/auditplanning' },
+      ];
 
     default:
       console.warn('No menu found for role:', role, '- Using base menu');
