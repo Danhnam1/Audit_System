@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { DataTable, type TableColumn } from '../../../../components/DataTable';
-import { getFindingById } from '../../../../api/findings';
+import { getFindingById, approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../../api/findings';
+import { getActionsByFinding, type Action } from '../../../../api/actions';
 import { getUserById } from '../../../../api/adminUsers';
 import { getDepartmentById } from '../../../../api/departments';
 import { getAttachments } from '../../../../api/attachments';
@@ -14,13 +15,15 @@ interface FindingsTabProps {
 }
 
 const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
-  const [showFindingDetailModal, setShowFindingDetailModal] = useState(false);
+  const [showActionsModal, setShowActionsModal] = useState(false);
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
-  const [findingAttachments, setFindingAttachments] = useState<Attachment[]>([]);
-  const [loadingFindingDetail, setLoadingFindingDetail] = useState(false);
-  const [findingCreatedByFullName, setFindingCreatedByFullName] = useState<string>('');
-  const [findingReviewerFullName, setFindingReviewerFullName] = useState<string>('');
-  const [findingDepartmentName, setFindingDepartmentName] = useState<string>('');
+  const [selectedFindingActions, setSelectedFindingActions] = useState<Action[]>([]);
+  const [loadingActions, setLoadingActions] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [selectedAction, setSelectedAction] = useState<Action | null>(null);
+  const [feedbackType, setFeedbackType] = useState<'approve' | 'reject'>('approve');
+  const [feedbackText, setFeedbackText] = useState('');
+  const [processingAction, setProcessingAction] = useState(false);
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
@@ -80,63 +83,20 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
 
   const handleViewFindingDetail = async (finding: Finding) => {
     setSelectedFinding(finding);
-    setShowFindingDetailModal(true);
-    setLoadingFindingDetail(true);
-    setFindingCreatedByFullName('');
-    setFindingReviewerFullName('');
-    setFindingDepartmentName('');
+    setShowActionsModal(true);
+    setLoadingActions(true);
+    setSelectedFindingActions([]);
     
     try {
-      // Load finding detail
-      const findingDetail = await getFindingById(finding.findingId);
-      setSelectedFinding(findingDetail);
-      
-      // Load createdBy user info
-      if (findingDetail.createdBy) {
-        try {
-          const user = await getUserById(findingDetail.createdBy);
-          setFindingCreatedByFullName(user?.fullName || 'N/A');
-        } catch (err) {
-          console.error('Failed to load createdBy user', err);
-          setFindingCreatedByFullName('N/A');
-        }
-      }
-      
-      // Load reviewer user info
-      if (findingDetail.reviewerId) {
-        try {
-          const reviewer = await getUserById(findingDetail.reviewerId);
-          setFindingReviewerFullName(reviewer?.fullName || 'N/A');
-        } catch (err) {
-          console.error('Failed to load reviewer user', err);
-          setFindingReviewerFullName('N/A');
-        }
-      }
-      
-      // Load department name
-      if (findingDetail.deptId) {
-        try {
-          const dept = await getDepartmentById(findingDetail.deptId);
-          setFindingDepartmentName(dept?.name || 'N/A');
-        } catch (err) {
-          console.error('Failed to load department', err);
-          setFindingDepartmentName('N/A');
-        }
-      }
-      
-      // Load attachments
-      try {
-        const attachments = await getAttachments('finding', finding.findingId);
-        setFindingAttachments(attachments);
-      } catch (err) {
-        console.error('Failed to load attachments', err);
-        setFindingAttachments([]);
-      }
+      // Load actions related to this finding
+      const actions = await getActionsByFinding(finding.findingId);
+      setSelectedFindingActions(Array.isArray(actions) ? actions : []);
     } catch (err: any) {
-      console.error('Failed to load finding detail', err);
-      toast.error('Failed to load finding detail: ' + (err?.message || 'Unknown error'));
+      console.error('Failed to load actions', err);
+      toast.error('Failed to load actions: ' + (err?.message || 'Unknown error'));
+      setSelectedFindingActions([]);
     } finally {
-      setLoadingFindingDetail(false);
+      setLoadingActions(false);
     }
   };
 
@@ -231,131 +191,211 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
         </div>
       )}
 
-      {/* Finding Detail Modal */}
-      {showFindingDetailModal && selectedFinding && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] overflow-hidden flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="sticky top-0 bg-gradient-to-r from-primary-600 via-primary-700 to-primary-800 px-8 py-6 shadow-lg">
-              <div className="flex justify-between items-center">
+      {/* Actions Modal */}
+      {showActionsModal && selectedFinding && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => {
+              setShowActionsModal(false);
+              setSelectedFinding(null);
+              setSelectedFindingActions([]);
+            }}
+          />
+
+          {/* Modal */}
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div
+              className="relative bg-white rounded-xl shadow-xl w-full max-w-4xl mx-auto max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">Finding Details</h3>
-                  <p className="text-sm text-white/90 mt-1">Complete finding information</p>
+                  <h2 className="text-xl font-semibold text-gray-900">Actions for Finding</h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {selectedFinding.title || 'Finding Details'}
+                  </p>
                 </div>
                 <button
                   onClick={() => {
-                    setShowFindingDetailModal(false);
+                    setShowActionsModal(false);
                     setSelectedFinding(null);
-                    setFindingAttachments([]);
-                    setFindingCreatedByFullName('');
-                    setFindingReviewerFullName('');
-                    setFindingDepartmentName('');
+                    setSelectedFindingActions([]);
                   }}
-                  className="text-white hover:bg-white/20 rounded-lg p-2 transition-all duration-200"
-                  title="Close"
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-            </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white p-8">
-              {loadingFindingDetail ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-                    <p className="mt-4 text-gray-600">Loading finding details...</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Title */}
-                  <div className="bg-primary-50 border-l-4 border-primary-500 p-4 rounded-r-lg">
-                    <label className="block text-xs font-semibold text-primary-700 uppercase tracking-wide mb-2">Title</label>
-                    <p className="text-base sm:text-lg font-bold text-gray-900 leading-relaxed">{selectedFinding.title || 'N/A'}</p>
-                  </div>
-
-                  {/* Description */}
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Description</label>
-                    <p className="text-sm sm:text-base text-gray-800 whitespace-pre-wrap leading-relaxed min-h-[60px]">
-                      {selectedFinding.description || 'No description provided'}
-                    </p>
-                  </div>
-
-                  {/* Details Grid */}
-                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                    <h4 className="text-lg font-semibold text-gray-900 mb-4">Details</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Severity</span>
-                        <div className="mt-1">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getSeverityColor(selectedFinding.severity || '')}`}>
-                            {selectedFinding.severity || 'N/A'}
-                          </span>
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Status</span>
-                        <div className="mt-1">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(selectedFinding.status || '')}`}>
-                            {selectedFinding.status || 'N/A'}
-                          </span>
-                        </div>
-                      </div>
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Department</span>
-                        <p className="text-sm text-gray-900 mt-1">
-                          {loadingFindingDetail ? 'Loading...' : findingDepartmentName || 'N/A'}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Created By</span>
-                        <p className="text-sm text-gray-900 mt-1">
-                          {loadingFindingDetail ? 'Loading...' : findingCreatedByFullName || 'N/A'}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Created At</span>
-                        <p className="text-sm text-gray-900 mt-1">{formatDateTime(selectedFinding.createdAt)}</p>
-                      </div>
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Deadline</span>
-                        <p className="text-sm text-gray-900 mt-1">{selectedFinding.deadline ? formatDate(selectedFinding.deadline) : 'N/A'}</p>
-                      </div>
-                      {selectedFinding.reviewerId && (
-                        <div>
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Reviewer</span>
-                          <p className="text-sm text-gray-900 mt-1">
-                            {loadingFindingDetail ? 'Loading...' : findingReviewerFullName || 'N/A'}
-                          </p>
-                        </div>
-                      )}
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {loadingActions ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                      <p className="text-gray-600">Loading actions...</p>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
+                ) : selectedFindingActions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No actions found for this finding</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {selectedFindingActions.map((action) => (
+                      <div
+                        key={action.actionId}
+                        className="bg-gradient-to-br from-white to-gray-50 rounded-xl border-2 border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden"
+                      >
+                        <div className="p-6">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-3">
+                                <h4 className="text-xl font-bold text-gray-900">
+                                  {action.title || 'Untitled Action'}
+                                </h4>
+                                <span className={`px-4 py-1.5 rounded-full text-xs font-bold shadow-sm ${getStatusColor(action.status || '')}`}>
+                                  {action.status || 'N/A'}
+                                </span>
+                              </div>
+                              {action.description && (
+                                <div className="bg-gray-50 rounded-lg p-4 mb-4 border-l-4 border-primary-500">
+                                  <p className="text-sm text-gray-700 leading-relaxed">
+                                    {action.description}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
 
-            {/* Footer */}
-            <div className="sticky bottom-0 bg-gradient-to-r from-gray-50 to-white px-8 py-5 border-t border-gray-200 shadow-lg">
-              <div className="flex justify-end">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t-2 border-gray-200">
+                            <div className="bg-blue-50 rounded-lg p-3">
+                              <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">Progress</span>
+                              <div className="mt-1">
+                                <div className="w-full bg-blue-200 rounded-full h-2.5">
+                                  <div 
+                                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                                    style={{ width: `${action.progressPercent ?? 0}%` }}
+                                  ></div>
+                                </div>
+                                <p className="text-sm font-semibold text-gray-900 mt-1">{action.progressPercent ?? 0}%</p>
+                              </div>
+                            </div>
+                            <div className="bg-purple-50 rounded-lg p-3">
+                              <span className="text-xs font-bold text-purple-600 uppercase tracking-wide">Due Date</span>
+                              <p className="text-sm font-semibold text-gray-900 mt-1">{action.dueDate ? formatDate(action.dueDate) : 'N/A'}</p>
+                            </div>
+                            {action.reviewFeedback && (
+                              <div className="bg-amber-50 rounded-lg p-3 md:col-span-1">
+                                <span className="text-xs font-bold text-amber-600 uppercase tracking-wide">Review Feedback</span>
+                                <p className="text-sm text-gray-900 mt-1 line-clamp-2">{action.reviewFeedback}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Approve/Reject Buttons - Only show if status is Approved */}
+                          {action.status === 'Approved' && (
+                            <div className="mt-6 pt-4 border-t-2 border-gray-200 flex items-center justify-end gap-3">
+                              <button
+                                onClick={() => handleRejectClick(action)}
+                                className="px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg bg-red-500 hover:bg-red-600 text-white transform hover:scale-105 active:scale-95"
+                              >
+                                ✕ Reject
+                              </button>
+                              <button
+                                onClick={() => handleApproveClick(action)}
+                                className="px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg bg-green-500 hover:bg-green-600 text-white transform hover:scale-105 active:scale-95"
+                              >
+                                ✓ Accept
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end">
                 <button
                   onClick={() => {
-                    setShowFindingDetailModal(false);
+                    setShowActionsModal(false);
                     setSelectedFinding(null);
-                    setFindingAttachments([]);
-                    setFindingCreatedByFullName('');
-                    setFindingReviewerFullName('');
-                    setFindingDepartmentName('');
+                    setSelectedFindingActions([]);
                   }}
                   className="px-6 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50"
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Modal */}
+      {showFeedbackModal && selectedAction && (
+        <div className="fixed inset-0 z-[10000] overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={() => setShowFeedbackModal(false)} />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div
+              className="relative bg-white rounded-xl shadow-2xl w-full max-w-md mx-auto overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4">
+                <h3 className="text-xl font-bold text-white">
+                  {feedbackType === 'approve' ? '✓ Approve Action' : '✕ Reject Action'}
+                </h3>
+                <p className="text-sm text-white/90 mt-1">
+                  {selectedAction.title || 'Untitled Action'}
+                </p>
+              </div>
+
+              <div className="p-6">
+                <div className="mb-4">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Feedback {feedbackType === 'reject' && <span className="text-red-500">*</span>}
+                  </label>
+                  <textarea
+                    value={feedbackText}
+                    onChange={(e) => setFeedbackText(e.target.value)}
+                    placeholder={feedbackType === 'approve' ? 'Enter feedback (optional)...' : 'Enter reason for rejection...'}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
+                    rows={4}
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      setShowFeedbackModal(false);
+                      setSelectedAction(null);
+                      setFeedbackText('');
+                    }}
+                    className="px-6 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 bg-gray-100 hover:bg-gray-200 text-gray-700"
+                    disabled={processingAction}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmitFeedback}
+                    disabled={processingAction || (feedbackType === 'reject' && !feedbackText.trim())}
+                    className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg ${
+                      feedbackType === 'approve'
+                        ? 'bg-green-500 hover:bg-green-600 text-white'
+                        : 'bg-red-500 hover:bg-red-600 text-white'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {processingAction ? 'Processing...' : feedbackType === 'approve' ? '✓ Confirm Approval' : '✕ Confirm Rejection'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

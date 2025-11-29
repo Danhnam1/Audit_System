@@ -1,4 +1,4 @@
-import apiClient from './client'
+import { apiClient } from '../hooks/axios'
 import { unwrap } from '../utils/normalize'
 
 export interface AuditCriterionDto {
@@ -29,7 +29,7 @@ export interface UpdateCriterionDto {
 
 export const getAuditCriteria = async (): Promise<AuditCriterionDto[]> => {
   const res: any = await apiClient.get('/AuditCriterion')
-  // Interceptor already returns response.data, so res is the actual data
+  // hooks/axios interceptor already returns response.data, so res is the actual data
   // API returns { $id: "1", $values: [...] }
   // unwrap handles $values, values, or direct array
   const values: AuditCriterionDto[] = unwrap(res?.$values || res?.values || res?.data || res)
@@ -37,18 +37,21 @@ export const getAuditCriteria = async (): Promise<AuditCriterionDto[]> => {
 }
 
 export const getAuditCriterionById = async (id: string): Promise<AuditCriterionDto> => {
+  // hooks/axios interceptor already returns response.data
   const res: any = await apiClient.get(`/AuditCriterion/${id}`)
-  return res.data || res
+  return res
 }
 
 export const createAuditCriterion = async (data: CreateCriterionDto): Promise<AuditCriterionDto> => {
+  // hooks/axios interceptor already returns response.data
   const res: any = await apiClient.post('/AuditCriterion', data)
-  return res.data || res
+  return res
 }
 
 export const updateAuditCriterion = async (id: string, data: UpdateCriterionDto): Promise<AuditCriterionDto> => {
+  // hooks/axios interceptor already returns response.data
   const res: any = await apiClient.put(`/AuditCriterion/${id}`, data)
-  return res.data || res
+  return res
 }
 
 export const deleteAuditCriterion = async (id: string): Promise<void> => {

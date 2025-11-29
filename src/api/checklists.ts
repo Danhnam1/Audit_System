@@ -84,7 +84,13 @@ export const getChecklistTemplates = async (): Promise<ChecklistTemplateDto[]> =
 
 export const getChecklistTemplateById = async (id: string): Promise<ChecklistTemplateDto> => {
   const res: any = await apiClient.get(`/ChecklistTemplates/${id}`);
-  return res.data || res;
+  console.log('[getChecklistTemplateById] Raw API response:', res);
+  // Handle response - could be direct data or wrapped
+  // apiClient interceptor returns response.data, but check if it's further wrapped
+  const data = res?.data || res;
+  console.log('[getChecklistTemplateById] Processed data:', data);
+  console.log('[getChecklistTemplateById] Data keys:', data ? Object.keys(data) : 'null');
+  return data;
 };
 
 export const createChecklistTemplate = async (data: CreateChecklistTemplateDto): Promise<ChecklistTemplateDto> => {
