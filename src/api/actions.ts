@@ -104,8 +104,8 @@ export const approveActionWithFeedback = async (actionId: string, feedback: stri
   await apiClient.post(`/ActionReview/${actionId}/verified`, { Feedback: feedback });
 };
 
-// Reject action (Auditee Owner) with feedback (new API)
+// Reject action (Auditee Owner) with feedback
 export const rejectAction = async (actionId: string, feedback: string): Promise<void> => {
-  await apiClient.post(`/ActionReview/${actionId}/declined`, { Feedback: feedback });
+  await apiClient.post(`/Action/${actionId}/status/rejected`, { feedback: feedback });
 };
 

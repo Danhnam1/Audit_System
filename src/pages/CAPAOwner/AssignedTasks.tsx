@@ -21,7 +21,7 @@ interface Task {
 
 const AssignedTasks = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'action' | 'reject'>('action');
+  const [activeTab, setActiveTab] = useState<'action' | 'reject' | 'completed'>('action');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,14 +97,20 @@ const AssignedTasks = () => {
   // Filter tasks based on active tab
   const filteredTasksByTab = activeTab === 'reject' 
     ? tasks.filter(task => {
-        // Filter actions with status "Declined" or "Rejected"
+        // Filter actions with status "Rejected"
         const statusLower = task.originalStatus?.toLowerCase() || '';
-        return statusLower === 'declined' || statusLower === 'rejected';
+        return statusLower === 'rejected';
+      })
+    : activeTab === 'completed'
+    ? tasks.filter(task => {
+        // Filter actions with status "Completed"
+        const statusLower = task.originalStatus?.toLowerCase() || '';
+        return statusLower === 'completed';
       })
     : tasks.filter(task => {
-        // For action tab, exclude Declined/Rejected
+        // For action tab, filter actions with status "Reviewed", "Approved", or "Active"
         const statusLower = task.originalStatus?.toLowerCase() || '';
-        return statusLower !== 'declined' && statusLower !== 'rejected';
+        return statusLower === 'reviewed' || statusLower === 'approved' || statusLower === 'active';
       });
 
   // Sort tasks: Continue first, Start second, Completed last
@@ -254,10 +260,21 @@ const AssignedTasks = () => {
             >
               Reject Action
             </button>
+            <button
+              onClick={() => setActiveTab('completed')}
+              className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                activeTab === 'completed'
+                  ? 'border-primary-600 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              role="tab"
+            >
+              Action Completed
+            </button>
           </div>
 
           {/* Action Tab Content */}
-          {(activeTab === 'action' || activeTab === 'reject') && (
+          {(activeTab === 'action' || activeTab === 'reject' || activeTab === 'completed') && (
             <div className="p-4 sm:p-6">
               {/* Loading State */}
               {loading && (
