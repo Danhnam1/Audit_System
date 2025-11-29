@@ -1,10 +1,11 @@
 import { MainLayout, UsersIcon, SettingsIcon } from '../../../layouts';
 import  useAuthStore  from '../../../store/useAuthStore';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { StatCard, Pagination } from '../../../components';
 import authService from '../../../hooks/auth';
 import { apiClient } from '../../../hooks/axios';
 import { getDepartments } from '../../../api/departments';
+import { bulkRegisterUsers } from '../../../api/adminUsers';
 import { toast } from 'react-toastify';
 
 interface CreateUserForm {
@@ -53,6 +54,10 @@ const AdminUserManagement = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState<CreateUserForm>({
     fullName: '',
@@ -328,6 +333,64 @@ const AdminUserManagement = () => {
     roles: new Set(users.map(u => u.role)).size,
   };
 
+  // Handle file selection for import
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      const validExtensions = ['.xlsx', '.xls', '.csv'];
+      const fileName = file.name.toLowerCase();
+      const isValid = validExtensions.some(ext => fileName.endsWith(ext));
+      
+      if (!isValid) {
+        toast.error('Please select a valid Excel or CSV file (.xlsx, .xls, .csv)');
+        e.target.value = '';
+        return;
+      }
+      
+      setImportFile(file);
+    }
+  };
+
+  // Handle bulk import
+  const handleBulkImport = async () => {
+    if (!importFile) {
+      toast.error('Please select a file to import');
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const response = await bulkRegisterUsers(importFile);
+      toast.success('Users imported successfully!');
+      
+      // Reset and close modal
+      setImportFile(null);
+      setShowImportModal(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      
+      // Refresh user list
+      await fetchUsers();
+    } catch (err: any) {
+      console.error('Bulk import error:', err);
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to import users. Please check your file format.';
+      toast.error(errorMessage);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // Close import modal
+  const handleCloseImportModal = () => {
+    setShowImportModal(false);
+    setImportFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <MainLayout user={layoutUser}>
       {/* Header */}
@@ -337,12 +400,23 @@ const AdminUserManagement = () => {
             <h1 className="text-2xl font-semibold text-primary-600">User Management</h1>
             <p className="text-gray-600 text-sm mt-1">Manage system users and permissions</p>
           </div>
-          <button 
-            onClick={() => setShowCreateForm(!showCreateForm)}
-            className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
-          >
-            + Create User
-          </button>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setShowImportModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Import Users
+            </button>
+            <button 
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
+            >
+              + Create User
+            </button>
+          </div>
         </div>
       </div>
 
@@ -592,6 +666,86 @@ const AdminUserManagement = () => {
           )}
         </div>
       </div>
+
+      {/* Import Users Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-primary-600">Import Users from File</h2>
+              <button
+                onClick={handleCloseImportModal}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="px-6 py-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Excel/CSV File *
+                </label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="import-file-input"
+                  />
+                  <label
+                    htmlFor="import-file-input"
+                    className="cursor-pointer flex flex-col items-center"
+                  >
+                    <svg className="w-12 h-12 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <span className="text-sm text-gray-600">
+                      {importFile ? importFile.name : 'Click to select file'}
+                    </span>
+                    <span className="text-xs text-gray-500 mt-1">
+                      Supported formats: .xlsx, .xls, .csv
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-blue-800 mb-2">File Format:</h3>
+                <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                  <li>Columns: FullName, Email, Password, RoleName, DeptId</li>
+                  <li>RoleName values: Admin, LeadAuditor, Auditor, AuditeeOwner, CAPAOwner, Director</li>
+                  <li>DeptId is optional (can be empty)</li>
+                  <li>Password must be at least 6 characters with special character</li>
+                </ul>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleBulkImport}
+                  disabled={!importFile || isImporting}
+                  className={`flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
+                    !importFile || isImporting ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {isImporting ? 'Importing...' : 'Import Users'}
+                </button>
+                <button
+                  onClick={handleCloseImportModal}
+                  disabled={isImporting}
+                  className="border border-gray-300 text-gray-600 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 };

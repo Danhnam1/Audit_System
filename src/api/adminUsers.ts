@@ -37,4 +37,20 @@ export const getUserById = async (userId: string): Promise<AdminUserDto> => {
   return data
 }
 
-export default { getAdminUsers, getAdminUsersByDepartment, getUserById }
+// Bulk register users from Excel file
+export const bulkRegisterUsers = async (file: File): Promise<any> => {
+  const formData = new FormData()
+  formData.append('file', file)
+  
+  // Use apiClient with multipart/form-data header
+  // Note: apiClient interceptor returns response.data, so we get the data directly
+  const response = await apiClient.post('/Auth/bulk-register', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  } as any)
+  
+  return response
+}
+
+export default { getAdminUsers, getAdminUsersByDepartment, getUserById, bulkRegisterUsers }
