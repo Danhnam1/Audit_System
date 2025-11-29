@@ -5,24 +5,20 @@ import { useAuth } from '../../../../../contexts';
 interface Step4TeamProps {
   level: string;
   selectedDeptIds: string[];
-  selectedLeadId: string;
   selectedAuditorIds: string[];
   auditorOptions: any[];
   ownerOptions: any[];
   departments: Array<{ deptId: number | string; name: string }>;
-  onLeadChange: (value: string) => void;
   onAuditorsChange: (value: string[]) => void;
 }
 
 export const Step4Team: React.FC<Step4TeamProps> = ({
   level,
   selectedDeptIds,
-  selectedLeadId,
   selectedAuditorIds,
   auditorOptions,
   ownerOptions,
   departments,
-  onLeadChange,
   onAuditorsChange,
 }) => {
   const { user } = useAuth();
@@ -52,31 +48,6 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
     <div>
       <h3 className="text-md font-semibold text-gray-700 mb-4">Step 4/5: Team & Responsibilities</h3>
       <div className="space-y-4">
-        {/* Lead Auditor */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Lead (choose one from Auditors)
-          </label>
-          <select
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            value={selectedLeadId}
-            onChange={(e) => onLeadChange(e.target.value)}
-          >
-            <option value="">Select Lead Auditor</option>
-            {auditorOptions
-              .filter((u: any) => {
-                // Exclude current user from Lead Auditor options
-                if (!currentUserId) return true;
-                return String(u.userId) !== String(currentUserId);
-              })
-              .map((u: any) => (
-                <option key={u.userId} value={u.userId}>
-                  {u.fullName} ({u.email})
-                </option>
-              ))}
-          </select>
-        </div>
-
         {/* Auditors */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -84,7 +55,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
           </label>
           {(() => {
             // Ensure current user is always at the top of the list and always disabled
-            const filteredOptions = auditorOptions.filter((u: any) => String(u.userId) !== selectedLeadId);
+            const filteredOptions = auditorOptions;
             const currentUserOption = auditorOptions.find((u: any) => String(u.userId) === currentUserId);
             const optionsRaw = [
               currentUserOption

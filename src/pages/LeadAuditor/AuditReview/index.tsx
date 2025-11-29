@@ -15,6 +15,7 @@ import { getDepartments } from '../../../api/departments';
 import { getDepartmentName } from '../../../helpers/auditPlanHelpers';
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { getAdminUsers } from '../../../api/adminUsers';
+import { toast } from 'react-toastify';
 
 const SQAHeadAuditReview = () => {
   const { user } = useAuth();
@@ -318,8 +319,8 @@ const SQAHeadAuditReview = () => {
     try {
       await approveForwardDirector(auditId, { comment });
       await loadPlans();
-  alert('✅ Plan forwarded to Director successfully.');
-  setSelectedPlanFull(null);
+      toast.success('Plan forwarded to Director successfully.');
+      setSelectedPlanFull(null);
     } catch (err: any) {
       console.error('Failed to forward to director', err);
       alert('Failed to forward to Director: ' + (err?.response?.data?.message || err?.message || String(err)));
@@ -330,18 +331,13 @@ const SQAHeadAuditReview = () => {
     try {
       await rejectPlanContent(auditId, { comment });
       await loadPlans();
-  alert('✅ Plan rejected successfully.');
-  setSelectedPlanFull(null);
+      toast.success('Plan rejected successfully.');
+      setSelectedPlanFull(null);
     } catch (err: any) {
-      // Log full error for debugging
       console.error('Failed to reject plan', err);
-      const status = err?.response?.status;
-      const data = err?.response?.data;
-      // Show more detailed error info to help debug server 500 responses
-      alert(
-        `Failed to reject plan. HTTP ${status || ''}\n` +
-          (data ? JSON.stringify(data, null, 2) : (err?.message || String(err)))
-      );
+      const errorMessage =
+        err?.response?.data?.message || err?.message || String(err);
+      toast.error('Failed to reject plan: ' + errorMessage);
     }
   };
 
@@ -519,15 +515,28 @@ const SQAHeadAuditReview = () => {
               showModal={true}
               selectedPlanDetails={selectedPlanFull}
               onClose={() => setSelectedPlanFull(null)}
-              // Only show actionable buttons if not already reviewed
+              // Chỉ cho phép hành động khi bất kỳ field status nào chứa PendingReview
               {
                 ...(() => {
-                  const st = String(selectedPlanFull?.status || '').toLowerCase().replace(/\s+/g, '');
-                  // Check if status indicates already reviewed/approved/rejected
-                  const isApproved = st.includes('approved') || st === 'approve' || st.includes('pendingdirectorapproval');
-                  const isRejected = st.includes('rejected') || st === 'reject';
-                  const alreadyReviewed = isApproved || isRejected;
-                  return alreadyReviewed ? {} : { onForwardToDirector: handleForwardToDirector, onRejectPlan: handleReject };
+                  const normalize = (s: any) =>
+                    String(s || '')
+                      .toLowerCase()
+                      .replace(/\s+/g, '');
+
+                  const candidates = [
+                    selectedPlanFull?.status,
+                    selectedPlanFull?.state,
+                    selectedPlanFull?.approvalStatus,
+                    selectedPlanFull?.statusName,
+                  ];
+
+                  const isPendingReview = candidates.some((s) =>
+                    normalize(s).includes('pendingreview')
+                  );
+
+                  return isPendingReview
+                    ? { onForwardToDirector: handleForwardToDirector, onRejectPlan: handleReject }
+                    : {};
                 })()
               }
               getCriterionName={(id: any) => String(id)}

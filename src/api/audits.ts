@@ -93,12 +93,19 @@ export const declinedPlanContent = async (auditId: string, payload: { comment?: 
 
 // Approve plan (Director approves plan)
 export const approvePlan = async (auditId: string, payload: { comment?: string } = {}): Promise<any> => {
-  return apiClient.post(`/Audits/${auditId}/approve-plan`, payload) as any;
+  // Always send a body with auditId + (optional) comment so backend can log approval notes
+  const body = { auditId, comment: payload.comment ?? '' };
+  return apiClient.post(`/Audits/${auditId}/approve-plan`, body) as any;
 };
 
 // Approve and forward to director (Lead Auditor forwards to Director)
-export const approveForwardDirector = async (auditId: string, payload: { comment?: string } = {}): Promise<any> => {
-  return apiClient.post(`/Audits/${auditId}/approve-forward-director`, payload) as any;
+export const approveForwardDirector = async (
+  auditId: string,
+  payload: { comment?: string } = {}
+): Promise<any> => {
+  // For Lead Auditor approve, we auto-send an empty comment unless caller provides one
+  const body = { auditId, comment: payload.comment ?? '' };
+  return apiClient.post(`/Audits/${auditId}/approve-forward-director`, body) as any;
 };
 
 // Charts: findings by month (line), severity distribution (pie), by department (bar)
@@ -117,6 +124,12 @@ export const getAuditChartBar = async (auditId: string): Promise<any> => {
 // Summary of findings for an audit
 export const getAuditSummary = async (auditId: string): Promise<any> => {
   return apiClient.get(`/Audits/Summary/${auditId}`) as any;
+};
+
+// Audit approvals history (used to show latest reject/approve comments to Auditor)
+export const getAuditApprovals = async (): Promise<any> => {
+  // Backend returns a collection with $values; use unwrap() on the caller side
+  return apiClient.get('/AuditApproval') as any;
 };
 
 // Export dashboard/report PDF for an audit

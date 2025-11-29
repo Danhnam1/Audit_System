@@ -81,17 +81,17 @@ const DepartmentStaffWelcome = () => {
           <div className="space-y-3">
             <div className="p-4 bg-blue-50 border-l-4 border-blue-500 rounded">
               <p className="text-sm text-gray-700">
-                • Bạn được giao 1 nhiệm vụ mới từ Head - <span className="text-blue-600 font-medium cursor-pointer hover:underline">Xem ngay</span>
+                • You have been assigned a new task from Head - <span className="text-blue-600 font-medium cursor-pointer hover:underline">View now</span>
               </p>
             </div>
             <div className="p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded">
               <p className="text-sm text-gray-700">
-                • Finding #007 đang chờ bạn upload minh chứng
+                • Finding #007 is waiting for you to upload evidence.
               </p>
             </div>
             <div className="p-4 bg-orange-50 border-l-4 border-orange-500 rounded">
               <p className="text-sm text-gray-700">
-                • Reminder: #005 sắp đến deadline (1 ngày)
+                • Reminder: #005 is approaching its deadline (1 day remaining).
               </p>
             </div>
           </div>
@@ -106,13 +106,13 @@ const DepartmentStaffWelcome = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-red-600 font-semibold">#007</span>
-                    <span className="text-sm text-gray-700">Thu thập medical cert</span>
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">Đang làm</span>
+                    <span className="text-sm text-gray-700">Collect medical certificate</span>
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">In progress</span>
                   </div>
-                  <p className="text-xs text-gray-600">Còn 3 ngày</p>
+                  <p className="text-xs text-gray-600">3 days remaining</p>
                 </div>
                 <button className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700">
-                  Xem
+                  View
                 </button>
               </div>
             </div>
@@ -121,13 +121,13 @@ const DepartmentStaffWelcome = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-yellow-600 font-semibold">#005</span>
-                    <span className="text-sm text-gray-700">Cập nhật training record</span>
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">Đang làm</span>
+                    <span className="text-sm text-gray-700">Update training record</span>
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">In progress</span>
                   </div>
-                  <p className="text-xs text-gray-600">Còn 1 ngày</p>
+                  <p className="text-xs text-gray-600">1 day remaining</p>
                 </div>
                 <button className="px-3 py-1 bg-yellow-600 text-white text-sm rounded hover:bg-yellow-700">
-                  Xem
+                  View
                 </button>
               </div>
             </div>
@@ -136,13 +136,13 @@ const DepartmentStaffWelcome = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-gray-600 font-semibold">#012</span>
-                    <span className="text-sm text-gray-700">Scan hồ sơ học viên</span>
-                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">Chờ duyệt</span>
+                    <span className="text-sm text-gray-700">Scan trainee records</span>
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded">Pending approval</span>
                   </div>
-                  <p className="text-xs text-gray-600">Còn 5 ngày</p>
+                  <p className="text-xs text-gray-600">5 days remaining</p>
                 </div>
                 <button className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700">
-                  Xem
+                  View
                 </button>
               </div>
             </div>
@@ -155,21 +155,21 @@ const DepartmentStaffWelcome = () => {
           <div className="space-y-2">
             <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded">
               <p className="text-sm text-gray-700">
-                • #003 - Cập nhật checklist <span className="text-green-600 font-medium">(Đã đóng)</span>
+                • #003 - Update checklist <span className="text-green-600 font-medium">(Closed)</span>
               </p>
             </div>
             <div className="p-3 bg-green-50 border-l-4 border-green-500 rounded">
               <p className="text-sm text-gray-700">
-                • #008 - Upload ảnh simulator <span className="text-green-600 font-medium">(Đã duyệt)</span>
+                • #008 - Upload simulator photos <span className="text-green-600 font-medium">(Approved)</span>
               </p>
             </div>
           </div>
           <div className="mt-4 flex gap-2">
             <button className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 text-sm font-medium">
-              Xem tất cả
+              View all
             </button>
             <button className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium">
-              Lịch sử công việc
+              Task history
             </button>
           </div>
         </div>

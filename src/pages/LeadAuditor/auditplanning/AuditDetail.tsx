@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../../layouts';
 import { getFindingsByAudit, type Finding } from '../../../api/findings';
-import { getAuditPlanById, getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
+import {
+  getAuditPlanById,
+  getAuditScopeDepartmentsByAuditId,
+  approveForwardDirector,
+  rejectPlanContent,
+} from '../../../api/audits';
 import { getUserById } from '../../../api/adminUsers';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { toast } from 'react-toastify';
@@ -26,6 +31,9 @@ const AuditDetail = () => {
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [loadingAuditors, setLoadingAuditors] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectComment, setRejectComment] = useState('');
 
   useEffect(() => {
     if (auditId) {
@@ -140,6 +148,70 @@ const AuditDetail = () => {
     }
   };
 
+  // Only show Approve/Reject when any status field (on plan or nested audit) is PendingReview
+  const canReviewPlan = (plan: any) => {
+    if (!plan) return false;
+
+    const normalize = (s: any) =>
+      String(s || '')
+        .toLowerCase()
+        .replace(/\s+/g, '');
+
+    const nested = plan.audit || {};
+
+    const candidates = [
+      plan.status,
+      plan.state,
+      plan.approvalStatus,
+      plan.statusName,
+      nested.status,
+      nested.state,
+      nested.approvalStatus,
+      nested.statusName,
+    ];
+
+    // Match any value that contains "pendingreview"
+    return candidates.some((s) => normalize(s).includes('pendingreview'));
+  };
+
+  const handleApprove = async () => {
+    if (!auditId) return;
+    try {
+      setActionLoading(true);
+      await approveForwardDirector(auditId);
+      toast.success('Plan approved and forwarded to Director.');
+      // Reload details to reflect new status
+      await loadAuditDetails();
+    } catch (err: any) {
+      console.error('Approve & forward failed', err);
+      toast.error('Failed to approve and forward plan: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleConfirmReject = async () => {
+    if (!auditId) return;
+    const reason = rejectComment.trim();
+    if (!reason) {
+      toast.warning('Please enter a reason for rejection.');
+      return;
+    }
+    try {
+      setActionLoading(true);
+      await rejectPlanContent(auditId, { comment: reason });
+      toast.success('Plan has been rejected.');
+      await loadAuditDetails();
+      setShowRejectModal(false);
+    } catch (err: any) {
+      console.error('Reject plan failed', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Unknown error';
+      toast.error('Failed to reject plan: ' + errorMessage);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -158,8 +230,30 @@ const AuditDetail = () => {
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">
               {loadingDetails ? 'Loading...' : auditDetails?.title || 'Audit Detail'}
             </h1>
-           
           </div>
+
+          {/* Actions for plans that haven't been reviewed yet */}
+          {auditDetails && canReviewPlan(auditDetails) && (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => {
+                  setRejectComment('');
+                  setShowRejectModal(true);
+                }}
+                disabled={actionLoading}
+                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-700 bg-white hover:bg-red-50 disabled:opacity-50"
+              >
+                Reject
+              </button>
+              <button
+                onClick={handleApprove}
+                disabled={actionLoading}
+                className="inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 shadow-sm disabled:opacity-50"
+              >
+                {actionLoading ? 'Processing...' : 'Approve & Forward'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Tabs */}
@@ -313,6 +407,48 @@ const AuditDetail = () => {
                   className="px-6 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-white border-2 border-gray-300 text-gray-700 hover:bg-gray-50"
                 >
                   Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject confirmation modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6 space-y-4">
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Rejection</h3>
+              <p className="text-sm text-gray-600">
+                Please provide a reason for rejecting this audit plan. The Auditor will see this reason.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Rejection reason
+                </label>
+                <textarea
+                  className="w-full min-h-[100px] rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Enter rejection reason..."
+                  value={rejectComment}
+                  onChange={(e) => setRejectComment(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRejectModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReject}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50"
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? 'Processing...' : 'Reject Plan'}
                 </button>
               </div>
             </div>

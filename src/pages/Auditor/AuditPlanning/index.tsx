@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { AuditPlan, AuditPlanDetails } from '../../../types/auditPlan';
 import { getChecklistTemplates } from '../../../api/checklists';
-import { createAudit, addAuditScopeDepartment } from '../../../api/audits';
+import { createAudit, addAuditScopeDepartment, getAuditApprovals } from '../../../api/audits';
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { addCriterionToAudit } from '../../../api/auditCriteriaMap';
 import { getAdminUsers } from '../../../api/adminUsers';
@@ -232,12 +232,8 @@ const SQAStaffAuditPlanning = () => {
   }, [formState.selectedTemplateId]);
 
   const validateStep4 = useMemo(() => {
-    return (
-      formState.selectedLeadId !== null &&
-      formState.selectedLeadId !== '' &&
-      formState.selectedAuditorIds.length >= 2
-    );
-  }, [formState.selectedLeadId, formState.selectedAuditorIds]);
+    return formState.selectedAuditorIds.length >= 2;
+  }, [formState.selectedAuditorIds]);
 
   const validateStep5 = useMemo(() => {
     // Step 5 is optional, but if dates are filled, they must be valid
@@ -394,12 +390,13 @@ const SQAStaffAuditPlanning = () => {
 
       try {
         const rawDetails = await getAuditPlanById(auditId);
-        
-        // Debug: Log raw API response structure
-        
+
         // Fetch schedules separately if not included in main response
         let schedulesData = rawDetails?.schedules;
-        if (!schedulesData || (!schedulesData.values && !schedulesData.$values && !Array.isArray(schedulesData))) {
+        if (
+          !schedulesData ||
+          (!schedulesData.values && !schedulesData.$values && !Array.isArray(schedulesData))
+        ) {
           try {
             const schedulesResponse = await getAuditSchedules(auditId);
             const { unwrap } = await import('../../../utils/normalize');
@@ -416,22 +413,56 @@ const SQAStaffAuditPlanning = () => {
           schedules: schedulesData,
         };
 
+        // Load approvals history so Auditor can see latest rejection reason
+        let latestRejectionComment: string | null = null;
+        try {
+          const approvalsResponse = await getAuditApprovals();
+          const approvals = unwrap(approvalsResponse) || [];
+          const currentAuditId = String(detailsWithSchedules.auditId || detailsWithSchedules.id || auditId).trim();
+          const related = approvals.filter((a: any) => {
+            return String(a.auditId || '').trim() === currentAuditId;
+          });
+          if (related.length > 0) {
+            const rejected = related
+              .filter((a: any) =>
+                String(a.status || '')
+                  .toLowerCase()
+                  .includes('rejected')
+              )
+              .sort((a: any, b: any) => {
+                const aTime = new Date(a.approvedAt || a.createdAt || 0).getTime();
+                const bTime = new Date(b.approvedAt || b.createdAt || 0).getTime();
+                return bTime - aTime;
+              });
+            if (rejected.length > 0) {
+              latestRejectionComment = rejected[0].comment || null;
+            }
+          }
+        } catch (approvalErr) {
+          console.error('Failed to load audit approvals for plan', approvalErr);
+        }
+
         const normalizedDetails = normalizePlanDetails(detailsWithSchedules, {
           departments: deptList,
           criteriaList: criteria,
           users: [...auditorOptions, ...ownerOptions],
         });
-        
-        
-        setSelectedPlanDetails(normalizedDetails);
+
+        const detailsWithRejection = {
+          ...normalizedDetails,
+          latestRejectionComment,
+        };
+
+        setSelectedPlanDetails(detailsWithRejection);
         setShowDetailsModal(true);
         return;
       } catch (apiError) {
-
-        const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
+        const planFromTable = existingPlans.find((p) => p.auditId === auditId || p.id === auditId);
 
         if (!planFromTable) {
-          throw new Error('Plan not found in table. Backend API /AuditPlan/{id} is also returning 500 error.');
+          throw new Error(
+            'Plan not found in table. Backend API /AuditPlan/{id} is also returning 500 error.'
+          );
         }
 
         // Try to fetch schedules even if main API failed
@@ -445,6 +476,35 @@ const SQAStaffAuditPlanning = () => {
           // Failed to fetch schedules separately, using empty array
         }
 
+        // Also try to fetch approvals so we still show rejection reason
+        let latestRejectionComment: string | null = null;
+        try {
+          const approvalsResponse = await getAuditApprovals();
+          const approvals = unwrap(approvalsResponse) || [];
+          const currentAuditId = String(planFromTable.auditId || planFromTable.id || auditId).trim();
+          const related = approvals.filter((a: any) => {
+            return String(a.auditId || '').trim() === currentAuditId;
+          });
+          if (related.length > 0) {
+            const rejected = related
+              .filter((a: any) =>
+                String(a.status || '')
+                  .toLowerCase()
+                  .includes('rejected')
+              )
+              .sort((a: any, b: any) => {
+                const aTime = new Date(a.approvedAt || a.createdAt || 0).getTime();
+                const bTime = new Date(b.approvedAt || b.createdAt || 0).getTime();
+                return bTime - aTime;
+              });
+            if (rejected.length > 0) {
+              latestRejectionComment = rejected[0].comment || null;
+            }
+          }
+        } catch (approvalErr) {
+          console.error('Failed to load audit approvals for basic details', approvalErr);
+        }
+
         const basicDetails = {
           ...planFromTable,
           scopeDepartments: { values: [] },
@@ -454,11 +514,14 @@ const SQAStaffAuditPlanning = () => {
           createdByUser: {
             fullName: planFromTable.createdBy || 'Unknown',
             email: 'N/A',
-            roleName: 'N/A'
-          }
+            roleName: 'N/A',
+          },
+          latestRejectionComment,
         };
 
-        alert('⚠️ Backend API Issue\n\nGET /api/AuditPlan/{id} is returning 500 error.\n\nShowing basic information only.\nNested data (departments, criteria, team) is not available.\nSchedules have been fetched separately.\n\nPlease contact backend team to fix this endpoint.');
+        alert(
+          '⚠️ Backend API Issue\n\nGET /api/AuditPlan/{id} is returning 500 error.\n\nShowing basic information only.\nNested data (departments, criteria, team) is not available.\nSchedules have been fetched separately.\n\nPlease contact backend team to fix this endpoint.'
+        );
 
         setSelectedPlanDetails(basicDetails);
         setShowDetailsModal(true);
@@ -775,11 +838,16 @@ const SQAStaffAuditPlanning = () => {
       try {
         const calls: Promise<any>[] = [];
         const auditorSet = new Set<string>(formState.selectedAuditorIds);
-        if (formState.selectedLeadId) auditorSet.add(formState.selectedLeadId);
 
         auditorSet.forEach((uid) => {
-          const isLead = uid === formState.selectedLeadId;
-          calls.push(addTeamMember({ auditId: String(newAuditId), userId: uid, roleInTeam: 'Auditor', isLead }));
+          calls.push(
+            addTeamMember({
+              auditId: String(newAuditId),
+              userId: uid,
+              roleInTeam: 'Auditor',
+              isLead: false,
+            })
+          );
         });
 
         if (formState.level === 'academy') {
@@ -987,17 +1055,10 @@ const SQAStaffAuditPlanning = () => {
                 <Step4Team
                   level={formState.level}
                   selectedDeptIds={formState.selectedDeptIds}
-                  selectedLeadId={formState.selectedLeadId}
                   selectedAuditorIds={formState.selectedAuditorIds}
                   auditorOptions={auditorOptions}
                   ownerOptions={ownerOptions}
                   departments={departments}
-                  onLeadChange={(leadId: string) => {
-                    formState.setSelectedLeadId(leadId);
-                    if (leadId && formState.selectedAuditorIds.includes(leadId)) {
-                      formState.setSelectedAuditorIds(formState.selectedAuditorIds.filter(id => id !== leadId));
-                    }
-                  }}
                   onAuditorsChange={formState.setSelectedAuditorIds}
                 />
               )}

@@ -79,7 +79,8 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showForwardModal, setShowForwardModal] = useState(false);
-  const reviewComments = ''; // Review comments for actions
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [reviewComments, setReviewComments] = useState(''); // Review comments for actions
 
   // Debug: Log selectedPlanDetails to check data
   React.useEffect(() => {
@@ -322,6 +323,18 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   {selectedPlanDetails.objective || 'N/A'}
                 </span>
               </div>
+              {/* Rejection reason (shown to Auditor after plan is rejected) */}
+              {selectedPlanDetails.status === 'Rejected' &&
+                selectedPlanDetails.latestRejectionComment && (
+                  <div className="flex items-start gap-3 md:col-span-2">
+                    <span className="text-sm font-bold text-red-600 min-w-[100px]">
+                      Rejection Reason:
+                    </span>
+                    <span className="text-sm text-red-700 font-normal flex-1 leading-relaxed whitespace-pre-line">
+                      {selectedPlanDetails.latestRejectionComment}
+                    </span>
+                  </div>
+                )}
             </div>
           </div>
 
@@ -585,7 +598,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                     onClose();
                   } catch (err) {
                     console.error('Request revision failed', err);
-                    alert('Failed to request revision: ' + (err as any)?.message || String(err));
+                    toast.error('Failed to request revision. Please try again.');
                   }
                 }}
                 className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-500 hover:bg-primary-600 text-white"
@@ -596,17 +609,9 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
             {onRejectPlan && (
               <button
-                onClick={async () => {
-                  if (!reviewComments) {
-                    if (!window.confirm('Reject without comment?')) return;
-                  }
-                  try {
-                    await onRejectPlan(selectedPlanDetails.auditId, reviewComments);
-                    onClose();
-                  } catch (err) {
-                    console.error('Reject failed', err);
-                    alert('Failed to reject: ' + (err as any)?.message || String(err));
-                  }
+                onClick={() => {
+                  setReviewComments('');
+                  setShowRejectModal(true);
                 }}
                 className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-red-500 hover:bg-red-600 text-white"
               >
@@ -754,12 +759,84 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     document.body
   );
 
+  // Reject Confirmation Modal (with comment input, toast on success)
+  const rejectModalContent = showRejectModal && createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+        onClick={() => setShowRejectModal(false)}
+      />
+
+      {/* Modal */}
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+        <div className="p-6 space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Confirm Rejection
+          </h3>
+          <p className="text-sm text-gray-600">
+            Please provide a reason for rejecting this audit plan. The Auditor will see this reason.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Rejection reason
+            </label>
+            <textarea
+              className="w-full min-h-[100px] rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              placeholder="Enter rejection reason..."
+              value={reviewComments}
+              onChange={(e) => setReviewComments(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowRejectModal(false)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!onRejectPlan) return;
+                const reason = reviewComments.trim();
+                if (!reason) {
+                  toast.warning('Please enter a rejection reason.');
+                  return;
+                }
+                try {
+                  await onRejectPlan(selectedPlanDetails.auditId, reason);
+                  toast.success('Plan rejected successfully.');
+                  setShowRejectModal(false);
+                  onClose();
+                } catch (err) {
+                  console.error('Reject failed', err);
+                  const errorMessage =
+                    (err as any)?.response?.data?.message ||
+                    (err as any)?.message ||
+                    String(err);
+                  toast.error('Failed to reject plan: ' + errorMessage);
+                }
+              }}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+            >
+              Reject Plan
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+
   // Render modal using Portal to ensure it's outside the DOM hierarchy
   return (
     <>
       {createPortal(modalContent, document.body)}
       {submitModalContent}
       {forwardModalContent}
+      {rejectModalContent}
     </>
   );
 };
