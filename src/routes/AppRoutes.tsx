@@ -52,6 +52,7 @@ const DepartmentHeadAssignStaff = lazy(() => import("../pages/AuditeeOwner/taska
 const DepartmentHeadReviewEvidence = lazy(() => import("../pages/AuditeeOwner/ReviewEvidence"));
 const DepartmentHeadEvidenceDetail = lazy(() => import("../pages/AuditeeOwner/EvidenceDetail"));
 const DepartmentHeadFindingsProgress = lazy(() => import("../pages/AuditeeOwner/findings/FindingsProgress"));
+const DepartmentHeadCAPAManagement = lazy(() => import("../pages/AuditeeOwner/CAPAManagement"));
 
 // Director pages
 const DirectorReviewAuditPlans = lazy(() => import("../pages/Director/ReviewAuditPlans"));
@@ -419,6 +420,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadFindingsProgress />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditee-owner/capa-management"
+                element={
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
+                        <DepartmentHeadCAPAManagement />
                     </ProtectedRoute>
                 }
             />

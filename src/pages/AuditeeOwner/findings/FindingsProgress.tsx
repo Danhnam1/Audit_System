@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
-import { getSeverityColor } from '../../../constants/statusColors';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
-import { createAction } from '../../../api/actions';
+import { createAction, getActionsByAssignedDept, type Action, approveActionWithFeedback, rejectAction } from '../../../api/actions';
 import { getAdminUsersByDepartment } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
 import { Pagination } from '../../../components';
+import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
@@ -24,7 +24,16 @@ const FindingsProgress = () => {
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [submittingAssign, setSubmittingAssign] = useState(false);
   const [showAssignConfirmModal, setShowAssignConfirmModal] = useState(false);
+  const [selectedStaffError, setSelectedStaffError] = useState('');
+  const [dueDateError, setDueDateError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<'all' | 'progress'>('all');
+  const [actions, setActions] = useState<Action[]>([]);
+  const [loadingActions, setLoadingActions] = useState(false);
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const [showActionDetailModal, setShowActionDetailModal] = useState(false);
+  const [selectedActionForReview, setSelectedActionForReview] = useState<Action | null>(null);
+  const [processingReview, setProcessingReview] = useState(false);
   const itemsPerPage = 10;
 
   // Get user's department ID from token
@@ -61,12 +70,7 @@ const FindingsProgress = () => {
         }
 
         const data = await getFindingsByDepartment(deptId);
-        // Filter out findings with status "Received"
-        const filteredData = data.filter((finding: Finding) => {
-          const statusLower = finding.status?.toLowerCase() || '';
-          return statusLower !== 'received';
-        });
-        setFindings(filteredData);
+        setFindings(data);
       } catch (err: any) {
         console.error('Error fetching findings:', err);
         setError(err?.message || 'Failed to load findings');
@@ -80,17 +84,35 @@ const FindingsProgress = () => {
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  // Calculate statistics
-  const totalFindings = findings.length;
-  const openFindings = findings.filter(f => f.status?.toLowerCase() === 'open').length;
-  const closedFindings = findings.filter(f => f.status?.toLowerCase() === 'closed').length;
-  const overdueFindings = findings.filter(f => {
-    if (!f.deadline) return false;
-    const deadline = new Date(f.deadline);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return deadline < today && f.status?.toLowerCase() !== 'closed';
-  }).length;
+  // Filter findings based on active tab
+  const getFilteredFindings = () => {
+    return findings;
+  };
+
+  const filteredFindings = getFilteredFindings();
+
+  // Load actions when progress tab is selected
+  useEffect(() => {
+    if (activeTab === 'progress') {
+      const loadActions = async () => {
+        const deptId = getUserDeptId();
+        if (!deptId) return;
+
+        setLoadingActions(true);
+        try {
+          const actionsData = await getActionsByAssignedDept(deptId);
+          setActions(actionsData || []);
+        } catch (err: any) {
+          console.error('Error loading actions:', err);
+          setActions([]);
+        } finally {
+          setLoadingActions(false);
+        }
+      };
+
+      loadActions();
+    }
+  }, [activeTab]);
 
   // Format date
   const formatDate = (dateString?: string) => {
@@ -107,30 +129,6 @@ const FindingsProgress = () => {
     }
   };
 
-  // Calculate days remaining
-  const getDaysRemaining = (deadline?: string) => {
-    if (!deadline) return null;
-    try {
-      const deadlineDate = new Date(deadline);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      deadlineDate.setHours(0, 0, 0, 0);
-      const diffTime = deadlineDate.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays;
-    } catch {
-      return null;
-    }
-  };
-
-  // Get status color
-  const getStatusColor = (status: string) => {
-    const statusLower = status?.toLowerCase() || '';
-    if (statusLower === 'closed') return 'bg-green-100 text-green-700';
-    if (statusLower === 'open') return 'bg-blue-100 text-blue-700';
-    if (statusLower === 'overdue') return 'bg-red-100 text-red-700';
-    return 'bg-gray-100 text-gray-700';
-  };
 
   // Get severity badge color
   const getSeverityBadgeColor = (severity: string) => {
@@ -167,23 +165,32 @@ const FindingsProgress = () => {
 
   // Handle assign finding - show confirmation first
   const handleAssign = () => {
+    // Reset errors
+    setSelectedStaffError('');
+    setDueDateError('');
+
+    // Validate fields
+    let hasError = false;
+
     if (!selectedStaff) {
-      alert('Please select a staff member');
-      return;
+      setSelectedStaffError('Please select a staff member');
+      hasError = true;
     }
 
     if (!dueDate) {
-      alert('Please select a due date');
-      return;
+      setDueDateError('Please select a due date');
+      hasError = true;
     }
 
     if (!selectedFindingForAssign) {
-      alert('Finding data not available');
+      // This shouldn't happen, but handle it silently
       return;
     }
 
-    // Show confirmation modal
-    setShowAssignConfirmModal(true);
+    // If validation passes, show confirmation modal
+    if (!hasError) {
+      setShowAssignConfirmModal(true);
+    }
   };
 
   // Confirm and actually assign finding (create action)
@@ -211,11 +218,11 @@ const FindingsProgress = () => {
         reviewFeedback: '',
       });
 
-      alert('Action created successfully!');
-      
       // Reset form and close modal
       setSelectedStaff('');
       setDueDate('');
+      setSelectedStaffError('');
+      setDueDateError('');
       setSelectedFindingForAssign(null);
       setShowAssignModal(false);
       
@@ -223,16 +230,12 @@ const FindingsProgress = () => {
       const deptId = getUserDeptId();
       if (deptId) {
         const data = await getFindingsByDepartment(deptId);
-        // Filter out findings with status "Received"
-        const filteredData = data.filter((finding: Finding) => {
-          const statusLower = finding.status?.toLowerCase() || '';
-          return statusLower !== 'received';
-        });
-        setFindings(filteredData);
+        setFindings(data);
       }
     } catch (err: any) {
       console.error('Error creating action:', err);
-      alert(`Error: ${err?.message || 'Failed to create action'}`);
+      // Show error in UI instead of alert
+      setSelectedStaffError(err?.message || 'Failed to create action');
     } finally {
       setSubmittingAssign(false);
     }
@@ -242,23 +245,34 @@ const FindingsProgress = () => {
   const handleCloseAssignModal = () => {
     setSelectedStaff('');
     setDueDate('');
+    setSelectedStaffError('');
+    setDueDateError('');
     setSelectedFindingForAssign(null);
     setShowAssignModal(false);
   };
+
 
   // Get today's date in YYYY-MM-DD format for min attribute
   const today = new Date().toISOString().split('T')[0];
 
   // Pagination calculations
-  const totalPages = Math.ceil(findings.length / itemsPerPage);
+  const getTotalPages = () => {
+    if (activeTab === 'progress') {
+      return Math.ceil(actions.length / itemsPerPage);
+    }
+    return Math.ceil(filteredFindings.length / itemsPerPage);
+  };
+
+  const totalPages = getTotalPages();
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedFindings = findings.slice(startIndex, endIndex);
+  const paginatedFindings = filteredFindings.slice(startIndex, endIndex);
+  const paginatedActions = actions.slice(startIndex, endIndex);
 
-  // Reset to page 1 when findings change
+  // Reset to page 1 when findings/actions or active tab change
   useEffect(() => {
     setCurrentPage(1);
-  }, [findings.length]);
+  }, [findings.length, actions.length, activeTab]);
 
   return (
     <MainLayout user={layoutUser}>
@@ -268,9 +282,6 @@ const FindingsProgress = () => {
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
             Findings Progress
           </h1>
-          <p className="mt-2 text-sm sm:text-base text-gray-600">
-            Track and monitor the progress of findings in your department
-          </p>
         </div>
 
         {/* Loading State */}
@@ -297,110 +308,216 @@ const FindingsProgress = () => {
         {/* Content */}
         {!loading && !error && (
           <>
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
-                <div className="text-xs sm:text-sm text-gray-600 mb-1">Total Findings</div>
-                <div className="text-xl sm:text-2xl font-bold text-gray-900">{totalFindings}</div>
-              </div>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
-                <div className="text-xs sm:text-sm text-gray-600 mb-1">Open</div>
-                <div className="text-xl sm:text-2xl font-bold text-blue-600">{openFindings}</div>
-              </div>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
-                <div className="text-xs sm:text-sm text-gray-600 mb-1">Closed</div>
-                <div className="text-xl sm:text-2xl font-bold text-green-600">{closedFindings}</div>
-              </div>
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-4">
-                <div className="text-xs sm:text-sm text-gray-600 mb-1">Overdue</div>
-                <div className="text-xl sm:text-2xl font-bold text-red-600">{overdueFindings}</div>
-              </div>
-            </div>
-
             {/* Findings Table */}
             <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-              <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50">
-                <h2 className="text-base sm:text-lg font-semibold text-gray-900">
-                  Findings List ({totalFindings})
-                </h2>
+              {/* Tabs */}
+              <div className="border-b border-gray-200 bg-gray-50">
+                <div className="flex space-x-1 px-4 sm:px-6" role="tablist">
+                  <button
+                    onClick={() => setActiveTab('all')}
+                    className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                      activeTab === 'all'
+                        ? 'border-primary-600 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                    role="tab"
+                  >
+                    Findings List
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('progress')}
+                    className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                      activeTab === 'progress'
+                        ? 'border-primary-600 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                    role="tab"
+                  >
+                    Progress
+                  </button>
+                </div>
               </div>
 
-              {findings.length === 0 ? (
-                <div className="p-8 text-center">
-                  <p className="text-gray-500">No findings found for your department</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Title
-                        </th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Severity
-                        </th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Deadline
-                        </th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {paginatedFindings.map((finding) => (
-                        <tr key={finding.findingId} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-3 sm:px-6 py-3 sm:py-4">
-                            <div className="text-sm font-medium text-gray-900 line-clamp-2">
-                              {finding.title}
-                            </div>
-                          </td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityBadgeColor(finding.severity)}`}>
-                              {finding.severity || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
-                            {formatDate(finding.deadline)}
-                          </td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => {
-                                  setSelectedFindingId(finding.findingId);
-                                  setShowDetailModal(true);
-                                }}
-                                className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
-                                title="View Details"
-                              >
-                                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedFindingForAssign(finding);
-                                  setShowAssignModal(true);
-                                  loadStaffMembers(finding.deptId);
-                                }}
-                                className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
-                                title="Assign Finding"
-                              >
-                                Assign
-                              </button>
-                            </div>
-                          </td>
+              {/* Progress Tab - Actions List */}
+              {activeTab === 'progress' ? (
+                loadingActions ? (
+                  <div className="p-8 text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading actions...</p>
+                  </div>
+                ) : actions.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500">No actions found for your department</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Title
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Progress
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Due Date
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {paginatedActions.map((action) => (
+                          <tr key={action.actionId} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
+                              <div className="text-sm font-medium text-gray-900 line-clamp-2">
+                                {action.title}
+                              </div>
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <div className="w-24 bg-gray-200 rounded-full h-2">
+                                  <div
+                                    className="bg-primary-600 h-2 rounded-full transition-all"
+                                    style={{ width: `${action.progressPercent || 0}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-sm text-gray-600 min-w-[3rem]">
+                                  {action.progressPercent || 0}%
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatDate(action.dueDate)}
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2 justify-end">
+                                {action.status?.toLowerCase() === 'reviewed' && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedActionId(action.actionId);
+                                      setShowActionDetailModal(true);
+                                      setSelectedActionForReview(action);
+                                    }}
+                                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
+                                    title="Review Action"
+                                  >
+                                    Review
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    setSelectedActionId(action.actionId);
+                                    setShowActionDetailModal(true);
+                                    setSelectedActionForReview(null);
+                                  }}
+                                  className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
+                                  title="View Details"
+                                >
+                                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              ) : (
+                /* Findings List Tabs */
+                filteredFindings.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500">No findings found for your department</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Title
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Severity
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Deadline
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {paginatedFindings.map((finding) => (
+                          <tr key={finding.findingId} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
+                              <div className="text-sm font-medium text-gray-900 line-clamp-2">
+                                {finding.title}
+                              </div>
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityBadgeColor(finding.severity)}`}>
+                                {finding.severity || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatDate(finding.deadline)}
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2 justify-end">
+                                {finding.status?.toLowerCase() === 'received' ? (
+                                  <button
+                                    disabled
+                                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
+                                    title="Already Assigned"
+                                  >
+                                    Assigned
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedFindingForAssign(finding);
+                                      setShowAssignModal(true);
+                                      loadStaffMembers(finding.deptId);
+                                    }}
+                                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
+                                    title="Assign Finding"
+                                  >
+                                    Assign
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    setSelectedFindingId(finding.findingId);
+                                    setShowDetailModal(true);
+                                  }}
+                                  className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
+                                  title="View Details"
+                                >
+                                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
               )}
 
               {/* Pagination */}
-              {findings.length > 0 && (
+              {((activeTab === 'progress' && actions.length > 0) || (activeTab !== 'progress' && filteredFindings.length > 0)) && (
                 <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex justify-center">
                   <Pagination
                     currentPage={currentPage}
@@ -478,8 +595,13 @@ const FindingsProgress = () => {
                     ) : (
                       <select
                         value={selectedStaff}
-                        onChange={(e) => setSelectedStaff(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        onChange={(e) => {
+                          setSelectedStaff(e.target.value);
+                          if (selectedStaffError) setSelectedStaffError('');
+                        }}
+                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                          selectedStaffError ? 'border-red-300' : 'border-gray-300'
+                        }`}
                       >
                         <option value="">Select CAPA Owner</option>
                         {staffMembers.map((staff) => (
@@ -489,7 +611,10 @@ const FindingsProgress = () => {
                         ))}
                       </select>
                     )}
-                    {staffMembers.length === 0 && !loadingStaff && (
+                    {selectedStaffError && (
+                      <p className="mt-1 text-xs text-red-600">{selectedStaffError}</p>
+                    )}
+                    {staffMembers.length === 0 && !loadingStaff && !selectedStaffError && (
                       <p className="mt-1 text-xs text-gray-500">No CAPA Owners found in this department</p>
                     )}
                   </div>
@@ -502,10 +627,18 @@ const FindingsProgress = () => {
                     <input
                       type="date"
                       value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
+                      onChange={(e) => {
+                        setDueDate(e.target.value);
+                        if (dueDateError) setDueDateError('');
+                      }}
                       min={today}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                        dueDateError ? 'border-red-300' : 'border-gray-300'
+                      }`}
                     />
+                    {dueDateError && (
+                      <p className="mt-1 text-xs text-red-600">{dueDateError}</p>
+                    )}
                   </div>
                 </div>
 
@@ -571,6 +704,66 @@ const FindingsProgress = () => {
             </div>
           </div>
         )}
+
+        {/* Action Detail Modal */}
+        {selectedActionId && (
+          <ActionDetailModal
+            isOpen={showActionDetailModal}
+            onClose={() => {
+              setShowActionDetailModal(false);
+              setSelectedActionId(null);
+              setSelectedActionForReview(null);
+            }}
+            actionId={selectedActionId}
+            showReviewButtons={!!selectedActionForReview}
+            onApprove={async (feedback) => {
+              if (selectedActionForReview) {
+                setProcessingReview(true);
+                try {
+                  await approveActionWithFeedback(selectedActionForReview.actionId, feedback || '');
+                  setShowActionDetailModal(false);
+                  setSelectedActionId(null);
+                  setSelectedActionForReview(null);
+                  // Reload actions
+                  const deptId = getUserDeptId();
+                  if (deptId) {
+                    const actionsData = await getActionsByAssignedDept(deptId);
+                    setActions(actionsData || []);
+                  }
+                } catch (err: any) {
+                  console.error('Error approving action:', err);
+                  // Don't show alert, just log error
+                } finally {
+                  setProcessingReview(false);
+                }
+              }
+            }}
+            onReject={async (feedback) => {
+              if (selectedActionForReview) {
+                setProcessingReview(true);
+                try {
+                  await rejectAction(selectedActionForReview.actionId, feedback || '');
+                  setShowActionDetailModal(false);
+                  setSelectedActionId(null);
+                  setSelectedActionForReview(null);
+                  // Reload actions
+                  const deptId = getUserDeptId();
+                  if (deptId) {
+                    const actionsData = await getActionsByAssignedDept(deptId);
+                    setActions(actionsData || []);
+                  }
+                } catch (err: any) {
+                  console.error('Error rejecting action:', err);
+                  // Don't show alert, just log error
+                } finally {
+                  setProcessingReview(false);
+                }
+              }
+            }}
+            isProcessing={processingReview}
+          />
+        )}
+
       </div>
     </MainLayout>
   );

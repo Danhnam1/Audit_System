@@ -67,6 +67,13 @@ export const getMyAssignedActions = async (): Promise<Action[]> => {
   return unwrap<Action>(res);
 };
 
+// Get actions by assigned department ID
+export const getActionsByAssignedDept = async (deptId: number): Promise<Action[]> => {
+  const res = await apiClient.get(`/Action/by-assigned-dept/${deptId}`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Action>(res);
+};
+
 // Get action by ID
 export const getActionById = async (actionId: string): Promise<Action> => {
   const res = await apiClient.get(`/Action/${actionId}`);

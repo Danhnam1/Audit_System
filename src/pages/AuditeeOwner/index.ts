@@ -8,3 +8,4 @@ export { default as AssignStaff } from './taskasign/AssignStaff';
 export { default as ReviewEvidence } from './ReviewEvidence';
 export { default as EvidenceDetail } from './EvidenceDetail';
 export { default as FindingsProgress } from './findings/FindingsProgress';
+export { default as CAPAManagement } from './CAPAManagement';

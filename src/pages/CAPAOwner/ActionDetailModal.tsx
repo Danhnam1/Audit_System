@@ -1,23 +1,49 @@
 import { useState, useEffect } from 'react';
 import { getActionById, type Action } from '../../api/actions';
 import { getAttachments, type Attachment } from '../../api/attachments';
+import { getUserById, type AdminUserDto } from '../../api/adminUsers';
 
 interface ActionDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   actionId: string;
+  showReviewButtons?: boolean;
+  onApprove?: (feedback: string) => Promise<void>;
+  onReject?: (feedback: string) => Promise<void>;
+  isProcessing?: boolean;
 }
 
-const ActionDetailModal = ({ isOpen, onClose, actionId }: ActionDetailModalProps) => {
+const ActionDetailModal = ({ 
+  isOpen, 
+  onClose, 
+  actionId, 
+  showReviewButtons = false,
+  onApprove,
+  onReject,
+  isProcessing = false
+}: ActionDetailModalProps) => {
   const [action, setAction] = useState<Action | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [assignedToUser, setAssignedToUser] = useState<AdminUserDto | null>(null);
+  const [reviewFeedback, setReviewFeedback] = useState('');
+  const [showFeedbackInput, setShowFeedbackInput] = useState(false);
+  const [reviewType, setReviewType] = useState<'approve' | 'reject'>('approve');
 
   useEffect(() => {
     if (isOpen && actionId) {
       loadAction();
+    } else {
+      // Reset state when modal closes
+      setAction(null);
+      setAssignedToUser(null);
+      setAttachments([]);
+      setError(null);
+      setReviewFeedback('');
+      setShowFeedbackInput(false);
+      setReviewType('approve');
     }
   }, [isOpen, actionId]);
 
@@ -31,11 +57,25 @@ const ActionDetailModal = ({ isOpen, onClose, actionId }: ActionDetailModalProps
       if (data.findingId) {
         loadAttachments(data.findingId);
       }
+      // Load assignedTo user info
+      if (data.assignedTo) {
+        loadAssignedToUser(data.assignedTo);
+      }
     } catch (err: any) {
       console.error('Error loading action:', err);
       setError(err?.response?.data?.message || err?.message || 'Failed to load action details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAssignedToUser = async (userId: string) => {
+    try {
+      const userData = await getUserById(userId);
+      setAssignedToUser(userData);
+    } catch (err: any) {
+      console.error('Error loading assignedTo user:', err);
+      // Don't show error, just log it
     }
   };
 
@@ -78,11 +118,11 @@ const ActionDetailModal = ({ isOpen, onClose, actionId }: ActionDetailModalProps
 
   const getStatusColor = (status: string) => {
     const statusLower = status?.toLowerCase() || '';
-    if (statusLower === 'approved') return 'bg-green-100 text-green-800';
-    if (statusLower === 'open') return 'bg-blue-100 text-blue-800';
-    if (statusLower === 'closed') return 'bg-gray-100 text-gray-800';
-    if (statusLower === 'pending') return 'bg-yellow-100 text-yellow-800';
-    return 'bg-gray-100 text-gray-800';
+    if (statusLower === 'completed' || statusLower === 'approved') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    if (statusLower === 'active' || statusLower === 'open') return 'bg-blue-100 text-blue-700 border-blue-200';
+    if (statusLower === 'closed') return 'bg-gray-100 text-gray-700 border-gray-200';
+    if (statusLower === 'pending' || statusLower === 'reviewed') return 'bg-amber-100 text-amber-700 border-amber-200';
+    return 'bg-gray-100 text-gray-700 border-gray-200';
   };
 
   return (
@@ -96,59 +136,62 @@ const ActionDetailModal = ({ isOpen, onClose, actionId }: ActionDetailModalProps
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
         <div
-          className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between z-10">
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Action Details</h2>
+          <div className="sticky top-0 bg-gradient-to-r from-primary-600 to-primary-700 text-white px-6 py-5 flex items-center justify-between z-10 shadow-lg">
+            <h2 className="text-xl font-bold">Action Details</h2>
             <button
               onClick={onClose}
-              className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
             >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
           {/* Body */}
-          <div className="p-4 sm:p-6">
+          <div className="flex-1 overflow-y-auto p-6 bg-gray-50 relative">
             {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-gray-600">Loading action details...</span>
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary-200 border-t-primary-600"></div>
+                <span className="mt-4 text-gray-600 font-medium">Loading action details...</span>
               </div>
             ) : error ? (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                <p className="text-red-800 text-sm sm:text-base">{error}</p>
+              <div className="bg-red-50 border-l-4 border-red-400 rounded-lg p-5 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-red-800 font-medium">{error}</p>
+                </div>
               </div>
             ) : action ? (
-              <div className="space-y-4 sm:space-y-6">
+              <div className="space-y-6">
                 {/* Title and Status */}
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 pb-4 border-b border-gray-200">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 break-words">
-                      {action.title}
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(action.status)}`}>
-                        {action.status}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <h3 className="text-xl font-bold text-gray-900 mb-4 break-words leading-tight">
+                    {action.title}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${getStatusColor(action.status)}`}>
+                      {action.status}
+                    </span>
+                    {action.progressPercent > 0 && (
+                      <span className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-primary-100 text-primary-700 border border-primary-200">
+                        {action.progressPercent}% Complete
                       </span>
-                      {action.progressPercent > 0 && (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {action.progressPercent}% Complete
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
 
                 {/* Description */}
                 {action.description && (
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Description</h4>
-                    <p className="text-sm sm:text-base text-gray-600 bg-gray-50 rounded-lg p-3 break-words">
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Description</h4>
+                    <p className="text-base text-gray-700 leading-relaxed break-words">
                       {action.description}
                     </p>
                   </div>
@@ -156,14 +199,14 @@ const ActionDetailModal = ({ isOpen, onClose, actionId }: ActionDetailModalProps
 
                 {/* Progress Bar */}
                 {action.progressPercent > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-xs sm:text-sm font-semibold text-gray-700">Progress</h4>
-                      <span className="text-xs sm:text-sm font-medium text-gray-800">{action.progressPercent}%</span>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Progress</h4>
+                      <span className="text-lg font-bold text-primary-600">{action.progressPercent}%</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner">
                       <div
-                        className="bg-blue-600 h-2.5 rounded-full transition-all"
+                        className="bg-gradient-to-r from-primary-500 to-primary-600 h-4 rounded-full transition-all duration-500 shadow-sm"
                         style={{ width: `${action.progressPercent}%` }}
                       ></div>
                     </div>
@@ -171,28 +214,39 @@ const ActionDetailModal = ({ isOpen, onClose, actionId }: ActionDetailModalProps
                 )}
 
                 {/* Details Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Due Date */}
-                  <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
-                    <p className="text-xs text-gray-500 mb-1">Due Date</p>
-                    <p className="text-xs sm:text-sm font-medium text-gray-900">
-                      {formatDate(action.dueDate)}
+                <div className="space-y-4">
+                  {/* Responsible Person - Full Width */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Responsible Person</p>
+                    <p className="text-base font-semibold text-gray-900">
+                      {assignedToUser?.fullName || action.assignedTo || 'N/A'}
                     </p>
                   </div>
 
-                  {/* Created Date */}
-                  <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
-                    <p className="text-xs text-gray-500 mb-1">Created Date</p>
-                    <p className="text-xs sm:text-sm font-medium text-gray-900">
-                      {formatDate(action.createdAt)}
-                    </p>
+                  {/* Created Date and Due Date - Side by Side */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Created Date */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Created Date</p>
+                      <p className="text-base font-semibold text-gray-900">
+                        {formatDate(action.createdAt)}
+                      </p>
+                    </div>
+
+                    {/* Due Date */}
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Due Date</p>
+                      <p className="text-base font-semibold text-gray-900">
+                        {formatDate(action.dueDate)}
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Closed Date */}
+                  {/* Closed Date - Full Width (if exists) */}
                   {action.closedAt && (
-                    <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
-                      <p className="text-xs text-gray-500 mb-1">Closed Date</p>
-                      <p className="text-xs sm:text-sm font-medium text-gray-900">
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 hover:shadow-md transition-shadow">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Closed Date</p>
+                      <p className="text-base font-semibold text-gray-900">
                         {formatDate(action.closedAt)}
                       </p>
                     </div>
@@ -201,17 +255,25 @@ const ActionDetailModal = ({ isOpen, onClose, actionId }: ActionDetailModalProps
 
                 {/* Attachments */}
                 {action.findingId && (
-                  <div>
-                    <h4 className="text-xs sm:text-sm font-semibold text-gray-700 mb-3">Attachments</h4>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Attachments</h4>
+                      <span className="px-2 py-0.5 bg-primary-100 text-primary-700 text-xs font-semibold rounded-full">
+                        {attachments.length}
+                      </span>
+                    </div>
                     {loadingAttachments ? (
                       <div className="flex items-center justify-center py-4">
                         <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
                         <span className="ml-2 text-xs sm:text-sm text-gray-600">Loading attachments...</span>
                       </div>
                     ) : attachments.length === 0 ? (
-                      <p className="text-xs sm:text-sm text-gray-500 py-2 bg-gray-50 rounded-lg p-3 text-center">
-                        No attachments found
-                      </p>
+                      <div className="bg-gray-50 rounded-lg p-8 text-center border-2 border-dashed border-gray-300">
+                        <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-sm text-gray-500 font-medium">No attachments found</p>
+                      </div>
                     ) : (
                       <div className="space-y-3">
                         {attachments.map((attachment) => {
@@ -274,10 +336,10 @@ const ActionDetailModal = ({ isOpen, onClose, actionId }: ActionDetailModalProps
                           
                           // Non-image files
                           return (
-                            <div
-                              key={attachment.attachmentId}
-                              className="bg-gray-50 border border-gray-200 rounded-lg p-3 hover:bg-gray-100 transition-colors"
-                            >
+                              <div
+                                key={attachment.attachmentId}
+                                className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:bg-gray-100 hover:border-primary-300 transition-all shadow-sm"
+                              >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3 flex-1 min-w-0">
                                   {/* File Icon */}
@@ -314,9 +376,84 @@ const ActionDetailModal = ({ isOpen, onClose, actionId }: ActionDetailModalProps
                     )}
                   </div>
                 )}
+
               </div>
             ) : null}
+
+            {/* Feedback Input */}
+            {showFeedbackInput && showReviewButtons && action && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mt-4">
+                <div className="mb-3">
+                  <label className="block text-xs font-medium text-gray-700 mb-2">
+                    {reviewType === 'reject' ? 'Feedback (Required)' : 'Feedback (Optional)'}
+                  </label>
+                  <textarea
+                    value={reviewFeedback}
+                    onChange={(e) => setReviewFeedback(e.target.value)}
+                    rows={3}
+                    placeholder={reviewType === 'reject' ? 'Enter a reason for rejection...' : 'Enter feedback if needed...'}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm resize-none"
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      setShowFeedbackInput(false);
+                      setReviewFeedback('');
+                    }}
+                    disabled={isProcessing}
+                    className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (reviewType === 'approve') {
+                        onApprove?.(reviewFeedback);
+                      } else if (reviewType === 'reject' && reviewFeedback.trim()) {
+                        onReject?.(reviewFeedback);
+                      }
+                    }}
+                    disabled={isProcessing || (reviewType === 'reject' && !reviewFeedback.trim())}
+                    className={`px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      reviewType === 'approve'
+                        ? 'bg-green-600 hover:bg-green-700'
+                        : 'bg-red-600 hover:bg-red-700'
+                    }`}
+                  >
+                    {isProcessing ? 'Processing...' : reviewType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
+
+          {/* Footer with Review Buttons */}
+          {showReviewButtons && action && action.status?.toLowerCase() === 'reviewed' && !showFeedbackInput && (
+            <div className="border-t border-gray-200 bg-white px-6 py-3 flex items-center justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowFeedbackInput(true);
+                  setReviewType('approve');
+                }}
+                disabled={isProcessing}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => {
+                  setShowFeedbackInput(true);
+                  setReviewType('reject');
+                }}
+                disabled={isProcessing}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                Reject
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
