@@ -1,6 +1,7 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { AuditPlan } from '../../../types/auditPlan';
 import { getChecklistTemplates } from '../../../api/checklists';
 import { createAudit, addAuditScopeDepartment } from '../../../api/audits';
@@ -24,7 +25,6 @@ import { getStatusColor, getBadgeVariant } from '../../../constants';
 // Import components
 import { FilterBar } from './components/FilterBar';
 import { PlanTable } from './components/PlanTable';
-import { FindingsModal } from './components/FindingsModal';
 import { toast } from 'react-toastify';
 import { Step1BasicInfo } from './components/PlanForm/Step1BasicInfo';
 import { Step2Scope } from './components/PlanForm/Step2Scope';
@@ -36,6 +36,7 @@ const LEAD_AUDITOR_VISIBLE_STATUSES = ['draft', 'pendingreview', 'pendingdirecto
 
 const LeadAuditorAuditPlanning = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   // Use custom hooks for form state management
   const formState = useAuditPlanForm();
@@ -64,10 +65,6 @@ const LeadAuditorAuditPlanning = () => {
   // Use filter hook limited to visible statuses
   const filterState = useAuditPlanFilters(visiblePlans);
 
-  // Findings modal state
-  const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
-  const [selectedAuditTitle, setSelectedAuditTitle] = useState<string>('');
-  const [showFindingsModal, setShowFindingsModal] = useState(false);
   
 
 
@@ -320,10 +317,7 @@ const LeadAuditorAuditPlanning = () => {
 
   // Handler: View findings for audit
   const handleViewDetails = (auditId: string) => {
-    const plan = existingPlans.find(p => (p.auditId || p.id) === auditId);
-    setSelectedAuditId(auditId);
-    setSelectedAuditTitle(plan?.title || '');
-    setShowFindingsModal(true);
+    navigate(`/lead-auditor/auditplanning/${auditId}`);
   };
 
 
@@ -856,20 +850,6 @@ const LeadAuditorAuditPlanning = () => {
         </div>
 
         {/* Findings Modal */}
-        {showFindingsModal && (
-          <FindingsModal
-            showModal={showFindingsModal}
-            auditId={selectedAuditId}
-            auditTitle={selectedAuditTitle}
-            onClose={() => {
-              setShowFindingsModal(false);
-              setSelectedAuditId(null);
-              setSelectedAuditTitle('');
-            }}
-          />
-        )}
-
-
       </div>
     </MainLayout>
   );
