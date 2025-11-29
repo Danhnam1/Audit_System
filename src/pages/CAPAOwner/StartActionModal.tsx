@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { updateActionStatusInProgress, updateActionStatusReviewed, updateActionProgressPercent } from '../../api/actions';
-import { uploadAttachment } from '../../api/attachments';
+import { uploadAttachment, getAttachments, type Attachment } from '../../api/attachments';
 
 interface StartActionModalProps {
   isOpen: boolean;
@@ -16,10 +16,33 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Validation: Must have progress selected and at least one file
   const canSave = selectedProgress > 0 && files.length > 0;
+
+  // Load existing attachments when modal opens
+  useEffect(() => {
+    if (isOpen && actionId) {
+      const loadAttachments = async () => {
+        setLoadingAttachments(true);
+        try {
+          const attachments = await getAttachments('Action', actionId);
+          setExistingAttachments(attachments || []);
+        } catch (err: any) {
+          console.error('Error loading attachments:', err);
+          // Don't show error, just log it
+        } finally {
+          setLoadingAttachments(false);
+        }
+      };
+      loadAttachments();
+    } else {
+      setExistingAttachments([]);
+    }
+  }, [isOpen, actionId]);
 
   if (!isOpen) return null;
 
@@ -99,9 +122,18 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
         await updateActionStatusReviewed(actionId);
       }
 
-      // Success - close modal and refresh
+      // Success - reload attachments and close modal
       // Small delay to ensure API has updated
       await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Reload existing attachments to show newly uploaded ones
+      try {
+        const attachments = await getAttachments('Action', actionId);
+        setExistingAttachments(attachments || []);
+      } catch (err) {
+        console.error('Error reloading attachments:', err);
+      }
+      
       onSuccess();
       handleClose();
     } catch (err: any) {
@@ -122,6 +154,7 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
     setFiles([]);
     setSelectedProgress(25);
     setError(null);
+    setExistingAttachments([]);
     onClose();
   };
 
@@ -173,10 +206,54 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
               </select>
             </div>
 
+            {/* Existing Attachments Section */}
+            {existingAttachments.length > 0 && (
+              <div>
+                <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                  Existing Evidence Files
+                </label>
+                {loadingAttachments ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-xs sm:text-sm text-gray-600">Loading attachments...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {existingAttachments.map((attachment) => (
+                      <div
+                        key={attachment.attachmentId}
+                        className="flex items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-200"
+                      >
+                        <div className="flex-1 min-w-0 mr-2">
+                          <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                            {attachment.fileName}
+                          </p>
+                          <p className="text-xs text-gray-500">{formatFileSize(attachment.fileSize || 0)}</p>
+                        </div>
+                        {attachment.filePath && (
+                          <a
+                            href={attachment.filePath}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-shrink-0 p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Open file"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Upload Evidence Section */}
             <div>
               <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                Evidence Files
+                Upload New Evidence Files
               </label>
               
               {/* Hidden file input */}
