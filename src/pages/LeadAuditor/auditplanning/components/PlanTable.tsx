@@ -101,34 +101,20 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         header: 'Actions',
         align: 'center',
         cellClassName: 'whitespace-nowrap text-center',
-        render: (plan) => {
-          const normalizedStatus = String(plan.status || '').toLowerCase().replace(/\s+/g, '');
-          const isApproved = normalizedStatus === 'approved';
-          
-          return (
-            <div className="flex items-center justify-center gap-3">
-              <button
-                onClick={() => {
-                  if (isApproved) {
-                    onViewDetails(plan.auditId);
-                  }
-                }}
-                disabled={!isApproved}
-                className={`p-2 rounded-lg transition-colors ${
-                  isApproved
-                    ? 'text-primary-600 hover:text-primary-700 hover:bg-primary-50 cursor-pointer'
-                    : 'text-gray-400 cursor-not-allowed opacity-50'
-                }`}
-                title={isApproved ? 'View Findings' : 'Only approved plans can be viewed'}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-              </button>
-            </div>
-          );
-        },
+        render: (plan) => (
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => onViewDetails(plan.auditId)}
+              className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+              title="View Findings"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+            </button>
+          </div>
+        ),
       },
     ],
     [getBadgeVariant, getStatusColor, onDeletePlan, onEditPlan, onViewDetails, startIndex],
