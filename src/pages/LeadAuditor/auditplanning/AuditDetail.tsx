@@ -8,6 +8,7 @@ import {
   getAuditScopeDepartmentsByAuditId,
   approveForwardDirector,
   rejectPlanContent,
+  getAuditApprovals,
 } from '../../../api/audits';
 
 
@@ -50,6 +51,8 @@ const AuditDetail = () => {
   const [loadingCriteria, setLoadingCriteria] = useState(false);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const [loadingFindings, setLoadingFindings] = useState(false);
+  const [latestRejectionComment, setLatestRejectionComment] = useState<string | null>(null);
+  const [showRejectionReasonModal, setShowRejectionReasonModal] = useState(false);
 
 
   useEffect(() => {
@@ -122,6 +125,67 @@ const AuditDetail = () => {
           console.error('Failed to load user info', err);
           setCreatedByFullName('N/A');
         }
+      }
+
+      // Load rejection comment if plan is rejected
+      const planStatus = String(data?.status || data?.audit?.status || '').toLowerCase();
+      const isRejected = planStatus.includes('rejected');
+      
+      if (isRejected) {
+        // First, check if comment is stored directly in the audit/auditPlan record
+        let rejectionComment: string | null = null;
+        const dataAny = data as any;
+        rejectionComment = dataAny.comment || 
+                          
+                          dataAny.note || 
+                          dataAny.audit?.comment ||
+                  
+                          dataAny.audit?.rejectionReason ||
+                          dataAny.audit?.note ||
+                          null;
+        
+        // If not found in audit record, try to get from AuditApproval table
+        if (!rejectionComment && auditId) {
+          try {
+            const approvalsResponse = await getAuditApprovals();
+            const approvals = unwrap(approvalsResponse) || [];
+            const currentAuditId = String(auditId).trim().toLowerCase();
+            
+            // More robust filtering: case-insensitive comparison and handle different ID field names
+            const related = approvals.filter((a: any) => {
+              const approvalAuditId = String(a.auditId || a.audit?.auditId || a.audit?.id || '').trim().toLowerCase();
+              return approvalAuditId === currentAuditId && approvalAuditId !== '';
+            });
+            
+            if (related.length > 0) {
+              const rejected = related
+                .filter((a: any) => {
+                  const approvalStatus = String(a.status || '').toLowerCase();
+                  return approvalStatus.includes('rejected') || approvalStatus === 'rejected';
+                })
+                .sort((a: any, b: any) => {
+                  const aTime = new Date(a.approvedAt || a.createdAt || 0).getTime();
+                  const bTime = new Date(b.approvedAt || b.createdAt || 0).getTime();
+                  return bTime - aTime;
+                });
+              
+              if (rejected.length > 0) {
+                // Try multiple possible field names for comment
+                rejectionComment = rejected[0].comment || 
+                                  rejected[0].rejectionComment || 
+                                  rejected[0].note || 
+                                  rejected[0].reason || 
+                                  null;
+              }
+            }
+          } catch (approvalErr) {
+            console.error('Failed to load audit approvals for rejection comment', approvalErr);
+          }
+        }
+        
+        setLatestRejectionComment(rejectionComment);
+      } else {
+        setLatestRejectionComment(null);
       }
     } catch (err: any) {
       console.error('Failed to load audit details', err);
@@ -437,6 +501,23 @@ const AuditDetail = () => {
               </button>
             </div>
           )}
+          
+          {/* Show rejection reason button if plan is rejected */}
+          {auditDetails && (() => {
+            const planStatus = String(auditDetails?.status || auditDetails?.audit?.status || '').toLowerCase();
+            const isRejected = planStatus.includes('rejected');
+            return isRejected && latestRejectionComment ? (
+              <button
+                onClick={() => setShowRejectionReasonModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-red-300 text-red-700 bg-white hover:bg-red-50 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                View Rejection Reason
+              </button>
+            ) : null;
+          })()}
         </div>
 
         {/* Tabs */}
@@ -743,6 +824,73 @@ const AuditDetail = () => {
                   disabled={actionLoading}
                 >
                   {actionLoading ? 'Processing...' : 'Reject Plan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rejection Reason Modal (shows rejection comment when clicking on "View Details") */}
+      {showRejectionReasonModal && latestRejectionComment && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => setShowRejectionReasonModal(false)}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto">
+            <div className="p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Rejection Reason
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowRejectionReasonModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Close"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-3">
+                
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Rejection Reason
+                  </label>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-sm text-red-800 leading-relaxed whitespace-pre-line">
+                      {latestRejectionComment || 'No rejection reason provided.'}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2 text-xs text-gray-500 pt-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>This plan was rejected. Please review the reason above and make necessary corrections.</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowRejectionReasonModal(false)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                >
+                  Close
                 </button>
               </div>
             </div>
