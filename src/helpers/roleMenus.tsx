@@ -73,7 +73,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
 
     case 'auditeeowner':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITEE_OWNER },
+        // { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.AUDITEE_OWNER },
         { icon: <AuditIcon />, label: 'Audit Plans', path: `${ROUTES.AUDITEE_OWNER}/audit-plans` },
         { icon: <ReportsIcon />, label: 'Findings Management', path: `${ROUTES.AUDITEE_OWNER}/findings` },
         { icon: <QualityIcon />, label: 'CAPA Owner Management', path: `${ROUTES.AUDITEE_OWNER}/capa-management` },
@@ -81,9 +81,8 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
 
     case 'capaowner':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.CAPA_OWNER },
         { icon: <DashboardIcon />, label: 'Tasks', path: `${ROUTES.CAPA_OWNER}/tasks` },
-        { icon: <DashboardIcon />, label: 'Progress', path: `${ROUTES.CAPA_OWNER}/progress` },
+        // { icon: <DashboardIcon />, label: 'Progress', path: `${ROUTES.CAPA_OWNER}/progress` },
       ];
 
     case 'director':

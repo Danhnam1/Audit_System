@@ -8,6 +8,7 @@ import { getFindings } from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
 import FindingDetailModal from './FindingDetailModal';
+import { Toast } from '../AuditPlanning/components/Toast';
 
 interface ChecklistItem {
   auditItemId: string;
@@ -36,9 +37,29 @@ const DepartmentChecklist = () => {
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [showCompliantConfirmModal, setShowCompliantConfirmModal] = useState(false);
   const [itemToMarkCompliant, setItemToMarkCompliant] = useState<ChecklistItem | null>(null);
+  
+  // Toast state
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'error' | 'success' | 'info' | 'warning';
+    isVisible: boolean;
+  }>({
+    message: '',
+    type: 'info',
+    isVisible: false,
+  });
 
   // Get auditId from location state (passed from parent component)
   const auditId = (location.state as any)?.auditId || '';
+
+  // Helper function to show toast
+  const showToast = (message: string, type: 'error' | 'success' | 'info' | 'warning' = 'info') => {
+    setToast({ message, type, isVisible: true });
+  };
+
+  const hideToast = () => {
+    setToast(prev => ({ ...prev, isVisible: false }));
+  };
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -49,8 +70,8 @@ const DepartmentChecklist = () => {
     // Check for NonCompliant first (must check this before Compliant)
     // Handle both "NonCompliant" and "Non-Compliant" formats
     if (statusLower.startsWith('non') || (statusLower.includes('non') && statusLower.includes('compliant'))) {
-      // Non-compliant - red background with hover
-      return 'bg-red-50 border-l-4 border-red-500 hover:bg-red-100';
+      // Non-compliant - red background rõ ràng hơn với border đậm
+      return 'bg-red-50 border-l-4 border-red-200 hover:bg-red-200 shadow-sm';
     }
     
     // Check for Compliant (only if not NonCompliant)
@@ -93,8 +114,9 @@ const DepartmentChecklist = () => {
         });
         setFindingsMap(map);
         console.log('Findings map created:', map);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Error loading findings:', err);
+        showToast('Failed to load findings', 'warning');
       }
     };
     loadFindings();
@@ -108,7 +130,7 @@ const DepartmentChecklist = () => {
       setShowDetailModal(true);
     } else {
       console.warn('Finding not found for auditItemId:', item.auditItemId);
-      alert('Finding not found for this item');
+      showToast('Finding not found for this item', 'warning');
     }
   };
 
@@ -138,9 +160,10 @@ const DepartmentChecklist = () => {
       );
       
       console.log('Item marked as compliant:', itemToMarkCompliant.auditItemId);
+      showToast('Item marked as compliant successfully', 'success');
     } catch (err: any) {
       console.error('Error marking item as compliant:', err);
-      alert(err?.message || 'Failed to mark item as compliant');
+      showToast(err?.message || 'Failed to mark item as compliant', 'error');
     } finally {
       setUpdatingItemId(null);
       setItemToMarkCompliant(null);
@@ -177,7 +200,9 @@ const DepartmentChecklist = () => {
         setChecklistItems(sortedItems);
       } catch (err: any) {
         console.error('Error loading checklist items:', err);
-        setError(err?.message || 'Failed to load checklist items');
+        const errorMessage = err?.message || 'Failed to load checklist items';
+        setError(errorMessage);
+        showToast(errorMessage, 'error');
       } finally {
         setLoading(false);
       }
@@ -248,44 +273,52 @@ const DepartmentChecklist = () => {
                 {checklistItems.map((item, index) => (
                   <div
                     key={item.auditItemId}
-                    className={`px-4 sm:px-6 py-3 sm:py-4 transition-colors ${getStatusColor(item.status)}`}
+                    className={`px-3 sm:px-4 md:px-6 py-3 sm:py-4 transition-colors ${getStatusColor(item.status)}`}
                   >
-                    <div className="flex items-center justify-between gap-3 sm:gap-4">
-                      <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                      <div className="flex items-start sm:items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0">
                         {/* Order Number */}
-                        <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-primary-100 text-primary-700 rounded-lg font-semibold text-sm sm:text-base">
+                        <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center bg-primary-100 text-primary-700 rounded-lg font-semibold text-xs sm:text-sm md:text-base">
                           {item.order || index + 1}
                         </div>
-                        <p className="text-sm sm:text-base text-gray-900 flex-1 min-w-0">
+                        <p className="text-xs sm:text-sm md:text-base text-gray-900 flex-1 min-w-0 break-words">
                           {item.questionTextSnapshot}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                      <div className="flex items-center justify-end sm:justify-start gap-2 sm:gap-3 flex-shrink-0">
                         {isCompliant(item.status) ? (
                           /* Text for Compliant items */
-                          <div className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-100 text-green-700 rounded-lg text-xs sm:text-sm font-semibold">
-                            Meets Requirements
+                          <div className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-green-100 text-green-700 rounded-lg text-[10px] sm:text-xs md:text-sm font-semibold whitespace-nowrap">
+                            <span className="hidden sm:inline">Meets Requirements</span>
+                            <span className="sm:hidden">Meets</span>
                           </div>
                         ) : isNonCompliant(item.status) ? (
-                          /* Eye icon for Non-compliant items */
-                          <button
-                            className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleViewFinding(item);
-                            }}
-                            title="View Finding Details"
-                          >
-                            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
+                          /* Badge and Eye icon for Non-compliant items */
+                          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-wrap sm:flex-nowrap">
+                            <div className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-red-100 text-red-700 rounded-lg text-[10px] sm:text-xs md:text-sm font-semibold border border-red-300 whitespace-nowrap">
+                              <span className="hidden md:inline">Does Not Meet Requirements</span>
+                              <span className="hidden sm:inline md:hidden">Does Not Meet</span>
+                              <span className="sm:hidden">Not Met</span>
+                            </div>
+                            <button
+                              className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95 flex-shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewFinding(item);
+                              }}
+                              title="View Finding Details"
+                            >
+                              <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </button>
+                          </div>
                         ) : (
                           <>
                             {/* Green Checkmark */}
                             <button
-                              className={`w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-green-100 hover:bg-green-200 text-green-600 transition-colors active:scale-95 ${
+                              className={`w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-green-100 hover:bg-green-200 text-green-600 transition-colors active:scale-95 flex-shrink-0 ${
                                 updatingItemId === item.auditItemId ? 'opacity-50 cursor-not-allowed' : ''
                               }`}
                               onClick={(e) => {
@@ -296,9 +329,9 @@ const DepartmentChecklist = () => {
                               title="Mark as Compliant"
                             >
                               {updatingItemId === item.auditItemId ? (
-                                <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-green-600"></div>
+                                <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5 border-b-2 border-green-600"></div>
                               ) : (
-                                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                               )}
@@ -306,15 +339,16 @@ const DepartmentChecklist = () => {
                             
                             {/* Red X */}
                             <button
-                              className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center rounded-full bg-red-100 hover:bg-red-200 text-red-600 transition-colors active:scale-95"
+                              className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white border-2 border-red-600 shadow-md hover:shadow-lg transition-all duration-200 active:scale-95 flex-shrink-0"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedItem(item);
                                 setShowCreateModal(true);
                               }}
+                              title="Mark as Non-Compliant"
                             >
-                              <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                               </svg>
                             </button>
                           </>
@@ -352,6 +386,7 @@ const DepartmentChecklist = () => {
                 setFindingsMap(map);
               } catch (err) {
                 console.error('Error reloading findings:', err);
+                showToast('Error reloading findings', 'warning');
               }
             };
             reloadFindings();
@@ -364,13 +399,13 @@ const DepartmentChecklist = () => {
                 const items = await getChecklistItemsByDepartment(deptIdNum);
                 const sortedItems = items.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
                 setChecklistItems(sortedItems);
+                showToast('Finding created successfully', 'success');
               } catch (err) {
                 console.error('Error reloading checklist items:', err);
+                showToast('Error reloading checklist items', 'warning');
               }
             };
             reloadChecklistItems();
-            
-            console.log('Finding created successfully');
           }}
           checklistItem={{
             auditItemId: selectedItem.auditItemId,
@@ -395,7 +430,7 @@ const DepartmentChecklist = () => {
 
       {/* Confirmation Modal for Marking as Compliant */}
       {showCompliantConfirmModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4">
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
@@ -403,20 +438,20 @@ const DepartmentChecklist = () => {
           />
           
           {/* Modal */}
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto max-h-[90vh] overflow-y-auto">
+            <div className="p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
                 Confirm Compliance
               </h3>
-              <p className="text-sm text-gray-600 mb-6">
+              <p className="text-xs sm:text-sm text-gray-600 mb-4 sm:mb-6">
                 Are you sure that this item meets all requirements and standards?
               </p>
               
-              <div className="flex items-center justify-end gap-3">
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={handleCancelMarkCompliant}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm sm:text-base"
                 >
                   Cancel
                 </button>
@@ -424,7 +459,7 @@ const DepartmentChecklist = () => {
                   type="button"
                   onClick={handleConfirmMarkCompliant}
                   disabled={updatingItemId !== null}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
                 >
                   {updatingItemId ? 'Marking...' : 'Yes, Mark as Compliant'}
                 </button>
@@ -433,6 +468,15 @@ const DepartmentChecklist = () => {
           </div>
         </div>
       )}
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        isVisible={toast.isVisible}
+        onClose={hideToast}
+        duration={3000}
+      />
     </MainLayout>
   );
 };

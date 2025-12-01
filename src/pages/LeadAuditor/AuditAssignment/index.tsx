@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { getMyLeadAuditorAudits, getAuditorsByAuditId } from '../../../api/auditTeam';
+import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getAuditScopeDepartmentsByAuditId, getAuditPlans } from '../../../api/audits';
 import { createAuditAssignment, getAuditAssignments } from '../../../api/auditAssignments';
 import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
+import { getDepartmentById } from '../../../api/departments';
 import { unwrap } from '../../../utils/normalize';
-import { getStatusColor } from '../../../constants';
 
 interface Department {
   deptId: number;
@@ -27,6 +27,10 @@ interface Assignment {
   auditorId: string;
   notes?: string;
   status: string;
+  assignedAt?: string;
+  auditTitle?: string;
+  departmentName?: string;
+  auditorName?: string;
 }
 
 interface Audit {
@@ -60,6 +64,12 @@ export default function AuditAssignment() {
   const [loadingAuditors, setLoadingAuditors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  
+  // Detail modal state
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [departmentDetail, setDepartmentDetail] = useState<any>(null);
+  const [loadingDepartmentDetail, setLoadingDepartmentDetail] = useState(false);
 
   // Load audits first
   useEffect(() => {
@@ -97,17 +107,35 @@ export default function AuditAssignment() {
         setAssignments(assignmentsData || []);
 
         // Fetch departments for selected audit
-        const deptData = await getAuditScopeDepartmentsByAuditId(selectedAuditId);
-        const deptList = unwrap<Department>(deptData);
-        const deptArray = Array.isArray(deptList) ? deptList : [];
-        
-        // Map departments with auditIds
-        const mappedDepartments: Department[] = deptArray.map((dept: Department) => ({
-          ...dept,
-          auditIds: [selectedAuditId],
-        }));
+        try {
+          const deptData = await getAuditScopeDepartmentsByAuditId(selectedAuditId);
+          
+          // Check if response is an error message
+          if (deptData && typeof deptData === 'object' && 'message' in deptData && !Array.isArray(deptData)) {
+            setDepartments([]);
+            return;
+          }
+          
+          const deptList = unwrap<Department>(deptData);
+          const deptArray = Array.isArray(deptList) ? deptList : [];
+          
+          // Map departments with auditIds
+          const mappedDepartments: Department[] = deptArray.map((dept: Department) => ({
+            ...dept,
+            auditIds: [selectedAuditId],
+          }));
 
-        setDepartments(mappedDepartments);
+          setDepartments(mappedDepartments);
+        } catch (apiErr: any) {
+          // If 404 or "no departments" message, just set empty array
+          const errorData = apiErr?.response?.data || apiErr?.data;
+          if (apiErr?.response?.status === 404 || 
+              (errorData?.message && errorData.message.includes('No departments'))) {
+            setDepartments([]);
+          } else {
+            throw apiErr;
+          }
+        }
       } catch (err: any) {
         console.error('[AuditAssignment] Load failed:', err);
         setError(err?.message || 'Failed to load departments');
@@ -231,6 +259,37 @@ export default function AuditAssignment() {
     setDepartments([]);
   };
 
+  const handleOpenDetailModal = async (assignment: Assignment) => {
+    setSelectedAssignment(assignment);
+    setIsDetailModalOpen(true);
+    
+    // Fetch department details
+    if (assignment.deptId) {
+      setLoadingDepartmentDetail(true);
+      try {
+        const deptDetail = await getDepartmentById(assignment.deptId);
+        setDepartmentDetail(deptDetail);
+      } catch (err: any) {
+        console.error('Failed to load department details:', err);
+        setDepartmentDetail(null);
+      } finally {
+        setLoadingDepartmentDetail(false);
+      }
+    }
+  };
+
+  const handleCloseDetailModal = () => {
+    setIsDetailModalOpen(false);
+    setSelectedAssignment(null);
+    setDepartmentDetail(null);
+  };
+
+  // Get assignments for selected audit
+  const getAssignmentsForSelectedAudit = (): Assignment[] => {
+    if (!selectedAuditId) return [];
+    return assignments.filter(assignment => assignment.auditId === selectedAuditId);
+  };
+
   return (
     <MainLayout user={layoutUser}>
       <div className="space-y-6">
@@ -308,57 +367,124 @@ export default function AuditAssignment() {
               )}
             </>
           ) : (
-            // Show departments for selected audit
+            // Show departments and assignments for selected audit
             <>
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                  <span className="ml-3 text-gray-600">Loading departments...</span>
+                  <span className="ml-3 text-gray-600">Loading...</span>
                 </div>
               ) : error ? (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <p className="text-red-800">{error}</p>
                 </div>
-              ) : departments.length === 0 ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-yellow-800">No departments found for this audit.</p>
-                </div>
               ) : (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                  <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-                    <h2 className="text-lg font-medium text-gray-900">
-                      Departments ({departments.length})
-                    </h2>
-                  </div>
-                  <div className="divide-y divide-gray-200">
-                    {departments.map((dept) => (
-                      <div
-                        key={dept.deptId}
-                        className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <h3 className="text-base font-medium text-gray-900">{dept.name}</h3>
-                          </div>
-                          <div className="ml-4">
-                            {isDepartmentAssigned(dept.deptId) ? (
-                              <span className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg">
-                                Assigned
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handleOpenAssignModal(dept)}
-                                className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                              >
-                                Assign
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                <>
+                  {/* Departments List */}
+                  {departments.length > 0 && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
+                      <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+                        <h2 className="text-lg font-medium text-gray-900">
+                          Departments ({departments.length})
+                        </h2>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <div className="divide-y divide-gray-200">
+                        {departments.map((dept) => (
+                          <div
+                            key={dept.deptId}
+                            className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <h3 className="text-base font-medium text-gray-900">{dept.name}</h3>
+                              </div>
+                              <div className="ml-4">
+                                {isDepartmentAssigned(dept.deptId) ? (
+                                  <span className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg">
+                                    Assigned
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleOpenAssignModal(dept)}
+                                    className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                                  >
+                                    Assign
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Assignments List */}
+                  {getAssignmentsForSelectedAudit().length > 0 ? (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                      <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+                        <h2 className="text-lg font-medium text-gray-900">
+                          Assignments ({getAssignmentsForSelectedAudit().length})
+                        </h2>
+                      </div>
+                      <div className="divide-y divide-gray-200">
+                        {getAssignmentsForSelectedAudit().map((assignment) => (
+                          <div
+                            key={assignment.assignmentId}
+                            className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3">
+                                  <h3 className="text-base font-medium text-gray-900">
+                                    {assignment.departmentName || `Department ${assignment.deptId}`}
+                                  </h3>
+                                  <span
+                                    className={`px-2 py-1 text-xs font-medium rounded ${
+                                      assignment.status === 'Assigned'
+                                        ? 'bg-green-100 text-green-800'
+                                        : assignment.status === 'In Progress'
+                                        ? 'bg-blue-100 text-blue-800'
+                                        : assignment.status === 'Completed'
+                                        ? 'bg-gray-100 text-gray-800'
+                                        : 'bg-yellow-100 text-yellow-800'
+                                    }`}
+                                  >
+                                    {assignment.status}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  Auditor: {assignment.auditorName || 'N/A'}
+                                </p>
+                                {assignment.assignedAt && (
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Assigned: {new Date(assignment.assignedAt).toLocaleString()}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="ml-4">
+                                <button
+                                  onClick={() => handleOpenDetailModal(assignment)}
+                                  className="px-4 py-2 bg-green-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 flex items-center gap-2"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                  Detail
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : departments.length === 0 ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-yellow-800">No departments found for this audit.</p>
+                    </div>
+                  ) : null}
+                </>
               )}
             </>
           )}
@@ -514,6 +640,177 @@ export default function AuditAssignment() {
                   className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? 'Assigning...' : 'Yes, Assign'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {isDetailModalOpen && selectedAssignment && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={handleCloseDetailModal}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  Assignment Details
+                </h3>
+                <button
+                  onClick={handleCloseDetailModal}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+             
+
+                {/* Audit Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Audit Title
+                    </label>
+                    <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                      {selectedAssignment.auditTitle || audits.find(a => a.auditId === selectedAssignment.auditId)?.title || 'N/A'}
+                    </p>
+                  </div>
+            
+              
+                </div>
+
+                {/* Department Information */}
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="text-base font-semibold text-gray-900 mb-3">Department Information</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Department Name
+                      </label>
+                      <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                        {selectedAssignment.departmentName || 'N/A'}
+                      </p>
+                    </div>
+                 
+                  </div>
+                  
+                  {/* Department Details from API */}
+                  {loadingDepartmentDetail ? (
+                    <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                      Loading department details...
+                    </div>
+                  ) : departmentDetail ? (
+                    <div className="mt-3 space-y-2">
+                      {departmentDetail.code && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Department Code
+                          </label>
+                          <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                            {departmentDetail.code}
+                          </p>
+                        </div>
+                      )}
+                      {departmentDetail.description && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Description
+                          </label>
+                          <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                            {departmentDetail.description}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Auditor Information */}
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="text-base font-semibold text-gray-900 mb-3">Auditor Information</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Auditor Name
+                      </label>
+                      <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                        {selectedAssignment.auditorName || 'N/A'}
+                      </p>
+                    </div>
+                  
+                  </div>
+                </div>
+
+                {/* Status and Dates */}
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="text-base font-semibold text-gray-900 mb-3">Status & Timeline</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Status
+                      </label>
+                      <span
+                        className={`inline-block px-3 py-2 text-sm font-medium rounded-lg ${
+                          selectedAssignment.status === 'Assigned'
+                            ? 'bg-green-100 text-green-800'
+                            : selectedAssignment.status === 'In Progress'
+                            ? 'bg-blue-100 text-blue-800'
+                            : selectedAssignment.status === 'Completed'
+                            ? 'bg-gray-100 text-gray-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}
+                      >
+                        {selectedAssignment.status}
+                      </span>
+                    </div>
+                    {selectedAssignment.assignedAt && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Assigned At
+                        </label>
+                        <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                          {new Date(selectedAssignment.assignedAt).toLocaleString()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Notes */}
+                {selectedAssignment.notes && (
+                  <div className="border-t border-gray-200 pt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notes
+                    </label>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                        {selectedAssignment.notes}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={handleCloseDetailModal}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                >
+                  Close
                 </button>
               </div>
             </div>

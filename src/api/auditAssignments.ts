@@ -7,6 +7,10 @@ export interface AuditAssignment {
   auditorId: string;
   notes?: string;
   status: string;
+  assignedAt?: string;
+  auditTitle?: string;
+  departmentName?: string;
+  auditorName?: string;
 }
 
 export interface CreateAuditAssignmentDto {

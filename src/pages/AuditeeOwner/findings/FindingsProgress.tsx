@@ -125,8 +125,8 @@ const FindingsProgress = () => {
   // Get severity badge color
   const getSeverityBadgeColor = (severity: string) => {
     const severityLower = severity?.toLowerCase() || '';
-    if (severityLower === 'high' || severityLower === 'major') return 'bg-red-100 text-red-700';
-    if (severityLower === 'medium') return 'bg-yellow-100 text-yellow-700';
+    if (severityLower === 'hight' || severityLower === 'major') return 'bg-red-100 text-red-700';
+    if (severityLower === 'normal') return 'bg-yellow-100 text-yellow-700';
     if (severityLower === 'low' || severityLower === 'minor') return 'bg-green-100 text-green-700';
     return 'bg-gray-100 text-gray-700';
   };

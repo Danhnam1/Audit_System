@@ -76,8 +76,8 @@ export function AppRoutes() {
         const roleRouteMap: Record<string, string> = {
             admin: ROUTES.ADMIN,
             auditor: ROUTES.AUDITOR,
-            capaowner: ROUTES.CAPA_OWNER,
-            auditeeowner: ROUTES.AUDITEE_OWNER,
+            capaowner: '/capa-owner/tasks',
+            auditeeowner: '/auditee-owner/audit-plans',
             director: '/director/review-plans',
             leadauditor: '/lead-auditor/auditplanning',
         };
@@ -283,7 +283,7 @@ export function AppRoutes() {
                 path={ROUTES.CAPA_OWNER}
                 element={
                     <ProtectedRoute allowedRoles={["CAPAOwner"]}>
-                        <DepartmentStaffDashboard />
+                        <Navigate to="/capa-owner/tasks" replace />
                     </ProtectedRoute>
                 }
             />
