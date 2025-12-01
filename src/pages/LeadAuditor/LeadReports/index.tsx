@@ -9,12 +9,17 @@ import { getStatusColor } from '../../../constants';
 import AuditReportsTable from './components/AuditReportsTable';
 import DepartmentsSection from './components/DepartmentsSection';
 import { getAuditTeam } from '../../../api/auditTeam';
-import { getAdminUsers } from '../../../api/adminUsers';
+import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import SummaryTab from './components/SummaryTab';
 
 const AuditorLeadReports = () => {
   const { user } = useAuth();
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
+  const normalizedRole =
+    String((user as any)?.group_code || (user as any)?.role || '')
+      .toLowerCase()
+      .replace(/\s+/g, '');
+  const isLeadAuditorRole = normalizedRole === 'leadauditor';
 
   const [audits, setAudits] = useState<any[]>([]);
   const [selectedAuditId, setSelectedAuditId] = useState<string>('');
@@ -27,7 +32,7 @@ const AuditorLeadReports = () => {
   const [expandedFindingId, setExpandedFindingId] = useState<string>('');
   const [actionLoading, setActionLoading] = useState<string>('');
   const [actionMsg, setActionMsg] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'completed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'closed'>('all');
   const [reportSearch, setReportSearch] = useState<string>('');
   const [findingsSearch, setFindingsSearch] = useState<string>('');
   const [findingsSeverity, setFindingsSeverity] = useState<string>('all');
@@ -36,13 +41,18 @@ const AuditorLeadReports = () => {
   const [approveAuditId, setApproveAuditId] = useState<string | null>(null);
   const [rejectAuditId, setRejectAuditId] = useState<string | null>(null);
   const [rejectNote, setRejectNote] = useState('');
+  const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
 
   const isRelevantToLead = (status: string) => {
     const s = String(status || '').toLowerCase();
     if (!s) return false;
     return (
-      s.includes('submit') || s.includes('submitted') ||
-      s.includes('approve') || s.includes('completed') || s.includes('complete')
+      s.includes('submit') ||
+      s.includes('submitted') ||
+      s.includes('approve') ||
+      s.includes('completed') ||
+      s.includes('complete') ||
+      s.includes('closed')
     );
   };
 
@@ -55,6 +65,7 @@ const AuditorLeadReports = () => {
       ]);
       
       const users = Array.isArray(usersRes) ? usersRes : [];
+      setAdminUsers(users);
       let currentUserId: string | null = null;
       if (user?.email) {
         const found = users.find((u: any) => {
@@ -87,7 +98,12 @@ const AuditorLeadReports = () => {
         teams.forEach((m: any) => {
           const memberUserId = m?.userId ?? m?.id ?? m?.$id;
           const normalizedMemberId = memberUserId != null ? String(memberUserId).toLowerCase().trim() : null;
-          if (m?.isLead && normalizedMemberId === normalizedCurrentUserId) {
+          // Trước đây chỉ check m?.isLead; giờ Lead Auditor là role hệ thống,
+          // nếu user có role Lead Auditor thì chỉ cần thuộc team là được phép xem.
+          const isLeadForThisAudit = isLeadAuditorRole
+            ? normalizedMemberId === normalizedCurrentUserId
+            : (m?.isLead && normalizedMemberId === normalizedCurrentUserId);
+          if (isLeadForThisAudit) {
             addAuditId(leadAuditIds, m?.auditId);
             addAuditId(leadAuditIds, m?.auditPlanId);
             addAuditId(leadAuditIds, m?.planId);
@@ -113,10 +129,14 @@ const AuditorLeadReports = () => {
         return candidates.some((id: string) => leadAuditIds.has(id) || leadAuditIds.has(id.toLowerCase()));
       };
       
+      // Nếu user là Lead Auditor (role hệ thống), cho phép xem mọi audit có trạng thái
+      // liên quan (Submitted/Closed/Approved...), không bắt buộc cờ isLead.
       const filtered = all.filter((p: any) => {
-        const isLeadAudit = auditMatchesLead(p);
         const isRelevant = isRelevantToLead(p.status || p.state || p.approvalStatus);
-        return isLeadAudit && isRelevant;
+        if (!isRelevant) return false;
+        if (isLeadAuditorRole) return true;
+        const isLeadAudit = auditMatchesLead(p);
+        return isLeadAudit;
       });
       
       const sorted = filtered.sort((a: any, b: any) => {
@@ -155,17 +175,67 @@ const AuditorLeadReports = () => {
   }, [selectedAuditId]);
 
   const rows = useMemo(() => {
+    const getCreatedByLabel = (a: any): string => {
+      const src =
+        a?.createdByUser ||
+        a?.submittedByUser ||
+        a?.createdBy ||
+        a?.submittedBy;
+      if (!src) return '—';
+
+      const normalize = (v: any) => String(v || '').toLowerCase().trim();
+
+      if (typeof src === 'string') {
+        const sNorm = normalize(src);
+        const found = (adminUsers || []).find(u => {
+          const id = u.userId || (u as any).$id;
+          const email = u.email;
+          return (id && normalize(id) === sNorm) || (email && normalize(email) === sNorm);
+        });
+        if (found?.fullName) return found.fullName;
+        if (found?.email) return found.email;
+        return src;
+      }
+
+      if (src.fullName) return src.fullName;
+      if (src.email) return src.email;
+
+      const id = src.userId || src.id || src.$id;
+      if (id) {
+        const idNorm = normalize(id);
+        const foundById = (adminUsers || []).find(u => {
+          const uid = u.userId || (u as any).$id;
+          return uid && normalize(uid) === idNorm;
+        });
+        if (foundById?.fullName) return foundById.fullName;
+        if (foundById?.email) return foundById.email;
+        return String(id);
+      }
+
+      return '—';
+    };
+
     return (Array.isArray(audits) ? audits : []).map((a: any, idx: number) => {
       const auditId = String(a.auditId || a.id || a.$id || `audit_${idx}`);
       const title = a.title || a.name || `Audit ${idx + 1}`;
       const rawStatus = a.status || a.state || a.approvalStatus || '—';
       const norm = String(rawStatus).toLowerCase().replace(/\s+/g, '');
-      const status = norm.includes('approve') || norm.includes('complete') ? 'Completed' : (norm.includes('submit') ? 'Submitted' : rawStatus);
-      const createdRaw = a.createdAt || a.startDate || a.createdDate || a.start;
-      const createdDate = createdRaw ? new Date(createdRaw).toISOString().slice(0, 10) : '';
-      return { auditId, title, status, createdDate };
+      let status: string;
+      if (norm.includes('return') || norm.includes('reject')) {
+        status = 'Returned';
+      } else if (norm.includes('closed')) {
+        status = 'Closed';
+      } else if (norm.includes('submit') || norm.includes('submitted') || norm.includes('underreview')) {
+        status = 'Submitted';
+      } else if (norm.includes('open') || norm === 'inprogress' || norm.includes('draft')) {
+        status = 'Open';
+      } else {
+        status = rawStatus;
+      }
+      const createdBy = getCreatedByLabel(a);
+      return { auditId, title, status, createdBy };
     });
-  }, [audits]);
+  }, [audits, adminUsers]);
 
   const filteredRows = useMemo(() => {
     let list = rows;
@@ -173,7 +243,7 @@ const AuditorLeadReports = () => {
       list = list.filter(r => {
         const s = String(r.status || '').toLowerCase().replace(/\s+/g, '');
         if (statusFilter === 'submitted') return s.includes('submit');
-        if (statusFilter === 'completed') return s.includes('complete');
+        if (statusFilter === 'closed') return s.includes('closed') || s.includes('complete');
         return true;
       });
     }
@@ -187,7 +257,7 @@ const AuditorLeadReports = () => {
   const needsDecision = (status: string) => {
     const s = String(status || '').toLowerCase();
     if (!s) return false;
-    if (s.includes('approve') || s.includes('reject') || s.includes('completed') || s.includes('complete') || s.includes('return')) return false;
+    if (s.includes('approve') || s.includes('reject') || s.includes('return')) return false;
     return s.includes('submit') || s.includes('pending') || s.includes('underreview') || s.includes('under review');
   };
 
@@ -219,9 +289,16 @@ const AuditorLeadReports = () => {
     setActionMsg(null);
     try {
       await approveAuditReport(approveAuditId);
-      setAudits(prev => prev.map(a => String(a.auditId || a.id || a.$id) === approveAuditId ? { ...a, status: 'Completed' } : a));
-      toast.success('Approved the Audit Report successfully.');
+      setAudits(prev =>
+        prev.map(a =>
+          String(a.auditId || a.id || a.$id) === approveAuditId ? { ...a, status: 'Closed' } : a,
+        ),
+      );
+      toast.success('Closed the Audit Report successfully.');
       closeApproveModal();
+      // After approve, hide details until user explicitly clicks View again
+      setShowSummary(false);
+      setSelectedAuditId('');
       await reload();
     } catch (err: any) {
       console.error('Approve failed', err);
@@ -296,12 +373,27 @@ const AuditorLeadReports = () => {
   const allFindings = useMemo(() => {
     if (!summary) return [] as any[];
     const items: any[] = [];
-    const months = unwrapValues(summary.findingsByMonth);
-    months.forEach((m: any) => unwrapValues(m?.findings).forEach((f: any) => items.push(f)));
-    unwrapValues(summary.findings).forEach((f: any) => items.push(f));
-    unwrapValues(summary.byDepartment).forEach((d: any) => {
+
+    // New backend shape: findingsInAudit.$values[].findings.$values[]
+    const byAudit = unwrapValues((summary as any).findingsInAudit);
+    byAudit.forEach((m: any) =>
+      unwrapValues(m?.findings).forEach((f: any) => items.push(f)),
+    );
+
+    // Legacy: findingsByMonth -> months[].findings[]
+    const months = unwrapValues((summary as any).findingsByMonth);
+    months.forEach((m: any) =>
+      unwrapValues(m?.findings).forEach((f: any) => items.push(f)),
+    );
+
+    // direct summary.findings[]
+    unwrapValues((summary as any).findings).forEach((f: any) => items.push(f));
+
+    // byDepartment[].findings[]
+    unwrapValues((summary as any).byDepartment).forEach((d: any) => {
       unwrapValues(d?.findings).forEach((f: any) => items.push(f));
     });
+
     return items;
   }, [summary]);
 
@@ -386,7 +478,16 @@ const AuditorLeadReports = () => {
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
           needsDecision={needsDecision}
-          onView={(id: string) => { setSelectedAuditId(id); setShowSummary(true); }}
+          onView={(id: string) => {
+            // Toggle mở/đóng details khi bấm View
+            if (showSummary && selectedAuditId === id) {
+              setShowSummary(false);
+              setSelectedAuditId('');
+            } else {
+              setSelectedAuditId(id);
+              setShowSummary(true);
+            }
+          }}
           onApprove={openApproveModal}
           onReject={openRejectModal}
           actionLoading={actionLoading}

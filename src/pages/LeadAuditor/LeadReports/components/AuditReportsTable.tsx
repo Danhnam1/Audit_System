@@ -5,13 +5,13 @@ interface Row {
   auditId: string;
   title: string;
   status: string;
-  createdDate: string;
+  createdBy: string;
 }
 
 interface Props {
   rows: Row[];
-  statusFilter: 'all' | 'submitted' | 'completed';
-  setStatusFilter: (v: 'all' | 'submitted' | 'completed') => void;
+  statusFilter: 'all' | 'submitted' | 'closed';
+  setStatusFilter: (v: 'all' | 'submitted' | 'closed') => void;
   reportSearch: string;
   setReportSearch: (v: string) => void;
   needsDecision: (status: string) => boolean;
@@ -52,7 +52,7 @@ const AuditReportsTable: React.FC<Props> = ({
           >
             <option value="all">All</option>
             <option value="submitted">Submitted</option>
-            <option value="completed">Completed</option>
+            <option value="closed">Closed</option>
           </select>
         </div>
         <div className="flex-1">
@@ -71,7 +71,7 @@ const AuditReportsTable: React.FC<Props> = ({
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit Title</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Created</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Created By</th>
               <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
@@ -81,7 +81,7 @@ const AuditReportsTable: React.FC<Props> = ({
                 <td className="px-4 py-4 text-xs text-gray-500 whitespace-nowrap">{idx + 1}</td>
                 <td className="px-6 py-4"><span className="text-sm font-medium text-gray-900">{r.title}</span></td>
                 <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>{r.status}</span></td>
-                <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-600">{r.createdDate}</span></td>
+                <td className="px-6 py-4 whitespace-nowrap"><span className="text-sm text-gray-600">{r.createdBy || '—'}</span></td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex gap-3 items-center justify-center">
                     <Button 

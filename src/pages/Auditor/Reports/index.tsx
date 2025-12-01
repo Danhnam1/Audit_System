@@ -7,9 +7,9 @@ import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../co
 import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
 import { getDepartments } from '../../../api/departments';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
-import { uploadAuditDocument, uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
+import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
 import { getAuditTeam } from '../../../api/auditTeam';
-import { getAdminUsers } from '../../../api/adminUsers';
+import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
@@ -35,6 +35,8 @@ const SQAStaffReports = () => {
   const [rejectReasonText, setRejectReasonText] = useState<string>('');
   const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
+  const [currentUserKey, setCurrentUserKey] = useState<{ id?: string; email?: string }>({});
+  const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
 
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
@@ -58,12 +60,19 @@ const SQAStaffReports = () => {
   const deptRows = useMemo(() => unwrap(summary?.byDepartment), [summary]);
   const [search, setSearch] = useState('');
   const monthsFindings = useMemo(() => {
-    const raw = unwrap(summary?.findingsByMonth);
+    // Backend mới dùng findingsInAudit.$values, vẫn giữ compat với findingsByMonth nếu có
+    const src: any =
+      (summary as any)?.findingsByMonth != null
+        ? (summary as any).findingsByMonth
+        : (summary as any)?.findingsInAudit;
+
+    const raw = unwrap(src);
     return raw.map((m: any, idx: number) => {
       const mNum = Number(m?.month ?? m?.monthNumber ?? 0);
-      const label = isNaN(mNum) || mNum < 1 || mNum > 12
-        ? String(m?.month || m?.label || `Month ${idx + 1}`)
-        : new Date(2000, mNum - 1, 1).toLocaleString('vi-VN', { month: 'long' });
+      const label =
+        isNaN(mNum) || mNum < 1 || mNum > 12
+          ? String(m?.month || m?.label || `Month ${idx + 1}`)
+          : new Date(2000, mNum - 1, 1).toLocaleString('vi-VN', { month: 'long' });
       return {
         key: `${mNum || idx}`,
         monthNum: mNum,
@@ -146,6 +155,7 @@ const SQAStaffReports = () => {
       
       // Get current user's userId - try multiple methods
       const users = Array.isArray(usersRes) ? usersRes : [];
+      setAdminUsers(users);
       let currentUserId: string | null = null;
       
       // Find by email (ProfileResponse doesn't have userId, need to look it up from AdminUsers)
@@ -164,6 +174,13 @@ const SQAStaffReports = () => {
       
       // Normalize currentUserId for comparison (lowercase, trim)
       const normalizedCurrentUserId = currentUserId ? String(currentUserId).toLowerCase().trim() : null;
+      const normalizedCurrentEmail = user?.email
+        ? String(user.email).toLowerCase().trim()
+        : undefined;
+      setCurrentUserKey({
+        id: normalizedCurrentUserId || undefined,
+        email: normalizedCurrentEmail,
+      });
       
       // Get audit IDs where current user is a team member
       const teams = Array.isArray(teamsRes) ? teamsRes : [];
@@ -211,11 +228,25 @@ const SQAStaffReports = () => {
           totalAudits: Array.isArray(res) ? res.length : 0
         });
       }
-      
+      {/*Sửa Status để fill*/}
       const arr = unwrap(res);
       const isVisibleStatus = (s: any) => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '');
-        return v.includes('open') || v.includes('completed') || v.includes('returned') || v.includes('submitted');
+        if (!v) return false;
+
+        const isOpenLike =
+          v.includes('inprogress') || v === 'inprogress';
+
+        const isSubmittedLike =
+          v.includes('submit') || v.includes('submitted') || v.includes('underreview');
+
+        const isCompletedLike =
+          v.includes('closed') || v.includes('completed') || v.includes('complete') || v.includes('approve') || v.includes('approved');
+
+        const isReturnedLike =
+          v.includes('return') || v.includes('rejected') || v.includes('reject');
+
+        return isOpenLike || isSubmittedLike || isCompletedLike || isReturnedLike;
       };
       
       // Filter audits: must match status AND user must be in audit team
@@ -233,10 +264,7 @@ const SQAStaffReports = () => {
         // Try all possible auditId formats
         const auditIdCandidates = [
           a.auditId,
-          a.id,
-          a.$id,
-          a.planId,
-          a.auditPlanId
+          
         ].filter(Boolean).map(id => String(id).trim());
         
         // Check if any auditId format matches
@@ -260,7 +288,7 @@ const SQAStaffReports = () => {
       const checkUploads = async () => {
         const completedAudits = filtered.filter((a: any) => {
           const status = String(a.status || a.state || a.approvalStatus || '').toLowerCase();
-          return status.includes('completed');
+          return status.includes('closed') || status.includes('completed');
         });
         
         const uploadChecks = await Promise.allSettled(
@@ -451,7 +479,7 @@ const SQAStaffReports = () => {
 
   const isCompletedStatus = (s: any) => {
     const v = String(s || '').toLowerCase();
-    return v.includes('completed') || v.includes('approve');
+    return v.includes('closed') || v.includes('completed') || v.includes('approve');
   };
   const isRejectedStatus = (s: any) => {
     const v = String(s || '').toLowerCase().trim();
@@ -467,6 +495,68 @@ const SQAStaffReports = () => {
     const sid = String(selectedAuditId || '');
     return (audits || []).find((a: any) => String(a.auditId || a.id || a.$id) === sid);
   }, [audits, selectedAuditId]);
+
+  const isCreatedByCurrentUser = useCallback(
+    (audit: any | undefined | null): boolean => {
+      if (!audit) return false;
+      const { id: curId, email: curEmail } = currentUserKey;
+      if (!curId && !curEmail) return false;
+
+      const creatorRaw =
+        audit.createdByUser ||
+        audit.createdBy ||
+        audit.submittedByUser ||
+        audit.submittedBy;
+
+      const eq = (a?: string | null, b?: string | null) => {
+        if (!a || !b) return false;
+        return String(a).toLowerCase().trim() === String(b).toLowerCase().trim();
+      };
+
+      if (creatorRaw && typeof creatorRaw === 'object') {
+        const creatorEmail = creatorRaw.email;
+        const creatorId =
+          creatorRaw.userId || creatorRaw.id || creatorRaw.$id || creatorRaw.userID;
+        if (curEmail && creatorEmail && eq(curEmail, creatorEmail)) return true;
+        if (curId && creatorId && eq(curId, creatorId)) return true;
+      } else if (typeof creatorRaw === 'string') {
+        const s = creatorRaw.toLowerCase().trim();
+        if (curEmail && s === curEmail.toLowerCase()) return true;
+        if (curId && s === curId.toLowerCase()) return true;
+      }
+
+      // Fallback: some backends store creator id/email directly on audit
+      const candidateIds = [
+        audit.createdById,
+        audit.ownerId,
+        audit.creatorId,
+        audit.createdBy,
+      ];
+      if (curId) {
+        if (
+          candidateIds.some((v: any) =>
+            v != null ? eq(String(v), curId) : false,
+          )
+        ) {
+          return true;
+        }
+      }
+
+      const candidateEmails = [audit.createdByEmail, audit.ownerEmail];
+      if (curEmail) {
+        if (
+          candidateEmails.some((v: any) =>
+            v != null ? eq(String(v), curEmail) : false,
+          )
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    },
+    [currentUserKey],
+  );
 
   const handleSubmitToLead = async () => {
     if (!selectedAuditId) return;
@@ -534,12 +624,9 @@ const SQAStaffReports = () => {
     
     try {
       setUploadLoading(prev => ({ ...prev, [auditId]: true }));
-      
-      if (files.length === 1) {
-        await uploadAuditDocument(auditId, files[0]);
-      } else {
-        await uploadMultipleAuditDocuments(auditId, files);
-      }
+
+      // Always use the multiple-upload API, even for a single file
+      await uploadMultipleAuditDocuments(auditId, files);
       
       const successMessage = files.length === 1 
         ? 'Signed report uploaded successfully.' 
@@ -581,6 +668,45 @@ const SQAStaffReports = () => {
 
   // Build table rows from backend audits list
   const reportRows = useMemo(() => {
+    const getCreatedByLabel = (a: any): string => {
+      const src =
+        a?.createdByUser ||
+        a?.createdBy ||
+        a?.submittedBy;
+      if (!src) return '—';
+
+      const normalize = (v: any) => String(v || '').toLowerCase().trim();
+
+      if (typeof src === 'string') {
+        const sNorm = normalize(src);
+        const found = adminUsers.find(u => {
+          const id = u.userId || (u as any).$id;
+          const email = u.email;
+          return (id && normalize(id) === sNorm) || (email && normalize(email) === sNorm);
+        });
+        if (found?.fullName) return found.fullName;
+        if (found?.email) return found.email;
+        return src;
+      }
+
+      if (src.fullName) return src.fullName;
+      if (src.email) return src.email;
+
+      const id = src.userId || src.id || src.$id;
+      if (id) {
+        const idNorm = normalize(id);
+        const foundById = adminUsers.find(u => {
+          const uid = u.userId || (u as any).$id;
+          return uid && normalize(uid) === idNorm;
+        });
+        if (foundById?.fullName) return foundById.fullName;
+        if (foundById?.email) return foundById.email;
+        return String(id);
+      }
+
+      return '—';
+    };
+
     const arr = Array.isArray(audits) ? audits : [];
     return arr.map((a: any, idx: number) => {
       const id = String(a.auditId || a.id || a.$id || `audit_${idx}`);
@@ -588,14 +714,26 @@ const SQAStaffReports = () => {
       const type = a.type || a.auditType || a.category || '—';
       const rawStatus = a.status || a.state || a.approvalStatus || '—';
       const norm = String(rawStatus).toLowerCase().replace(/\s+/g, '');
-      const status = norm.includes('approve') ? 'Completed' : norm.includes('submit') || norm.includes('submitted') ? 'Submitted' : rawStatus;
+      let status: string;
+      if (norm.includes('return') || norm.includes('reject')) {
+        status = 'Returned';
+      } else if (norm.includes('approve') || norm.includes('complete') || norm.includes('closed')) {
+        status = 'Closed';
+      } else if (norm.includes('submit') || norm.includes('submitted') || norm.includes('underreview')) {
+        status = 'Submitted';
+      } else if (norm.includes('open') || norm === 'inprogress' || norm.includes('draft')) {
+        status = 'In Progress';
+      } else {
+        status = rawStatus;
+      }
       const createdRaw = a.createdAt || a.startDate || a.createdDate || a.start;
       const createdDate = createdRaw ? new Date(createdRaw).toISOString().slice(0, 10) : '';
+      const createdBy = getCreatedByLabel(a);
       const findings = (findingsMap[id] ?? a.totalFindings ?? a.findingsCount ?? a.findingCount ?? 0) as number;
       // const capas = a.capaCount ?? a.capaTotal ?? 0;
-      return { id, auditId: id, title, type, status, findings, createdDate };
+      return { id, auditId: id, title, type, status, findings, createdDate, createdBy };
     });
-  }, [audits, findingsMap]);
+  }, [audits, findingsMap, adminUsers]);
 
   const filteredReportRows = useMemo(() => {
     let rows = reportRows;
@@ -652,7 +790,7 @@ const SQAStaffReports = () => {
           <StatCard title="Total Reports" value={reportRows.length} icon={<svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>} variant="primary" />
           <StatCard title="Returned" value={reportRows.filter(r => String(r.status || '').toLowerCase().includes('returned')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>} variant="primary-light" />
           <StatCard title="Submitted" value={reportRows.filter(r => String(r.status || '').toLowerCase().includes('submitted')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>} variant="primary-light" />
-          <StatCard title="Completed" value={reportRows.filter(r => { const v = String(r.status || '').toLowerCase(); return v.includes('completed'); }).length} icon={<svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} variant="primary-dark" />
+          <StatCard title="Closed" value={reportRows.filter(r => { const v = String(r.status || '').toLowerCase(); return v.includes('closed'); }).length} icon={<svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} variant="primary-dark" />
         </div>
 
         {/* Audit selector */}
@@ -689,26 +827,26 @@ const SQAStaffReports = () => {
           <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <LineChartCard
-                title="Findings findings of the month"
+                title="Findings (Monthly)"
                 data={lineData}
                 xAxisKey="month"
                 lines={[{ dataKey: 'count', stroke: '#0369a1', name: 'Findings' }]}
               />
-              <PieChartCard title="Level of Findings (findings of the month)" data={pieData} />
+              <PieChartCard title="Level of Findings (Monthly)" data={pieData} />
             </div>
 
             <BarChartCard
-              title="Number of Findings by Department (findings of the month)"
+              title="Number of Findings by Department (Monthly)"
               data={barData}
               xAxisKey="department"
               bars={[{ dataKey: 'count', fill: '#0369a1', name: 'Findings' }]}
             />
           </>
-        ) : (
+        ) : audits.length === 0 ? (
           <div className="bg-yellow-50 border border-yellow-100 text-yellow-700 text-sm rounded-xl px-4 py-3">
             There is no audit report to view the chart
           </div>
-        )}
+        ) : null}
 
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
@@ -745,7 +883,7 @@ const SQAStaffReports = () => {
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Findings</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Created</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Created By</th>
                   <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -757,63 +895,107 @@ const SQAStaffReports = () => {
                     <td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold border ${getTypeColor(report.type)}`}>{report.type}</span></td>
                     <td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 text-sm font-semibold">{report.findings || 0}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="text-sm text-gray-600">{report.createdDate}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="text-sm text-gray-600">{report.createdBy || '—'}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-2 flex-wrap">
                         <button 
-                          onClick={() => { setSelectedAuditId(String(report.auditId)); setShowSummary(true); }} 
+                          onClick={() => {
+                            const id = String(report.auditId);
+                            // Toggle mở/đóng summary khi bấm View
+                            if (showSummary && selectedAuditId === id) {
+                              setShowSummary(false);
+                            } else {
+                              setSelectedAuditId(id);
+                              setShowSummary(true);
+                            }
+                          }} 
                           className="px-3 py-1.5 rounded-md text-sm font-medium bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
                         >
                           View
                         </button>
-                        {isCompletedStatus(report.status) ? (
-                          <>
-                            <button 
-                              onClick={() => handleExportPdfForRow(String(report.auditId), report.title)} 
-                              className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors"
-                            >
-                              Export PDF
-                            </button>
-                            <button
-                              onClick={() => onClickUpload(String(report.auditId))}
-                              disabled={uploadLoading[String(report.auditId)] || uploadedAudits.has(String(report.auditId))}
-                              className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title={uploadedAudits.has(String(report.auditId)) ? 'This report has already been uploaded. It cannot be uploaded again.' : 'Upload the signed PDF/scan report'}
-                            >
-                              {uploadLoading[String(report.auditId)] ? 'Uploading...' : uploadedAudits.has(String(report.auditId)) ? 'Uploaded' : 'Upload'}
-                            </button>
-                            <input 
-                              ref={(el) => { fileInputRefs.current[String(report.auditId)] = el; }}
-                              type="file" 
-                              accept="application/pdf,image/*" 
-                              multiple
-                              className="hidden" 
-                              onChange={(e) => onFileSelected(String(report.auditId), e)} 
-                            />
-                          </>
-                        ) : (
-                          <>
-                            <button 
-                              disabled 
-                              className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed" 
-                              title="Export is only available when the report is Completed."
-                            >
-                              Export PDF
-                            </button>
-                            <button
-                              disabled
-                              className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed"
-                              title="Upload is only allowed after the Lead Auditor has approved."
-                            >
-                              Upload
-                            </button>
-                          </>
-                        )}
-                        {report.status === 'In Progress' && (
-                          <button className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors">
-                            Edit
-                          </button>
-                        )}
+                        {(() => {
+                          const auditForRow = (audits || []).find(
+                            (a: any) =>
+                              String(a.auditId || a.id || a.$id) ===
+                              String(report.auditId),
+                          );
+                          const isCreator = isCreatedByCurrentUser(auditForRow);
+                          if (isCompletedStatus(report.status) && isCreator) {
+                            return (
+                              <>
+                                <button
+                                  onClick={() =>
+                                    handleExportPdfForRow(
+                                      String(report.auditId),
+                                      report.title,
+                                    )
+                                  }
+                                  className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors"
+                                >
+                                  Export PDF
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    onClickUpload(String(report.auditId))
+                                  }
+                                  disabled={
+                                    uploadLoading[String(report.auditId)] ||
+                                    uploadedAudits.has(String(report.auditId))
+                                  }
+                                  className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title={
+                                    uploadedAudits.has(String(report.auditId))
+                                      ? 'This report has already been uploaded. It cannot be uploaded again.'
+                                      : 'Upload the signed PDF/scan report'
+                                  }
+                                >
+                                  {uploadLoading[String(report.auditId)]
+                                    ? 'Uploading...'
+                                    : uploadedAudits.has(String(report.auditId))
+                                    ? 'Uploaded'
+                                    : 'Upload'}
+                                </button>
+                                <input
+                                  ref={(el) => {
+                                    fileInputRefs.current[String(report.auditId)] =
+                                      el;
+                                  }}
+                                  type="file"
+                                  accept="application/pdf,image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(e) =>
+                                    onFileSelected(String(report.auditId), e)
+                                  }
+                                />
+                              </>
+                            );
+                          }
+
+                          // Disabled state for non-creator or not-completed
+                          const tooltip = !isCompletedStatus(report.status)
+                            ? 'Export/Upload are only available when the report is Closed.'
+                            : 'Only the creator of this audit plan can export or upload the report.';
+
+                          return (
+                            <>
+                              <button
+                                disabled
+                                className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed"
+                                title={tooltip}
+                              >
+                                Export PDF
+                              </button>
+                              <button
+                                disabled
+                                className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed"
+                                title={tooltip}
+                              >
+                                Upload
+                              </button>
+                            </>
+                          );
+                        })()}
                       </div>
                     </td>
                   </tr>
@@ -880,7 +1062,7 @@ const SQAStaffReports = () => {
                   const auditIdStr = String(selectedAuditId || '').trim();
                   const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
                   
-                  // Don't show submit button if user is Lead Auditor or status is Completed
+                  // Don't show submit button if user is Lead Auditor or status is Closed
                   if (isLeadAuditor || completed) {
                     return null;
                   }
@@ -1059,6 +1241,7 @@ const SQAStaffReports = () => {
                         <th className="text-left px-3 py-2 text-gray-700">Severity</th>
                         <th className="text-left px-3 py-2 text-gray-700">Status</th>
                         <th className="text-left px-3 py-2 text-gray-700">Deadline</th>
+                        <th className="text-left px-3 py-2 text-gray-700">Progress</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -1079,11 +1262,28 @@ const SQAStaffReports = () => {
                           </td>
                           <td className="px-3 py-2">{f.status || '—'}</td>
                           <td className="px-3 py-2">{f.deadline ? new Date(f.deadline).toLocaleDateString() : '—'}</td>
+                          <td className="px-3 py-2 w-32">
+                            {typeof f?.progressPercent === 'number' ? (
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-1.5 rounded-full bg-primary-500"
+                                    style={{ width: `${Math.min(Math.max(f.progressPercent, 0), 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-gray-600 min-w-[2.5rem] text-right">
+                                  {Math.round(f.progressPercent)}%
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                       {m.items.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-3 py-4 text-center text-gray-500">No data available.</td>
+                          <td colSpan={7} className="px-3 py-4 text-center text-gray-500">No data available.</td>
                         </tr>
                       )}
                     </tbody>

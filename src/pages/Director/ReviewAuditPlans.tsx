@@ -107,7 +107,12 @@ const ReviewAuditPlans = () => {
       if (filter === 'Pending Review') {
         return s === 'pendingdirectorapproval' || s === 'pending director approval';
       }
-      if (filter === 'Approved') return s === 'approved' || s === 'approve';
+      if (filter === 'Approved') {
+        // Director wants the Approved tab to also show audits that are in progress
+        const isApprovedLike = s === 'approved' || s === 'approve';
+        const isInProgressLike = s === 'inprogress' || s === 'in progress';
+        return isApprovedLike || isInProgressLike;
+      }
       if (filter === 'Rejected') return s === 'rejected';
       return false;
     });
@@ -203,7 +208,7 @@ const ReviewAuditPlans = () => {
         };
       });
 
-      // Keep plans visible after actions: include PendingDirectorApproval + Approved + Rejected
+      // Keep plans visible after actions: include PendingDirectorApproval + Approved + InProgress + Rejected
       const directorRelevant = mapped.filter((m) => {
         const s = String(m.status || '').toLowerCase();
         return (
@@ -211,6 +216,8 @@ const ReviewAuditPlans = () => {
           s === 'pending director approval' ||
           s === 'approved' ||
           s === 'approve' ||
+          s === 'inprogress' ||
+          s === 'in progress' ||
           s === 'rejected'
         );
       });
@@ -308,7 +315,7 @@ const ReviewAuditPlans = () => {
           };
         });
 
-        // Keep plans visible after actions: include PendingDirectorApproval + Approved + Rejected
+        // Keep plans visible after actions: include PendingDirectorApproval + Approved + InProgress + Rejected
         const directorRelevant = mapped.filter((m) => {
           const s = String(m.status || '').toLowerCase();
           return (
@@ -316,6 +323,8 @@ const ReviewAuditPlans = () => {
             s === 'pending director approval' ||
             s === 'approved' ||
             s === 'approve' ||
+            s === 'inprogress' ||
+            s === 'in progress' ||
             s === 'rejected'
           );
         });

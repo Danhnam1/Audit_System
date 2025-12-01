@@ -54,8 +54,14 @@ const HistoryUploadPage = () => {
         const arr = unwrap(res);
         const visible = (Array.isArray(arr) ? arr : []).filter((a: any) => {
           const v = String(a.status || a.state || a.approvalStatus || '').toLowerCase().replace(/\s+/g, '');
-          // History only for audits that are Completed (including backend 'Approved')
-          return v.includes('completed') || v.includes('complete') || v.includes('approve');
+          // History for audits that are Completed / Approved / Closed
+          return (
+            v.includes('completed') ||
+            v.includes('complete') ||
+            v.includes('approve') ||
+            v.includes('closed') ||
+            v === 'closed'
+          );
         });
         setAudits(visible);
         // Preload users once for name mapping

@@ -155,7 +155,7 @@ const DepartmentsSection: React.FC<Props> = ({
                                   )}
                                   {unwrapValues(f?.attachments).map((att: any, idx: number) => {
                                     const name = att?.fileName || att?.documentName || att?.name || att?.originalName || `Attachment ${idx+1}`;
-                                    const url = att?.url || att?.link || att?.path;
+                                    const url = att?.blobPath || att?.url || att?.link || att?.path;
                                     return (
                                       <div key={idx} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded px-3 py-2">
                                         <div className="text-sm text-gray-800">{name}</div>

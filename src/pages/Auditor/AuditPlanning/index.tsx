@@ -35,7 +35,7 @@ import { Step3Checklist } from './components/PlanForm/Step3Checklist';
 import { Step4Team } from './components/PlanForm/Step4Team';
 import { Step5Schedule } from './components/PlanForm/Step5Schedule';
 
-const AUDITOR_VISIBLE_STATUSES = ['draft', 'pendingreview', 'pendingdirectorapproval', 'approved', 'rejected'];
+const AUDITOR_VISIBLE_STATUSES = ['draft', 'pendingreview', 'pendingdirectorapproval', 'inprogress','submitted','returned','closed', 'rejected'];
 
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
