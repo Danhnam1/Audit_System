@@ -22,9 +22,7 @@ const SQAStaffAuditExecutionDetail = lazy(() => import("../pages/Auditor/Finding
 const SQAStaffDepartmentChecklist = lazy(() => import("../pages/Auditor/FindingManagement/DepartmentChecklist"));
 const SQAStaffReports = lazy(() => import("../pages/Auditor/Reports"));
 const SQAStaffAuditReview = lazy(() => import("../pages/Auditor/AuditReview"));
-const SQAStaffLeadReports = lazy(() => import("../pages/Auditor/LeadReports"));
 const SQAStaffRequests = lazy(() => import("../pages/Auditor/Requests"));
-const SQAStaffReviewFindings = lazy(() => import("../pages/Auditor/Requests/ReviewFindings"));
 const SQAStaffReviewFindingDetail = lazy(() => import("../pages/Auditor/Requests/ReviewFindingDetail"));
 const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"));
 
@@ -32,6 +30,7 @@ const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"
 const LeadAuditorAuditAssignment = lazy(() => import("../pages/LeadAuditor/AuditAssignment"));
 const LeadAuditorAuditPlanning = lazy(() => import("../pages/LeadAuditor/auditplanning"));
 const LeadAuditorAuditDetail = lazy(() => import("../pages/LeadAuditor/auditplanning/AuditDetail"));
+const LeadAuditorLeadReports = lazy(() => import("../pages/LeadAuditor/LeadReports"));
 const SQAStaffLeadFinalReview = lazy(() => import("../pages/Auditor/LeadFinalReview/LeadFinalReview"));
 
 // CAPA Owner pages (formerly Department Staff)
@@ -217,14 +216,6 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
                         <SQAStaffAuditReview />
-                    </ProtectedRoute>
-                }
-            />
-            <Route
-                path="/auditor/lead-reports"
-                element={
-                    <ProtectedRoute allowedRoles={["Auditor"]}>
-                        <SQAStaffLeadReports />
                     </ProtectedRoute>
                 }
             />
@@ -489,6 +480,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <LeadAuditorAuditDetail />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/lead-reports"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <LeadAuditorLeadReports />
                     </ProtectedRoute>
                 }
             />

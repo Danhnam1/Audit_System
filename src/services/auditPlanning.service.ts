@@ -14,10 +14,21 @@ const unwrap = <T = any>(payload: any): T[] => {
  * Fetch plans and merge scope departments in one place
  */
 export const getPlansWithDepartments = async (): Promise<AuditPlan[]> => {
-  const [plansResponse, scopeDepsResponse] = await Promise.all([
-    getAuditPlans(),
-    getAuditScopeDepartments(),
-  ]);
+  const plansResponse = await getAuditPlans();
+
+  let scopeDepsResponse: any = [];
+  try {
+    scopeDepsResponse = await getAuditScopeDepartments();
+  } catch (err: any) {
+    const status = err?.response?.status;
+    if (status === 404) {
+      console.warn('[auditPlanning] AuditScopeDepartment endpoint returned 404, continuing with empty scope data.');
+      scopeDepsResponse = [];
+    } else {
+      console.error('[auditPlanning] Failed to load AuditScopeDepartment. Falling back to empty scope list.', err);
+      scopeDepsResponse = [];
+    }
+  }
 
   const plans = unwrap<any>(plansResponse);
   const scopeDeps = unwrap<any>(scopeDepsResponse);

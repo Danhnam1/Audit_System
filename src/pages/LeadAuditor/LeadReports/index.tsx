@@ -68,14 +68,29 @@ const AuditorLeadReports = () => {
           currentUserId = String(found.$id);
         }
       }
+      if (!currentUserId && (user as any)?.userId) {
+        currentUserId = String((user as any).userId);
+      }
+      const normalizedCurrentUserId = currentUserId ? String(currentUserId).toLowerCase().trim() : null;
+      
+      const addAuditId = (set: Set<string>, value: any) => {
+        if (value == null) return;
+        const str = String(value).trim();
+        if (!str) return;
+        set.add(str);
+        set.add(str.toLowerCase());
+      };
       
       const teams = Array.isArray(teamsRes) ? teamsRes : [];
       const leadAuditIds = new Set<string>();
-      if (currentUserId) {
+      if (normalizedCurrentUserId) {
         teams.forEach((m: any) => {
-          if (m?.isLead && String(m?.userId) === String(currentUserId)) {
-            const auditId = String(m?.auditId || '');
-            if (auditId) leadAuditIds.add(auditId);
+          const memberUserId = m?.userId ?? m?.id ?? m?.$id;
+          const normalizedMemberId = memberUserId != null ? String(memberUserId).toLowerCase().trim() : null;
+          if (m?.isLead && normalizedMemberId === normalizedCurrentUserId) {
+            addAuditId(leadAuditIds, m?.auditId);
+            addAuditId(leadAuditIds, m?.auditPlanId);
+            addAuditId(leadAuditIds, m?.planId);
           }
         });
       }
@@ -83,9 +98,23 @@ const AuditorLeadReports = () => {
       const list = unwrap(res);
       const all = (Array.isArray(list) ? list : []).map((p: any) => ({ ...p }));
       
+      const auditMatchesLead = (audit: any) => {
+        const candidates = [
+          audit.auditId,
+          audit.id,
+          audit.$id,
+          audit.planId,
+          audit.auditPlanId,
+        ]
+          .filter((v: any) => v != null)
+          .map((v: any) => String(v).trim())
+          .filter(Boolean);
+        if (!candidates.length) return false;
+        return candidates.some((id: string) => leadAuditIds.has(id) || leadAuditIds.has(id.toLowerCase()));
+      };
+      
       const filtered = all.filter((p: any) => {
-        const auditId = String(p.auditId || p.id || p.$id || '');
-        const isLeadAudit = leadAuditIds.has(auditId);
+        const isLeadAudit = auditMatchesLead(p);
         const isRelevant = isRelevantToLead(p.status || p.state || p.approvalStatus);
         return isLeadAudit && isRelevant;
       });
@@ -191,7 +220,6 @@ const AuditorLeadReports = () => {
     try {
       await approveAuditReport(approveAuditId);
       setAudits(prev => prev.map(a => String(a.auditId || a.id || a.$id) === approveAuditId ? { ...a, status: 'Completed' } : a));
-      const title = rows.find(r => r.auditId === approveAuditId)?.title || 'Audit';
       toast.success('Approved the Audit Report successfully.');
       closeApproveModal();
       await reload();

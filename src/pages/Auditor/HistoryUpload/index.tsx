@@ -408,9 +408,7 @@ const HistoryUploadPage = () => {
           {expandedAudit && (
             <div className="border-t border-primary-100">
               <div className="px-6 py-3 flex items-center justify-between bg-gray-50">
-                <h3 className="text-sm font-semibold text-gray-700">
-                  Uploads for {auditRows.find(a => a.auditId === expandedAudit)?.title || 'Audit'}
-                </h3>
+            
                 {loadingDocs && <span className="text-xs text-gray-500">Loading history...</span>}
               </div>
               <div className="overflow-x-auto">

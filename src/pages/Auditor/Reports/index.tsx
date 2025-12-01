@@ -657,39 +657,58 @@ const SQAStaffReports = () => {
 
         {/* Audit selector */}
         <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4">
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-700">Audit:</label>
-            <select
-              value={selectedAuditId}
-              onChange={(e) => setSelectedAuditId(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
-            >
-              {audits.map((a: any) => (
-                <option key={String(a.auditId )} value={String(a.auditId )}>
-                  {a.title || String(a.auditId )}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-gray-700">Audit:</label>
+              {audits.length > 0 ? (
+                <select
+                  value={selectedAuditId}
+                  onChange={(e) => setSelectedAuditId(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  {audits.map((a: any) => {
+                    const value = String(a.auditId ?? a.id ?? a.$id ?? '');
+                    return (
+                      <option key={value || `audit-${a.title}`} value={value}>
+                        {a.title || value || 'Audit'}
+                      </option>
+                    );
+                  })}
+                </select>
+              ) : (
+                <span className="text-sm text-gray-500 italic">
+                  No report has been assigned to you yet.
+                </span>
+              )}
+            </div>
             {loadingCharts && <span className="text-xs text-gray-500">Loading chart...</span>}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <LineChartCard
-            title="Findings findings of the month"
-            data={lineData}
-            xAxisKey="month"
-            lines={[{ dataKey: 'count', stroke: '#0369a1', name: 'Findings' }]}
-          />
-          <PieChartCard title="Level of Findings (findings of the month)" data={pieData} />
-        </div>
+        {audits.length > 0 && selectedAuditId ? (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <LineChartCard
+                title="Findings findings of the month"
+                data={lineData}
+                xAxisKey="month"
+                lines={[{ dataKey: 'count', stroke: '#0369a1', name: 'Findings' }]}
+              />
+              <PieChartCard title="Level of Findings (findings of the month)" data={pieData} />
+            </div>
 
-        <BarChartCard
-          title="Number of Findings by Department (findings of the month)"
-          data={barData}
-          xAxisKey="department"
-          bars={[{ dataKey: 'count', fill: '#0369a1', name: 'Findings' }]}
-        />
+            <BarChartCard
+              title="Number of Findings by Department (findings of the month)"
+              data={barData}
+              xAxisKey="department"
+              bars={[{ dataKey: 'count', fill: '#0369a1', name: 'Findings' }]}
+            />
+          </>
+        ) : (
+          <div className="bg-yellow-50 border border-yellow-100 text-yellow-700 text-sm rounded-xl px-4 py-3">
+            There is no audit report to view the chart
+          </div>
+        )}
 
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">

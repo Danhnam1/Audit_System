@@ -59,14 +59,83 @@ const SQAStaffAuditPlanning = () => {
   const [activePlansTab, setActivePlansTab] = useState<number>(1);
   const pageSize = 7;
 
+  // Only show plans where current user is in AuditTeam (and status is in allowed list)
   const visiblePlans = useMemo(() => {
-    return existingPlans.filter((plan) => {
+    // Determine current user's id for this memo
+    const currentId = (() => {
+      if (!user) return null;
+
+      const fallbackId =
+        (user as any)?.userId ??
+        (user as any)?.id ??
+        (user as any)?.$id ??
+        null;
+
+      if (!allUsers.length) {
+        return fallbackId ? String(fallbackId).trim() : null;
+      }
+
+      const found = allUsers.find((u: any) => {
+        const uEmail = String(u?.email || '').toLowerCase().trim();
+        const userEmail = String(user.email || '').toLowerCase().trim();
+        return uEmail && userEmail && uEmail === userEmail;
+      });
+
+      const resolvedId = found?.userId ?? found?.$id ?? fallbackId;
+      return resolvedId != null ? String(resolvedId).trim() : null;
+    })();
+
+    // 1) Filter by allowed statuses for Auditor
+    const statusFiltered = existingPlans.filter((plan) => {
       const normStatus = String(plan.status || 'draft').toLowerCase().replace(/\s+/g, '');
       return AUDITOR_VISIBLE_STATUSES.includes(normStatus);
     });
-  }, [existingPlans]);
 
-  // Use filter hook limited to visible statuses
+    // 2) If we don't know current user or have no team data, do not show any plans
+    if (!currentId || !auditTeams.length) {
+      return [] as AuditPlan[];
+    }
+
+    const normalizedCurrentUserId = String(currentId).toLowerCase().trim();
+
+    // Build set of auditIds where current user is in the team (any role)
+    const allowedAuditIds = new Set<string>();
+    auditTeams.forEach((m: any) => {
+      const memberUserId = m?.userId ?? m?.id ?? m?.$id;
+      if (memberUserId == null) return;
+      const memberNorm = String(memberUserId).toLowerCase().trim();
+      if (!memberNorm || memberNorm !== normalizedCurrentUserId) return;
+
+      const candidates = [m.auditId, m.auditPlanId, m.planId]
+        .filter((v: any) => v != null)
+        .map((v: any) => String(v).trim())
+        .filter(Boolean);
+
+      candidates.forEach((id) => {
+        allowedAuditIds.add(id);
+        allowedAuditIds.add(id.toLowerCase());
+      });
+    });
+
+    if (!allowedAuditIds.size) {
+      return [] as AuditPlan[];
+    }
+
+    const planMatchesUser = (plan: any) => {
+      const candidates = [plan.auditId, plan.id, (plan as any).$id]
+        .filter((v: any) => v != null)
+        .map((v: any) => String(v).trim())
+        .filter(Boolean);
+
+      if (!candidates.length) return false;
+
+      return candidates.some((id) => allowedAuditIds.has(id) || allowedAuditIds.has(id.toLowerCase()));
+    };
+
+    return statusFiltered.filter(planMatchesUser) as AuditPlan[];
+  }, [existingPlans, auditTeams, user, allUsers]);
+
+  // Use filter hook limited to visible statuses & membership
   const filterState = useAuditPlanFilters(visiblePlans);
 
   // Details modal state
@@ -748,18 +817,29 @@ const SQAStaffAuditPlanning = () => {
     }
   };
 
-  // Get current user's userId
+  // Get current user's userId for PlanDetailsModal only (list filtering uses inline logic above)
   const currentUserId = useMemo(() => {
-    if (!user?.email || !allUsers.length) return null;
-    
+    if (!user) return null;
+
+    const fallbackId =
+      (user as any)?.userId ??
+      (user as any)?.id ??
+      (user as any)?.$id ??
+      null;
+
+    if (!allUsers.length) {
+      return fallbackId ? String(fallbackId).trim() : null;
+    }
+
     const found = allUsers.find((u: any) => {
       const uEmail = String(u?.email || '').toLowerCase().trim();
-      const userEmail = String(user.email).toLowerCase().trim();
-      return uEmail === userEmail;
+      const userEmail = String(user.email || '').toLowerCase().trim();
+      return uEmail && userEmail && uEmail === userEmail;
     });
-    
-    return found?.userId ? String(found.userId).trim() : null;
-  }, [user?.email, allUsers]);
+
+    const resolvedId = found?.userId ?? found?.$id ?? fallbackId;
+    return resolvedId != null ? String(resolvedId).trim() : null;
+  }, [user, allUsers]);
 
   // Helper: Check if form has any data entered
   const hasFormData = useMemo(() => {
