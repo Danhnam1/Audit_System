@@ -76,8 +76,8 @@ export default function LoginPage() {
             navigate('/departmenthead/dashboard')
             break
           case 'capaowner':
-            console.log('Navigating to: /departmentstaff/dashboard')
-            navigate('/departmentstaff/dashboard')
+            console.log('Navigating to: /capa-owner/tasks')
+            navigate('/capa-owner/tasks')
             break
           case 'director':
             console.log('Navigating to: /director/review-plans')
