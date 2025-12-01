@@ -624,9 +624,9 @@ const SQAStaffReports = () => {
     
     try {
       setUploadLoading(prev => ({ ...prev, [auditId]: true }));
-
+      
       // Always use the multiple-upload API, even for a single file
-      await uploadMultipleAuditDocuments(auditId, files);
+        await uploadMultipleAuditDocuments(auditId, files);
       
       const successMessage = files.length === 1 
         ? 'Signed report uploaded successfully.' 

@@ -522,57 +522,90 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Schedule & Milestones Section */}
-          {selectedPlanDetails.schedules?.values?.length > 0 && (
+          {selectedPlanDetails.schedules?.values?.length > 0 && selectedPlanDetails.startDate && selectedPlanDetails.endDate && (
             <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
               <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
-               
                 <h3 className="text-lg font-bold text-primary-700">Schedule & Milestones</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {selectedPlanDetails.schedules.values.map((schedule: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="bg-white rounded-xl p-5 border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all duration-200"
-                  >
-                    <div className="flex items-center justify-center gap-2 mb-3 pb-2 border-b border-gray-200">
-                      
-                      <p className="text-sm font-bold ">
-                        {schedule.milestoneName || 'N/A'}
-                      </p>
-                    </div>
-                    <div className="space-y-2.5">
-                      {schedule.dueDate && (
-                        <div className="flex items-center justify-center gap-2">
-                          
-                          <div className="text-center">
-                            <p className="text-xs font-bold text-gray-600">Due Date:</p>
-                            <p className="text-xs text-gray-600">
-                              {new Date(schedule.dueDate).toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      {schedule.evidenceDate && (
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="text-center">
-                            <p className="text-xs font-bold text-black">Evidence Date:</p>
-                            <p className="text-sm text-black font-normal">
-                              {new Date(schedule.evidenceDate).toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+              
+              {/* Timeline/Seekbar */}
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                <div className="relative px-2">
+                  {/* Background track */}
+                  <div className="h-2 bg-gray-200 rounded-full relative overflow-hidden">
+                    {/* Progress bar - sky color, full when all milestones are filled */}
+                    {selectedPlanDetails.schedules.values.filter((s: any) => s.dueDate).length > 0 && (
+                      <div 
+                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-sky-400 to-sky-600 rounded-full transition-all duration-300"
+                        style={{ 
+                          width: selectedPlanDetails.schedules.values.filter((s: any) => s.dueDate).length === selectedPlanDetails.schedules.values.length
+                            ? '100%'
+                            : `${(selectedPlanDetails.schedules.values.filter((s: any) => s.dueDate).length / selectedPlanDetails.schedules.values.length) * 100}%` 
+                        }}
+                      />
+                    )}
                   </div>
-                ))}
+                  
+                  {/* Milestone markers - evenly spaced */}
+                  <div className="relative mt-3 min-h-[90px] pb-2 overflow-visible">
+                    {selectedPlanDetails.schedules.values.map((schedule: any, idx: number) => {
+                      const totalSchedules = selectedPlanDetails.schedules.values.length;
+                      // Adjust position to avoid edge overflow: first at 0%, last at 100%, others evenly spaced
+                      let position: number;
+                      if (totalSchedules === 1) {
+                        position = 50;
+                      } else if (idx === 0) {
+                        position = 0;
+                      } else if (idx === totalSchedules - 1) {
+                        position = 100;
+                      } else {
+                        position = (idx / (totalSchedules - 1)) * 100;
+                      }
+                      const hasDate = !!schedule.dueDate;
+                      const milestoneName = schedule.milestoneName || schedule.name || `Milestone ${idx + 1}`;
+                      
+                      return (
+                        <div
+                          key={idx}
+                          className="absolute transform pointer-events-none"
+                          style={{ 
+                            left: idx === 0 ? '0%' : idx === totalSchedules - 1 ? '100%' : `${position}%`,
+                            transform: idx === 0 ? 'translateX(0)' : idx === totalSchedules - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
+                            minWidth: '100px',
+                            maxWidth: '120px',
+                            zIndex: 10 + idx
+                          }}
+                        >
+                          <div className="flex flex-col items-center">
+                            {/* Marker dot */}
+                            <div className={`w-4 h-4 rounded-full border-2 shadow-md relative z-10 ${
+                              hasDate 
+                                ? 'bg-sky-500 border-white' 
+                                : 'bg-gray-300 border-gray-400'
+                            }`}></div>
+                            {/* Label */}
+                            <div className={`mt-2 text-xs font-medium text-center break-words max-w-[100px] px-1 leading-tight ${
+                              hasDate ? 'text-gray-700' : 'text-gray-400'
+                            }`}>
+                              {milestoneName}
+                            </div>
+                            {/* Date */}
+                            {hasDate && (
+                              <div className="mt-1 text-[10px] text-gray-500 whitespace-nowrap">
+                                {new Date(schedule.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </div>
+                            )}
+                            {!hasDate && (
+                              <div className="mt-1 text-[10px] text-gray-400 italic whitespace-nowrap">
+                                Not set
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           )}
