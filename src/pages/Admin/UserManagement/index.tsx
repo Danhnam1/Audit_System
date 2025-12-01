@@ -429,9 +429,9 @@ const AdminUserManagement = () => {
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard title="Total Users" value={stats.total.toString()} icon={<UsersIcon />} variant="primary" />
-          <StatCard title="Active Users" value={stats.active.toString()} icon={<UsersIcon />} variant="primary-light" />
-          <StatCard title="Inactive Users" value={stats.inactive.toString()} icon={<UsersIcon />} variant="gray" />
-          <StatCard title="Unique Roles" value={stats.roles.toString()} icon={<SettingsIcon />} variant="primary-medium" />
+          {/* <StatCard title="Active Users" value={stats.active.toString()} icon={<UsersIcon />} variant="primary-light" /> */}
+          {/* <StatCard title="Inactive Users" value={stats.inactive.toString()} icon={<UsersIcon />} variant="gray" />
+          <StatCard title="Unique Roles" value={stats.roles.toString()} icon={<SettingsIcon />} variant="primary-medium" /> */}
         </div>
 
         {/* Create User Form */}

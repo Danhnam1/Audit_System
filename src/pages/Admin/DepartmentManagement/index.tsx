@@ -34,13 +34,21 @@ const AdminDepartmentManagement = () => {
         getAdminUsers(),
       ])
 
-      // Build map deptId -> Auditee Owner fullName
+      // Build helper maps: deptId -> Auditee Owner fullName, deptId -> staff count
       const ownerMap: Record<string, string> = {}
+      const staffCountMap: Record<string, number> = {}
       ;(userRes || []).forEach((u: any) => {
+        if (u.deptId == null) return
+        const deptKey = String(u.deptId)
+
+        // capture owner name based on role
         const roleNormalized = String(u.roleName || '').toLowerCase().replace(/\s+/g, '')
-        if (roleNormalized === 'auditeeowner' && u.deptId != null) {
-          ownerMap[String(u.deptId)] = u.fullName || u.email || 'Unknown'
+        if (roleNormalized === 'auditeeowner') {
+          ownerMap[deptKey] = u.fullName || u.email || 'Unknown'
         }
+
+        // increment staff count
+        staffCountMap[deptKey] = (staffCountMap[deptKey] || 0) + 1
       })
 
       // Map backend department shape to UI row shape with owner name
@@ -52,7 +60,7 @@ const AdminDepartmentManagement = () => {
         ownerName: ownerMap[String(d.deptId ?? d.$id ?? '')] || '—',
         headName: d.headName || 'Not Assigned',
         headEmail: d.headEmail || '-',
-        staffCount: d.staffCount ?? 0,
+        staffCount: staffCountMap[String(d.deptId ?? d.$id ?? '')] ?? 0,
         activeAudits: d.activeAudits ?? 0,
         createdDate: d.createdAt || d.createAt || null,
         description: d.description || '',
@@ -188,9 +196,9 @@ const AdminDepartmentManagement = () => {
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard title="Total Departments" value={stats.total.toString()} icon={<DepartmentIcon />} variant="primary" />
-          <StatCard title="Active Departments" value={stats.active.toString()} icon={<DepartmentIcon />} variant="primary-light" />
+          {/* <StatCard title="Active Departments" value={stats.active.toString()} icon={<DepartmentIcon />} variant="primary-light" /> */}
           <StatCard title="Total Staff" value={stats.totalStaff.toString()} icon={<UsersIcon />} variant="primary-medium" />
-          <StatCard title="Active Audits" value={stats.totalAudits.toString()} icon={<ChartBarIcon />} variant="primary-dark" />
+          {/* <StatCard title="Active Audits" value={stats.totalAudits.toString()} icon={<ChartBarIcon />} variant="primary-dark" /> */}
         </div>
 
         {loading && (
@@ -329,8 +337,10 @@ const AdminDepartmentManagement = () => {
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department Name</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Code</th>
+                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Staff</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Auditee Owner</th>
+                  
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -353,12 +363,18 @@ const AdminDepartmentManagement = () => {
                         {dept.code}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary-50 text-primary-700 text-sm font-semibold">
+                        {dept.staffCount}
+                      </span>
+                    </td>
                     <td className="px-6 py-4">
                       <span className="text-sm text-gray-800">{dept.description}</span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm text-gray-800">{dept.ownerName}</span>
                     </td>
+                    
                     {/* <td className="px-6 py-4 text-center">
                       <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary-100 text-primary-700 text-sm font-bold">
                         {dept.activeAudits}
@@ -401,7 +417,7 @@ const AdminDepartmentManagement = () => {
                 })}
                 {paginatedDepartments.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-6 text-sm text-gray-500 text-center">
+                  <td colSpan={7} className="px-6 py-6 text-sm text-gray-500 text-center">
                       No departments available.
                     </td>
                   </tr>
