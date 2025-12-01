@@ -6,79 +6,79 @@
 
 // Status color mapping using primary colors
 export const STATUS_COLORS = {
-  // Completed/Success States - Green/Teal (Positive outcomes)
-  'Approve': 'bg-sky-100 text-sky-700',
-  'Approved': 'bg-sky-100 text-sky-700',
-  'Completed': 'bg-green-100 text-green-700',
-  'Resolved': 'bg-green-600 text-white',
-  'Verified': 'bg-teal-400 text-white',
-  'Distributed': 'bg-teal-600 text-white',
-  'Closed': 'bg-green-700 text-white',
-  'Published': 'bg-teal-500 text-white',
+  // Completed/Success States - Green (Positive outcomes)
+  'Approve': 'bg-green-100 text-green-800',
+  'Approved': 'bg-green-100 text-green-800',
+  'Completed': 'bg-green-100 text-green-800',
+  'Closed': 'bg-green-600 text-white',
   
-  // Validated/Confirmed States - Strong primary tone
-  'Validated': 'bg-primary-700 text-white',
-  'Registered': 'bg-primary-600 text-white',
+  // Verified/Distributed/Published - Teal/Blue tones
+  'Verified': 'bg-teal-100 text-teal-800',
+  'Distributed': 'bg-teal-500 text-white',
+  'Published': 'bg-blue-100 text-blue-800',
   
-  // In Progress/Active States - Medium primary tone
-  'In Progress': 'bg-primary-500 text-white',
-  'InProgress': 'bg-primary-500 text-white',
+  // Validated/Confirmed States - Strong primary/sky tone
+  'Validated': 'bg-sky-500 text-white',
+  'Registered': 'bg-sky-400 text-white',
   
-  // Under Review States - Light primary tone
-  'Under Review': 'bg-primary-200 text-primary-800',
-  'UnderReview': 'bg-primary-200 text-primary-800',
-  'Pending Review': 'bg-primary-200 text-primary-800',
-  'PendingReview': 'bg-primary-200 text-primary-800',
+  // In Progress/Active States - Medium primary/sky tone
+  'In Progress': 'bg-sky-500 text-white',
+  'InProgress': 'bg-sky-500 text-white',
   
-  // Pending/Waiting States - Very light primary tone
-  'Pending': 'bg-primary-100 text-primary-700',
-  'Submitted': 'bg-primary-100 text-primary-700',
+  // Under Review States - Light primary/sky tone
+  'Under Review': 'bg-sky-200 text-sky-800',
+  'UnderReview': 'bg-sky-200 text-sky-800',
+  'Pending Review': 'bg-sky-200 text-sky-800',
+  'PendingReview': 'bg-sky-200 text-sky-800',
+  
+  // Pending/Waiting States - Very light primary/sky tone
+  'Pending': 'bg-sky-100 text-sky-700',
+  'Submitted': 'bg-sky-100 text-sky-700',
   // Director/Lead review specific pending states
-  'PendingDirectorApproval': 'bg-primary-200 text-primary-800',
-  'Pending Director Approval': 'bg-primary-200 text-primary-800',
-  'PendingLeadApproval': 'bg-primary-200 text-primary-800',
-  'Pending Lead Approval': 'bg-primary-200 text-primary-800',
+  'PendingDirectorApproval': 'bg-sky-200 text-sky-800',
+  'Pending Director Approval': 'bg-sky-200 text-sky-800',
+  'PendingLeadApproval': 'bg-sky-200 text-sky-800',
+  'Pending Lead Approval': 'bg-sky-200 text-sky-800',
   
   // Draft/Initial States - Light gray
   'Draft': 'bg-gray-200 text-gray-700',
   'Open': 'bg-gray-300 text-gray-800',
   
-
-
-  // Rejected/Negative States - Red
-  'Rejected': 'bg-red-100 text-red-700',
-  'Returned': 'bg-orange-100 text-orange-700',
+  // Rejected/Negative States - Red/Orange (Clear warning)
+  'Rejected': 'bg-red-100 text-red-800',
+  'Returned': 'bg-orange-100 text-orange-800',
+  'Cancelled': 'bg-red-200 text-red-800',
   
   // Special States
-  'Reopened': 'bg-primary-800 text-white',
+  'Reopened': 'bg-purple-100 text-purple-800',
   'Overdue': 'bg-red-500 text-white',
   
   // User/System States
   'Active': 'bg-teal-500 text-white',
   'Inactive': 'bg-gray-400 text-white',
-  'Suspended': 'bg-gray-600 text-white',
+  'Suspended': 'bg-gray-500 text-white',
   
   // Backup States  
-  'Failed': 'bg-gray-700 text-white',
+  'Failed': 'bg-gray-600 text-white',
 } as const;
 
-// Priority color mapping using primary colors
+// Priority color mapping using primary/sky colors
 export const PRIORITY_COLORS = {
-  'Critical': 'bg-primary-900 text-white',
-  'High': 'bg-primary-700 text-white',
-  'Medium': 'bg-primary-500 text-white',
-  'Low': 'bg-primary-300 text-primary-900',
+  'Critical': 'bg-red-600 text-white',
+  'High': 'bg-orange-500 text-white',
+  'Medium': 'bg-sky-500 text-white',
+  'Low': 'bg-sky-200 text-sky-800',
 } as const;
 
 // Severity color mapping for findings
 export const SEVERITY_COLORS = {
-  'Critical': 'bg-red-100 text-red-800 border-red-300',
-  'Major': 'bg-orange-100 text-orange-800 border-orange-300',
-  'Minor': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  'Observation': 'bg-blue-100 text-blue-800 border-blue-300',
-  'Low': 'bg-green-100 text-green-800 border-green-300',
-  'Medium': 'bg-yellow-100 text-yellow-800 border-yellow-300',
-  'High': 'bg-red-100 text-red-800 border-red-300',
+  'Critical': 'bg-red-100 text-red-800',
+  'Major': 'bg-orange-100 text-orange-800',
+  'Minor': 'bg-yellow-100 text-yellow-800',
+  'Observation': 'bg-blue-100 text-blue-800',
+  'Low': 'bg-green-100 text-green-800',
+  'Medium': 'bg-yellow-100 text-yellow-800',
+  'High': 'bg-red-100 text-red-800',
 } as const;
 
 // Helper function to get status color
@@ -93,7 +93,7 @@ export const getPriorityColor = (priority: string): string => {
 
 // Helper function to get severity color
 export const getSeverityColor = (severity: string): string => {
-  return SEVERITY_COLORS[severity as keyof typeof SEVERITY_COLORS] || 'bg-gray-100 text-gray-700 border-gray-300';
+  return SEVERITY_COLORS[severity as keyof typeof SEVERITY_COLORS] || 'bg-gray-100 text-gray-700';
 };
 
 // Badge variants for different use cases
