@@ -97,20 +97,26 @@ const AssignedTasks = () => {
   // Filter tasks based on active tab
   const filteredTasksByTab = activeTab === 'reject' 
     ? tasks.filter(task => {
-        // Filter actions with status "Rejected"
+        // Filter out actions with status "Archived"
         const statusLower = task.originalStatus?.toLowerCase() || '';
+        if (statusLower === 'archived') return false;
+        // Filter actions with status "Rejected"
         return statusLower === 'rejected';
       })
     : activeTab === 'completed'
     ? tasks.filter(task => {
-        // Filter actions with status "Completed"
+        // Filter out actions with status "Archived"
         const statusLower = task.originalStatus?.toLowerCase() || '';
+        if (statusLower === 'archived') return false;
+        // Filter actions with status "Completed"
         return statusLower === 'completed';
       })
     : tasks.filter(task => {
-        // For action tab, filter actions with status "Reviewed", "Approved", or "Active"
+        // Filter out actions with status "Archived"
         const statusLower = task.originalStatus?.toLowerCase() || '';
-        return statusLower === 'reviewed' || statusLower === 'approved' || statusLower === 'active';
+        if (statusLower === 'archived') return false;
+        // For action tab, filter actions with status "Reviewed", "Approved", "Active", or "InProgress"
+        return statusLower === 'reviewed' || statusLower === 'approved' || statusLower === 'active' || statusLower === 'inprogress';
       });
 
   // Sort tasks: Continue first, Start second, Completed last

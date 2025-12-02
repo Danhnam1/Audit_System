@@ -3,6 +3,8 @@ import { createFinding } from '../../../api/findings';
 import { getFindingSeverities } from '../../../api/findingSeverity';
 import { uploadAttachment } from '../../../api/attachments';
 import { markChecklistItemNonCompliant } from '../../../api/checklists';
+import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
+import { unwrap } from '../../../utils/normalize';
 
 interface CreateFindingModalProps {
   isOpen: boolean;
@@ -26,6 +28,11 @@ const CreateFindingModal = ({
   const [severities, setSeverities] = useState<Array<{ severity: string }>>([]);
   const [loadingSeverities, setLoadingSeverities] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+  
+  // Schedule data
+  const [fieldworkStartDate, setFieldworkStartDate] = useState<Date | null>(null);
+  const [evidenceDueDate, setEvidenceDueDate] = useState<Date | null>(null);
   
   // Form fields
   const [description, setDescription] = useState('');
@@ -45,12 +52,91 @@ const CreateFindingModal = ({
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [showCreateConfirmModal, setShowCreateConfirmModal] = useState(false);
 
-  // Load severities on mount
+  // Load severities and schedule on mount
   useEffect(() => {
     if (isOpen) {
       loadSeverities();
+      loadSchedule();
     }
   }, [isOpen]);
+
+  // Load audit schedule
+  const loadSchedule = async () => {
+    if (!checklistItem.auditId) return;
+    
+    setLoadingSchedule(true);
+    try {
+      const scheduleResponse = await getAuditScheduleByAudit(checklistItem.auditId);
+      const schedulesArray = unwrap(scheduleResponse);
+      
+      // Find "Fieldwork Start" and "Evidence Due" milestones
+      const fieldworkStart = schedulesArray.find((s: any) => 
+        s.milestoneName?.toLowerCase().includes('fieldwork start')
+      );
+      const evidenceDue = schedulesArray.find((s: any) => 
+        s.milestoneName?.toLowerCase().includes('evidence due')
+      );
+      
+      if (fieldworkStart?.dueDate) {
+        setFieldworkStartDate(new Date(fieldworkStart.dueDate));
+      }
+      if (evidenceDue?.dueDate) {
+        setEvidenceDueDate(new Date(evidenceDue.dueDate));
+      }
+    } catch (err) {
+      console.error('Error loading schedule:', err);
+    } finally {
+      setLoadingSchedule(false);
+    }
+  };
+
+  // Calculate deadline based on severity
+  const calculateDeadline = (selectedSeverity: string): string => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let daysToAdd = 0;
+    const severityLower = selectedSeverity.toLowerCase();
+    
+    if (severityLower === 'major') {
+      daysToAdd = 14;
+    } else if (severityLower === 'minor') {
+      daysToAdd = 30;
+    } else if (severityLower === 'observation') {
+      daysToAdd = 60;
+    }
+    
+    if (daysToAdd === 0) return '';
+    
+    const calculatedDate = new Date(today);
+    calculatedDate.setDate(calculatedDate.getDate() + daysToAdd);
+    
+    // Ensure deadline is within Fieldwork Start and Evidence Due range
+    let finalDate = calculatedDate;
+    
+    if (fieldworkStartDate && finalDate < fieldworkStartDate) {
+      finalDate = new Date(fieldworkStartDate);
+    }
+    
+    if (evidenceDueDate && finalDate > evidenceDueDate) {
+      finalDate = new Date(evidenceDueDate);
+    }
+    
+    return finalDate.toISOString().split('T')[0];
+  };
+
+  // Update deadline when severity changes
+  useEffect(() => {
+    if (severity && fieldworkStartDate && evidenceDueDate) {
+      const calculatedDeadline = calculateDeadline(severity);
+      if (calculatedDeadline) {
+        setDeadline(calculatedDeadline);
+        if (errors.deadline) {
+          setErrors(prev => ({ ...prev, deadline: undefined }));
+        }
+      }
+    }
+  }, [severity, fieldworkStartDate, evidenceDueDate]);
 
   const loadSeverities = async () => {
     setLoadingSeverities(true);
@@ -95,6 +181,10 @@ const CreateFindingModal = ({
       
       if (deadlineDate < today) {
         newErrors.deadline = 'Deadline cannot be before today';
+      } else if (fieldworkStartDate && deadlineDate < fieldworkStartDate) {
+        newErrors.deadline = `Deadline must be on or after Fieldwork Start date (${fieldworkStartDate.toISOString().split('T')[0]})`;
+      } else if (evidenceDueDate && deadlineDate > evidenceDueDate) {
+        newErrors.deadline = `Deadline must be on or before Evidence Due date (${evidenceDueDate.toISOString().split('T')[0]})`;
       }
     }
     
@@ -211,6 +301,8 @@ const CreateFindingModal = ({
       setDeadline('');
       setFiles([]);
       setErrors({});
+      setFieldworkStartDate(null);
+      setEvidenceDueDate(null);
       
       onSuccess?.();
       onClose();
@@ -262,6 +354,8 @@ const CreateFindingModal = ({
     setDeadline('');
     setFiles([]);
     setErrors({});
+    setFieldworkStartDate(null);
+    setEvidenceDueDate(null);
     setShowCancelConfirmModal(false);
     onClose();
   };
@@ -274,6 +368,15 @@ const CreateFindingModal = ({
 
   // Get today's date in YYYY-MM-DD format for min attribute
   const today = new Date().toISOString().split('T')[0];
+  
+  // Calculate min and max dates for deadline input
+  const minDate = fieldworkStartDate 
+    ? Math.max(fieldworkStartDate.getTime(), new Date().getTime()) 
+    : new Date().getTime();
+  const maxDate = evidenceDueDate ? evidenceDueDate.getTime() : undefined;
+  
+  const minDateStr = new Date(minDate).toISOString().split('T')[0];
+  const maxDateStr = maxDate ? new Date(maxDate).toISOString().split('T')[0] : undefined;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -379,20 +482,35 @@ const CreateFindingModal = ({
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Deadline <span className="text-red-500">*</span>
               </label>
-              <input
-                type="date"
-                value={deadline}
-                onChange={(e) => {
-                  setDeadline(e.target.value);
-                  if (errors.deadline) setErrors(prev => ({ ...prev, deadline: undefined }));
-                }}
-                min={today}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.deadline ? 'border-red-300' : 'border-gray-300'
-                }`}
-              />
-              {errors.deadline && (
-                <p className="mt-1 text-sm text-red-600">{errors.deadline}</p>
+              {loadingSchedule ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                  <span className="text-sm text-gray-500">Loading schedule...</span>
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="date"
+                    value={deadline}
+                    onChange={(e) => {
+                      setDeadline(e.target.value);
+                      if (errors.deadline) setErrors(prev => ({ ...prev, deadline: undefined }));
+                    }}
+                    min={minDateStr}
+                    max={maxDateStr}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                      errors.deadline ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                  />
+                  {errors.deadline && (
+                    <p className="mt-1 text-sm text-red-600">{errors.deadline}</p>
+                  )}
+                  {fieldworkStartDate && evidenceDueDate && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Deadline must be between {fieldworkStartDate.toISOString().split('T')[0]} (Fieldwork Start) and {evidenceDueDate.toISOString().split('T')[0]} (Evidence Due)
+                    </p>
+                  )}
+                </>
               )}
             </div>
 

@@ -4,10 +4,11 @@ import { useAuth } from '../../../contexts';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
 import { createAction, getActionsByFinding, type Action, approveActionWithFeedback, rejectAction } from '../../../api/actions';
-import { getAdminUsersByDepartment } from '../../../api/adminUsers';
+import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
 import { Pagination } from '../../../components';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
+import { Toast } from '../../../pages/Auditor/AuditPlanning/components/Toast';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
@@ -36,6 +37,27 @@ const FindingsProgress = () => {
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const itemsPerPage = 10;
+  const [assignedUsersMap, setAssignedUsersMap] = useState<Record<string, string>>({}); // findingId -> assignedUserName
+
+  // Toast state
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'error' | 'success' | 'info' | 'warning';
+    isVisible: boolean;
+  }>({
+    message: '',
+    type: 'info',
+    isVisible: false,
+  });
+
+  // Helper function to show toast
+  const showToast = (message: string, type: 'error' | 'success' | 'info' | 'warning' = 'info') => {
+    setToast({ message, type, isVisible: true });
+  };
+
+  const hideToast = () => {
+    setToast(prev => ({ ...prev, isVisible: false }));
+  };
 
   // Get user's department ID from token
   const getUserDeptId = (): number | null => {
@@ -58,6 +80,37 @@ const FindingsProgress = () => {
     return null;
   };
 
+  // Load assigned users for findings
+  const loadAssignedUsers = async (findingsData: Finding[]) => {
+    const usersMap: Record<string, string> = {};
+    
+    // Load actions for each finding and get assignedTo
+    await Promise.all(
+      findingsData.map(async (finding) => {
+        try {
+          const actions = await getActionsByFinding(finding.findingId);
+          if (actions && actions.length > 0) {
+            // Get the first action's assignedTo
+            const assignedTo = actions[0]?.assignedTo;
+            if (assignedTo && assignedTo.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+              try {
+                const user = await getUserById(assignedTo);
+                usersMap[finding.findingId] = user.fullName || user.email || assignedTo;
+              } catch (err) {
+                console.warn(`Failed to fetch user info for ${assignedTo}`, err);
+                usersMap[finding.findingId] = assignedTo;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to load actions for finding ${finding.findingId}`, err);
+        }
+      })
+    );
+    
+    setAssignedUsersMap(usersMap);
+  };
+
   useEffect(() => {
     const fetchFindings = async () => {
       try {
@@ -72,6 +125,9 @@ const FindingsProgress = () => {
 
         const data = await getFindingsByDepartment(deptId);
         setFindings(data);
+        
+        // Load assigned users for findings
+        await loadAssignedUsers(data);
       } catch (err: any) {
         console.error('Error fetching findings:', err);
         setError(err?.message || 'Failed to load findings');
@@ -88,6 +144,12 @@ const FindingsProgress = () => {
   // Filter findings based on search query
   const getFilteredFindings = () => {
     let filtered = findings;
+    
+    // Filter out findings with status "Archived"
+    filtered = filtered.filter(finding => {
+      const statusLower = (finding.status || '').toLowerCase().trim();
+      return statusLower !== 'archived';
+    });
     
     // Apply search filter
     if (searchQuery.trim()) {
@@ -172,6 +234,29 @@ const FindingsProgress = () => {
     if (!dueDate) {
       setDueDateError('Please select a due date');
       hasError = true;
+    } else if (selectedFindingForAssign) {
+      // Validate due date
+      const dueDateObj = new Date(dueDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Check if due date is in the past
+      if (dueDateObj < today) {
+        setDueDateError('Due date cannot be in the past');
+        hasError = true;
+      }
+      
+      // Check if due date exceeds finding deadline
+      if (selectedFindingForAssign.deadline) {
+        const findingDeadline = new Date(selectedFindingForAssign.deadline);
+        findingDeadline.setHours(23, 59, 59, 999); // End of day
+        
+        if (dueDateObj > findingDeadline) {
+          const deadlineStr = formatDate(selectedFindingForAssign.deadline);
+          setDueDateError(`Due date cannot exceed finding deadline (${deadlineStr})`);
+          hasError = true;
+        }
+      }
     }
 
     if (!selectedFindingForAssign) {
@@ -218,15 +303,21 @@ const FindingsProgress = () => {
       setSelectedFindingForAssign(null);
       setShowAssignModal(false);
       
-      // Optionally reload findings
+      // Show success toast
+      showToast('Finding assigned successfully', 'success');
+      
+      // Reload findings and assigned users
       const deptId = getUserDeptId();
       if (deptId) {
         const data = await getFindingsByDepartment(deptId);
         setFindings(data);
+        await loadAssignedUsers(data);
       }
     } catch (err: any) {
       console.error('Error creating action:', err);
-      // Show error in UI instead of alert
+      // Show error toast
+      showToast(err?.message || 'Failed to assign finding', 'error');
+      // Also show error in UI
       setSelectedStaffError(err?.message || 'Failed to create action');
     } finally {
       setSubmittingAssign(false);
@@ -359,6 +450,9 @@ const FindingsProgress = () => {
                           Deadline
                         </th>
                         <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Assigned To
+                        </th>
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Actions
                         </th>
                       </tr>
@@ -395,6 +489,13 @@ const FindingsProgress = () => {
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
                             {formatDate(finding.deadline)}
+                          </td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-700">
+                            {assignedUsersMap[finding.findingId] ? (
+                              <span className="font-medium">{assignedUsersMap[finding.findingId]}</span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
@@ -549,6 +650,11 @@ const FindingsProgress = () => {
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
                       Due Date <span className="text-red-500">*</span>
                     </label>
+                    {selectedFindingForAssign?.deadline && (
+                      <p className="text-xs text-gray-500 mb-2">
+                        Finding deadline: <span className="font-medium text-gray-700">{formatDate(selectedFindingForAssign.deadline)}</span>
+                      </p>
+                    )}
                     <input
                       type="date"
                       value={dueDate}
@@ -556,13 +662,19 @@ const FindingsProgress = () => {
                         setDueDate(e.target.value);
                         if (dueDateError) setDueDateError('');
                       }}
-                      min={today}
+                      min={new Date().toISOString().split('T')[0]}
+                      max={selectedFindingForAssign?.deadline ? new Date(selectedFindingForAssign.deadline).toISOString().split('T')[0] : undefined}
                       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
                         dueDateError ? 'border-red-300' : 'border-gray-300'
                       }`}
                     />
                     {dueDateError && (
                       <p className="mt-1 text-xs text-red-600">{dueDateError}</p>
+                    )}
+                    {selectedFindingForAssign?.deadline && !dueDateError && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Must be on or before finding deadline
+                      </p>
                     )}
                   </div>
                 </div>
@@ -834,6 +946,15 @@ const FindingsProgress = () => {
         )}
 
       </div>
+
+      {/* Toast Notification */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        isVisible={toast.isVisible}
+        onClose={hideToast}
+        duration={3000}
+      />
     </MainLayout>
   );
 };

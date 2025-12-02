@@ -70,6 +70,7 @@ export default function AuditAssignment() {
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [departmentDetail, setDepartmentDetail] = useState<any>(null);
   const [loadingDepartmentDetail, setLoadingDepartmentDetail] = useState(false);
+  const [selectedDepartmentForDetail, setSelectedDepartmentForDetail] = useState<Department | null>(null);
 
   // Load audits first
   useEffect(() => {
@@ -79,7 +80,12 @@ export default function AuditAssignment() {
       try {
         const auditsData = await getAuditPlans();
         const auditsList = unwrap<Audit>(auditsData);
-        setAudits(Array.isArray(auditsList) ? auditsList : []);
+        // Filter out audits with status "Closed"
+        const filteredAudits = (Array.isArray(auditsList) ? auditsList : []).filter((audit: Audit) => {
+          const statusLower = (audit.status || '').toLowerCase().trim();
+          return statusLower !== 'closed';
+        });
+        setAudits(filteredAudits);
       } catch (err: any) {
         console.error('[AuditAssignment] Failed to load audits:', err);
         setError(err?.message || 'Failed to load audits');
@@ -226,6 +232,23 @@ export default function AuditAssignment() {
       // Reload assignments to update UI
       const updatedAssignments = await getAuditAssignments();
       setAssignments(updatedAssignments || []);
+      
+      // If viewing department detail, reload it
+      if (selectedDepartmentForDetail) {
+        const newAssignment = updatedAssignments?.find(
+          (a) => a.deptId === selectedDepartmentForDetail.deptId && a.auditId === selectedAuditId
+        );
+        if (newAssignment) {
+          setSelectedAssignment(newAssignment);
+          // Reload department detail
+          try {
+            const deptDetail = await getDepartmentById(selectedDepartmentForDetail.deptId);
+            setDepartmentDetail(deptDetail);
+          } catch (err) {
+            console.error('Failed to reload department details:', err);
+          }
+        }
+      }
     } catch (err: any) {
       console.error('Failed to assign auditor:', err);
       alert(err?.message || 'Failed to assign auditor. Please try again.');
@@ -278,10 +301,39 @@ export default function AuditAssignment() {
     }
   };
 
+  const handleViewDepartmentAssignments = async (dept: Department) => {
+    setSelectedDepartmentForDetail(dept);
+    setIsDetailModalOpen(true);
+    
+    // Find assignment for this department
+    const assignment = assignments.find(
+      (a) => a.deptId === dept.deptId && a.auditId === selectedAuditId
+    );
+    
+    if (assignment) {
+      setSelectedAssignment(assignment);
+      // Fetch department details
+      setLoadingDepartmentDetail(true);
+      try {
+        const deptDetail = await getDepartmentById(dept.deptId);
+        setDepartmentDetail(deptDetail);
+      } catch (err: any) {
+        console.error('Failed to load department details:', err);
+        setDepartmentDetail(null);
+      } finally {
+        setLoadingDepartmentDetail(false);
+      }
+    } else {
+      setSelectedAssignment(null);
+      setDepartmentDetail(null);
+    }
+  };
+
   const handleCloseDetailModal = () => {
     setIsDetailModalOpen(false);
     setSelectedAssignment(null);
     setDepartmentDetail(null);
+    setSelectedDepartmentForDetail(null);
   };
 
   // Get assignments for selected audit
@@ -389,101 +441,60 @@ export default function AuditAssignment() {
                         </h2>
                       </div>
                       <div className="divide-y divide-gray-200">
-                        {departments.map((dept) => (
-                          <div
-                            key={dept.deptId}
-                            className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <h3 className="text-base font-medium text-gray-900">{dept.name}</h3>
-                              </div>
-                              <div className="ml-4">
-                                {isDepartmentAssigned(dept.deptId) ? (
-                                  <span className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg">
-                                    Assigned
-                                  </span>
-                                ) : (
-                                  <button
-                                    onClick={() => handleOpenAssignModal(dept)}
-                                    className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                                  >
-                                    Assign
-                                  </button>
-                                )}
+                        {departments.map((dept) => {
+                          const departmentAssignment = assignments.find(
+                            (a) => a.deptId === dept.deptId && a.auditId === selectedAuditId
+                          );
+                          const isAssigned = isDepartmentAssigned(dept.deptId);
+                          
+                          return (
+                            <div
+                              key={dept.deptId}
+                              className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                              onClick={() => handleViewDepartmentAssignments(dept)}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <h3 className="text-base font-medium text-gray-900">{dept.name}</h3>
+                                  {isAssigned && departmentAssignment && (
+                                    <p className="text-sm text-gray-600 mt-1">
+                                      Auditor: {departmentAssignment.auditorName || 'N/A'}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="ml-4 flex items-center gap-2">
+                                  {isAssigned ? (
+                                    <span className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg">
+                                      Assigned
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenAssignModal(dept);
+                                      }}
+                                      className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                                    >
+                                      Assign
+                                    </button>
+                                  )}
+                                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
 
-                  {/* Assignments List */}
-                  {getAssignmentsForSelectedAudit().length > 0 ? (
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-                      <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-                        <h2 className="text-lg font-medium text-gray-900">
-                          Assignments ({getAssignmentsForSelectedAudit().length})
-                        </h2>
-                      </div>
-                      <div className="divide-y divide-gray-200">
-                        {getAssignmentsForSelectedAudit().map((assignment) => (
-                          <div
-                            key={assignment.assignmentId}
-                            className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3">
-                                  <h3 className="text-base font-medium text-gray-900">
-                                    {assignment.departmentName || `Department ${assignment.deptId}`}
-                                  </h3>
-                                  <span
-                                    className={`px-2 py-1 text-xs font-medium rounded ${
-                                      assignment.status === 'Assigned'
-                                        ? 'bg-green-100 text-green-800'
-                                        : assignment.status === 'In Progress'
-                                        ? 'bg-blue-100 text-blue-800'
-                                        : assignment.status === 'Completed'
-                                        ? 'bg-gray-100 text-gray-800'
-                                        : 'bg-yellow-100 text-yellow-800'
-                                    }`}
-                                  >
-                                    {assignment.status}
-                                  </span>
-                                </div>
-                                <p className="text-sm text-gray-600 mt-1">
-                                  Auditor: {assignment.auditorName || 'N/A'}
-                                </p>
-                                {assignment.assignedAt && (
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    Assigned: {new Date(assignment.assignedAt).toLocaleString()}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="ml-4">
-                                <button
-                                  onClick={() => handleOpenDetailModal(assignment)}
-                                  className="px-4 py-2 bg-green-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 flex items-center gap-2"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                  </svg>
-                                  Detail
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : departments.length === 0 ? (
+                  {departments.length === 0 && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                       <p className="text-yellow-800">No departments found for this audit.</p>
                     </div>
-                  ) : null}
+                  )}
                 </>
               )}
             </>
@@ -648,7 +659,7 @@ export default function AuditAssignment() {
       )}
 
       {/* Detail Modal */}
-      {isDetailModalOpen && selectedAssignment && (
+      {isDetailModalOpen && (selectedAssignment || selectedDepartmentForDetail) && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
@@ -674,21 +685,19 @@ export default function AuditAssignment() {
               </div>
 
               <div className="space-y-4">
-             
-
                 {/* Audit Information */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Audit Title
-                    </label>
-                    <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                      {selectedAssignment.auditTitle || audits.find(a => a.auditId === selectedAssignment.auditId)?.title || 'N/A'}
-                    </p>
+                {selectedAuditId && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Audit Title
+                      </label>
+                      <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                        {audits.find(a => a.auditId === selectedAuditId)?.title || 'N/A'}
+                      </p>
+                    </div>
                   </div>
-            
-              
-                </div>
+                )}
 
                 {/* Department Information */}
                 <div className="border-t border-gray-200 pt-4">
@@ -699,10 +708,9 @@ export default function AuditAssignment() {
                         Department Name
                       </label>
                       <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                        {selectedAssignment.departmentName || 'N/A'}
+                        {selectedDepartmentForDetail?.name || selectedAssignment?.departmentName || 'N/A'}
                       </p>
                     </div>
-                 
                   </div>
                   
                   {/* Department Details from API */}
@@ -737,59 +745,62 @@ export default function AuditAssignment() {
                   ) : null}
                 </div>
 
-                {/* Auditor Information */}
-                <div className="border-t border-gray-200 pt-4">
-                  <h4 className="text-base font-semibold text-gray-900 mb-3">Auditor Information</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Auditor Name
-                      </label>
-                      <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                        {selectedAssignment.auditorName || 'N/A'}
-                      </p>
-                    </div>
-                  
-                  </div>
-                </div>
-
-                {/* Status and Dates */}
-                <div className="border-t border-gray-200 pt-4">
-                  <h4 className="text-base font-semibold text-gray-900 mb-3">Status & Timeline</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Status
-                      </label>
-                      <span
-                        className={`inline-block px-3 py-2 text-sm font-medium rounded-lg ${
-                          selectedAssignment.status === 'Assigned'
-                            ? 'bg-green-100 text-green-800'
-                            : selectedAssignment.status === 'In Progress'
-                            ? 'bg-blue-100 text-blue-800'
-                            : selectedAssignment.status === 'Completed'
-                            ? 'bg-gray-100 text-gray-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}
-                      >
-                        {selectedAssignment.status}
-                      </span>
-                    </div>
-                    {selectedAssignment.assignedAt && (
+                {/* Auditor Information - Only show if assigned */}
+                {selectedAssignment && (
+                  <div className="border-t border-gray-200 pt-4">
+                    <h4 className="text-base font-semibold text-gray-900 mb-3">Auditor Information</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Assigned At
+                          Auditor Name
                         </label>
                         <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                          {new Date(selectedAssignment.assignedAt).toLocaleString()}
+                          {selectedAssignment.auditorName || 'N/A'}
                         </p>
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Notes */}
-                {selectedAssignment.notes && (
+                {/* Status and Dates - Only show if assigned */}
+                {selectedAssignment && (
+                  <div className="border-t border-gray-200 pt-4">
+                    <h4 className="text-base font-semibold text-gray-900 mb-3">Status & Timeline</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Status
+                        </label>
+                        <span
+                          className={`inline-block px-3 py-2 text-sm font-medium rounded-lg ${
+                            selectedAssignment.status === 'Assigned'
+                              ? 'bg-green-100 text-green-800'
+                              : selectedAssignment.status === 'In Progress'
+                              ? 'bg-blue-100 text-blue-800'
+                              : selectedAssignment.status === 'Completed'
+                              ? 'bg-gray-100 text-gray-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}
+                        >
+                          {selectedAssignment.status}
+                        </span>
+                      </div>
+                      {selectedAssignment.assignedAt && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Assigned At
+                          </label>
+                          <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                            {new Date(selectedAssignment.assignedAt).toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes - Only show if assigned */}
+                {selectedAssignment?.notes && (
                   <div className="border-t border-gray-200 pt-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Notes
@@ -798,6 +809,26 @@ export default function AuditAssignment() {
                       <p className="text-sm text-gray-900 whitespace-pre-wrap">
                         {selectedAssignment.notes}
                       </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show message if not assigned */}
+                {!selectedAssignment && selectedDepartmentForDetail && (
+                  <div className="border-t border-gray-200 pt-4">
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-sm text-yellow-800">
+                        This department has not been assigned to an auditor yet.
+                      </p>
+                      <button
+                        onClick={() => {
+                          handleCloseDetailModal();
+                          handleOpenAssignModal(selectedDepartmentForDetail);
+                        }}
+                        className="mt-3 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                      >
+                        Assign Auditor
+                      </button>
                     </div>
                   </div>
                 )}
