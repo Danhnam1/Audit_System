@@ -82,13 +82,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     return 'bg-gray-100 text-gray-800';
   };
 
-  const getStatusColor = (status: string) => {
-    const statusLower = status?.toLowerCase() || '';
-    if (statusLower === 'open') return 'bg-blue-100 text-blue-800';
-    if (statusLower === 'closed') return 'bg-gray-100 text-gray-800';
-    return 'bg-gray-100 text-gray-800';
-  };
-
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}

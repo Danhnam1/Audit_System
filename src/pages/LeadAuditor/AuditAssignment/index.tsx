@@ -282,24 +282,7 @@ export default function AuditAssignment() {
     setDepartments([]);
   };
 
-  const handleOpenDetailModal = async (assignment: Assignment) => {
-    setSelectedAssignment(assignment);
-    setIsDetailModalOpen(true);
-    
-    // Fetch department details
-    if (assignment.deptId) {
-      setLoadingDepartmentDetail(true);
-      try {
-        const deptDetail = await getDepartmentById(assignment.deptId);
-        setDepartmentDetail(deptDetail);
-      } catch (err: any) {
-        console.error('Failed to load department details:', err);
-        setDepartmentDetail(null);
-      } finally {
-        setLoadingDepartmentDetail(false);
-      }
-    }
-  };
+  // Removed unused handleOpenDetailModal function
 
   const handleViewDepartmentAssignments = async (dept: Department) => {
     setSelectedDepartmentForDetail(dept);
@@ -336,11 +319,11 @@ export default function AuditAssignment() {
     setSelectedDepartmentForDetail(null);
   };
 
-  // Get assignments for selected audit
-  const getAssignmentsForSelectedAudit = (): Assignment[] => {
-    if (!selectedAuditId) return [];
-    return assignments.filter(assignment => assignment.auditId === selectedAuditId);
-  };
+  // Removed unused getAssignmentsForSelectedAudit function
+  // const getAssignmentsForSelectedAudit = (): Assignment[] => {
+  //   if (!selectedAuditId) return [];
+  //   return assignments.filter(assignment => assignment.auditId === selectedAuditId);
+  // };
 
   return (
     <MainLayout user={layoutUser}>

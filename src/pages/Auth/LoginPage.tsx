@@ -10,8 +10,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
-  const [showCredentials, setShowCredentials] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [_showCredentials, _setShowCredentials] = useState(false)
 
   const navigate = useNavigate()
   const { setToken, setUser, setRememberMe: setRememberMeStore, setRole } = useAuthStore()
@@ -113,10 +113,6 @@ export default function LoginPage() {
 
  
 
-  const quickLogin = (email: string, password: string) => {
-    setEmail(email)
-    setPassword(password)
-  }
 
   return (
     <div className="fixed inset-0 w-full h-full overflow-y-auto">

@@ -22,8 +22,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onSortDateOrderChange,
   onFilterStatusChange,
   onClearFilters,
-  filteredCount,
-  totalCount,
+  filteredCount: _filteredCount,
+  totalCount: _totalCount,
 }) => {
   return (
     <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">

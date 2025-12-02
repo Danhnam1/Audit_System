@@ -41,8 +41,6 @@ export default function MultiSelect({ options, value, onChange, placeholder = 'S
   // Include ALL selected options (including disabled) in display
   const allSelectedOptions = options.filter(o => selectedMap.has(o.value))
   const allSelectedLabels = allSelectedOptions.map(o => o.label)
-  const enabledSelectedOptions = allSelectedOptions.filter(o => !o.disabled)
-  const enabledSelectedCount = enabledSelectedOptions.length
   const totalSelectedCount = allSelectedOptions.length
   const display = totalSelectedCount === 0
     ? placeholder

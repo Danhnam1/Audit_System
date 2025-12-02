@@ -35,7 +35,6 @@ const LeadAuditorActionReview = lazy(() => import("../pages/LeadAuditor/ActionRe
 const SQAStaffLeadFinalReview = lazy(() => import("../pages/Auditor/LeadFinalReview/LeadFinalReview"));
 
 // CAPA Owner pages (formerly Department Staff)
-const DepartmentStaffDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard"));
 const DepartmentStaffAssignedTasks = lazy(() => import("../pages/CAPAOwner/AssignedTasks"));
 const DepartmentStaffTaskDetail = lazy(() => import("../pages/CAPAOwner/TaskDetail"));
 const DepartmentStaffUploadEvidence = lazy(() => import("../pages/CAPAOwner/UploadEvidence"));

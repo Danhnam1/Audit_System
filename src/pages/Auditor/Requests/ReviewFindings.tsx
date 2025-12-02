@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { MainLayout } from '../../../layouts';
 import { getFindingsByCreator, approveFindingAction, returnFindingAction, type Finding } from '../../../api/findings';
@@ -95,10 +94,9 @@ const buildAuditMetadata = (detail: any): AuditMetadata => {
 
 const ReviewFindings = () => {
   const userId = useUserId();
-  const navigate = useNavigate();
   const [findings, setFindings] = useState<FindingWithActions[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'returned'>('all');
+  const [filter, _setFilter] = useState<'all' | 'pending' | 'approved' | 'returned'>('all');
   const [selectedAction, setSelectedAction] = useState<ActionWithDetails | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackType, setFeedbackType] = useState<'approve' | 'return'>('approve');
@@ -199,10 +197,6 @@ const ReviewFindings = () => {
     fetchFindings();
   }, [userId]);
 
-  const handleViewDetail = (findingId: string) => {
-    navigate(`/auditor/review-findings/${findingId}`);
-  };
-
   const handleApproveClick = (action: ActionWithDetails) => {
     setSelectedAction(action);
     setFeedbackType('approve');
@@ -252,38 +246,6 @@ const ReviewFindings = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; color: string }> = {
-      Open: { label: 'Open', color: 'bg-blue-100 text-blue-700' },
-      Active: { label: 'Active', color: 'bg-blue-100 text-blue-700' },
-      InProgress: { label: 'In progress', color: 'bg-yellow-100 text-yellow-700' },
-      Reviewed: { label: 'Reviewed', color: 'bg-purple-100 text-purple-700' },
-      Approved: { label: 'Approved', color: 'bg-green-100 text-green-700' },
-      ApprovedAuditor: { label: 'Approved by auditor', color: 'bg-teal-100 text-teal-700' },
-      Rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700' },
-      Returned: { label: 'Returned', color: 'bg-orange-100 text-orange-700' },
-      Closed: { label: 'Closed', color: 'bg-gray-100 text-gray-700' },
-    };
-    const info = statusMap[status] || { label: status, color: 'bg-gray-100 text-gray-700' };
-    return (
-      <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-medium ${info.color}`}>
-        {info.label}
-      </span>
-    );
-  };
-
-  const formatDate = (dateStr: string): string => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   // Filter findings based on action status
   const filteredFindings = findings.filter(finding => {
     if (filter === 'all') return true;
@@ -294,12 +256,6 @@ const ReviewFindings = () => {
       return false;
     });
   });
-
-  const stats = {
-    pending: findings.filter(f => f.actions.some(a => a.status === 'Verified')).length,
-    approved: findings.filter(f => f.actions.some(a => a.status === 'Approved')).length,
-    returned: findings.filter(f => f.actions.some(a => a.status === 'Returned')).length,
-  };
 
   const groupedAudits = useMemo<GroupedAudit[]>(() => {
     const groups = new Map<string, GroupedAudit>();
@@ -389,7 +345,7 @@ const ReviewFindings = () => {
               filter === 'pending' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Pending ({stats.pending})
+            Pending ({_stats.pending})
           </button>
           <button
             onClick={() => setFilter('approved')}
@@ -397,7 +353,7 @@ const ReviewFindings = () => {
               filter === 'approved' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Approved ({stats.approved})
+            Approved ({_stats.approved})
           </button>
           <button
             onClick={() => setFilter('returned')}
@@ -405,7 +361,7 @@ const ReviewFindings = () => {
               filter === 'returned' ? 'bg-orange-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            Returned ({stats.returned})
+            Returned ({_stats.returned})
           </button>
         </div> */}
 
@@ -469,16 +425,16 @@ const ReviewFindings = () => {
                           <div className="space-y-1">
                             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                               <span className="text-sm font-semibold text-gray-900">{finding.title}</span>
-                              {getStatusBadge(finding.status)}
+                              {_getStatusBadge(finding.status)}
                             </div>
                             <p className="text-xs sm:text-sm text-gray-600 line-clamp-2">{finding.description}</p>
                             <div className="text-xs text-gray-500 space-y-0.5">
                               <p>Severity: <span className="font-medium">{finding.severity}</span></p>
-                              <p>Deadline: <span className="font-medium">{formatDate(finding.deadline || '')}</span></p>
+                              <p>Deadline: <span className="font-medium">{_formatDate(finding.deadline || '')}</span></p>
                             </div>
                           </div>
                           <button
-                            onClick={() => handleViewDetail(finding.findingId)}
+                            onClick={() => _handleViewDetail(finding.findingId)}
                             className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs sm:text-sm font-medium whitespace-nowrap"
                           >
                             View detail

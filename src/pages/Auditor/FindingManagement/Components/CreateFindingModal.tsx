@@ -18,7 +18,7 @@ const CreateFindingModal: React.FC<CreateFindingModalProps> = ({
   setNewFinding,
   onClose,
   onSave,
-  getCriticalityColor,
+  getCriticalityColor: _getCriticalityColor,
 }) => {
   if (!visible || !currentItemForFinding) return null;
 

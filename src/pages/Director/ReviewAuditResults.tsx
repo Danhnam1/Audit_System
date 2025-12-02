@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { MainLayout } from '../../layouts';
 import { useNavigate } from 'react-router-dom';
-import { getStatusColor } from '../../constants';
 
 interface AuditResult {
   id: number;

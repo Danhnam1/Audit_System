@@ -27,7 +27,35 @@ export interface ApiError<T = unknown> {
 }
 
 // Get base URL from environment variable or use default
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://moca.mom/api'
+// URL should be: https://moca.mom/api (NO port 80 for HTTPS)
+const getBaseURL = () => {
+  let url = import.meta.env.VITE_API_BASE_URL || 'https://moca.mom/api';
+  
+  // If URL is relative (starts with /), convert to absolute
+  // Browser will resolve relative URLs based on current page URL, which may include port 80
+  if (url.startsWith('/')) {
+    // Force absolute URL for production
+    url = 'https://moca.mom/api';
+    console.warn('[axios] Detected relative URL, converted to absolute:', url);
+  }
+  
+  // Remove port 80 from HTTPS URLs (HTTPS uses port 443 by default, not 80)
+  if (url.startsWith('https://') && url.includes(':80')) {
+    url = url.replace(':80', '');
+    console.warn('[axios] Removed :80 from baseURL, normalized to:', url);
+  }
+  
+  // Ensure URL is absolute (starts with http:// or https://)
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://moca.mom/api';
+    console.warn('[axios] URL is not absolute, using default:', url);
+  }
+  
+  console.log('[axios] Base URL:', url);
+  return url;
+};
+
+const BASE_URL = getBaseURL();
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
@@ -57,6 +85,37 @@ function setupInterceptors(apiClient: AxiosInstance) {
 
       if (token) {
         request.headers.Authorization = `Bearer ${token}`
+      }
+
+      // Normalize URL: remove port 80 from HTTPS URLs
+      // Browser may add port 80 automatically if frontend runs on port 80, but HTTPS should use 443
+      if (request.baseURL) {
+        if (request.baseURL.startsWith('https://') && request.baseURL.includes(':80')) {
+          request.baseURL = request.baseURL.replace(':80', '');
+          console.log('[axios] Removed :80 from baseURL:', request.baseURL);
+        }
+      }
+      
+      // Normalize request.url if it's absolute
+      if (request.url && (request.url.startsWith('http://') || request.url.startsWith('https://'))) {
+        if (request.url.startsWith('https://') && request.url.includes(':80')) {
+          request.url = request.url.replace(':80', '');
+          console.log('[axios] Removed :80 from url:', request.url);
+        }
+      }
+      
+      // Log final URL for debugging
+      if (request.baseURL && request.url) {
+        const fullUrl = request.url.startsWith('http') ? request.url : request.baseURL + request.url;
+        console.log('[axios] Request URL:', {
+          baseURL: request.baseURL,
+          url: request.url,
+          fullUrl: fullUrl,
+          method: request.method
+        });
+        if (fullUrl.includes(':80')) {
+          console.warn('[axios] WARNING: Full URL still contains :80:', fullUrl);
+        }
       }
 
       return request
@@ -108,8 +167,6 @@ function setupInterceptors(apiClient: AxiosInstance) {
         } catch (refreshError) {
           useAuthStore.getState().setToken(null)
           useAuthStore.getState().setUser(undefined)
- 
-
           // window.location.href = '/login' ===>>>> AuthGuard will do It's Job
 
           await clearOnLogout()

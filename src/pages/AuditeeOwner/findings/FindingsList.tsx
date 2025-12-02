@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../../layouts';
-import { useAuth } from '../../../contexts';
 import { getFindings, type Finding } from '../../../api/findings';
 import { getSeverityColor } from '../../../constants/statusColors';
 
 const FindingsList = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

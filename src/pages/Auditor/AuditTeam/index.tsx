@@ -20,10 +20,10 @@ const overlap = (aStart?: string, aEnd?: string, bStart?: string, bEnd?: string)
 
 export default function AuditorTeamPage() {
   const { user } = useAuth()
-  const [from, setFrom] = useState<string>('')
-  const [to, setTo] = useState<string>('')
-  const [role, setRole] = useState<string>('all')
-  const [search, setSearch] = useState<string>('')
+  const [from] = useState<string>('')
+  const [to] = useState<string>('')
+  const [role] = useState<string>('all')
+  const [search] = useState<string>('')
 
   const [teams, setTeams] = useState<any[]>([])
   const [audits, setAudits] = useState<any[]>([])

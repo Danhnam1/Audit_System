@@ -1,4 +1,4 @@
-import { MainLayout, UsersIcon, SettingsIcon } from '../../../layouts';
+import { MainLayout, UsersIcon } from '../../../layouts';
 import  useAuthStore  from '../../../store/useAuthStore';
 import { useState, useEffect, useRef } from 'react';
 import { StatCard, Pagination } from '../../../components';
@@ -361,7 +361,7 @@ const AdminUserManagement = () => {
 
     setIsImporting(true);
     try {
-      const response = await bulkRegisterUsers(importFile);
+      await bulkRegisterUsers(importFile);
       toast.success('Users imported successfully!');
       
       // Reset and close modal

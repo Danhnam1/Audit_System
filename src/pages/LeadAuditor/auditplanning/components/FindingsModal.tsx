@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { getFindingsByAudit, type Finding } from '../../../../api/findings';
 import { getAuditPlanById } from '../../../../api/audits';
-import { getActionsByFinding } from '../../../../api/actions';
 import { toast } from 'react-toastify';
 
 interface FindingsModalProps {
@@ -24,7 +23,7 @@ export const FindingsModal: React.FC<FindingsModalProps> = ({
   const [allActions, setAllActions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
-  const [loadingActions, setLoadingActions] = useState(false);
+  const [loadingActions] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,9 +32,6 @@ export const FindingsModal: React.FC<FindingsModalProps> = ({
       if (activeTab === 'details') {
         loadAuditDetails();
       }
-      // if (activeTab === 'actions') {
-      //   loadAllActions();
-      // }
     } else {
       setFindings([]);
       setAuditDetails(null);
@@ -78,46 +74,6 @@ export const FindingsModal: React.FC<FindingsModalProps> = ({
     }
   };
 
-  const loadAllActions = async () => {
-    if (!auditId) return;
-    
-    // If findings are not loaded yet, load them first
-    if (findings.length === 0) {
-      await loadFindings();
-    }
-    
-    if (findings.length === 0) {
-      setAllActions([]);
-      return;
-    }
-    
-    setLoadingActions(true);
-    try {
-      // Load all actions from all findings
-      const actionsPromises = findings.map(async (finding) => {
-        try {
-          const actions = await getActionsByFinding(finding.findingId);
-          return actions.map((action: any) => ({
-            ...action,
-            findingId: finding.findingId,
-            findingTitle: finding.title,
-          }));
-        } catch (err) {
-          console.error(`Failed to load actions for finding ${finding.findingId}`, err);
-          return [];
-        }
-      });
-      
-      const actionsArrays = await Promise.all(actionsPromises);
-      const flattened = actionsArrays.flat();
-      setAllActions(flattened);
-    } catch (err: any) {
-      console.error('Failed to load actions', err);
-      toast.error('Failed to load actions: ' + (err?.message || 'Unknown error'));
-    } finally {
-      setLoadingActions(false);
-    }
-  };
 
   const getSeverityColor = (severity: string) => {
     const severityLower = severity?.toLowerCase() || '';
@@ -217,7 +173,6 @@ export const FindingsModal: React.FC<FindingsModalProps> = ({
                 <button
                   onClick={() => {
                     setActiveTab('actions');
-                    loadAllActions();
                   }}
                   className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                     activeTab === 'actions'

@@ -335,8 +335,6 @@ const FindingsProgress = () => {
   };
 
 
-  // Get today's date in YYYY-MM-DD format for min attribute
-  const today = new Date().toISOString().split('T')[0];
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredFindings.length / itemsPerPage);
@@ -761,11 +759,12 @@ const FindingsProgress = () => {
                   setShowActionDetailModal(false);
                   setSelectedActionId(null);
                   setSelectedActionForReview(null);
-                  // Reload actions
+                  // Reload findings
                   const deptId = getUserDeptId();
                   if (deptId) {
-                    const actionsData = await getActionsByAssignedDept(deptId);
-                    setActions(actionsData || []);
+                    const data = await getFindingsByDepartment(deptId);
+                    setFindings(data);
+                    await loadAssignedUsers(data);
                   }
                 } catch (err: any) {
                   console.error('Error approving action:', err);
@@ -783,11 +782,12 @@ const FindingsProgress = () => {
                   setShowActionDetailModal(false);
                   setSelectedActionId(null);
                   setSelectedActionForReview(null);
-                  // Reload actions
+                  // Reload findings
                   const deptId = getUserDeptId();
                   if (deptId) {
-                    const actionsData = await getActionsByAssignedDept(deptId);
-                    setActions(actionsData || []);
+                    const data = await getFindingsByDepartment(deptId);
+                    setFindings(data);
+                    await loadAssignedUsers(data);
                   }
                 } catch (err: any) {
                   console.error('Error rejecting action:', err);

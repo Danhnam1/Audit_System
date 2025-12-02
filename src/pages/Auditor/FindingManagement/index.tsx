@@ -23,7 +23,6 @@ interface DepartmentCard {
 const SQAStaffFindingManagement = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [selectedAudit, setSelectedAudit] = useState('all');
   const [departments, setDepartments] = useState<DepartmentCard[]>([]);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [errorDepartments, setErrorDepartments] = useState<string | null>(null);
@@ -34,8 +33,8 @@ const SQAStaffFindingManagement = () => {
   const {
     loading: loadingAudits,
     error: auditsError,
-    auditPlans,
     fetchAuditPlans,
+    auditPlans: _auditPlans,
   } = useAuditFindings();
 
   // Load audit plans on mount
@@ -168,10 +167,6 @@ const SQAStaffFindingManagement = () => {
     });
   };
 
-  const openChecklist = (auditPlan: any) => {
-    // Navigate to detail page for execution
-    navigate(`/auditor/findings/${auditPlan.auditId}`);
-  };
 
   const stats = {
     total: 0,

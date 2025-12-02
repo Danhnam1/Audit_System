@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../../layouts';
 
-import { getFindingsByAudit, type Finding } from '../../../api/findings';
+import { getFindingsByAudit } from '../../../api/findings';
 import {
   getAuditPlanById,
   getAuditScopeDepartmentsByAuditId,
@@ -37,18 +37,18 @@ const AuditDetail = () => {
   const [template, setTemplate] = useState<ChecklistTemplateDto | null>(null);
   const [findings, setFindings] = useState<any[]>([]);
   const [createdByFullName, setCreatedByFullName] = useState<string>('');
-  const [templateCreatedByFullName, setTemplateCreatedByFullName] = useState<string>('');
+  const [_templateCreatedByFullName, setTemplateCreatedByFullName] = useState<string>('');
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [loadingAuditors, setLoadingAuditors] = useState(false);
 
-  const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectComment, setRejectComment] = useState('');
 
   const [loadingCriteria, setLoadingCriteria] = useState(false);
+  const [_error, _setError] = useState<string | null>(null);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const [loadingFindings, setLoadingFindings] = useState(false);
   const [latestRejectionComment, setLatestRejectionComment] = useState<string | null>(null);
