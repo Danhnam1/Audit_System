@@ -1,5 +1,5 @@
 import { MainLayout } from '../../../layouts';
-import { HiOutlineDownload, HiOutlineUpload } from 'react-icons/hi';
+import { UploadIcon, DownloadIcon } from '../../../layouts/icons';
 import { useAuth } from '../../../contexts';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -877,7 +877,7 @@ const SQAStaffReports = () => {
                                   title="Export PDF"
                                   aria-label="Export PDF"
                                 >
-                                  <HiOutlineDownload className="w-4 h-4" />
+                                  <DownloadIcon />
                                 </button>
                                 <button
                                   onClick={() =>
@@ -922,7 +922,7 @@ const SQAStaffReports = () => {
                                       />
                                     </svg>
                                   ) : (
-                                    <HiOutlineUpload className="w-4 h-4" />
+                                    <UploadIcon />
                                   )}
                                 </button>
                                 <input
@@ -952,7 +952,7 @@ const SQAStaffReports = () => {
                                 title={tooltip}
                                 aria-label="Export PDF (disabled)"
                               >
-                                <HiOutlineDownload className="w-4 h-4" />
+                                <DownloadIcon />
                               </button>
                               <button
                                 disabled
@@ -960,7 +960,7 @@ const SQAStaffReports = () => {
                                 title={tooltip}
                                 aria-label="Upload (disabled)"
                               >
-                                <HiOutlineUpload className="w-4 h-4" />
+                                <UploadIcon />
                               </button>
                             </>
                           );
