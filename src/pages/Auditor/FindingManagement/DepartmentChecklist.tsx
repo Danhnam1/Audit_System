@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getChecklistItemsByDepartment, markChecklistItemCompliant } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
-import { getFindings } from '../../../api/findings';
+import { getFindings, getMyFindings, type Finding, approveFindingAction, returnFindingAction } from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
 import FindingDetailModal from './FindingDetailModal';
 import { Toast } from '../AuditPlanning/components/Toast';
+import { getActionsByFinding, type Action } from '../../../api/actions';
 
 interface ChecklistItem {
   auditItemId: string;
@@ -37,6 +38,19 @@ const DepartmentChecklist = () => {
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [showCompliantConfirmModal, setShowCompliantConfirmModal] = useState(false);
   const [itemToMarkCompliant, setItemToMarkCompliant] = useState<ChecklistItem | null>(null);
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'checklist' | 'action'>('checklist');
+  
+  // Action tab state
+  const [myFindings, setMyFindings] = useState<Finding[]>([]);
+  const [loadingFindings, setLoadingFindings] = useState(false);
+  const [selectedFindingForActions, setSelectedFindingForActions] = useState<Finding | null>(null);
+  const [findingActions, setFindingActions] = useState<Action[]>([]);
+  const [loadingActions, setLoadingActions] = useState(false);
+  const [showActionsModal, setShowActionsModal] = useState(false);
+  const [verifiedActionsCount, setVerifiedActionsCount] = useState(0);
+  const [processingActionId, setProcessingActionId] = useState<string | null>(null);
   
   // Toast state
   const [toast, setToast] = useState<{
@@ -195,8 +209,13 @@ const DepartmentChecklist = () => {
 
         // Load checklist items
         const items = await getChecklistItemsByDepartment(deptIdNum);
+        // Filter out items with status "Archived"
+        const filteredItems = items.filter((item: ChecklistItem) => {
+          const statusLower = (item.status || '').toLowerCase().trim();
+          return statusLower !== 'archived';
+        });
         // Sort by order
-        const sortedItems = items.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
+        const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
         setChecklistItems(sortedItems);
       } catch (err: any) {
         console.error('Error loading checklist items:', err);
@@ -210,6 +229,100 @@ const DepartmentChecklist = () => {
 
     loadData();
   }, [deptId]);
+
+  // Load my findings when action tab is active
+  useEffect(() => {
+    if (activeTab === 'action') {
+      loadMyFindings();
+    }
+  }, [activeTab]);
+
+  const loadMyFindings = async () => {
+    setLoadingFindings(true);
+    try {
+      const findings = await getMyFindings();
+      setMyFindings(findings);
+      
+      // Count verified actions
+      let verifiedCount = 0;
+      for (const finding of findings) {
+        try {
+          const actions = await getActionsByFinding(finding.findingId);
+          const verifiedActions = actions.filter((action: Action) => 
+            action.status?.toLowerCase() === 'verified'
+          );
+          verifiedCount += verifiedActions.length;
+        } catch (err) {
+          console.warn(`Failed to load actions for finding ${finding.findingId}`, err);
+        }
+      }
+      setVerifiedActionsCount(verifiedCount);
+    } catch (err: any) {
+      console.error('Error loading my findings:', err);
+      showToast('Failed to load findings', 'error');
+    } finally {
+      setLoadingFindings(false);
+    }
+  };
+
+  const handleViewFindingActions = async (finding: Finding) => {
+    setSelectedFindingForActions(finding);
+    setShowActionsModal(true);
+    setLoadingActions(true);
+    try {
+      const actions = await getActionsByFinding(finding.findingId);
+      setFindingActions(Array.isArray(actions) ? actions : []);
+    } catch (err: any) {
+      console.error('Error loading actions:', err);
+      showToast('Failed to load actions', 'error');
+      setFindingActions([]);
+    } finally {
+      setLoadingActions(false);
+    }
+  };
+
+  const handleApproveAction = async (actionId: string) => {
+    setProcessingActionId(actionId);
+    try {
+      await approveFindingAction(actionId);
+      showToast('Action approved successfully', 'success');
+      // Reload actions
+      if (selectedFindingForActions) {
+        const actions = await getActionsByFinding(selectedFindingForActions.findingId);
+        setFindingActions(Array.isArray(actions) ? actions : []);
+        // Reload verified count
+        await loadMyFindings();
+      }
+    } catch (err: any) {
+      console.error('Error approving action:', err);
+      showToast(err?.message || 'Failed to approve action', 'error');
+    } finally {
+      setProcessingActionId(null);
+    }
+  };
+
+  const handleRejectAction = async (actionId: string) => {
+    const feedback = window.prompt('Enter feedback for rejection:', '');
+    if (feedback === null) return; // User cancelled
+    
+    setProcessingActionId(actionId);
+    try {
+      await returnFindingAction(actionId, feedback || '');
+      showToast('Action rejected successfully', 'success');
+      // Reload actions
+      if (selectedFindingForActions) {
+        const actions = await getActionsByFinding(selectedFindingForActions.findingId);
+        setFindingActions(Array.isArray(actions) ? actions : []);
+        // Reload verified count
+        await loadMyFindings();
+      }
+    } catch (err: any) {
+      console.error('Error rejecting action:', err);
+      showToast(err?.message || 'Failed to reject action', 'error');
+    } finally {
+      setProcessingActionId(null);
+    }
+  };
 
   return (
     <MainLayout user={layoutUser}>
@@ -234,29 +347,65 @@ const DepartmentChecklist = () => {
       </div>
 
       <div className="px-4 sm:px-6 pb-4 sm:pb-6">
-        {/* Loading State */}
-        {loading && (
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md p-8 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading checklist items...</p>
+        {/* Tab Navigation */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-4 sm:mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px">
+              <button
+                onClick={() => setActiveTab('checklist')}
+                className={`px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === 'checklist'
+                    ? 'border-primary-600 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Checklist Items
+              </button>
+              <button
+                onClick={() => setActiveTab('action')}
+                className={`px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-colors relative ${
+                  activeTab === 'action'
+                    ? 'border-primary-600 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Action
+                {verifiedActionsCount > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-green-500 text-white rounded-full">
+                    {verifiedActionsCount}
+                  </span>
+                )}
+              </button>
+            </nav>
           </div>
-        )}
+        </div>
 
-        {/* Error State */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <p className="text-red-700">{error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
-            >
-              Retry
-            </button>
-          </div>
-        )}
+        {/* Tab Content */}
+        {activeTab === 'checklist' ? (
+          <>
+            {/* Loading State */}
+            {loading && (
+              <div className="bg-white rounded-xl border border-primary-100 shadow-md p-8 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading checklist items...</p>
+              </div>
+            )}
 
-        {/* Checklist Items List */}
-        {!loading && !error && (
+            {/* Error State */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-red-700">{error}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* Checklist Items List */}
+            {!loading && !error && (
           <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
             <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-gray-50">
               <h2 className="text-base sm:text-lg font-semibold text-gray-900">
@@ -293,27 +442,20 @@ const DepartmentChecklist = () => {
                             <span className="sm:hidden">Meets</span>
                           </div>
                         ) : isNonCompliant(item.status) ? (
-                          /* Badge and Eye icon for Non-compliant items */
-                          <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-wrap sm:flex-nowrap">
-                            <div className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-red-100 text-red-700 rounded-lg text-[10px] sm:text-xs md:text-sm font-semibold border border-red-300 whitespace-nowrap">
-                              <span className="hidden md:inline">Does Not Meet Requirements</span>
-                              <span className="hidden sm:inline md:hidden">Does Not Meet</span>
-                              <span className="sm:hidden">Not Met</span>
-                            </div>
-                            <button
-                              className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95 flex-shrink-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleViewFinding(item);
-                              }}
-                              title="View Finding Details"
-                            >
-                              <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            </button>
-                          </div>
+                          /* Eye icon for Non-compliant items (no badge) */
+                          <button
+                            className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95 flex-shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewFinding(item);
+                            }}
+                            title="View Finding Details"
+                          >
+                            <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
                         ) : (
                           <>
                             {/* Green Checkmark */}
@@ -361,7 +503,183 @@ const DepartmentChecklist = () => {
             )}
           </div>
         )}
+          </>
+        ) : (
+          <>
+            {/* Action Tab Content */}
+            {loadingFindings ? (
+              <div className="bg-white rounded-xl border border-primary-100 shadow-md p-8 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading findings...</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+                <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-gray-50">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+                    My Findings ({myFindings.length})
+                  </h2>
+                </div>
+
+                {myFindings.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500">No findings found</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-200">
+                    {myFindings.map((finding) => (
+                      <div
+                        key={finding.findingId}
+                        className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                        onClick={() => handleViewFindingActions(finding)}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-sm sm:text-base font-medium text-gray-900 mb-1">
+                              {finding.title}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">
+                              {finding.description || 'No description'}
+                            </p>
+                            <div className="flex items-center gap-3 mt-2">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
+                                  ? 'bg-red-100 text-red-700'
+                                  : finding.severity?.toLowerCase() === 'medium' || finding.severity?.toLowerCase() === 'normal'
+                                  ? 'bg-yellow-100 text-yellow-700'
+                                  : 'bg-green-100 text-green-700'
+                              }`}>
+                                {finding.severity || 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewFindingActions(finding);
+                              }}
+                              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+                            >
+                              View Actions
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
+
+      {/* Actions Modal */}
+      {showActionsModal && selectedFindingForActions && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => {
+              setShowActionsModal(false);
+              setSelectedFindingForActions(null);
+              setFindingActions([]);
+            }}
+          />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div
+              className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Actions for Finding</h2>
+                  <p className="text-sm text-gray-600 mt-1">{selectedFindingForActions.title}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowActionsModal(false);
+                    setSelectedFindingForActions(null);
+                    setFindingActions([]);
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="p-6">
+                {loadingActions ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    <span className="ml-3 text-gray-600">Loading actions...</span>
+                  </div>
+                ) : findingActions.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No actions found for this finding</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {findingActions.map((action) => (
+                      <div
+                        key={action.actionId}
+                        className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <h3 className="text-base font-medium text-gray-900">{action.title}</h3>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            action.status?.toLowerCase() === 'verified'
+                              ? 'bg-green-100 text-green-700'
+                              : action.status?.toLowerCase() === 'completed'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {action.status || 'N/A'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-3">{action.description || 'No description'}</p>
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                          <span>Progress: {action.progressPercent || 0}%</span>
+                          {action.dueDate && (
+                            <span>Due: {new Date(action.dueDate).toLocaleDateString()}</span>
+                          )}
+                        </div>
+                        {action.progressPercent && action.progressPercent > 0 && (
+                          <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-primary-600 h-2 rounded-full transition-all"
+                              style={{ width: `${action.progressPercent}%` }}
+                            />
+                          </div>
+                        )}
+                        {action.status?.toLowerCase() === 'verified' && (
+                          <div className="mt-4 flex items-center justify-end gap-2 pt-4 border-t border-gray-200">
+                            <button
+                              onClick={() => handleApproveAction(action.actionId)}
+                              disabled={processingActionId === action.actionId}
+                              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {processingActionId === action.actionId ? 'Processing...' : 'Approve'}
+                            </button>
+                            <button
+                              onClick={() => handleRejectAction(action.actionId)}
+                              disabled={processingActionId === action.actionId}
+                              className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {processingActionId === action.actionId ? 'Processing...' : 'Reject'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Finding Modal */}
       {selectedItem && deptId && (
@@ -397,7 +715,12 @@ const DepartmentChecklist = () => {
               try {
                 const deptIdNum = parseInt(deptId, 10);
                 const items = await getChecklistItemsByDepartment(deptIdNum);
-                const sortedItems = items.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
+                // Filter out items with status "Archived"
+                const filteredItems = items.filter((item: ChecklistItem) => {
+                  const statusLower = (item.status || '').toLowerCase().trim();
+                  return statusLower !== 'archived';
+                });
+                const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
                 setChecklistItems(sortedItems);
                 showToast('Finding created successfully', 'success');
               } catch (err) {

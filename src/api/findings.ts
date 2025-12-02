@@ -69,6 +69,13 @@ export const getFindingsByCreator = async (createdBy: string): Promise<Finding[]
   return unwrap<Finding>(res);
 };
 
+// Get my findings (for Auditor to see their own findings)
+export const getMyFindings = async (): Promise<Finding[]> => {
+  const res = await apiClient.get(`/Findings/my-findings`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Finding>(res);
+};
+
 // Get finding by ID
 export const getFindingById = async (findingId: string): Promise<Finding> => {
   return apiClient.get(`/Findings/${findingId}`) as any;
@@ -162,7 +169,7 @@ export const approveFindingAction = async (actionId: string, feedback?: string):
 
 export const approveFindingActionHigherLevel = async (actionId: string, feedback?: string): Promise<void> => {
   await apiClient.put(`/ActionReview/${actionId}/approve/higher-level`, {
-    Feedback: feedback || '',
+    feedback: feedback || '',
   });
 };
 export const getFindingsByAudit = async (auditId: string): Promise<any[]> => {
@@ -180,7 +187,7 @@ export const returnFindingAction = async (actionId: string, feedback: string): P
 
 export const rejectFindingActionHigherLevel = async (actionId: string, feedback: string): Promise<void> => {
   await apiClient.put(`/ActionReview/${actionId}/reject/higher-level`, {
-    Feedback: feedback,
+    feedback: feedback,
   });
 };
 
