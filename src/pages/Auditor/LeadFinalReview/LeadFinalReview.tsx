@@ -15,6 +15,8 @@ import { getAuditPlanById } from '../../../api/audits';
 import { getDepartments } from '../../../api/departments';
 import AuditDetailsModal from '../LeadFinalReview/components/AuditDetailsModal';
 import type { Audit, Finding, ActionWithDetails, AuditMetadata } from '../LeadFinalReview/types';
+import { DataTable, type TableColumn } from '../../../components/DataTable';
+import { getStatusColor } from '../../../constants';
 
 const isGuid = (v?: string) => !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
@@ -418,51 +420,109 @@ export default function LeadFinalReview() {
 
   return (
     <MainLayout>
-      <div className="p-6">
-        <h1 className="text-2xl font-bold mb-4">Lead Audit Final Review</h1>
-
-        {/* Search + Refresh */}
-        <div className="mb-4 flex items-center gap-4">
-          <input
-            className="border rounded px-3 py-2 flex-1"
-            placeholder="Search audits by name or ID..."
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-          />
-      
+      <div className="space-y-6">
+        {/* Header consistent with Reports / Audit Planning */}
+        <div className="bg-white border-b border-primary-100 shadow-sm mb-2">
+          <div className="px-6 py-4">
+            <h1 className="text-2xl font-semibold text-primary-600">Lead Audit Final Review</h1>
+            <p className="text-gray-600 text-sm mt-1">
+              Review and finalize audit findings and CAPA actions
+            </p>
+          </div>
         </div>
 
-        <div className="bg-white shadow rounded">
-          <table className="w-full table-auto">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="text-left px-4 py-2">Audit</th>
-                <th className="text-left px-4 py-2 w-40">Status</th>
-                <th className="px-4 py-2 w-28">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingAudits && (
-                <tr><td colSpan={3} className="px-4 py-6 text-center">Loading audits...</td></tr>
-              )}
-              {!loadingAudits && filteredAudits.length === 0 && (
-                <tr><td colSpan={3} className="px-4 py-6 text-center">No audits found.</td></tr>
-              )}
-              {!loadingAudits && filteredAudits.map(a => (
-                <tr key={a.auditId} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-gray-900">{a.title}</div>
-                  </td>
-                  <td className="px-4 py-3 text-sm">{a.status || '-'}</td>
-                  <td className="px-4 py-3">
-                    <button className="text-sm bg-green-600 text-white px-3 py-1 rounded" onClick={() => loadFindingsForAudit(a)}>
-                      View 
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="px-6 pb-6 space-y-4">
+          {/* Search */}
+          <div className="flex items-center gap-4">
+            <input
+              className="border rounded px-3 py-2 flex-1"
+              placeholder="Search audits by name or ID..."
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+            />
+          </div>
+
+          {/* Table wrapped in card layout similar to Audit Planning */}
+          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
+              <h2 className="text-lg font-semibold text-white">Existing Lead Audits</h2>
+            </div>
+            <div className="p-4">
+              <DataTable<Audit>
+                columns={[
+                  {
+                    key: 'no',
+                    header: 'No.',
+                    cellClassName: 'whitespace-nowrap',
+                    render: (_, index) => (
+                      <span className="text-sm font-semibold text-primary-700">{index + 1}</span>
+                    ),
+                  } as TableColumn<Audit>,
+                  {
+                    key: 'title',
+                    header: 'Title',
+                    render: (row) => (
+                      <div className="max-w-[260px]">
+                        <p className="text-sm font-semibold text-gray-900">{row.title || 'Untitled'}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{row.auditId}</p>
+                      </div>
+                    ),
+                  } as TableColumn<Audit>,
+                  {
+                    key: 'status',
+                    header: 'Status',
+                    cellClassName: 'whitespace-nowrap',
+                    render: (row) => (
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                          row.status || 'Draft'
+                        )}`}
+                      >
+                        {row.status || 'Draft'}
+                      </span>
+                    ),
+                  } as TableColumn<Audit>,
+                  {
+                    key: 'actions',
+                    header: 'Actions',
+                    align: 'center',
+                    cellClassName: 'whitespace-nowrap text-center',
+                    render: (row) => (
+                      <div className="flex items-center justify-center gap-3">
+                        <button
+                          onClick={() => loadFindingsForAudit(row)}
+                          className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="View Details"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    ),
+                  } as TableColumn<Audit>,
+                ]}
+                data={filteredAudits}
+                loading={loadingAudits}
+                loadingMessage="Loading audits..."
+                emptyState="No audits found."
+                rowKey={(row) => row.auditId}
+                getRowClassName={() => 'transition-colors hover:bg-gray-50'}
+              />
+            </div>
+          </div>
+
         </div>
 
         <AuditDetailsModal

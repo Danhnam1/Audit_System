@@ -118,6 +118,8 @@ export const NotificationBell: React.FC = () => {
 
       const res = await getNotifications();
       const all = unwrap<AdminNotificationDTO>(res);
+
+      // Filter notifications for current user
       const mine = (all || []).filter((n: any) => {
         if (meId) return String(n.userId || n.recipientId) === meId;
         // fallback by email if API stores email in userId
@@ -125,9 +127,15 @@ export const NotificationBell: React.FC = () => {
         return false;
       });
 
+      // Exclude inactive notifications (those "deleted" by setting status to Inactive)
+      const activeMine = mine.filter((n: any) => {
+        const status = String(n.status || '').toLowerCase();
+        return status !== 'inactive'; // only show active notifications
+      });
+
       // Merge with localStorage read status
       const readSet = getReadNotifications();
-      const sorted: NotificationItem[] = mine
+      const sorted: NotificationItem[] = activeMine
         .map((n: any) => {
           const notificationId = String(n.notificationId || '');
           // If marked as read in localStorage, ensure isRead is true

@@ -1,4 +1,5 @@
 import { MainLayout } from '../../../layouts';
+import { HiOutlineDownload, HiOutlineUpload } from 'react-icons/hi';
 import { useAuth } from '../../../contexts';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -35,7 +36,6 @@ const SQAStaffReports = () => {
   const [rejectReasonText, setRejectReasonText] = useState<string>('');
   const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
-  const [currentUserKey, setCurrentUserKey] = useState<{ id?: string; email?: string }>({});
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
 
   // Chart datasets
@@ -85,6 +85,12 @@ const SQAStaffReports = () => {
       };
     });
   }, [summary]);
+
+  // Chuẩn hóa id (tránh lệch hoa/thường, khoảng trắng)
+  const normalizeId = (id: string | number | null | undefined) =>
+    String(id ?? '')
+      .toLowerCase()
+      .trim();
 
   // (Removed meta caches not needed for new simplified report filters)
 
@@ -174,14 +180,7 @@ const SQAStaffReports = () => {
       
       // Normalize currentUserId for comparison (lowercase, trim)
       const normalizedCurrentUserId = currentUserId ? String(currentUserId).toLowerCase().trim() : null;
-      const normalizedCurrentEmail = user?.email
-        ? String(user.email).toLowerCase().trim()
-        : undefined;
-      setCurrentUserKey({
-        id: normalizedCurrentUserId || undefined,
-        email: normalizedCurrentEmail,
-      });
-      
+      // normalizedCurrentEmail no longer used after removing "creator-only" restriction for export/upload
       // Get audit IDs where current user is a team member
       const teams = Array.isArray(teamsRes) ? teamsRes : [];
       const userAuditIds = new Set<string>();
@@ -297,8 +296,10 @@ const SQAStaffReports = () => {
             if (!auditId) return null;
             try {
               const docs = await getAuditDocuments(auditId);
-              if (Array.isArray(docs) && docs.length > 0) {
-                return auditId;
+              const docsArr = unwrap(docs);
+              if (Array.isArray(docsArr) && docsArr.length > 0) {
+                // Nếu audit đã từng upload báo cáo, lưu vào uploadedAudits (dùng id đã normalize)
+                return normalizeId(auditId);
               }
             } catch (err) {
               console.error(`Failed to check documents for audit ${auditId}`, err);
@@ -496,67 +497,8 @@ const SQAStaffReports = () => {
     return (audits || []).find((a: any) => String(a.auditId || a.id || a.$id) === sid);
   }, [audits, selectedAuditId]);
 
-  const isCreatedByCurrentUser = useCallback(
-    (audit: any | undefined | null): boolean => {
-      if (!audit) return false;
-      const { id: curId, email: curEmail } = currentUserKey;
-      if (!curId && !curEmail) return false;
-
-      const creatorRaw =
-        audit.createdByUser ||
-        audit.createdBy ||
-        audit.submittedByUser ||
-        audit.submittedBy;
-
-      const eq = (a?: string | null, b?: string | null) => {
-        if (!a || !b) return false;
-        return String(a).toLowerCase().trim() === String(b).toLowerCase().trim();
-      };
-
-      if (creatorRaw && typeof creatorRaw === 'object') {
-        const creatorEmail = creatorRaw.email;
-        const creatorId =
-          creatorRaw.userId || creatorRaw.id || creatorRaw.$id || creatorRaw.userID;
-        if (curEmail && creatorEmail && eq(curEmail, creatorEmail)) return true;
-        if (curId && creatorId && eq(curId, creatorId)) return true;
-      } else if (typeof creatorRaw === 'string') {
-        const s = creatorRaw.toLowerCase().trim();
-        if (curEmail && s === curEmail.toLowerCase()) return true;
-        if (curId && s === curId.toLowerCase()) return true;
-      }
-
-      // Fallback: some backends store creator id/email directly on audit
-      const candidateIds = [
-        audit.createdById,
-        audit.ownerId,
-        audit.creatorId,
-        audit.createdBy,
-      ];
-      if (curId) {
-        if (
-          candidateIds.some((v: any) =>
-            v != null ? eq(String(v), curId) : false,
-          )
-        ) {
-          return true;
-        }
-      }
-
-      const candidateEmails = [audit.createdByEmail, audit.ownerEmail];
-      if (curEmail) {
-        if (
-          candidateEmails.some((v: any) =>
-            v != null ? eq(String(v), curEmail) : false,
-          )
-        ) {
-          return true;
-        }
-      }
-
-      return false;
-    },
-    [currentUserKey],
-  );
+  // NOTE: Previously we restricted export/upload to the creator only.
+  // Now we allow any team member (already filtered in `reloadReports`) once the report is Closed/Completed.
 
   const handleSubmitToLead = async () => {
     if (!selectedAuditId) return;
@@ -585,7 +527,8 @@ const SQAStaffReports = () => {
     }
   };
 
-  const onClickUpload = (auditId: string) => {
+  const onClickUpload = (auditIdRaw: string) => {
+    const auditId = normalizeId(auditIdRaw);
     // Check if already uploaded
     if (uploadedAudits.has(auditId)) {
       toast.error('This report has already been uploaded. It cannot be uploaded again.');
@@ -594,7 +537,8 @@ const SQAStaffReports = () => {
     fileInputRefs.current[auditId]?.click();
   };
 
-  const onFileSelected = async (auditId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileSelected = async (auditIdRaw: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const auditId = normalizeId(auditIdRaw);
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || !auditId) {
       e.target.value = '';
@@ -608,10 +552,11 @@ const SQAStaffReports = () => {
       return;
     }
     
-    // Double check by fetching documents
+    // Double check by fetching documents (history upload)
     try {
-      const existingDocs = await getAuditDocuments(auditId);
-      if (Array.isArray(existingDocs) && existingDocs.length > 0) {
+      const existingDocs = await getAuditDocuments(auditIdRaw);
+      const existingArr = unwrap(existingDocs);
+      if (Array.isArray(existingArr) && existingArr.length > 0) {
         toast.error('This report has already been uploaded. It cannot be uploaded again.');
         e.target.value = '';
         setUploadedAudits(prev => new Set(prev).add(auditId));
@@ -626,7 +571,7 @@ const SQAStaffReports = () => {
       setUploadLoading(prev => ({ ...prev, [auditId]: true }));
       
       // Always use the multiple-upload API, even for a single file
-        await uploadMultipleAuditDocuments(auditId, files);
+        await uploadMultipleAuditDocuments(auditIdRaw, files);
       
       const successMessage = files.length === 1 
         ? 'Signed report uploaded successfully.' 
@@ -635,11 +580,10 @@ const SQAStaffReports = () => {
       toast.success(successMessage);
       e.target.value = '';
       
-      // Mark as uploaded
+      // Mark as uploaded (UI will immediately show "Uploaded" & disable the button)
+      // Không cần reloadReports ở đây để tránh phải reload lại trang mới thấy trạng thái Uploaded
+      // và cũng tránh việc state uploadedAudits bị ghi đè bởi dữ liệu cũ từ API.
       setUploadedAudits(prev => new Set(prev).add(auditId));
-      
-      // Reload reports to refresh the list
-      await reloadReports();
     } catch (err) {
       console.error('Upload signed report failed', err);
       const errorMessage = 'Upload failed. Please try again.';
@@ -898,67 +842,92 @@ const SQAStaffReports = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-center"><span className="text-sm text-gray-600">{report.createdBy || '—'}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-2 flex-wrap">
-                        <button 
+                        <button
                           onClick={() => {
                             const id = String(report.auditId);
-                            // Toggle mở/đóng summary khi bấm View
+                            // Toggle mở/đóng summary khi bấm View (same UX as AuditPlanning)
                             if (showSummary && selectedAuditId === id) {
                               setShowSummary(false);
                             } else {
                               setSelectedAuditId(id);
                               setShowSummary(true);
                             }
-                          }} 
-                          className="px-3 py-1.5 rounded-md text-sm font-medium bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                          }}
+                          className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="View summary"
+                          aria-label="View summary"
                         >
-                          View
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
                         </button>
                         {(() => {
-                          const auditForRow = (audits || []).find(
-                            (a: any) =>
-                              String(a.auditId || a.id || a.$id) ===
-                              String(report.auditId),
-                          );
-                          const isCreator = isCreatedByCurrentUser(auditForRow);
-                          if (isCompletedStatus(report.status) && isCreator) {
+                          // Export/Upload is allowed for any team member once the report is Closed/Completed.
+                          const auditIdNorm = normalizeId(report.auditId);
+                          const canExportUpload = isCompletedStatus(report.status);
+                          if (canExportUpload) {
                             return (
                               <>
                                 <button
                                   onClick={() =>
-                                    handleExportPdfForRow(
-                                      String(report.auditId),
-                                      report.title,
-                                    )
+                                    handleExportPdfForRow(String(report.auditId), report.title)
                                   }
-                                  className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors"
+                                  className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary-600 hover:bg-primary-700 text-white shadow-sm transition-colors"
+                                  title="Export PDF"
+                                  aria-label="Export PDF"
                                 >
-                                  Export PDF
+                                  <HiOutlineDownload className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() =>
                                     onClickUpload(String(report.auditId))
                                   }
                                   disabled={
-                                    uploadLoading[String(report.auditId)] ||
-                                    uploadedAudits.has(String(report.auditId))
+                                    uploadLoading[auditIdNorm]
                                   }
-                                  className="px-3 py-1.5 rounded-md text-sm font-medium bg-primary-600 hover:bg-primary-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-primary-600 hover:bg-primary-700 text-white shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                   title={
-                                    uploadedAudits.has(String(report.auditId))
-                                      ? 'This report has already been uploaded. It cannot be uploaded again.'
+                                    uploadedAudits.has(auditIdNorm)
+                                      ? 'This report has already been uploaded.'
                                       : 'Upload the signed PDF/scan report'
                                   }
+                                  aria-label={
+                                    uploadedAudits.has(auditIdNorm)
+                                      ? 'Uploaded report (click to see message)'
+                                      : uploadLoading[auditIdNorm]
+                                      ? 'Uploading report'
+                                      : 'Upload report'
+                                  }
                                 >
-                                  {uploadLoading[String(report.auditId)]
-                                    ? 'Uploading...'
-                                    : uploadedAudits.has(String(report.auditId))
-                                    ? 'Uploaded'
-                                    : 'Upload'}
+                                  {uploadLoading[auditIdNorm] ? (
+                                    <svg
+                                      className="w-4 h-4 animate-spin"
+                                      xmlns="http://www.w3.org/2000/svg"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <circle
+                                        className="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                      />
+                                      <path
+                                        className="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z"
+                                      />
+                                    </svg>
+                                  ) : (
+                                    <HiOutlineUpload className="w-4 h-4" />
+                                  )}
                                 </button>
                                 <input
                                   ref={(el) => {
-                                    fileInputRefs.current[String(report.auditId)] =
-                                      el;
+                                    fileInputRefs.current[auditIdNorm] = el;
                                   }}
                                   type="file"
                                   accept="application/pdf,image/*"
@@ -972,26 +941,26 @@ const SQAStaffReports = () => {
                             );
                           }
 
-                          // Disabled state for non-creator or not-completed
-                          const tooltip = !isCompletedStatus(report.status)
-                            ? 'Export/Upload are only available when the report is Closed.'
-                            : 'Only the creator of this audit plan can export or upload the report.';
+                          // Disabled state when report is not in a completed/closed status
+                          const tooltip = 'Export/Upload are only available when the report is Closed.';
 
                           return (
                             <>
                               <button
                                 disabled
-                                className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed"
+                                className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-gray-300 text-gray-500 cursor-not-allowed"
                                 title={tooltip}
+                                aria-label="Export PDF (disabled)"
                               >
-                                Export PDF
+                                <HiOutlineDownload className="w-4 h-4" />
                               </button>
                               <button
                                 disabled
-                                className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-300 text-gray-500 cursor-not-allowed"
+                                className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-gray-300 text-gray-500 cursor-not-allowed"
                                 title={tooltip}
+                                aria-label="Upload (disabled)"
                               >
-                                Upload
+                                <HiOutlineUpload className="w-4 h-4" />
                               </button>
                             </>
                           );

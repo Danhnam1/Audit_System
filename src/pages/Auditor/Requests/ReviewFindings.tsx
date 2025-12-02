@@ -16,6 +16,8 @@ import type {
   AuditMetadata,
   Finding as LeadFinding,
 } from '../LeadFinalReview/types';
+import { DataTable, type TableColumn } from '../../../components/DataTable';
+import { getStatusColor } from '../../../constants';
 
 interface ActionWithDetails extends Action {
   attachments: Attachment[];
@@ -316,8 +318,19 @@ const ReviewFindings = () => {
       groups.get(key)!.findings.push(finding);
     });
 
-    return Array.from(groups.values());
-  }, [filteredFindings, auditSummaries]);
+    let result = Array.from(groups.values());
+
+    // Apply text search on audit title or ID
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      result = result.filter(group => {
+        const title = group.summary?.title || group.auditId;
+        return title.toLowerCase().includes(q);
+      });
+    }
+
+    return result;
+  }, [filteredFindings, auditSummaries, query]);
 
   const openAuditModal = async (group: GroupedAudit) => {
     if (!group.auditId) return;
@@ -364,14 +377,18 @@ const ReviewFindings = () => {
 
   return (
     <MainLayout>
-      <div className="space-y-4 sm:space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Review Findings</h1>
-            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-gray-600">Review and approve actions from auditees</p>
+      <div className="space-y-6">
+        {/* Header consistent with Reports / Audit Planning */}
+        <div className="bg-white border-b border-primary-100 shadow-sm mb-2">
+          <div className="px-6 py-4">
+            <h1 className="text-2xl font-semibold text-primary-600">Review Findings</h1>
+            <p className="text-gray-600 text-sm mt-1">
+              Review and approve actions from auditees
+            </p>
           </div>
         </div>
+
+        <div className="px-6 pb-6 space-y-4 sm:space-y-6">
 
         {/* Filters */}
         {/* <div className="flex flex-wrap gap-2">
@@ -409,7 +426,7 @@ const ReviewFindings = () => {
           </button>
         </div> */}
 
-<div className="mb-4 flex items-center gap-4">
+        <div className="mb-4 flex items-center gap-4">
           <input
             className="border rounded px-3 py-2 flex-1"
             placeholder="Search audits by name or ID..."
@@ -418,80 +435,118 @@ const ReviewFindings = () => {
           />
       
         </div>
-        {/* Audits list */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-4 sm:px-6 py-3 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Audits</h2>
-            <span className="text-xs text-gray-500">{groupedAudits.length} records</span>
+        {/* Audits list styled with same card layout as Audit Planning */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
+            <h2 className="text-lg font-semibold text-white">Existing Audit Requests</h2>
           </div>
-
-          {loading ? (
-            <div className="p-6 text-center text-gray-600">Loading data...</div>
-          ) : groupedAudits.length === 0 ? (
-            <div className="p-6 text-center text-gray-600">No data available</div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {groupedAudits.map(group => (
-                <div key={group.auditId} className="p-4 sm:p-6 space-y-3">
-                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                        <h3 className="text-sm sm:text-base font-semibold text-gray-900">
-                          {group.summary?.title || group.auditId}
-                        </h3>
-                        {group.summary?.status && (
-                          <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
-                            {group.summary.status}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs sm:text-sm text-gray-500">
-                        Type: {group.summary?.type || '-'} • Scope: {group.summary?.scope || '-'}
+          <div className="p-4">
+            <DataTable<GroupedAudit>
+              columns={[
+                {
+                  key: 'no',
+                  header: 'No.',
+                  cellClassName: 'whitespace-nowrap',
+                  render: (_, index) => (
+                    <span className="text-sm font-semibold text-primary-700">{index + 1}</span>
+                  ),
+                } as TableColumn<GroupedAudit>,
+                {
+                  key: 'title',
+                  header: 'Title',
+                  render: (row) => (
+                    <div className="max-w-[260px]">
+                      <p className="text-sm font-semibold text-gray-900">
+                        {row.summary?.title || row.auditId}
                       </p>
-                      <p className="text-xs text-gray-500">
-                        Findings: <span className="font-medium text-gray-900">{group.findings.length}</span>
-                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">{row.auditId}</p>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <button
-                        onClick={() => openAuditModal(group)}
-                        className="text-sm bg-green-600 text-white px-3 py-1 rounded"
+                  ),
+                } as TableColumn<GroupedAudit>,
+                {
+                  key: 'type',
+                  header: 'Type',
+                  cellClassName: 'whitespace-nowrap',
+                  render: (row) => (
+                    <span className="px-2 py-0.5 text-xs rounded bg-primary-100 text-primary-700">
+                      {row.summary?.type || 'General'}
+                    </span>
+                  ),
+                } as TableColumn<GroupedAudit>,
+                {
+                  key: 'scope',
+                  header: 'Scope',
+                  render: (row) => (
+                    <p className="text-sm font-medium text-gray-900">
+                      {row.summary?.scope || 'N/A'}
+                    </p>
+                  ),
+                } as TableColumn<GroupedAudit>,
+                {
+                  key: 'findingsCount',
+                  header: 'Findings',
+                  accessor: (row) => row.findings.length,
+                  align: 'center',
+                } as TableColumn<GroupedAudit>,
+                {
+                  key: 'status',
+                  header: 'Status',
+                  cellClassName: 'whitespace-nowrap',
+                  render: (row) =>
+                    row.summary?.status ? (
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                          row.summary.status
+                        )}`}
                       >
-                        View 
+                        {row.summary.status}
+                      </span>
+                    ) : (
+                      '-'
+                    ),
+                  align: 'center',
+                } as TableColumn<GroupedAudit>,
+                {
+                  key: 'actions',
+                  header: 'Actions',
+                  align: 'center',
+                  cellClassName: 'whitespace-nowrap text-center',
+                  render: (row) => (
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => openAuditModal(row)}
+                        className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="View Details"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                          />
+                        </svg>
                       </button>
                     </div>
-                  </div>
-
-                  {/* <div className="space-y-3">
-                    {group.findings.map(finding => (
-                      <div key={finding.findingId} className="border border-gray-100 rounded-lg p-3 sm:p-4">
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                          <div className="space-y-1">
-                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                              <span className="text-sm font-semibold text-gray-900">{finding.title}</span>
-                              {getStatusBadge(finding.status)}
-                            </div>
-                            <p className="text-xs sm:text-sm text-gray-600 line-clamp-2">{finding.description}</p>
-                            <div className="text-xs text-gray-500 space-y-0.5">
-                              <p>Severity: <span className="font-medium">{finding.severity}</span></p>
-                              <p>Deadline: <span className="font-medium">{formatDate(finding.deadline || '')}</span></p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleViewDetail(finding.findingId)}
-                            className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs sm:text-sm font-medium whitespace-nowrap"
-                          >
-                            View detail
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div> */}
-                </div>
-              ))}
-            </div>
-          )}
+                  ),
+                } as TableColumn<GroupedAudit>,
+              ]}
+              data={groupedAudits}
+              loading={loading}
+              loadingMessage="Loading data..."
+              emptyState="No data available"
+              rowKey={(row) => row.auditId}
+              getRowClassName={() => 'transition-colors hover:bg-gray-50'}
+            />
+          </div>
         </div>
+      </div>
       </div>
       <AuditDetailsModal
         open={auditModalOpen && !!modalAudit}

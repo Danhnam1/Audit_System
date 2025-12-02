@@ -35,8 +35,6 @@ import { Step3Checklist } from './components/PlanForm/Step3Checklist';
 import { Step4Team } from './components/PlanForm/Step4Team';
 import { Step5Schedule } from './components/PlanForm/Step5Schedule';
 
-const AUDITOR_VISIBLE_STATUSES = ['draft', 'pendingreview', 'pendingdirectorapproval', 'inprogress','submitted','returned','closed', 'rejected'];
-
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
 
@@ -85,20 +83,22 @@ const SQAStaffAuditPlanning = () => {
       return resolvedId != null ? String(resolvedId).trim() : null;
     })();
 
-    // 1) Filter by allowed statuses for Auditor
+    // 1) Status filter:
+    //    - Chỉ ẩn các plan có trạng thái Inactive
+    //    - Các trạng thái khác (kể cả Closed, Rejected, v.v.) đều hiển thị cho Auditor
     const statusFiltered = existingPlans.filter((plan) => {
-      const normStatus = String(plan.status || 'draft').toLowerCase().replace(/\s+/g, '');
-      return AUDITOR_VISIBLE_STATUSES.includes(normStatus);
+      const normStatus = String(plan.status || '').toLowerCase().replace(/\s+/g, '');
+      return normStatus !== 'inactive';
     });
 
-    // 2) If we don't know current user or have no team data, do not show any plans
+    // 2) Nếu không xác định được user hiện tại hoặc không có dữ liệu auditTeams, trả về rỗng
     if (!currentId || !auditTeams.length) {
       return [] as AuditPlan[];
     }
 
     const normalizedCurrentUserId = String(currentId).toLowerCase().trim();
 
-    // Build set of auditIds where current user is in the team (any role)
+    // 3) Xây set các auditId mà user hiện tại nằm trong AuditTeam (bất kỳ vai trò nào)
     const allowedAuditIds = new Set<string>();
     auditTeams.forEach((m: any) => {
       const memberUserId = m?.userId ?? m?.id ?? m?.$id;

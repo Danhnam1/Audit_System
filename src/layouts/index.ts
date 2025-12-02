@@ -22,5 +22,6 @@ export {
   DatabaseIcon,
   DepartmentIcon,
   BackupIcon,
-  TeamIcon
+  TeamIcon,
+  UploadIcon
 } from './icons.tsx';
