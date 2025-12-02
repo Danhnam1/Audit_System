@@ -1054,12 +1054,33 @@ const SQAStaffAuditPlanning = () => {
         console.error('❌ Failed to post schedules', scheduleErr);
       }
 
-      // Refresh plans list
+      // Refresh plans list and related data
       try {
         const merged = await getPlansWithDepartments();
         setExistingPlans(merged);
       } catch (refreshErr) {
         console.error('❌ Failed to refresh plans list', refreshErr);
+      }
+
+      // Refresh audit teams (needed for visiblePlans calculation)
+      try {
+        const teams = await getAuditTeam();
+        setAuditTeams(Array.isArray(teams) ? teams : []);
+      } catch (teamErr) {
+        console.error('❌ Failed to refresh audit teams', teamErr);
+      }
+
+      // Refresh users (needed for visiblePlans calculation)
+      try {
+        const users = await getAdminUsers();
+        setAllUsers(Array.isArray(users) ? users : []);
+        const norm = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, '');
+        const auditors = (users || []).filter((u: any) => norm(u.roleName) === 'auditor');
+        const owners = (users || []).filter((u: any) => norm(u.roleName) === 'auditeeowner');
+        setAuditorOptions(auditors);
+        setOwnerOptions(owners);
+      } catch (userErr) {
+        console.error('❌ Failed to refresh users', userErr);
       }
 
       // Reset form (closes form after successful creation)
