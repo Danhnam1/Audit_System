@@ -9,6 +9,7 @@ import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from 
 import { unwrap } from '../../../utils/normalize';
 import { Toast } from '../../Auditor/AuditPlanning/components/Toast';
 import FindingDetailModal from '../../Auditor/FindingManagement/FindingDetailModal';
+import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 
 interface Audit {
   auditId: string;
@@ -48,6 +49,8 @@ const ActionReview = () => {
   const [feedbackType, setFeedbackType] = useState<'approve' | 'reject'>('approve');
   const [feedback, setFeedback] = useState('');
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+  const [showActionDetailModal, setShowActionDetailModal] = useState(false);
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
 
   // Toast state
   const [toast, setToast] = useState<{
@@ -462,24 +465,36 @@ const ActionReview = () => {
                         {action.status || 'N/A'}
                       </span>
                     </div>
-                    {action.status?.toLowerCase() === 'approved' && (
-                      <div className="mt-4 flex items-center justify-end gap-2 pt-4 border-t border-gray-200">
-                        <button
-                          onClick={() => handleApproveAction(action.actionId)}
-                          disabled={processingActionId === action.actionId}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {processingActionId === action.actionId ? 'Processing...' : 'Approve'}
-                        </button>
-                        <button
-                          onClick={() => handleRejectAction(action.actionId)}
-                          disabled={processingActionId === action.actionId}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {processingActionId === action.actionId ? 'Processing...' : 'Reject'}
-                        </button>
-                      </div>
-                    )}
+                    <div className="mt-4 flex items-center justify-end gap-2 pt-4 border-t border-gray-200">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedActionId(action.actionId);
+                          setShowActionDetailModal(true);
+                        }}
+                        className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                      >
+                        View Detail
+                      </button>
+                      {action.status?.toLowerCase() === 'approved' && (
+                        <>
+                          <button
+                            onClick={() => handleApproveAction(action.actionId)}
+                            disabled={processingActionId === action.actionId}
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {processingActionId === action.actionId ? 'Processing...' : 'Approve'}
+                          </button>
+                          <button
+                            onClick={() => handleRejectAction(action.actionId)}
+                            disabled={processingActionId === action.actionId}
+                            className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {processingActionId === action.actionId ? 'Processing...' : 'Reject'}
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -497,6 +512,19 @@ const ActionReview = () => {
             setSelectedFindingForDetail(null);
           }}
           findingId={selectedFindingForDetail}
+        />
+      )}
+
+      {/* Action Detail Modal */}
+      {showActionDetailModal && selectedActionId && (
+        <ActionDetailModal
+          isOpen={showActionDetailModal}
+          onClose={() => {
+            setShowActionDetailModal(false);
+            setSelectedActionId(null);
+          }}
+          actionId={selectedActionId}
+          showReviewButtons={false}
         />
       )}
 
