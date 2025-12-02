@@ -1,4 +1,4 @@
-import { MainLayout, DepartmentIcon, UsersIcon, ChartBarIcon } from '../../../layouts';
+import { MainLayout, DepartmentIcon, UsersIcon } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect, useMemo } from 'react';
 import { StatCard, Pagination, Button } from '../../../components';

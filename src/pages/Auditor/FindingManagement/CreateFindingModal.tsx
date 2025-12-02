@@ -365,9 +365,6 @@ const CreateFindingModal = ({
   };
 
   if (!isOpen) return null;
-
-  // Get today's date in YYYY-MM-DD format for min attribute
-  const today = new Date().toISOString().split('T')[0];
   
   // Calculate min and max dates for deadline input
   const minDate = fieldworkStartDate 

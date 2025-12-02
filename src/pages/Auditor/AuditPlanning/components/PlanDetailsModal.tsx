@@ -36,7 +36,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   showModal,
   selectedPlanDetails,
   onClose,
-  onEdit,
+  onEdit: _onEdit,
   onSubmitToLead,
   onForwardToDirector,
   onRejectPlan,

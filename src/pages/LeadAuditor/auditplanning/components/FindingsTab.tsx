@@ -1,13 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { DataTable, type TableColumn } from '../../../../components/DataTable';
-import { getFindingById, approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../../api/findings';
+import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../../api/findings';
 import { getActionsByFinding, type Action } from '../../../../api/actions';
-import { getUserById } from '../../../../api/adminUsers';
-import { getDepartmentById } from '../../../../api/departments';
-import { getAttachments } from '../../../../api/attachments';
 import { toast } from 'react-toastify';
 import type { Finding } from '../../../../api/findings';
-import type { Attachment } from '../../../../api/attachments';
 
 interface FindingsTabProps {
   findings: Finding[];
@@ -38,20 +34,7 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
     }
   };
 
-  const formatDateTime = (dateString?: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      return new Date(dateString).toLocaleString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return dateString;
-    }
-  };
+
 
   const getSeverityColor = (severity: string) => {
     const severityLower = severity?.toLowerCase() || '';
@@ -97,6 +80,55 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
       setSelectedFindingActions([]);
     } finally {
       setLoadingActions(false);
+    }
+  };
+
+  const handleRejectClick = (action: Action) => {
+    setSelectedAction(action);
+    setFeedbackType('reject');
+    setFeedbackText('');
+    setShowFeedbackModal(true);
+  };
+
+  const handleApproveClick = (action: Action) => {
+    setSelectedAction(action);
+    setFeedbackType('approve');
+    setFeedbackText('');
+    setShowFeedbackModal(true);
+  };
+
+  const handleSubmitFeedback = async () => {
+    if (!selectedAction) return;
+    
+    if (feedbackType === 'reject' && !feedbackText.trim()) {
+      toast.error('Please provide a reason for rejection');
+      return;
+    }
+
+    setProcessingAction(true);
+    try {
+      if (feedbackType === 'approve') {
+        await approveFindingActionHigherLevel(selectedAction.actionId, feedbackText || '');
+        toast.success('Action approved successfully');
+      } else {
+        await rejectFindingActionHigherLevel(selectedAction.actionId, feedbackText);
+        toast.success('Action rejected successfully');
+      }
+      
+      setShowFeedbackModal(false);
+      setSelectedAction(null);
+      setFeedbackText('');
+      
+      // Reload actions
+      if (selectedFinding) {
+        const actions = await getActionsByFinding(selectedFinding.findingId);
+        setSelectedFindingActions(Array.isArray(actions) ? actions : []);
+      }
+    } catch (err: any) {
+      console.error('Failed to process action', err);
+      toast.error('Failed to process action: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setProcessingAction(false);
     }
   };
 

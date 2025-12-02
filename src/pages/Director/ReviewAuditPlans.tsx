@@ -13,7 +13,6 @@ import { getDepartmentName, getCriterionName } from '../../helpers/auditPlanHelp
 import { getChecklistTemplates } from '../../api/checklists';
 import { MainLayout } from '../../layouts';
 import { Button, StatCard } from '../../components';
-import { getAuditPlanById as fetchFullPlan } from '../../api/audits';
 
 interface AuditPlan {
   id: string; // use string to preserve GUIDs

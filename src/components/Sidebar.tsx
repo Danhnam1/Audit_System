@@ -50,7 +50,7 @@ const getIndentClass = (depth: number) => {
   return depthIndentClasses[index];
 };
 
-export const Sidebar = ({ logo, menuItems, teams, user, theme, className = '' }: SidebarProps) => {
+export const Sidebar = ({ logo: _logo, menuItems, teams, user: _user, theme, className = '' }: SidebarProps) => {
   // Default theme (Aviation Blue - Primary colors)
   const defaultTheme: SidebarTheme = {
     activeBg: 'bg-primary-50',

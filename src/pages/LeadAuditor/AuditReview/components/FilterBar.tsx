@@ -16,11 +16,11 @@ interface FilterBarProps {
 export const FilterBar: React.FC<FilterBarProps> = ({
   filterDepartment,
   sortDateOrder,
-  filterStatus,
+  filterStatus: _filterStatus,
   departments,
   onFilterDepartmentChange,
   onSortDateOrderChange,
-  onFilterStatusChange,
+  onFilterStatusChange: _onFilterStatusChange,
   onClearFilters,
   filteredCount,
   totalCount,

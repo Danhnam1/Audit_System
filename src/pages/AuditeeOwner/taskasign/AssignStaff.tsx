@@ -18,10 +18,14 @@ const AssignStaff = () => {
   const [finding, setFinding] = useState<Finding | null>(null);
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [selectedStaff, setSelectedStaff] = useState('');
-  const [notes, setNotes] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [internalDeadline, setInternalDeadline] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [sendEmail, setSendEmail] = useState(false);
+  const [setReminder, setSetReminder] = useState(false);
+  const [notes, _setNotes] = useState('');
+  const [_loading, setLoading] = useState(true);
+  const [_submitting, setSubmitting] = useState(false);
+  const [_error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -115,31 +119,21 @@ const AssignStaff = () => {
         </div>
 
         {/* Finding Info */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">
-              Finding: {finding.code} - {finding.title} ({finding.priority})
-            </h2>
-            <p className="text-sm text-gray-600">SQA deadline: {finding.deadline} (4 days remaining)</p>
-          </div>
+        {finding && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                Finding: {finding.title}
+              </h2>
+              <p className="text-sm text-gray-600">SQA deadline: {finding.deadline ? new Date(finding.deadline).toLocaleDateString() : 'N/A'}</p>
+            </div>
 
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">📝 Finding description (from Audit)</h3>
-            <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{finding.description}</p>
+            <div className="mb-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">📝 Finding description (from Audit)</h3>
+              <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{finding.description || 'N/A'}</p>
+            </div>
           </div>
-
-          <div className="mb-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">🎯 Required Corrective Actions</h3>
-            <ul className="space-y-1">
-              {finding.correctiveAction.map((action, index) => (
-                <li key={index} className="text-sm text-gray-700 flex items-start gap-2">
-                  <span className="text-blue-600 mt-1">•</span>
-                  <span>{action}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        )}
 
         {/* Assignment Form */}
         <div className="bg-white rounded-lg shadow p-6">
@@ -158,8 +152,8 @@ const AssignStaff = () => {
               >
                 <option value="">Select staff...</option>
                 {staffMembers.map((staff) => (
-                  <option key={staff.id} value={staff.id}>
-                    {staff.name} ({staff.role})
+                  <option key={staff.userId} value={staff.userId}>
+                    {staff.fullName} {staff.role ? `(${staff.role})` : ''}
                   </option>
                 ))}
               </select>

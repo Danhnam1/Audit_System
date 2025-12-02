@@ -194,9 +194,6 @@ const HistoryUploadPage = () => {
           if (res.status === 'fulfilled') {
             const rows = Array.isArray(res.value) ? res.value : [res.value];
             rows.filter(Boolean).forEach((d: any) => {
-              const documentType = d.documentType || '';
-              const contentType = d.contentType || '';
-              const uploadedAt = d.uploadedAt || '';
               const sizeBytes = Number(d.sizeBytes ?? 0) || 0;
               const fileName = d.fileName || d.originalFileName || d.originalName || d.name || '';
               const url = d.blobPath || '';

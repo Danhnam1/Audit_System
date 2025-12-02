@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MainLayout } from '../../layouts';
-import { useNavigate } from 'react-router-dom';
-import { getMyAssignedActions, type Action } from '../../api/actions';
+import { getMyAssignedActions } from '../../api/actions';
 import ActionDetailModal from './ActionDetailModal';
 import StartActionModal from './StartActionModal';
 
@@ -20,7 +19,6 @@ interface Task {
 }
 
 const AssignedTasks = () => {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'action' | 'reject' | 'completed'>('action');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,15 +132,6 @@ const AssignedTasks = () => {
     return priorityA - priorityB;
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Completed': return 'bg-green-100 text-green-800';
-      case 'In Progress': return 'bg-blue-100 text-blue-800';
-      case 'Pending': return 'bg-yellow-100 text-yellow-800';
-      case 'Overdue': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
 
   const getProgressColor = (percent: number) => {
     if (percent === 0) return 'bg-gray-300';

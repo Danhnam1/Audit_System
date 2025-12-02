@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { DataTable, type TableColumn } from '../../../../components/DataTable';
 
 interface Department {
