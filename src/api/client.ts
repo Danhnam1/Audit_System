@@ -1,5 +1,6 @@
 // API client configuration
 import axios from 'axios';
+import useAuthStore from '../store/useAuthStore';
 
 // Get base URL from environment variable or use default
 // URL should be: https://moca.mom/api (NO port 80 for HTTPS)
@@ -43,7 +44,7 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   (config) => {
     // Add auth token if available
-    const token = localStorage.getItem('token');
+    const token = useAuthStore.getState().token;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

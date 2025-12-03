@@ -1,4 +1,4 @@
-import apiClient from './client';
+import { apiClient } from '../hooks/axios';
 
 export interface AuditAssignment {
   assignmentId: string;
@@ -59,27 +59,76 @@ export const getAuditAssignments = async (): Promise<AuditAssignment[]> => {
 
 // Get assignments by audit ID
 export const getAuditAssignmentsByAudit = async (auditId: string): Promise<AuditAssignment[]> => {
-  const res = await apiClient.get(`/AuditAssignment/audit/${auditId}`);
-  return res.data;
+  const res: any = await apiClient.get(`/AuditAssignment/audit/${auditId}`);
+  // apiClient from hooks/axios returns response.data, so res is already the data
+  if (res?.$values && Array.isArray(res.$values)) {
+    return res.$values;
+  }
+  if (Array.isArray(res)) {
+    return res;
+  }
+  if (res?.data) {
+    const data = res.data;
+    if (data?.$values && Array.isArray(data.$values)) {
+      return data.$values;
+    }
+    if (Array.isArray(data)) {
+      return data;
+    }
+  }
+  return [];
 };
 
 // Get assignments by auditor ID
 export const getAuditAssignmentsByAuditor = async (auditorId: string): Promise<AuditAssignment[]> => {
-  const res = await apiClient.get(`/AuditAssignment/auditor/${auditorId}`);
-  return res.data;
+  const res: any = await apiClient.get(`/AuditAssignment/auditor/${auditorId}`);
+  // apiClient from hooks/axios returns response.data, so res is already the data
+  if (res?.$values && Array.isArray(res.$values)) {
+    return res.$values;
+  }
+  if (Array.isArray(res)) {
+    return res;
+  }
+  if (res?.data) {
+    const data = res.data;
+    if (data?.$values && Array.isArray(data.$values)) {
+      return data.$values;
+    }
+    if (Array.isArray(data)) {
+      return data;
+    }
+  }
+  return [];
 };
 
 // Get assignments by department ID
 export const getAuditAssignmentsByDepartment = async (deptId: number): Promise<AuditAssignment[]> => {
-  const res = await apiClient.get(`/AuditAssignment/department/${deptId}`);
-  return res.data;
+  const res: any = await apiClient.get(`/AuditAssignment/department/${deptId}`);
+  // apiClient from hooks/axios returns response.data, so res is already the data
+  if (res?.$values && Array.isArray(res.$values)) {
+    return res.$values;
+  }
+  if (Array.isArray(res)) {
+    return res;
+  }
+  if (res?.data) {
+    const data = res.data;
+    if (data?.$values && Array.isArray(data.$values)) {
+      return data.$values;
+    }
+    if (Array.isArray(data)) {
+      return data;
+    }
+  }
+  return [];
 };
 
 // Create new audit assignment
 export const createAuditAssignment = async (dto: CreateAuditAssignmentDto): Promise<AuditAssignment> => {
   const pascalDto = toPascalCase(dto);
-  const res = await apiClient.post('/AuditAssignment', pascalDto);
-  return res.data;
+  const res: any = await apiClient.post('/AuditAssignment', pascalDto);
+  // apiClient from hooks/axios returns response.data, so res is already the data
+  return res;
 };
 
 // Update audit assignment
@@ -88,8 +137,9 @@ export const updateAuditAssignment = async (
   dto: Partial<CreateAuditAssignmentDto>
 ): Promise<AuditAssignment> => {
   const pascalDto = toPascalCase(dto);
-  const res = await apiClient.put(`/AuditAssignment/${assignmentId}`, pascalDto);
-  return res.data;
+  const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}`, pascalDto);
+  // apiClient from hooks/axios returns response.data, so res is already the data
+  return res;
 };
 
 // Delete audit assignment

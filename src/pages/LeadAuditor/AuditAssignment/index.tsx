@@ -7,6 +7,7 @@ import { createAuditAssignment, getAuditAssignments } from '../../../api/auditAs
 import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
 import { unwrap } from '../../../utils/normalize';
+import { toast } from 'react-toastify';
 
 interface Department {
   deptId: number;
@@ -227,8 +228,10 @@ export default function AuditAssignment() {
         // Just log the error
       }
       
-      // Success - close modals and refresh assignments
+      // Success - show toast and close modals
+      toast.success('Assign successful');
       handleCloseModal();
+      
       // Reload assignments to update UI
       const updatedAssignments = await getAuditAssignments();
       setAssignments(updatedAssignments || []);
@@ -251,7 +254,7 @@ export default function AuditAssignment() {
       }
     } catch (err: any) {
       console.error('Failed to assign auditor:', err);
-      alert(err?.message || 'Failed to assign auditor. Please try again.');
+      toast.error(err?.message || 'Failed to assign auditor. Please try again.');
     } finally {
       setSubmitting(false);
     }
