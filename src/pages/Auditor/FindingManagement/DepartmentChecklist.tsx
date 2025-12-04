@@ -53,12 +53,6 @@ const DepartmentChecklist = () => {
   const [verifiedActionsCount, setVerifiedActionsCount] = useState(0);
   const [processingActionId, setProcessingActionId] = useState<string | null>(null);
   
-  // Feedback modal state
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [selectedActionForFeedback, setSelectedActionForFeedback] = useState<Action | null>(null);
-  const [feedbackType, setFeedbackType] = useState<'approve' | 'reject'>('approve');
-  const [feedbackValue, setFeedbackValue] = useState('');
-  
   // Action detail modal state
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
@@ -292,46 +286,6 @@ const DepartmentChecklist = () => {
     }
   };
 
-  const closeFeedbackModal = () => {
-    setShowFeedbackModal(false);
-    setSelectedActionForFeedback(null);
-    setFeedbackValue('');
-  };
-
-  const handleSubmitFeedback = async () => {
-    if (!selectedActionForFeedback) return;
-    
-    if (feedbackType === 'reject' && !feedbackValue.trim()) {
-      showToast('Please enter feedback when rejecting an action', 'error');
-      return;
-    }
-    
-    setProcessingActionId(selectedActionForFeedback.actionId);
-    try {
-      if (feedbackType === 'approve') {
-        await approveFindingAction(selectedActionForFeedback.actionId);
-        showToast('Action approved successfully', 'success');
-      } else {
-        await returnFindingAction(selectedActionForFeedback.actionId, feedbackValue.trim());
-        showToast('Action rejected successfully', 'success');
-      }
-      
-      closeFeedbackModal();
-      
-      // Reload actions
-      if (selectedFindingForActions) {
-        const actions = await getActionsByFinding(selectedFindingForActions.findingId);
-        setFindingActions(Array.isArray(actions) ? actions : []);
-        // Reload verified count
-        await loadMyFindings();
-      }
-    } catch (err: any) {
-      console.error('Error processing action:', err);
-      showToast(err?.message || `Failed to ${feedbackType} action`, 'error');
-    } finally {
-      setProcessingActionId(null);
-    }
-  };
 
   return (
     <MainLayout user={layoutUser}>
@@ -860,58 +814,6 @@ const DepartmentChecklist = () => {
           />
         );
       })()}
-
-      {/* Feedback Modal (approve/reject) */}
-      {showFeedbackModal && selectedActionForFeedback && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-            onClick={closeFeedbackModal}
-          />
-          <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full p-4 sm:p-6 z-50">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">
-              {feedbackType === 'approve' ? '✓ Approve Action' : '✕ Reject Action'}
-            </h3>
-
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm font-medium text-gray-700 mb-1">Action: {selectedActionForFeedback.title}</p>
-              <p className="text-xs text-gray-600">{selectedActionForFeedback.description || 'No description'}</p>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {feedbackType === 'reject' ? 'Feedback (Required)' : 'Feedback (Optional)'}
-              </label>
-              <textarea
-                value={feedbackValue}
-                onChange={(e) => setFeedbackValue(e.target.value)}
-                rows={4}
-                placeholder={feedbackType === 'reject' ? 'Enter a reason for rejection...' : 'Enter feedback if needed...'}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-              />
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <button
-                onClick={handleSubmitFeedback}
-                disabled={processingActionId !== null || (feedbackType === 'reject' && !feedbackValue.trim())}
-                className={`flex-1 px-4 py-2 rounded-lg text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-                  feedbackType === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
-                }`}
-              >
-                {processingActionId !== null ? 'Processing...' : feedbackType === 'approve' ? 'Confirm approval' : 'Confirm rejection'}
-              </button>
-              <button
-                onClick={closeFeedbackModal}
-                disabled={processingActionId !== null}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium disabled:opacity-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Toast Notification */}
       <Toast
