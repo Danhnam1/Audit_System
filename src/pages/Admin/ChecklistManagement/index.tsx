@@ -4,6 +4,23 @@ import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Pagination, Button } from '../../../components';
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
   getChecklistTemplates,
   createChecklistTemplate,
   updateChecklistTemplate,
@@ -63,6 +80,16 @@ const AdminChecklistManagement = () => {
   const [updatingItem, setUpdatingItem] = useState(false);
   const [showDeleteItemModal, setShowDeleteItemModal] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<ChecklistItemDto | null>(null);
+  const [orderError, setOrderError] = useState<string>('');
+  const [updatingOrders, setUpdatingOrders] = useState(false);
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -234,6 +261,7 @@ const AdminChecklistManagement = () => {
     if (!id) return;
 
     try {
+      // Backend will set isActive to false when delete is called
       await deleteChecklistTemplate(String(id));
       await fetchTemplates();
       closeDeleteModal();
@@ -269,6 +297,17 @@ const AdminChecklistManagement = () => {
       toast.error('Question text is required.');
       return;
     }
+    
+    // Validate order uniqueness
+    const orderValue = itemForm.order || 0;
+    const orderExists = items.some(item => item.order === orderValue);
+    if (orderExists) {
+      setOrderError(`Order ${orderValue} already exists. Please choose a different order.`);
+      toast.error(`Order ${orderValue} already exists. Please choose a different order.`);
+      return;
+    }
+    
+    setOrderError('');
     const templateId = selectedTemplate.templateId || selectedTemplate.$id;
     if (!templateId) return;
 
@@ -277,7 +316,7 @@ const AdminChecklistManagement = () => {
       await createChecklistItem({
         templateId: String(templateId),
         section: itemForm.section?.trim() || undefined,
-        order: itemForm.order || 0,
+        order: orderValue,
         questionText: itemForm.questionText.trim(),
         answerType: itemForm.answerType || 'Text',
         status: itemForm.status || 'Active',
@@ -292,6 +331,7 @@ const AdminChecklistManagement = () => {
         status: 'Active',
         severityDefault: 'Medium',
       });
+      setOrderError('');
       setShowItemForm(false);
       toast.success('Checklist item created successfully!');
       await fetchItems(String(templateId));
@@ -314,6 +354,7 @@ const AdminChecklistManagement = () => {
       status: item.status || 'Active',
       severityDefault: item.severityDefault || 'Medium',
     });
+    setOrderError('');
     setEditingItem({ itemId: item.itemId || item.$id || null });
     setShowItemForm(true);
   };
@@ -325,6 +366,21 @@ const AdminChecklistManagement = () => {
       toast.error('Question text is required.');
       return;
     }
+    
+    // Validate order uniqueness (exclude current item being edited)
+    const orderValue = itemForm.order || 0;
+    const orderExists = items.some(item => {
+      const itemId = item.itemId || item.$id;
+      const editingItemId = editingItem.itemId;
+      return item.order === orderValue && itemId !== editingItemId;
+    });
+    if (orderExists) {
+      setOrderError(`Order ${orderValue} already exists. Please choose a different order.`);
+      toast.error(`Order ${orderValue} already exists. Please choose a different order.`);
+      return;
+    }
+    
+    setOrderError('');
     const templateId = selectedTemplate.templateId || selectedTemplate.$id;
     if (!templateId) return;
 
@@ -332,12 +388,13 @@ const AdminChecklistManagement = () => {
       setUpdatingItem(true);
       await updateChecklistItem(editingItem.itemId, {
         section: itemForm.section?.trim() || undefined,
-        order: itemForm.order || 0,
+        order: orderValue,
         questionText: itemForm.questionText.trim(),
         answerType: itemForm.answerType || 'Text',
         status: itemForm.status || 'Active',
         severityDefault: itemForm.severityDefault || 'Medium',
       });
+      setOrderError('');
       setShowItemForm(false);
       setEditingItem(null);
       toast.success('Checklist item updated successfully!');
@@ -380,13 +437,170 @@ const AdminChecklistManagement = () => {
     }
   };
 
+  // Filter templates to only show active ones (isActive !== false)
+  const activeTemplates = useMemo(() => {
+    return templates.filter((template) => template.isActive !== false);
+  }, [templates]);
+
+  // Sort items by order for display
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [items]);
+
+  // Handle drag end - update order of items
+  const buildItemUpdatePayload = (
+    item: ChecklistItemDto,
+    overrides: Partial<CreateChecklistItemDto> = {}
+  ) => {
+    const templateId = item.templateId || selectedTemplate?.templateId || selectedTemplate?.$id || '';
+    return {
+      templateId: String(templateId),
+      section: item.section || undefined,
+      order: item.order ?? 0,
+      questionText: item.questionText || '',
+      answerType: item.answerType || 'Text',
+      status: item.status || 'Active',
+      severityDefault: item.severityDefault || 'Medium',
+      ...overrides,
+    };
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !selectedTemplate) return;
+
+    const oldIndex = sortedItems.findIndex(
+      (item) => (item.itemId || item.$id) === active.id
+    );
+    const newIndex = sortedItems.findIndex(
+      (item) => (item.itemId || item.$id) === over.id
+    );
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const templateId = selectedTemplate.templateId || selectedTemplate.$id;
+    if (!templateId) return;
+
+    const previousItems = items;
+    const reorderedItems = arrayMove(sortedItems, oldIndex, newIndex);
+    const updatedItems = reorderedItems.map((item, idx) => ({
+      ...item,
+      order: idx + 1,
+    }));
+    const previousOrderMap = previousItems.reduce<Record<string, number | undefined>>((acc, item) => {
+      const itemId = item.itemId || item.$id;
+      if (itemId) {
+        acc[itemId] = item.order;
+      }
+      return acc;
+    }, {});
+
+    setItems(updatedItems);
+
+    try {
+      setUpdatingOrders(true);
+
+      for (const item of updatedItems) {
+        const itemId = item.itemId || item.$id;
+        if (!itemId) continue;
+        if (previousOrderMap[itemId] === item.order) continue;
+
+        await updateChecklistItem(String(itemId), buildItemUpdatePayload(item));
+      }
+
+      await fetchItems(String(templateId));
+      toast.success('Items order updated successfully!');
+    } catch (err: any) {
+      console.error('Failed to update items order', err);
+      setItems(previousItems);
+      toast.error('Failed to update items order. Please try again.');
+    } finally {
+      setUpdatingOrders(false);
+    }
+  };
+
+  // Sortable Row Component
+  const SortableRow = ({ item, index }: { item: ChecklistItemDto; index: number }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({
+      id: item.itemId || item.$id || `item-${index}`,
+    });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+      <tr
+        ref={setNodeRef}
+        style={style}
+        className={`hover:bg-gray-50 ${isDragging ? 'bg-gray-100' : ''}`}
+      >
+        <td className="px-4 py-2 text-center whitespace-nowrap">
+          <div className="flex items-center justify-center gap-2">
+            <button
+              {...attributes}
+              {...listeners}
+              className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600"
+              title="Drag to reorder"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
+              </svg>
+            </button>
+            <span className="text-sm text-gray-700">{item.order ?? index + 1}</span>
+          </div>
+        </td>
+        <td className="px-4 py-2 text-center">
+          <span className="text-sm text-gray-700">{item.section || '—'}</span>
+        </td>
+        <td className="px-4 py-2 text-center">
+          <p className="text-sm text-gray-700 line-clamp-2">{item.questionText}</p>
+        </td>
+        <td className="px-4 py-2 text-center whitespace-nowrap">
+          <span className="text-sm text-gray-700">{item.answerType || 'Text'}</span>
+        </td>
+        <td className="px-4 py-2 text-center whitespace-nowrap">
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={() => openEditItem(item)}
+              className="p-1.5 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+              title="Edit"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => openDeleteItemModal(item)}
+              className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+              title="Delete"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
   // Pagination logic
-  const totalPages = Math.ceil(templates.length / itemsPerPage);
+  const totalPages = Math.ceil(activeTemplates.length / itemsPerPage);
   const paginatedTemplates = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    return templates.slice(startIndex, endIndex);
-  }, [templates, currentPage]);
+    return activeTemplates.slice(startIndex, endIndex);
+  }, [activeTemplates, currentPage]);
 
   return (
     <MainLayout user={layoutUser}>
@@ -656,7 +870,7 @@ const AdminChecklistManagement = () => {
                 </table>
               </div>
 
-              {templates.length > 0 && (
+              {activeTemplates.length > 0 && (
                 <div className="px-6 py-4 border-t border-gray-200 flex justify-center">
                   <Pagination
                     currentPage={currentPage}
@@ -741,15 +955,22 @@ const AdminChecklistManagement = () => {
               <div className="mb-4">
                 <Button
                   onClick={() => {
+                    // Auto-fill section with department name from template
+                    let sectionValue = '';
+                    if (selectedTemplate.deptId != null) {
+                      const dept = departments.find(d => d.deptId === selectedTemplate.deptId);
+                      sectionValue = dept?.name || String(selectedTemplate.deptId);
+                    }
                     setItemForm({
                       templateId: selectedTemplate.templateId || selectedTemplate.$id || '',
-                      section: '',
+                      section: sectionValue,
                       order: items.length,
                       questionText: '',
                       answerType: 'Text',
                       status: 'Active',
                       severityDefault: 'Medium',
                     });
+                    setOrderError('');
                     setEditingItem(null);
                     setShowItemForm(true);
                   }}
@@ -778,18 +999,42 @@ const AdminChecklistManagement = () => {
                           onChange={(e) => setItemForm({ ...itemForm, section: e.target.value })}
                           type="text"
                           placeholder="Section name"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          readOnly={!editingItem}
+                          className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm ${
+                            !editingItem 
+                              ? 'bg-gray-100 cursor-not-allowed' 
+                              : 'focus:ring-2 focus:ring-primary-500 focus:border-primary-500'
+                          }`}
                         />
+                        {!editingItem && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Auto-filled with department name from template
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Order</label>
                         <input
                           value={itemForm.order || 0}
-                          onChange={(e) => setItemForm({ ...itemForm, order: parseInt(e.target.value) || 0 })}
+                          onChange={(e) => {
+                            const newOrder = parseInt(e.target.value) || 0;
+                            setItemForm({ ...itemForm, order: newOrder });
+                            // Clear error when user changes order
+                            if (orderError) {
+                              setOrderError('');
+                            }
+                          }}
                           type="number"
                           min="0"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                          className={`w-full border rounded-lg px-3 py-2 text-sm ${
+                            orderError
+                              ? 'border-red-300 focus:ring-2 focus:ring-red-500 focus:border-red-500'
+                              : 'border-gray-300 focus:ring-2 focus:ring-primary-500 focus:border-primary-500'
+                          }`}
                         />
+                        {orderError && (
+                          <p className="text-xs text-red-600 mt-1">{orderError}</p>
+                        )}
                       </div>
                     </div>
                     <div>
@@ -840,6 +1085,7 @@ const AdminChecklistManagement = () => {
                         onClick={() => {
                           setShowItemForm(false);
                           setEditingItem(null);
+                          setOrderError('');
                         }}
                         variant="secondary"
                         size="sm"
@@ -852,69 +1098,47 @@ const AdminChecklistManagement = () => {
               )}
 
               {/* Items Table */}
-              {loadingItems ? (
-                <div className="text-center py-8 text-gray-500">Loading items...</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Order</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Section</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Question</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Answer Type</th>
-                        <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {items.map((item, idx) => (
-                        <tr key={item.itemId || item.$id || idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 text-center whitespace-nowrap">
-                            <span className="text-sm text-gray-700">{item.order ?? idx + 1}</span>
-                          </td>
-                          <td className="px-4 py-2 text-center">
-                            <span className="text-sm text-gray-700">{item.section || '—'}</span>
-                          </td>
-                          <td className="px-4 py-2 text-center">
-                            <p className="text-sm text-gray-700 line-clamp-2">{item.questionText}</p>
-                          </td>
-                          <td className="px-4 py-2 text-center whitespace-nowrap">
-                            <span className="text-sm text-gray-700">{item.answerType || 'Text'}</span>
-                          </td>
-                          <td className="px-4 py-2 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => openEditItem(item)}
-                                className="p-1.5 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
-                                title="Edit"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                              <button
-                                onClick={() => openDeleteItemModal(item)}
-                                className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Delete"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                      {items.length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                            No items found. Click "Add Item" to create one.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+              {loadingItems || updatingOrders ? (
+                <div className="text-center py-8 text-gray-500">
+                  {updatingOrders ? 'Updating order...' : 'Loading items...'}
                 </div>
+              ) : (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Order</th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Section</th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Question</th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Answer Type</th>
+                          <th className="px-4 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Actions</th>
+                        </tr>
+                      </thead>
+                      <SortableContext
+                        items={sortedItems.map((item) => item.itemId || item.$id || '')}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <tbody className="divide-y divide-gray-200">
+                          {sortedItems.map((item, idx) => (
+                            <SortableRow key={item.itemId || item.$id || idx} item={item} index={idx} />
+                          ))}
+                          {sortedItems.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                                No items found. Click "Add Item" to create one.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </SortableContext>
+                    </table>
+                  </div>
+                </DndContext>
               )}
             </div>
           </div>

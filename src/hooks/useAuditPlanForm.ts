@@ -24,8 +24,8 @@ export const useAuditPlanForm = () => {
   const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
   const [selectedCriteriaIds, setSelectedCriteriaIds] = useState<string[]>([]);
 
-  // Step 3: Checklist
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  // Step 3: Checklist (multi-select)
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
 
   // Step 4: Team
   const [selectedLeadId, setSelectedLeadId] = useState<string>('');
@@ -48,7 +48,7 @@ export const useAuditPlanForm = () => {
     setPeriodTo('');
     setLevel('academy');
     setSelectedDeptIds([]);
-    setSelectedTemplateId(null);
+    setSelectedTemplateIds([]);
     setSelectedCriteriaIds([]);
     setSelectedLeadId('');
     setSelectedAuditorIds([]);
@@ -73,7 +73,7 @@ export const useAuditPlanForm = () => {
     setPeriodTo('');
     setLevel('academy');
     setSelectedDeptIds([]);
-    setSelectedTemplateId(null);
+    setSelectedTemplateIds([]);
     setSelectedCriteriaIds([]);
     setSelectedLeadId('');
     setSelectedAuditorIds([]);
@@ -121,7 +121,9 @@ export const useAuditPlanForm = () => {
     
     // Step 3: Template and criteria
     if (details.templateId) {
-      setSelectedTemplateId(details.templateId);
+      setSelectedTemplateIds([String(details.templateId)]);
+    } else {
+      setSelectedTemplateIds([]);
     }
     
     if (details.criteria?.values?.length > 0) {
@@ -206,8 +208,8 @@ export const useAuditPlanForm = () => {
     setSelectedCriteriaIds,
     
     // Step 3
-    selectedTemplateId,
-    setSelectedTemplateId,
+    selectedTemplateIds,
+    setSelectedTemplateIds,
     
     // Step 4
     selectedLeadId,

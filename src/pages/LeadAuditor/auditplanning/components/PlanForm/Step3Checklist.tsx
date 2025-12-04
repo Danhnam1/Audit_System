@@ -2,26 +2,32 @@ import React, { useState } from 'react';
 
 interface Step3ChecklistProps {
   checklistTemplates: any[];
-  selectedTemplateId: string | null;
-  onTemplateSelect: (id: string) => void;
+  selectedTemplateIds: string[];
+  onSelectionChange: (ids: string[]) => void;
 }
 
 export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
   checklistTemplates,
-  selectedTemplateId,
-  onTemplateSelect,
+  selectedTemplateIds,
+  onSelectionChange,
 }) => {
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
 
   const handleTemplateClick = (templateId: string) => {
-    // Toggle expansion
-    if (expandedTemplateId === String(templateId)) {
+    const normalizedId = String(templateId);
+    const isSelected = selectedTemplateIds.includes(normalizedId);
+
+    if (isSelected) {
+      onSelectionChange(selectedTemplateIds.filter((id) => id !== normalizedId));
+    } else {
+      onSelectionChange([...selectedTemplateIds, normalizedId]);
+    }
+
+    if (expandedTemplateId === normalizedId) {
       setExpandedTemplateId(null);
     } else {
-      setExpandedTemplateId(String(templateId));
+      setExpandedTemplateId(normalizedId);
     }
-    // Select template
-    onTemplateSelect(templateId);
   };
 
   return (
@@ -30,15 +36,19 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Select a Checklist Template *
+            Select one or more Checklist Templates *
           </label>
+          <p className="text-xs text-gray-500 mb-2">
+            Multiple selections are allowed. The first selection will be set as the primary template.
+          </p>
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {checklistTemplates.length === 0 ? (
               <p className="text-sm text-gray-500">No templates available.</p>
             ) : (
               checklistTemplates.map((template: any) => {
                 const templateId = template.templateId;
-                const isSelected = String(selectedTemplateId) === String(templateId);
+                const normalizedId = String(templateId);
+                const isSelected = selectedTemplateIds.includes(normalizedId);
                 const isExpanded = expandedTemplateId === String(templateId);
                 return (
                   <div
@@ -62,7 +72,7 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
                           <div className="flex gap-2 mt-2">
                             {template.version && (
                               <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
-                                v{template.version}
+                                {template.version}
                               </span>
                             )}
                             {template.category && (
@@ -74,19 +84,12 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
                         )}
                       </div>
                       <div className="ml-3 flex items-center gap-2">
-                        {isSelected && (
-                          <svg
-                            className="w-6 h-6 text-primary-600"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
+                        <input
+                          type="checkbox"
+                          readOnly
+                          checked={isSelected}
+                          className="w-5 h-5 text-primary-600 border-gray-300 rounded"
+                        />
                         {template.description && (
                           <svg
                             className={`w-5 h-5 text-gray-400 transition-transform ${

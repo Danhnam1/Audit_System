@@ -14,6 +14,7 @@ import { addAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule'
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
 import { getAuditPlanById, updateAuditPlan, deleteAuditPlan, submitToLeadAuditor } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
+import { getAuditChecklistTemplateMapsByAudit, syncAuditChecklistTemplateMaps } from '../../../api/auditChecklistTemplateMaps';
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
 
 // Import custom hooks
@@ -145,9 +146,64 @@ const SQAStaffAuditPlanning = () => {
   // Delete confirmation modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [planToDeleteId, setPlanToDeleteId] = useState<string | null>(null);
+  const [templatesForSelectedPlan, setTemplatesForSelectedPlan] = useState<any[]>([]);
 
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
+
+  const hydrateTemplateSelection = async (auditId: string, fallbackTemplateId?: string | number | null) => {
+    const normalizedFallback = fallbackTemplateId != null ? [String(fallbackTemplateId)] : [];
+    if (!auditId) {
+      formState.setSelectedTemplateIds(normalizedFallback);
+      setTemplatesForSelectedPlan([]);
+      return;
+    }
+
+    try {
+      const maps = await getAuditChecklistTemplateMapsByAudit(String(auditId));
+      const normalizedRecords = (maps || [])
+        .map((map: any) => ({
+          raw: map,
+          templateId: map.templateId ?? map.checklistTemplateId ?? map.template?.templateId ?? map.template?.id,
+        }))
+        .filter((x: any) => x.templateId != null);
+
+      const idList = normalizedRecords.map((x: any) => String(x.templateId));
+      const uniqueIds = Array.from(new Set(idList));
+
+      if (uniqueIds.length > 0) {
+        formState.setSelectedTemplateIds(uniqueIds);
+
+        const templateCards = normalizedRecords.map((x: any) => {
+          const tplFromList = checklistTemplates.find(
+            (tpl: any) =>
+              String(tpl.templateId || tpl.id || tpl.$id) === String(x.templateId)
+          );
+          return {
+            ...(tplFromList || {}),
+            templateId: x.templateId,
+          };
+        });
+
+        setTemplatesForSelectedPlan(templateCards);
+        return;
+      }
+
+      setTemplatesForSelectedPlan([]);
+    } catch (err) {
+      console.warn('Failed to load checklist template maps for audit', auditId, err);
+    }
+
+    formState.setSelectedTemplateIds(normalizedFallback);
+    setTemplatesForSelectedPlan(
+      normalizedFallback.length
+        ? checklistTemplates
+            .filter((tpl: any) =>
+              normalizedFallback.includes(String(tpl.templateId || tpl.id || tpl.$id))
+            )
+        : []
+    );
+  };
 
   // Helpers: date and schedule validations
   const toDate = (s?: string | null) => (s ? new Date(s) : null);
@@ -297,8 +353,8 @@ const SQAStaffAuditPlanning = () => {
   }, [formState.level, formState.selectedDeptIds, formState.selectedCriteriaIds]);
 
   const validateStep3 = useMemo(() => {
-    return formState.selectedTemplateId !== null && formState.selectedTemplateId !== '';
-  }, [formState.selectedTemplateId]);
+    return Array.isArray(formState.selectedTemplateIds) && formState.selectedTemplateIds.length > 0;
+  }, [formState.selectedTemplateIds]);
 
   const validateStep4 = useMemo(() => {
     return formState.selectedAuditorIds.length >= 2;
@@ -562,6 +618,7 @@ const SQAStaffAuditPlanning = () => {
         };
 
         setSelectedPlanDetails(detailsWithRejection);
+        await hydrateTemplateSelection(auditId, detailsWithRejection.templateId);
         setShowDetailsModal(true);
         return;
       } catch (apiError) {
@@ -670,6 +727,7 @@ const SQAStaffAuditPlanning = () => {
         );
 
         setSelectedPlanDetails(basicDetails);
+        await hydrateTemplateSelection(auditId, basicDetails.templateId);
         setShowDetailsModal(true);
         return;
       }
@@ -789,6 +847,7 @@ const SQAStaffAuditPlanning = () => {
 
       // Use formState.loadPlanForEdit with the best-effort details
       formState.loadPlanForEdit(details);
+      await hydrateTemplateSelection(auditId, details?.templateId);
 
     } catch (error) {
       console.error('❌ Failed to load plan for editing', error);
@@ -852,7 +911,7 @@ const SQAStaffAuditPlanning = () => {
       formState.level !== 'academy' ||
       formState.selectedDeptIds.length > 0 ||
       formState.selectedCriteriaIds.length > 0 ||
-      formState.selectedTemplateId !== null ||
+      formState.selectedTemplateIds.length > 0 ||
       formState.selectedLeadId !== '' ||
       formState.selectedAuditorIds.length > 0 ||
       formState.kickoffMeeting !== '' ||
@@ -870,7 +929,7 @@ const SQAStaffAuditPlanning = () => {
     formState.level,
     formState.selectedDeptIds,
     formState.selectedCriteriaIds,
-    formState.selectedTemplateId,
+    formState.selectedTemplateIds,
     formState.selectedLeadId,
     formState.selectedAuditorIds,
     formState.kickoffMeeting,
@@ -899,8 +958,8 @@ const SQAStaffAuditPlanning = () => {
       formState.setCurrentStep(1);
       return;
     }
-    if (!formState.selectedTemplateId) {
-      toast.warning('Please select a Checklist Template (Step 3).');
+    if (!formState.selectedTemplateIds.length) {
+      toast.warning('Please select at least one Checklist Template (Step 3).');
       formState.setCurrentStep(3);
       return;
     }
@@ -927,11 +986,13 @@ const SQAStaffAuditPlanning = () => {
       return;
     }
 
+    const primaryTemplateId = formState.selectedTemplateIds[0];
+
     const payload: any = {
       title: formState.title || 'Untitled Plan',
       type: formState.auditType || 'Internal',
       scope: formState.level === 'academy' ? 'Academy' : 'Department',
-      templateId: formState.selectedTemplateId || undefined,
+      templateId: primaryTemplateId || undefined,
       startDate: formState.periodFrom ? new Date(formState.periodFrom).toISOString() : undefined,
       endDate: formState.periodTo ? new Date(formState.periodTo).toISOString() : undefined,
       status: 'Draft',
@@ -955,6 +1016,16 @@ const SQAStaffAuditPlanning = () => {
       }
 
       const newAuditId = auditId;
+
+      try {
+        await syncAuditChecklistTemplateMaps({
+          auditId: String(newAuditId),
+          templateIds: formState.selectedTemplateIds,
+        });
+      } catch (templateMapErr) {
+        console.error('❌ Failed to sync checklist templates', templateMapErr);
+        toast.error('Failed to save checklist template mappings. Please retry from Step 3.');
+      }
 
       // Attach departments
       try {
@@ -1224,8 +1295,8 @@ const SQAStaffAuditPlanning = () => {
               {formState.currentStep === 3 && (
                 <Step3Checklist
                   checklistTemplates={checklistTemplates}
-                  selectedTemplateId={formState.selectedTemplateId}
-                  onTemplateSelect={(id: string) => formState.setSelectedTemplateId(id)}
+                  selectedTemplateIds={formState.selectedTemplateIds}
+                  onSelectionChange={formState.setSelectedTemplateIds}
                   level={formState.level}
                   selectedDeptIds={formState.selectedDeptIds}
                 />
@@ -1418,6 +1489,7 @@ const SQAStaffAuditPlanning = () => {
           <PlanDetailsModal
             showModal={showDetailsModal}
             selectedPlanDetails={selectedPlanDetails}
+            templatesForPlan={templatesForSelectedPlan}
             onClose={() => setShowDetailsModal(false)}
             onEdit={handleEditPlan}
             onSubmitToLead={handleSubmitToLead}

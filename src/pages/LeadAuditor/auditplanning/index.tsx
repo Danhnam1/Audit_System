@@ -14,6 +14,7 @@ import { addAuditSchedule } from '../../../api/auditSchedule';
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
 import { updateAuditPlan } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
+import { syncAuditChecklistTemplateMaps } from '../../../api/auditChecklistTemplateMaps';
 
 // Import custom hooks
 import { useAuditPlanForm } from '../../../hooks/useAuditPlanForm';
@@ -163,8 +164,8 @@ const LeadAuditorAuditPlanning = () => {
   }, [formState.level, formState.selectedDeptIds, formState.selectedCriteriaIds]);
 
   const validateStep3 = useMemo(() => {
-    return formState.selectedTemplateId !== null && formState.selectedTemplateId !== '';
-  }, [formState.selectedTemplateId]);
+    return Array.isArray(formState.selectedTemplateIds) && formState.selectedTemplateIds.length > 0;
+  }, [formState.selectedTemplateIds]);
 
   const validateStep4 = useMemo(() => {
     return (
@@ -332,7 +333,7 @@ const LeadAuditorAuditPlanning = () => {
       formState.level !== 'academy' ||
       formState.selectedDeptIds.length > 0 ||
       formState.selectedCriteriaIds.length > 0 ||
-      formState.selectedTemplateId !== null ||
+      formState.selectedTemplateIds.length > 0 ||
       formState.selectedLeadId !== '' ||
       formState.selectedAuditorIds.length > 0 ||
       formState.kickoffMeeting !== '' ||
@@ -350,7 +351,7 @@ const LeadAuditorAuditPlanning = () => {
     formState.level,
     formState.selectedDeptIds,
     formState.selectedCriteriaIds,
-    formState.selectedTemplateId,
+    formState.selectedTemplateIds,
     formState.selectedLeadId,
     formState.selectedAuditorIds,
     formState.kickoffMeeting,
@@ -379,8 +380,8 @@ const LeadAuditorAuditPlanning = () => {
       formState.setCurrentStep(1);
       return;
     }
-    if (!formState.selectedTemplateId) {
-      toast.warning('Please select a Checklist Template (Step 3).');
+    if (!formState.selectedTemplateIds.length) {
+      toast.warning('Please select at least one Checklist Template (Step 3).');
       formState.setCurrentStep(3);
       return;
     }
@@ -407,11 +408,13 @@ const LeadAuditorAuditPlanning = () => {
       return;
     }
 
+    const primaryTemplateId = formState.selectedTemplateIds[0];
+
     const payload: any = {
       title: formState.title || 'Untitled Plan',
       type: formState.auditType || 'Internal',
       scope: formState.level === 'academy' ? 'Academy' : 'Department',
-      templateId: formState.selectedTemplateId || undefined,
+      templateId: primaryTemplateId || undefined,
       startDate: formState.periodFrom ? new Date(formState.periodFrom).toISOString() : undefined,
       endDate: formState.periodTo ? new Date(formState.periodTo).toISOString() : undefined,
       status: 'Draft',
@@ -435,6 +438,16 @@ const LeadAuditorAuditPlanning = () => {
       }
 
       const newAuditId = auditId;
+
+      try {
+        await syncAuditChecklistTemplateMaps({
+          auditId: String(newAuditId),
+          templateIds: formState.selectedTemplateIds,
+        });
+      } catch (templateMapErr) {
+        console.error('❌ Failed to sync checklist templates', templateMapErr);
+        toast.error('Failed to save checklist template mappings. Please retry from Step 3.');
+      }
 
       // Attach departments
       try {
@@ -655,8 +668,8 @@ const LeadAuditorAuditPlanning = () => {
               {formState.currentStep === 3 && (
                 <Step3Checklist
                   checklistTemplates={checklistTemplates}
-                  selectedTemplateId={formState.selectedTemplateId}
-                  onTemplateSelect={(id: string) => formState.setSelectedTemplateId(id)}
+                  selectedTemplateIds={formState.selectedTemplateIds}
+                  onSelectionChange={formState.setSelectedTemplateIds}
                 />
               )}
 

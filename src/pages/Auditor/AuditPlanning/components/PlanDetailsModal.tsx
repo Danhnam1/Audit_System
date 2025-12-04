@@ -8,6 +8,17 @@ type BadgeVariant = 'primary-light' | 'primary-medium' | 'primary-dark' | 'prima
 interface PlanDetailsModalProps {
   showModal: boolean;
   selectedPlanDetails: any;
+  // List of checklist templates attached to this audit (via AuditChecklistTemplateMaps)
+  templatesForPlan?: Array<{
+    templateId?: string | number;
+    id?: string | number;
+    $id?: string | number;
+    name?: string;
+    title?: string;
+    version?: string;
+    description?: string;
+    deptId?: number | string | null;
+  }>;
   onClose: () => void;
   onEdit?: (auditId: string) => void;
   onSubmitToLead?: (auditId: string) => Promise<void>;
@@ -35,6 +46,7 @@ interface PlanDetailsModalProps {
 export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   showModal,
   selectedPlanDetails,
+  templatesForPlan = [],
   onClose,
   onEdit: _onEdit,
   onSubmitToLead,
@@ -329,7 +341,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   {selectedPlanDetails.scope || 'N/A'}
                 </span>
               </div>
-              {selectedPlanDetails.templateId && (
+              {selectedPlanDetails.templateId && templatesForPlan.length === 0 && (
                 <div className="flex items-start gap-3 md:col-span-2">
                   <span className="text-sm font-bold text-black min-w-[100px]">Template:</span>
                   <span className="text-sm text-black font-normal">
@@ -347,6 +359,61 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Checklist Templates Section (supports multi-select mappings) */}
+          {templatesForPlan.length > 0 && !hideSections.includes('templates') && (
+            <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
+              <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
+                <h3 className="text-lg font-bold text-primary-700">Checklist Templates</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {templatesForPlan.map((tpl: any, index: number) => {
+                  const effectiveId = tpl.templateId ?? tpl.id ?? tpl.$id ?? index;
+                  const displayName =
+                    tpl.title || tpl.name || getTemplateName?.(tpl.templateId || tpl.id) || `Template ${index + 1}`;
+                  const version = tpl.version;
+                  const description = tpl.description;
+                  const deptId = tpl.deptId;
+                  const deptName = deptId != null ? getDepartmentName(String(deptId)) : null;
+
+                  return (
+                    <div
+                      key={String(effectiveId)}
+                      className="border border-gray-200 rounded-xl p-4 shadow-sm bg-gray-50 hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h4 className="text-sm font-semibold text-gray-900 flex-1 line-clamp-2">
+                          {displayName}
+                        </h4>
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-semibold">
+                          {index + 1}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1 mb-2">
+                        {version && (
+                          <div className="text-xs text-gray-600">
+                            <span className="font-semibold">Version:</span>{' '}
+                            <span>{version}</span>
+                          </div>
+                        )}
+                        {deptName && (
+                          <div className="text-xs text-gray-600">
+                            <span className="font-semibold">Department:</span>{' '}
+                            <span>{deptName}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {description && (
+                        <p className="text-xs text-gray-600 line-clamp-3">{description}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Created By Section */}
           {selectedPlanDetails.createdByUser && (

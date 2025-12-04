@@ -2,16 +2,16 @@ import React, { useState, useMemo } from 'react';
 
 interface Step3ChecklistProps {
   checklistTemplates: any[];
-  selectedTemplateId: string | null;
-  onTemplateSelect: (id: string) => void;
+  selectedTemplateIds: string[];
+  onSelectionChange: (ids: string[]) => void;
   level?: string;
   selectedDeptIds?: string[];
 }
 
 export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
   checklistTemplates,
-  selectedTemplateId,
-  onTemplateSelect,
+  selectedTemplateIds,
+  onSelectionChange,
   level = 'academy',
   selectedDeptIds = [],
 }) => {
@@ -69,14 +69,22 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
   }, [checklistTemplates, level, selectedDeptIds]);
 
   const handleTemplateClick = (templateId: string) => {
+    const normalizedId = String(templateId);
+    const isSelected = selectedTemplateIds.includes(normalizedId);
+
+    // Toggle selection
+    if (isSelected) {
+      onSelectionChange(selectedTemplateIds.filter((id) => id !== normalizedId));
+    } else {
+      onSelectionChange([...selectedTemplateIds, normalizedId]);
+    }
+
     // Toggle expansion
-    if (expandedTemplateId === String(templateId)) {
+    if (expandedTemplateId === normalizedId) {
       setExpandedTemplateId(null);
     } else {
-      setExpandedTemplateId(String(templateId));
+      setExpandedTemplateId(normalizedId);
     }
-    // Select template
-    onTemplateSelect(templateId);
   };
 
   return (
@@ -87,6 +95,9 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Select a Checklist Template *
           </label>
+          <p className="text-xs text-gray-500 mb-2">
+            You can select multiple templates. The first selection will be treated as the primary template for summary info.
+          </p>
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {filteredTemplates.length === 0 ? (
               <p className="text-sm text-gray-500">
@@ -97,7 +108,8 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
             ) : (
               filteredTemplates.map((template: any) => {
                 const templateId = template.templateId;
-                const isSelected = String(selectedTemplateId) === String(templateId);
+                const normalizedId = String(templateId);
+                const isSelected = selectedTemplateIds.includes(normalizedId);
                 const isExpanded = expandedTemplateId === String(templateId);
                 return (
                   <div
@@ -133,19 +145,12 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
                         )}
                       </div>
                       <div className="ml-3 flex items-center gap-2">
-                        {isSelected && (
-                          <svg
-                            className="w-6 h-6 text-primary-600"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
+                        <input
+                          type="checkbox"
+                          readOnly
+                          checked={isSelected}
+                          className="w-5 h-5 text-primary-600 border-gray-300 rounded"
+                        />
                         {template.description && (
                           <svg
                             className={`w-5 h-5 text-gray-400 transition-transform ${
