@@ -81,10 +81,10 @@ export default function AuditAssignment() {
       try {
         const auditsData = await getAuditPlans();
         const auditsList = unwrap<Audit>(auditsData);
-        // Filter out audits with status "Closed"
+        // Only show audits with status "InProgress"
         const filteredAudits = (Array.isArray(auditsList) ? auditsList : []).filter((audit: Audit) => {
           const statusLower = (audit.status || '').toLowerCase().trim();
-          return statusLower !== 'closed';
+          return statusLower === 'inprogress';
         });
         setAudits(filteredAudits);
       } catch (err: any) {

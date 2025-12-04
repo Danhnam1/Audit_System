@@ -3,7 +3,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
-import { createAction, getActionsByFinding, type Action, approveActionWithFeedback, rejectAction } from '../../../api/actions';
+import { createAction, getActionsByFinding, type Action, approveActionWithFeedback, rejectAction, rejectActionForResubmit } from '../../../api/actions';
 import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
 import { Pagination } from '../../../components';
@@ -38,6 +38,7 @@ const FindingsProgress = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const itemsPerPage = 10;
   const [assignedUsersMap, setAssignedUsersMap] = useState<Record<string, string>>({}); // findingId -> assignedUserName
+  const [returnedActionsMap, setReturnedActionsMap] = useState<Record<string, Action>>({}); // findingId -> returned action
 
   // Toast state
   const [toast, setToast] = useState<{
@@ -80,9 +81,10 @@ const FindingsProgress = () => {
     return null;
   };
 
-  // Load assigned users for findings
+  // Load assigned users and returned actions for findings
   const loadAssignedUsers = async (findingsData: Finding[]) => {
     const usersMap: Record<string, string> = {};
+    const returnedMap: Record<string, Action> = {};
     
     // Load actions for each finding and get assignedTo
     await Promise.all(
@@ -90,6 +92,12 @@ const FindingsProgress = () => {
         try {
           const actions = await getActionsByFinding(finding.findingId);
           if (actions && actions.length > 0) {
+            // Check for returned actions
+            const returnedAction = actions.find(a => a.status?.toLowerCase() === 'returned');
+            if (returnedAction) {
+              returnedMap[finding.findingId] = returnedAction;
+            }
+            
             // Get the first action's assignedTo
             const assignedTo = actions[0]?.assignedTo;
             if (assignedTo && assignedTo.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
@@ -109,6 +117,7 @@ const FindingsProgress = () => {
     );
     
     setAssignedUsersMap(usersMap);
+    setReturnedActionsMap(returnedMap);
   };
 
   useEffect(() => {
@@ -476,8 +485,22 @@ const FindingsProgress = () => {
                           }}
                         >
                           <td className="px-3 sm:px-6 py-3 sm:py-4">
-                            <div className="text-sm font-medium text-gray-900 line-clamp-2">
-                              {finding.title}
+                            <div className="flex items-center gap-2">
+                              {returnedActionsMap[finding.findingId] && (
+                                <div className="relative group flex-shrink-0">
+                                  <div className="w-2 h-2 bg-red-500 rounded-full cursor-help"></div>
+                                  <div className="absolute left-0 bottom-full mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                                    <div className="font-semibold mb-1">Feedback:</div>
+                                    <div className="text-gray-300">
+                                      {returnedActionsMap[finding.findingId].reviewFeedback || 'No feedback provided'}
+                                    </div>
+                                    <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                  </div>
+                                </div>
+                              )}
+                              <div className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">
+                                {finding.title}
+                              </div>
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
@@ -497,7 +520,33 @@ const FindingsProgress = () => {
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
-                              {finding.status?.toLowerCase() === 'received' ? (
+                              {returnedActionsMap[finding.findingId] ? (
+                                <button
+                                  onClick={async () => {
+                                    const action = returnedActionsMap[finding.findingId];
+                                    if (!action) return;
+                                    
+                                    try {
+                                      await rejectActionForResubmit(action.actionId);
+                                      showToast('Action redone successfully', 'success');
+                                      // Reload findings and actions
+                                      const deptId = getUserDeptId();
+                                      if (deptId) {
+                                        const data = await getFindingsByDepartment(deptId);
+                                        setFindings(data);
+                                        await loadAssignedUsers(data);
+                                      }
+                                    } catch (err: any) {
+                                      console.error('Error resubmitting action:', err);
+                                      showToast(err?.message || 'Failed to redo action', 'error');
+                                    }
+                                  }}
+                                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95"
+                                  title="Redo Action"
+                                >
+                                  Redo
+                                </button>
+                              ) : finding.status?.toLowerCase() === 'received' ? (
                                 <button
                                   disabled
                                   className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"

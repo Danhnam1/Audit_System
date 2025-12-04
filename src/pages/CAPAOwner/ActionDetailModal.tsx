@@ -430,7 +430,7 @@ const ActionDetailModal = ({
           </div>
 
           {/* Footer with Review Buttons */}
-          {showReviewButtons && action && action.status?.toLowerCase() === 'reviewed' && !showFeedbackInput && (
+          {showReviewButtons && action && (action.status?.toLowerCase() === 'reviewed' || action.status?.toLowerCase() === 'verified') && !showFeedbackInput && (
             <div className="border-t border-gray-200 bg-white px-6 py-3 flex items-center justify-end gap-2">
               <button
                 onClick={() => {

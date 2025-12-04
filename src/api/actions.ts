@@ -109,3 +109,8 @@ export const rejectAction = async (actionId: string, feedback: string): Promise<
   await apiClient.post(`/Action/${actionId}/status/rejected`, { feedback: feedback });
 };
 
+// Reject action (resubmit) - for returned actions
+export const rejectActionForResubmit = async (actionId: string): Promise<void> => {
+  await apiClient.put(`/Action/${actionId}/reject`);
+};
+

@@ -30,7 +30,9 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
         setLoadingAttachments(true);
         try {
           const attachments = await getAttachments('Action', actionId);
-          setExistingAttachments(attachments || []);
+          // Filter out rejected attachments
+          const filteredAttachments = (attachments || []).filter(att => att.status?.toLowerCase() !== 'rejected');
+          setExistingAttachments(filteredAttachments);
         } catch (err: any) {
           console.error('Error loading attachments:', err);
           // Don't show error, just log it
@@ -129,7 +131,9 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
       // Reload existing attachments to show newly uploaded ones
       try {
         const attachments = await getAttachments('Action', actionId);
-        setExistingAttachments(attachments || []);
+        // Filter out rejected attachments
+        const filteredAttachments = (attachments || []).filter(att => att.status?.toLowerCase() !== 'rejected');
+        setExistingAttachments(filteredAttachments);
       } catch (err) {
         console.error('Error reloading attachments:', err);
       }
@@ -207,7 +211,7 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
             </div>
 
             {/* Existing Attachments Section */}
-            {existingAttachments.length > 0 && (
+            {existingAttachments.filter(att => att.status?.toLowerCase() !== 'rejected').length > 0 && (
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-2">
                   Existing Evidence Files
@@ -219,7 +223,7 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {existingAttachments.map((attachment) => (
+                    {existingAttachments.filter(att => att.status?.toLowerCase() !== 'rejected').map((attachment) => (
                       <div
                         key={attachment.attachmentId}
                         className="flex items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-200"

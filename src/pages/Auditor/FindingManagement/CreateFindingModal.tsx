@@ -442,9 +442,34 @@ const CreateFindingModal = ({
 
             {/* Severity */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Severity <span className="text-red-500">*</span>
-              </label>
+              <div className="flex items-center gap-2 mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Severity <span className="text-red-500">*</span>
+                </label>
+                <div className="relative group">
+                  <svg 
+                    className="w-4 h-4 text-gray-400 cursor-help" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="absolute left-0 bottom-full mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                    <div className="space-y-2">
+                      <div>
+                        <span className="font-semibold text-amber-300">Major:</span>
+                        <span className="ml-1">High severity, requires immediate action</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-blue-300">Minor:</span>
+                        <span className="ml-1">Medium severity, requires improvement</span>
+                      </div>
+                    </div>
+                    <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                  </div>
+                </div>
+              </div>
               {loadingSeverities ? (
                 <div className="flex items-center gap-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
