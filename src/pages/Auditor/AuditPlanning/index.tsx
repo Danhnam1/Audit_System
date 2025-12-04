@@ -1226,6 +1226,8 @@ const SQAStaffAuditPlanning = () => {
                   checklistTemplates={checklistTemplates}
                   selectedTemplateId={formState.selectedTemplateId}
                   onTemplateSelect={(id: string) => formState.setSelectedTemplateId(id)}
+                  level={formState.level}
+                  selectedDeptIds={formState.selectedDeptIds}
                 />
               )}
 

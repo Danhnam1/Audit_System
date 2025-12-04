@@ -23,6 +23,7 @@ export interface ChecklistTemplateDto {
   description?: string;
   createdBy?: string;
   createdAt?: string;
+  deptId?: number | null;
   status?: string;
   isActive?: boolean;
 }
@@ -31,6 +32,7 @@ export interface CreateChecklistTemplateDto {
   name: string;
   version?: string;
   description?: string;
+  deptId?: number | null;
   status?: string;
   isActive?: boolean;
 }
@@ -39,6 +41,7 @@ export interface UpdateChecklistTemplateDto {
   name?: string;
   version?: string;
   description?: string;
+  deptId?: number | null;
   status?: string;
   isActive?: boolean;
 }

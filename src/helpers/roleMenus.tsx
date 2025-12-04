@@ -8,8 +8,9 @@ import {
   ClipboardCheckIcon,
   DocumentIcon,
   QualityIcon,
-  UploadIcon,
+  ClockIcon,
 } from '../layouts/icons';
+import { HiOutlineUpload } from 'react-icons/hi';
 
 
 // Return default menu items per role. Pages can still override by passing menuItems to MainLayout.
@@ -47,6 +48,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
           label: 'Audits',
           children: [
             { icon: <AuditIcon />, label: 'Audit Planning', path: `${ROUTES.AUDITOR}/planning` },
+            { icon: <ClockIcon />, label: 'Schedule', path: `${ROUTES.AUDITOR}/schedule` },
             // { icon: <ClipboardCheckIcon />, label: 'Review Audit Plans', path: `${ROUTES.AUDITOR}/audit-review` },
             // { icon: <UsersIcon />, label: 'My Audit Teams', path: `${ROUTES.AUDITOR}/team` },
           ],
@@ -55,7 +57,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
           label: 'Audit Reports',
           children: [
             { icon: <ReportsIcon />, label: 'Reports', path: `${ROUTES.AUDITOR}/reports` },
-            { icon: <UploadIcon />, label: 'History Upload', path: `${ROUTES.AUDITOR}/history-upload` },
+            { icon: <HiOutlineUpload />, label: 'History Upload', path: `${ROUTES.AUDITOR}/history-upload` },
           ],
         },
         {

@@ -17,6 +17,7 @@ import {
   type ChecklistItemDto,
   type CreateChecklistItemDto,
 } from '../../../api/checklists';
+import { getDepartments } from '../../../api/departments';
 import { toast } from 'react-toastify';
 
 const AdminChecklistManagement = () => {
@@ -29,9 +30,11 @@ const AdminChecklistManagement = () => {
     name: '',
     version: '',
     description: '',
+    deptId: null,
     // status: 'Active',
     isActive: true,
   });
+  const [departments, setDepartments] = useState<Array<{ deptId: number; name: string }>>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<{ templateId: string | null } | null>(null);
@@ -82,6 +85,24 @@ const AdminChecklistManagement = () => {
     fetchTemplates();
   }, []);
 
+  // Load departments
+  useEffect(() => {
+    const loadDepartments = async () => {
+      try {
+        const depts = await getDepartments();
+        setDepartments(
+          (depts || []).map((d: any) => ({
+            deptId: d.deptId || d.id,
+            name: d.name || '',
+          })).filter((d: any) => d.deptId != null)
+        );
+      } catch (err) {
+        console.error('Failed to load departments', err);
+      }
+    };
+    loadDepartments();
+  }, []);
+
   // Load items when template is selected
   const fetchItems = async (templateId: string) => {
     if (!templateId) return;
@@ -106,14 +127,26 @@ const AdminChecklistManagement = () => {
     }
     try {
       setCreating(true);
-      await createChecklistTemplate({
+      const createPayload: any = {
         name: templateForm.name.trim(),
-        version: templateForm.version?.trim() || undefined,
-        description: templateForm.description?.trim() || undefined,
         status: templateForm.status || 'Active',
         isActive: templateForm.isActive ?? true,
-      });
-      setTemplateForm({ name: '', version: '', description: '', status: 'Active', isActive: true });
+      };
+      
+      // Only include optional fields if they have values
+      if (templateForm.version?.trim()) {
+        createPayload.version = templateForm.version.trim();
+      }
+      if (templateForm.description?.trim()) {
+        createPayload.description = templateForm.description.trim();
+      }
+      // Include deptId only if it has a value (not null/undefined)
+      if (templateForm.deptId != null && templateForm.deptId !== undefined) {
+        createPayload.deptId = templateForm.deptId;
+      }
+      
+      await createChecklistTemplate(createPayload);
+      setTemplateForm({ name: '', version: '', description: '', deptId: null, status: 'Active', isActive: true });
       setShowCreateForm(false);
       toast.success('Checklist template created successfully!');
       await fetchTemplates();
@@ -132,6 +165,7 @@ const AdminChecklistManagement = () => {
       name: template.name || '',
       version: template.version || '',
       description: template.description || '',
+      deptId: template.deptId ?? null,
       status: template.status || 'Active',
       isActive: template.isActive ?? true,
     });
@@ -148,13 +182,29 @@ const AdminChecklistManagement = () => {
     }
     try {
       setUpdating(true);
-      await updateChecklistTemplate(editingTemplate.templateId, {
+      const updatePayload: any = {
         name: templateForm.name.trim(),
-        version: templateForm.version?.trim() || undefined,
-        description: templateForm.description?.trim() || undefined,
         status: templateForm.status || 'Active',
         isActive: templateForm.isActive ?? true,
-      });
+      };
+      
+      // Only include optional fields if they have values
+      if (templateForm.version?.trim()) {
+        updatePayload.version = templateForm.version.trim();
+      }
+      if (templateForm.description?.trim()) {
+        updatePayload.description = templateForm.description.trim();
+      }
+      // Include deptId - only if it has a value, otherwise don't send the field
+      // Some backends prefer undefined over null for optional fields
+      if (templateForm.deptId != null && templateForm.deptId !== undefined) {
+        updatePayload.deptId = templateForm.deptId;
+      }
+      
+      console.log('Update payload:', JSON.stringify(updatePayload, null, 2));
+      console.log('Template ID:', editingTemplate.templateId);
+      
+      await updateChecklistTemplate(editingTemplate.templateId, updatePayload);
       setEditOpen(false);
       setEditingTemplate(null);
       toast.success('Checklist template updated successfully!');
@@ -349,7 +399,7 @@ const AdminChecklistManagement = () => {
           </div>
           <button
             onClick={() => {
-              setTemplateForm({ name: '', version: '', description: '', status: 'Active', isActive: true });
+              setTemplateForm({ name: '', version: '', description: '', deptId: null, status: 'Active', isActive: true });
               setEditOpen(false);
               setEditingTemplate(null);
               setShowCreateForm(true);
@@ -392,7 +442,7 @@ const AdminChecklistManagement = () => {
                 </div>
               </div>
 
-              <div>
+                  <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea
                   value={templateForm.description || ''}
@@ -403,6 +453,22 @@ const AdminChecklistManagement = () => {
                 ></textarea>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                <select
+                  value={templateForm.deptId || ''}
+                  onChange={(e) => setTemplateForm({ ...templateForm, deptId: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="">Select Department (Optional)</option>
+                  {departments.map((dept) => (
+                    <option key={dept.deptId} value={dept.deptId}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <Button type="submit" disabled={creating} isLoading={creating} variant="primary" size="md">
                   Create Template
@@ -410,7 +476,7 @@ const AdminChecklistManagement = () => {
                 <Button 
                   type="button"
                   onClick={() => {
-                    setTemplateForm({ name: '', version: '', description: '', status: 'Active', isActive: true });
+                    setTemplateForm({ name: '', version: '', description: '', deptId: null, status: 'Active', isActive: true });
                     setShowCreateForm(false);
                   }}
                   variant="secondary"
@@ -464,6 +530,22 @@ const AdminChecklistManagement = () => {
                 ></textarea>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                <select
+                  value={templateForm.deptId || ''}
+                  onChange={(e) => setTemplateForm({ ...templateForm, deptId: e.target.value ? Number(e.target.value) : null })}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="">Select Department (Optional)</option>
+                  {departments.map((dept) => (
+                    <option key={dept.deptId} value={dept.deptId}>
+                      {dept.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <Button type="submit" disabled={updating} isLoading={updating} variant="primary" size="md">
                   Save Changes
@@ -471,7 +553,7 @@ const AdminChecklistManagement = () => {
                 <Button 
                   type="button"
                   onClick={() => {
-                    setTemplateForm({ name: '', version: '', description: '', status: 'Active', isActive: true });
+                    setTemplateForm({ name: '', version: '', description: '', deptId: null, status: 'Active', isActive: true });
                     setEditOpen(false);
                     setEditingTemplate(null);
                   }}
@@ -500,6 +582,7 @@ const AdminChecklistManagement = () => {
                       <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
                       <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
                       <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Version</th>
+                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Department</th>
                       <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
                       <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                     </tr>
@@ -517,6 +600,13 @@ const AdminChecklistManagement = () => {
                           </td>
                           <td className="px-6 py-4 text-center whitespace-nowrap">
                             <span className="text-sm text-gray-700">{template.version || '—'}</span>
+                          </td>
+                          <td className="px-6 py-4 text-center whitespace-nowrap">
+                            <span className="text-sm text-gray-700">
+                              {template.deptId
+                                ? departments.find((d) => d.deptId === template.deptId)?.name || `Dept ${template.deptId}`
+                                : '—'}
+                            </span>
                           </td>
                           <td className="px-6 py-4 text-center">
                             <p className="text-sm text-gray-700 line-clamp-2">{template.description || '—'}</p>
@@ -557,7 +647,7 @@ const AdminChecklistManagement = () => {
                     })}
                     {paginatedTemplates.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                        <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                           No templates found
                         </td>
                       </tr>

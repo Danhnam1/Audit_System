@@ -1,17 +1,72 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 
 interface Step3ChecklistProps {
   checklistTemplates: any[];
   selectedTemplateId: string | null;
   onTemplateSelect: (id: string) => void;
+  level?: string;
+  selectedDeptIds?: string[];
 }
 
 export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
   checklistTemplates,
   selectedTemplateId,
   onTemplateSelect,
+  level = 'academy',
+  selectedDeptIds = [],
 }) => {
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
+
+  // Filter templates based on selected departments
+  const filteredTemplates = useMemo(() => {
+    if (level === 'academy') {
+      // For academy level, show all templates
+      return checklistTemplates;
+    }
+
+    // For department level, filter by deptId
+    if (selectedDeptIds.length === 0) {
+      // If no departments selected, show only templates without deptId (general templates)
+      return checklistTemplates.filter((template: any) => 
+        template.deptId == null || template.deptId === undefined
+      );
+    }
+
+    // Normalize selected department IDs to strings for consistent comparison
+    const selectedDeptIdsSet = new Set(selectedDeptIds.map(id => String(id).trim()));
+
+    // Debug logging
+    console.log('[Step3Checklist] Filtering templates:', {
+      level,
+      selectedDeptIds,
+      selectedDeptIdsSet: Array.from(selectedDeptIdsSet),
+      totalTemplates: checklistTemplates.length,
+    });
+
+    // When departments are selected, ONLY show templates that belong to those departments
+    // Do NOT show general templates (deptId = null) when specific departments are selected
+    const filtered = checklistTemplates.filter((template: any) => {
+      const templateDeptId = template.deptId;
+      
+      // If template has no deptId (general template), exclude it when specific departments are selected
+      if (templateDeptId == null || templateDeptId === undefined) {
+        console.log(`[Step3Checklist] Excluding general template: ${template.name} (deptId: null) - specific departments selected`);
+        return false;
+      }
+      
+      // Normalize template's deptId to string for comparison
+      const templateDeptIdStr = String(templateDeptId).trim();
+      const matches = selectedDeptIdsSet.has(templateDeptIdStr);
+      
+      console.log(`[Step3Checklist] Template: ${template.name}, deptId: ${templateDeptId} (${typeof templateDeptId}), matches: ${matches}`);
+      
+      // Only include if template's deptId matches one of the selected departments
+      return matches;
+    });
+
+    console.log('[Step3Checklist] Filtered templates count:', filtered.length);
+    return filtered;
+  }, [checklistTemplates, level, selectedDeptIds]);
 
   const handleTemplateClick = (templateId: string) => {
     // Toggle expansion
@@ -33,10 +88,14 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
             Select a Checklist Template *
           </label>
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {checklistTemplates.length === 0 ? (
-              <p className="text-sm text-gray-500">No templates available.</p>
+            {filteredTemplates.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                {level === 'department' && selectedDeptIds.length === 0
+                  ? 'Please select departments in Step 2 to see available templates.'
+                  : 'No templates available for the selected departments.'}
+              </p>
             ) : (
-              checklistTemplates.map((template: any) => {
+              filteredTemplates.map((template: any) => {
                 const templateId = template.templateId;
                 const isSelected = String(selectedTemplateId) === String(templateId);
                 const isExpanded = expandedTemplateId === String(templateId);
