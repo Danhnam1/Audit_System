@@ -39,6 +39,7 @@ const FindingsProgress = () => {
   const itemsPerPage = 10;
   const [assignedUsersMap, setAssignedUsersMap] = useState<Record<string, string>>({}); // findingId -> assignedUserName
   const [returnedActionsMap, setReturnedActionsMap] = useState<Record<string, Action>>({}); // findingId -> returned action
+  const [rejectedActionsMap, setRejectedActionsMap] = useState<Record<string, Action>>({}); // findingId -> rejected action
 
   // Toast state
   const [toast, setToast] = useState<{
@@ -85,6 +86,7 @@ const FindingsProgress = () => {
   const loadAssignedUsers = async (findingsData: Finding[]) => {
     const usersMap: Record<string, string> = {};
     const returnedMap: Record<string, Action> = {};
+    const rejectedMap: Record<string, Action> = {};
     
     // Load actions for each finding and get assignedTo
     await Promise.all(
@@ -96,6 +98,12 @@ const FindingsProgress = () => {
             const returnedAction = actions.find(a => a.status?.toLowerCase() === 'returned');
             if (returnedAction) {
               returnedMap[finding.findingId] = returnedAction;
+            }
+            
+            // Check for rejected actions
+            const rejectedAction = actions.find(a => a.status?.toLowerCase() === 'rejected');
+            if (rejectedAction) {
+              rejectedMap[finding.findingId] = rejectedAction;
             }
             
             // Get the first action's assignedTo
@@ -118,6 +126,7 @@ const FindingsProgress = () => {
     
     setAssignedUsersMap(usersMap);
     setReturnedActionsMap(returnedMap);
+    setRejectedActionsMap(rejectedMap);
   };
 
   useEffect(() => {
@@ -545,6 +554,14 @@ const FindingsProgress = () => {
                                   title="Redo Action"
                                 >
                                   Redo
+                                </button>
+                              ) : rejectedActionsMap[finding.findingId] ? (
+                                <button
+                                  disabled
+                                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
+                                  title="Action Rejected"
+                                >
+                                  Rejected
                                 </button>
                               ) : finding.status?.toLowerCase() === 'received' ? (
                                 <button
