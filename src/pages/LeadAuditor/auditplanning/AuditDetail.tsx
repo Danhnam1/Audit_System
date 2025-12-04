@@ -18,6 +18,7 @@ import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getCriteriaForAudit } from '../../../api/auditCriteriaMap';
 import { getAuditCriterionById } from '../../../api/auditCriteria';
 import { getChecklistTemplateById, type ChecklistTemplateDto } from '../../../api/checklists';
+import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
 
 import { toast } from 'react-toastify';
 import { unwrap } from '../../../utils/normalize';
@@ -34,10 +35,11 @@ const AuditDetail = () => {
   const [departments, setDepartments] = useState<any[]>([]);
   const [auditors, setAuditors] = useState<any[]>([]);
   const [criteria, setCriteria] = useState<any[]>([]);
-  const [template, setTemplate] = useState<ChecklistTemplateDto | null>(null);
+  const [templates, setTemplates] = useState<ChecklistTemplateDto[]>([]);
+  const [_template, setTemplate] = useState<ChecklistTemplateDto | null>(null);
+  const [_templateCreatedByFullName, setTemplateCreatedByFullName] = useState<string>('');
   const [findings, setFindings] = useState<any[]>([]);
   const [createdByFullName, setCreatedByFullName] = useState<string>('');
-  const [_templateCreatedByFullName, setTemplateCreatedByFullName] = useState<string>('');
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
@@ -64,30 +66,18 @@ const AuditDetail = () => {
     }
   }, [auditId]);
 
-  // Load template when audit details are loaded
+  // Load templates when audit details are loaded
   useEffect(() => {
-    const templateId = auditDetails?.audit?.templateId || auditDetails?.templateId;
-    console.log('[useEffect Template] auditDetails:', auditDetails);
-    console.log('[useEffect Template] auditDetails?.audit?.templateId:', auditDetails?.audit?.templateId);
-    console.log('[useEffect Template] auditDetails?.templateId:', auditDetails?.templateId);
-    console.log('[useEffect Template] Final templateId:', templateId);
-    
-    if (templateId && !template && !loadingTemplate) {
-      console.log('[useEffect Template] Calling loadTemplate');
-      loadTemplate();
-    } else {
-      console.log('[useEffect Template] No templateId found or template already loaded');
-    }
-  }, [auditDetails?.audit?.templateId, auditDetails?.templateId]);
+    if (!auditId || !auditDetails || loadingTemplate) return;
+    loadTemplatesForAudit();
+  }, [auditId, auditDetails]);
 
-  // Load template when Template tab is clicked
+  // Load templates lazily when Template tab is clicked (if not loaded yet)
   useEffect(() => {
-    const templateId = auditDetails?.audit?.templateId || auditDetails?.templateId;
-    if (activeTab === 'template' && templateId && !template && !loadingTemplate) {
-      console.log('[useEffect ActiveTab] Template tab active, loading template');
-      loadTemplate();
+    if (activeTab === 'template' && auditId && !loadingTemplate && templates.length === 0) {
+      loadTemplatesForAudit();
     }
-  }, [activeTab, auditDetails?.audit?.templateId, auditDetails?.templateId, template, loadingTemplate]);
+  }, [activeTab, auditId, templates.length, loadingTemplate]);
 
   // Load findings when audit is approved and findings tab is active
   useEffect(() => {
@@ -289,41 +279,73 @@ const AuditDetail = () => {
     }
   };
 
-  const loadTemplate = async () => {
-    // templateId is nested in auditDetails.audit.templateId
-    const templateId = auditDetails?.audit?.templateId || auditDetails?.templateId;
-    
-    if (!templateId) {
-      console.log('[loadTemplate] No templateId found in auditDetails');
-      console.log('[loadTemplate] auditDetails.audit:', auditDetails?.audit);
-      return;
-    }
+  const loadTemplatesForAudit = async () => {
+    if (!auditId) return;
 
-    console.log('[loadTemplate] Starting to load template');
-    console.log('[loadTemplate] TemplateId from audit:', templateId);
-    
+    console.log('[loadTemplatesForAudit] Starting for auditId:', auditId);
     setLoadingTemplate(true);
     try {
-      // Call API directly with templateId
-      console.log('[loadTemplate] Calling API: /ChecklistTemplates/' + templateId);
-      const data = await getChecklistTemplateById(templateId);
-      console.log('[loadTemplate] API response:', data);
-      
-      // API helper already unwraps any response wrapper, so `data` is a `ChecklistTemplateDto`
-      const templateData = data;
-      console.log('[loadTemplate] Processed template data:', templateData);
-      console.log(
-        '[loadTemplate] Template data keys:',
-        templateData ? Object.keys(templateData as any) : 'null'
+      // 1) Get mappings audit -> templateIds
+      const maps = await getAuditChecklistTemplateMapsByAudit(String(auditId));
+      const mapValues = Array.isArray(maps) ? maps : [];
+      const templateIds = Array.from(
+        new Set(
+          mapValues
+            .map(
+              (m: any) =>
+                m.templateId ??
+                m.checklistTemplateId ??
+                m.template?.templateId ??
+                m.template?.id
+            )
+            .filter((id: any) => id != null)
+            .map((id: any) => String(id))
+        )
       );
-      
-      if (templateData) {
-        setTemplate(templateData);
-        
-        // Load createdBy user info to get fullName
-        if (templateData.createdBy) {
+
+      console.log('[loadTemplatesForAudit] TemplateIds from maps:', templateIds);
+
+      // 2) If no mappings, fall back to the single templateId on audit
+      if (!templateIds.length) {
+        const fallbackId = auditDetails?.audit?.templateId || auditDetails?.templateId;
+        if (!fallbackId) {
+          console.log('[loadTemplatesForAudit] No template mappings and no fallback templateId');
+          setTemplates([]);
+          setTemplate(null);
+          return;
+        }
+        templateIds.push(String(fallbackId));
+      }
+
+      // 3) Load all templates' details
+      const results = await Promise.allSettled(
+        templateIds.map(async (id) => {
           try {
-            const user = await getUserById(templateData.createdBy);
+            const data = await getChecklistTemplateById(id);
+            return data as ChecklistTemplateDto;
+          } catch (err) {
+            console.error('[loadTemplatesForAudit] Failed to load template', id, err);
+            return null;
+          }
+        })
+      );
+
+      const loadedTemplates = results
+        .filter((r): r is PromiseFulfilledResult<ChecklistTemplateDto | null> => r.status === 'fulfilled')
+        .map((r) => r.value)
+        .filter((tpl): tpl is ChecklistTemplateDto => !!tpl);
+
+      console.log('[loadTemplatesForAudit] Loaded templates:', loadedTemplates);
+
+      setTemplates(loadedTemplates);
+
+      // Keep primary template state for backwards compatibility (first one)
+      if (loadedTemplates.length > 0) {
+        setTemplate(loadedTemplates[0]);
+        const primary = loadedTemplates[0];
+        if (primary.createdBy) {
+          try {
+            const user = await getUserById(primary.createdBy);
             setTemplateCreatedByFullName(user?.fullName || 'N/A');
           } catch (err) {
             console.error('Failed to load template creator info', err);
@@ -331,19 +353,15 @@ const AuditDetail = () => {
           }
         }
       } else {
-        console.error('[loadTemplate] No template data received');
         setTemplate(null);
-        toast.error('Template data not found');
       }
     } catch (err: any) {
-      console.error('[loadTemplate] Failed to load template:', err);
-      console.error('[loadTemplate] Error details:', {
-        message: err?.message,
-        response: err?.response?.data,
-        status: err?.response?.status,
-        url: err?.config?.url
-      });
-      toast.error('Failed to load template: ' + (err?.response?.data?.message || err?.message || 'Unknown error'));
+      console.error('[loadTemplatesForAudit] Failed:', err);
+      toast.error(
+        'Failed to load templates: ' +
+          (err?.response?.data?.message || err?.message || 'Unknown error')
+      );
+      setTemplates([]);
       setTemplate(null);
     } finally {
       setLoadingTemplate(false);
@@ -609,77 +627,49 @@ const AuditDetail = () => {
             )}
             {activeTab === 'template' && (
               <div>
-                {(() => {
-                  console.log('=== TEMPLATE TAB DEBUG ===');
-                  console.log('[Template Tab Render] auditId from URL:', auditId);
-                  console.log('[Template Tab Render] auditDetails:', auditDetails);
-                  // templateId is nested in audit.audit.templateId
-                  const templateId = auditDetails?.audit?.templateId || auditDetails?.templateId;
-                  console.log('[Template Tab Render] auditDetails?.audit?.templateId:', auditDetails?.audit?.templateId);
-                  console.log('[Template Tab Render] auditDetails?.templateId:', auditDetails?.templateId);
-                  console.log('[Template Tab Render] Final templateId:', templateId);
-                  console.log('[Template Tab Render] auditDetails keys:', auditDetails ? Object.keys(auditDetails) : 'null');
-                  console.log('[Template Tab Render] loadingTemplate:', loadingTemplate);
-                  console.log('[Template Tab Render] template:', template);
-                  console.log('[Template Tab Render] template?.templateId:', template?.templateId);
-                  
-                  // Check if we can get templateId
-                  if (auditDetails) {
-                    console.log('[Template Tab Render] ✅ auditDetails exists');
-                    if (templateId) {
-                      console.log('[Template Tab Render] ✅ templateId found:', templateId);
-                    } else {
-                      console.log('[Template Tab Render] ❌ templateId NOT found in auditDetails');
-                    }
-                  } else {
-                    console.log('[Template Tab Render] ❌ auditDetails is null/undefined');
-                  }
-                  
-                  // Load template if not loaded yet and templateId exists
-                  if (!template && !loadingTemplate && templateId) {
-                    console.log('[Template Tab Render] Triggering loadTemplate from render');
-                    setTimeout(() => {
-                      loadTemplate();
-                    }, 0);
-                  }
-                  
-                  return null;
-                })()}
                 {loadingTemplate ? (
                   <div className="flex items-center justify-center py-12">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                     <span className="ml-3 text-gray-600">Loading template...</span>
                   </div>
-                ) : !template ? (
+                ) : templates.length === 0 ? (
                   <div className="text-center py-12">
                     <p className="text-gray-500">No template found for this audit</p>
-                    <p className="text-xs text-gray-400 mt-2">Template ID: {auditDetails?.templateId || 'N/A'}</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Template ID: {auditDetails?.templateId || auditDetails?.audit?.templateId || 'N/A'}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-6">
                     <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-6">Template Information</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                            Name
-                          </label>
-                          <p className="text-sm text-gray-900 font-medium">{template.name || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                            Version
-                          </label>
-                          <p className="text-sm text-gray-900">{template.version || 'N/A'}</p>
-                        </div>
-                        {template.description && (
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                              Description
-                            </label>
-                            <p className="text-sm text-gray-900 whitespace-pre-wrap">{template.description}</p>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-6">Checklist Templates</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {templates.map((tpl, index) => (
+                          <div
+                            key={tpl.templateId || tpl.name || index}
+                            className="border border-gray-200 rounded-xl p-4 shadow-sm bg-gray-50 hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <h4 className="text-sm font-semibold text-gray-900 flex-1 line-clamp-2">
+                                {tpl.name || `Template ${index + 1}`}
+                              </h4>
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-semibold">
+                                {index + 1}
+                              </span>
+                            </div>
+                            <div className="space-y-1 mb-2">
+                              {tpl.version && (
+                                <div className="text-xs text-gray-600">
+                                  <span className="font-semibold">Version:</span>{' '}
+                                  <span>{tpl.version}</span>
+                                </div>
+                              )}
+                            </div>
+                            {tpl.description && (
+                              <p className="text-xs text-gray-600 line-clamp-3">{tpl.description}</p>
+                            )}
                           </div>
-                        )}
+                        ))}
                       </div>
                     </div>
                   </div>

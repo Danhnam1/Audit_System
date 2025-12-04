@@ -506,7 +506,7 @@ const AdminChecklistManagement = () => {
         if (previousOrderMap[itemId] === item.order) continue;
 
         await updateChecklistItem(String(itemId), buildItemUpdatePayload(item));
-      }
+        }
 
       await fetchItems(String(templateId));
       toast.success('Items order updated successfully!');

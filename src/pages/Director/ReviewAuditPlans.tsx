@@ -576,8 +576,31 @@ const ReviewAuditPlans = () => {
                       <td className="px-6 py-4">
                         <span className="text-sm font-semibold text-gray-900">{plan.title}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-700">{plan.department}</span>
+                      <td className="px-6 py-4  max-w-xs">
+                        {(() => {
+                          const raw = plan.department || '';
+                          const parts = raw
+                            .split(',')
+                            .map((p) => p.trim())
+                            .filter(Boolean);
+                          const MAX_VISIBLE = 3;
+                          if (parts.length === 0) {
+                            return <span className="text-sm text-gray-500">—</span>;
+                          }
+                          if (parts.length <= MAX_VISIBLE) {
+                            return (
+                              <span className="text-sm text-gray-700" title={raw}>
+                                {parts.join(' / ')}
+                              </span>
+                            );
+                          }
+                          // More than 3 departments: hide list, show gray helper text (non-clickable)
+                          return (
+                            <span className="text-xs text-gray-400">
+                              Click view for more details
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm text-gray-700">
@@ -603,13 +626,17 @@ const ReviewAuditPlans = () => {
                               <button
                                 onClick={() => openApproveModal(plan.planId)}
                                 disabled={processingIdStr === plan.planId}
-                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${processingIdStr === plan.planId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved') + ' hover:opacity-90'}`}
+                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  processingIdStr === plan.planId
+                                    ? 'bg-gray-300 cursor-not-allowed text-white'
+                                    : 'bg-primary-600 text-white hover:bg-primary-700'
+                                }`}
                               >
                                 {processingIdStr === plan.planId ? 'Approving...' : 'Approve'}
                               </button>
                               <button
                                 onClick={() => openRejectModal(plan.planId)}
-                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${getStatusColor('Rejected') + ' hover:opacity-90'}`}
+                                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md border border-red-300 text-red-700 bg-white hover:bg-red-50"
                               >
                                 Reject
                               </button>
@@ -675,7 +702,11 @@ const ReviewAuditPlans = () => {
                   type="button"
                   onClick={handleApprovePlan}
                   disabled={processingIdStr === approvePlanId}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${processingIdStr === approvePlanId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved') + ' hover:opacity-90'}`}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${
+                    processingIdStr === approvePlanId
+                      ? 'bg-gray-300 cursor-not-allowed text-white'
+                      : 'bg-primary-600 text-white hover:bg-primary-700'
+                  }`}
                 >
                   {processingIdStr === approvePlanId ? 'Approving...' : 'Approve'}
                 </button>
@@ -727,7 +758,7 @@ const ReviewAuditPlans = () => {
                       handleRejectPlan(rejectPlanId, rejectComment || undefined);
                     }
                   }}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${getStatusColor('Rejected') + ' hover:opacity-90'}`}
+                  className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md border border-red-300 text-red-700 bg-white hover:bg-red-50"
                 >
                   Reject
                 </button>
@@ -737,6 +768,7 @@ const ReviewAuditPlans = () => {
         </div>,
         document.body
       )}
+
     </MainLayout>
   );
 };

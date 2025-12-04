@@ -598,16 +598,32 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               {/* Timeline/Seekbar */}
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
                 <div className="relative px-2">
+                  {(() => {
+                    // Sort schedules by dueDate ascending so that milestones appear in correct time order
+                    const rawValues = Array.isArray(selectedPlanDetails.schedules?.values)
+                      ? selectedPlanDetails.schedules.values
+                      : [];
+                    const scheduleValues = [...rawValues].sort((a: any, b: any) => {
+                      const ta = a?.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                      const tb = b?.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                      return ta - tb;
+                    });
+
+                    const filledCount = scheduleValues.filter((s: any) => s.dueDate).length;
+                    const totalSchedules = scheduleValues.length;
+
+                    return (
+                      <>
                   {/* Background track */}
                   <div className="h-2 bg-gray-200 rounded-full relative overflow-hidden">
                     {/* Progress bar - sky color, full when all milestones are filled */}
-                    {selectedPlanDetails.schedules.values.filter((s: any) => s.dueDate).length > 0 && (
+                    {filledCount > 0 && (
                       <div 
                         className="absolute top-0 left-0 h-full bg-gradient-to-r from-sky-400 to-sky-600 rounded-full transition-all duration-300"
                         style={{ 
-                          width: selectedPlanDetails.schedules.values.filter((s: any) => s.dueDate).length === selectedPlanDetails.schedules.values.length
+                          width: filledCount === totalSchedules
                             ? '100%'
-                            : `${(selectedPlanDetails.schedules.values.filter((s: any) => s.dueDate).length / selectedPlanDetails.schedules.values.length) * 100}%` 
+                            : `${(filledCount / Math.max(totalSchedules, 1)) * 100}%` 
                         }}
                       />
                     )}
@@ -615,18 +631,18 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   
                   {/* Milestone markers - evenly spaced */}
                   <div className="relative mt-3 min-h-[90px] pb-2 overflow-visible">
-                    {selectedPlanDetails.schedules.values.map((schedule: any, idx: number) => {
-                      const totalSchedules = selectedPlanDetails.schedules.values.length;
+                    {scheduleValues.map((schedule: any, idx: number) => {
+                      const total = scheduleValues.length;
                       // Adjust position to avoid edge overflow: first at 0%, last at 100%, others evenly spaced
                       let position: number;
-                      if (totalSchedules === 1) {
+                      if (total === 1) {
                         position = 50;
                       } else if (idx === 0) {
                         position = 0;
-                      } else if (idx === totalSchedules - 1) {
+                      } else if (idx === total - 1) {
                         position = 100;
                       } else {
-                        position = (idx / (totalSchedules - 1)) * 100;
+                        position = (idx / (total - 1)) * 100;
                       }
                       const hasDate = !!schedule.dueDate;
                       const milestoneName = schedule.milestoneName || schedule.name || `Milestone ${idx + 1}`;
@@ -672,6 +688,9 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                       );
                     })}
                   </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
