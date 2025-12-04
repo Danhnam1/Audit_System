@@ -292,20 +292,6 @@ const DepartmentChecklist = () => {
     }
   };
 
-  const handleApproveAction = (action: Action) => {
-    setSelectedActionForFeedback(action);
-    setFeedbackType('approve');
-    setFeedbackValue('');
-    setShowFeedbackModal(true);
-  };
-
-  const handleRejectAction = (action: Action) => {
-    setSelectedActionForFeedback(action);
-    setFeedbackType('reject');
-    setFeedbackValue('');
-    setShowFeedbackModal(true);
-  };
-
   const closeFeedbackModal = () => {
     setShowFeedbackModal(false);
     setSelectedActionForFeedback(null);
@@ -822,7 +808,7 @@ const DepartmentChecklist = () => {
             }}
             actionId={selectedActionId}
             showReviewButtons={isVerified}
-            onApprove={async (feedback: string) => {
+            onApprove={async (_feedback: string) => {
               if (!action) return;
               setProcessingActionId(action.actionId);
               try {
