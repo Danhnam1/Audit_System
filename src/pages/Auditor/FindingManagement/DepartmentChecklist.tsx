@@ -43,7 +43,6 @@ const DepartmentChecklist = () => {
   
   // Audit info state
   const [auditType, setAuditType] = useState<string>('');
-  const [loadingAudit, setLoadingAudit] = useState(false);
   
   // Add checklist item modal state
   const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -94,7 +93,6 @@ const DepartmentChecklist = () => {
     } else if (auditId) {
       // Fallback: Load audit info from API if not in state
       const loadAuditInfo = async () => {
-        setLoadingAudit(true);
         try {
           const auditData = await getAuditPlanById(auditId);
           // Try different possible field names for type - check both root and nested audit object
@@ -104,8 +102,6 @@ const DepartmentChecklist = () => {
         } catch (err: any) {
           console.error('Error loading audit info:', err);
           // Don't show error, just log it
-        } finally {
-          setLoadingAudit(false);
         }
       };
       

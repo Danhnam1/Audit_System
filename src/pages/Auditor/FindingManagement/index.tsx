@@ -18,7 +18,7 @@ interface DepartmentCard {
   auditId: string;
   auditTitle: string;
   status: string;
-  auditType?: string;
+  auditType: string;
 }
 
 
@@ -151,7 +151,7 @@ const SQAStaffFindingManagement = () => {
               }
             }
             
-            const cardData = {
+            const cardData: DepartmentCard = {
               deptId: deptData.deptId || deptId,
               name: deptData.name || 'Unknown Department',
               code: deptData.code || '',
@@ -160,7 +160,7 @@ const SQAStaffFindingManagement = () => {
               auditId: firstAssignment.auditId,
               auditTitle: firstAssignment.auditTitle || 'Untitled Audit',
               status: firstAssignment.status || 'Unknown',
-              auditType: auditType,
+              auditType: auditType || '',
             };
             console.log(`✅ Created card for department ${deptId}:`, cardData);
             return cardData;
@@ -171,7 +171,7 @@ const SQAStaffFindingManagement = () => {
         });
 
         const departmentResults = await Promise.all(departmentPromises);
-        const validDepartments = departmentResults.filter((dept): dept is DepartmentCard => dept !== null);
+        const validDepartments: DepartmentCard[] = departmentResults.filter((dept): dept is DepartmentCard => dept !== null);
         console.log('🎯 Final departments to display:', validDepartments);
         
         setDepartments(validDepartments);
