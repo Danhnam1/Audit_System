@@ -52,6 +52,7 @@ const DepartmentChecklist = () => {
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [verifiedActionsCount, setVerifiedActionsCount] = useState(0);
   const [processingActionId, setProcessingActionId] = useState<string | null>(null);
+  const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
   
   // Action detail modal state
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
@@ -248,19 +249,25 @@ const DepartmentChecklist = () => {
       const findings = await getMyFindings();
       setMyFindings(findings);
       
-      // Count verified actions
+      // Load actions for each finding and count verified actions
+      const actionsMap: Record<string, Action[]> = {};
       let verifiedCount = 0;
+      
       for (const finding of findings) {
         try {
           const actions = await getActionsByFinding(finding.findingId);
+          actionsMap[finding.findingId] = actions || [];
           const verifiedActions = actions.filter((action: Action) => 
             action.status?.toLowerCase() === 'verified'
           );
           verifiedCount += verifiedActions.length;
         } catch (err) {
           console.warn(`Failed to load actions for finding ${finding.findingId}`, err);
+          actionsMap[finding.findingId] = [];
         }
       }
+      
+      setFindingActionsMap(actionsMap);
       setVerifiedActionsCount(verifiedCount);
     } catch (err: any) {
       console.error('Error loading my findings:', err);
@@ -268,6 +275,31 @@ const DepartmentChecklist = () => {
     } finally {
       setLoadingFindings(false);
     }
+  };
+  
+  // Get finding status based on actions
+  const getFindingStatus = (findingId: string): { status: string; color: string } | null => {
+    const actions = findingActionsMap[findingId] || [];
+    if (actions.length === 0) return null;
+    
+    // Check all actions to find the most relevant status
+    // Priority: 1) Progress < 100% -> In Progress, 2) Progress = 100% and Verified -> Review
+    for (const action of actions) {
+      const progressPercent = action.progressPercent || 0;
+      const status = action.status?.toLowerCase() || '';
+      
+      // If progress < 100%, show "In Progress"
+      if (progressPercent < 100) {
+        return { status: 'In Progress', color: 'bg-blue-100 text-blue-700' };
+      }
+      
+      // If progress = 100% and status = "Verified", show "Review"
+      if (progressPercent === 100 && status === 'verified') {
+        return { status: 'Review', color: 'bg-purple-100 text-purple-700' };
+      }
+    }
+    
+    return null;
   };
 
   const handleViewFindingActions = async (finding: Finding) => {
@@ -332,7 +364,7 @@ const DepartmentChecklist = () => {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Action
+                My Findings
                 {verifiedActionsCount > 0 && (
                   <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-green-500 text-white rounded-full">
                     {verifiedActionsCount}
@@ -497,9 +529,19 @@ const DepartmentChecklist = () => {
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                           <div className="flex-1 min-w-0">
-                            <h3 className="text-sm sm:text-base font-medium text-gray-900 mb-1">
-                              {finding.title}
-                            </h3>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-sm sm:text-base font-medium text-gray-900">
+                                {finding.title}
+                              </h3>
+                              {getFindingStatus(finding.findingId) && (() => {
+                                const statusInfo = getFindingStatus(finding.findingId);
+                                return statusInfo ? (
+                                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusInfo.color}`}>
+                                    {statusInfo.status}
+                                  </span>
+                                ) : null;
+                              })()}
+                            </div>
                             <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">
                               {finding.description || 'No description'}
                             </p>
@@ -516,6 +558,16 @@ const DepartmentChecklist = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedFindingId(finding.findingId);
+                                setShowDetailModal(true);
+                              }}
+                              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors"
+                            >
+                              Detail Finding
+                            </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -772,6 +824,11 @@ const DepartmentChecklist = () => {
                 if (selectedFindingForActions) {
                   const actions = await getActionsByFinding(selectedFindingForActions.findingId);
                   setFindingActions(Array.isArray(actions) ? actions : []);
+                  // Update actions map
+                  setFindingActionsMap(prev => ({
+                    ...prev,
+                    [selectedFindingForActions.findingId]: actions || []
+                  }));
                   // Reload verified count
                   await loadMyFindings();
                 }
@@ -798,6 +855,11 @@ const DepartmentChecklist = () => {
                 if (selectedFindingForActions) {
                   const actions = await getActionsByFinding(selectedFindingForActions.findingId);
                   setFindingActions(Array.isArray(actions) ? actions : []);
+                  // Update actions map
+                  setFindingActionsMap(prev => ({
+                    ...prev,
+                    [selectedFindingForActions.findingId]: actions || []
+                  }));
                   // Reload verified count
                   await loadMyFindings();
                 }

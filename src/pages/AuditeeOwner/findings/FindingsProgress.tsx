@@ -584,6 +584,52 @@ const FindingsProgress = () => {
                                   Assign
                                 </button>
                               )}
+                              {/* View Action button - show if finding has actions */}
+                              {(() => {
+                                // Check if finding has any action (assigned, returned, or rejected)
+                                const hasAction = assignedUsersMap[finding.findingId] || 
+                                                  returnedActionsMap[finding.findingId] || 
+                                                  rejectedActionsMap[finding.findingId] ||
+                                                  finding.status?.toLowerCase() === 'received';
+                                
+                                if (hasAction) {
+                                  return (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          // Load actions for this finding
+                                          const actions = await getActionsByFinding(finding.findingId);
+                                          const actionsList = Array.isArray(actions) ? actions : [];
+                                          
+                                          if (actionsList.length > 0) {
+                                            // Get the first action (or most recent one)
+                                            const firstAction = actionsList[0];
+                                            setSelectedActionId(firstAction.actionId);
+                                            setShowActionDetailModal(true);
+                                            
+                                            // Check if action is reviewed and can be reviewed
+                                            if (firstAction.status?.toLowerCase() === 'reviewed') {
+                                              setSelectedActionForReview(firstAction);
+                                            } else {
+                                              setSelectedActionForReview(null);
+                                            }
+                                          } else {
+                                            showToast('No actions found for this finding', 'info');
+                                          }
+                                        } catch (err: any) {
+                                          console.error('Error loading actions:', err);
+                                          showToast(err?.message || 'Failed to load actions', 'error');
+                                        }
+                                      }}
+                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors active:scale-95"
+                                      title="View Action"
+                                    >
+                                      View Action
+                                    </button>
+                                  );
+                                }
+                                return null;
+                              })()}
                               <button
                                 onClick={() => {
                                   setSelectedFindingId(finding.findingId);

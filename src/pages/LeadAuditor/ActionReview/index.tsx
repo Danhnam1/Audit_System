@@ -73,17 +73,17 @@ const ActionReview = () => {
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  // Load audits (filter out Closed)
+  // Load audits (filter to only show InProgress)
   useEffect(() => {
     const loadAudits = async () => {
       setLoadingAudits(true);
       try {
         const auditsData = await getAuditPlans();
         const auditsList = unwrap<Audit>(auditsData);
-        // Filter out audits with status "Closed"
+        // Filter to only show audits with status "InProgress"
         const filteredAudits = (Array.isArray(auditsList) ? auditsList : []).filter((audit: Audit) => {
           const statusLower = (audit.status || '').toLowerCase().trim();
-          return statusLower !== 'closed';
+          return statusLower === 'inprogress';
         });
         setAudits(filteredAudits);
       } catch (err: any) {

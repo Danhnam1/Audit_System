@@ -53,10 +53,8 @@ const ActionDetailModal = ({
     try {
       const data = await getActionById(actionId);
       setAction(data);
-      // Load attachments if findingId exists
-      if (data.findingId) {
-        loadAttachments(data.findingId);
-      }
+      // Load attachments for this action
+      loadAttachments(actionId);
       // Load assignedTo user info
       if (data.assignedTo) {
         loadAssignedToUser(data.assignedTo);
@@ -79,10 +77,10 @@ const ActionDetailModal = ({
     }
   };
 
-  const loadAttachments = async (findingId: string) => {
+  const loadAttachments = async (actionId: string) => {
     setLoadingAttachments(true);
     try {
-      const data = await getAttachments('finding', findingId);
+      const data = await getAttachments('Action', actionId);
       setAttachments(data);
     } catch (err: any) {
       console.error('Error loading attachments:', err);

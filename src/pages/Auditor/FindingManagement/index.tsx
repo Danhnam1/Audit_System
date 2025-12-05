@@ -105,8 +105,22 @@ const SQAStaffFindingManagement = () => {
           return;
         }
 
-        // Get unique deptIds
-        const uniqueDeptIds = Array.from(new Set(assignments.map((a: any) => a.deptId)));
+        // Filter out assignments with status "archived"
+        const activeAssignments = assignments.filter((a: any) => {
+          const status = (a.status || '').toLowerCase().trim();
+          return status !== 'archived';
+        });
+        console.log('✅ Active assignments (excluding archived):', activeAssignments.length);
+
+        if (activeAssignments.length === 0) {
+          console.log('⚠️ No active assignments found (all are archived)');
+          setDepartments([]);
+          setLoadingDepartments(false);
+          return;
+        }
+
+        // Get unique deptIds from active assignments only
+        const uniqueDeptIds = Array.from(new Set(activeAssignments.map((a: any) => a.deptId)));
         console.log('🏢 Unique department IDs:', uniqueDeptIds);
         
         // Fetch department details for each unique deptId
@@ -116,8 +130,8 @@ const SQAStaffFindingManagement = () => {
             const deptData = await getDepartmentById(deptId);
             console.log(`✅ Department ${deptId} data:`, deptData);
             
-            // Find all assignments for this department
-            const deptAssignments = assignments.filter((a: any) => a.deptId === deptId);
+            // Find all active assignments for this department
+            const deptAssignments = activeAssignments.filter((a: any) => a.deptId === deptId);
             
             // Return department card data (using first assignment for audit info)
             const firstAssignment = deptAssignments[0];
