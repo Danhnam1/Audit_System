@@ -51,6 +51,7 @@ const ActionReview = () => {
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
 
   // Toast state
   const [toast, setToast] = useState<{
@@ -130,6 +131,19 @@ const ActionReview = () => {
     try {
       const findingsData = await getFindingsByDepartment(deptId);
       setFindings(findingsData);
+      
+      // Load actions for each finding to check for "Approved" status
+      const actionsMap: Record<string, Action[]> = {};
+      for (const finding of findingsData) {
+        try {
+          const actions = await getActionsByFinding(finding.findingId);
+          actionsMap[finding.findingId] = actions || [];
+        } catch (err) {
+          console.warn(`Failed to load actions for finding ${finding.findingId}`, err);
+          actionsMap[finding.findingId] = [];
+        }
+      }
+      setFindingActionsMap(actionsMap);
     } catch (err: any) {
       console.error('Error loading findings:', err);
       showToast('Failed to load findings', 'error');
@@ -137,6 +151,12 @@ const ActionReview = () => {
     } finally {
       setLoadingFindings(false);
     }
+  };
+  
+  // Check if finding has action with "Approved" status
+  const hasApprovedAction = (findingId: string): boolean => {
+    const actions = findingActionsMap[findingId] || [];
+    return actions.some(action => action.status?.toLowerCase() === 'approved');
   };
 
   // Load actions when finding is selected
@@ -201,6 +221,11 @@ const ActionReview = () => {
       if (selectedFindingId) {
         const actionsData = await getActionsByFinding(selectedFindingId);
         setActions(Array.isArray(actionsData) ? actionsData : []);
+        // Update actions map
+        setFindingActionsMap(prev => ({
+          ...prev,
+          [selectedFindingId]: actionsData || []
+        }));
       }
     } catch (err: any) {
       console.error(`Error ${feedbackType === 'approve' ? 'approving' : 'rejecting'} action:`, err);
@@ -375,6 +400,11 @@ const ActionReview = () => {
                         }`}>
                           {finding.severity || 'N/A'}
                         </span>
+                        {hasApprovedAction(finding.findingId) && (
+                          <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
+                            Review
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <button
