@@ -739,6 +739,70 @@ const SQAStaffAuditPlanning = () => {
     }
   };
 
+  // Helper: Check if current user is the creator of the plan
+  const isCurrentUserCreator = useMemo(() => {
+    return (plan: AuditPlan): boolean => {
+      if (!user || !plan) return false;
+
+      // Get current user's ID
+      const fallbackId =
+        (user as any)?.userId ??
+        (user as any)?.id ??
+        (user as any)?.$id ??
+        null;
+
+      let currentUserId: string | null = null;
+      
+      if (!allUsers.length) {
+        currentUserId = fallbackId ? String(fallbackId).trim() : null;
+      } else {
+        const found = allUsers.find((u: any) => {
+          const uEmail = String(u?.email || '').toLowerCase().trim();
+          const userEmail = String(user.email || '').toLowerCase().trim();
+          return uEmail && userEmail && uEmail === userEmail;
+        });
+        currentUserId = found?.userId ?? found?.$id ?? fallbackId;
+        currentUserId = currentUserId != null ? String(currentUserId).trim() : null;
+      }
+
+      if (!currentUserId) return false;
+
+      // Get plan's createdBy (could be userId or email)
+      const planCreatedBy = plan.createdBy;
+      if (!planCreatedBy) return false;
+
+      const normalizedCurrentUserId = String(currentUserId).toLowerCase().trim();
+      const normalizedCreatedBy = String(planCreatedBy).toLowerCase().trim();
+
+      // Compare by userId
+      if (normalizedCreatedBy === normalizedCurrentUserId) {
+        return true;
+      }
+
+      // Compare by email (if createdBy is email)
+      const userEmail = String(user.email || '').toLowerCase().trim();
+      if (normalizedCreatedBy === userEmail) {
+        return true;
+      }
+
+      // Also check if createdBy matches any userId in allUsers that matches current user's email
+      const createdByUser = allUsers.find((u: any) => {
+        const uId = String(u?.userId ?? '').toLowerCase().trim();
+        const uEmail = String(u?.email || '').toLowerCase().trim();
+        return (uId === normalizedCreatedBy) || (uEmail === normalizedCreatedBy);
+      });
+
+      if (createdByUser) {
+        const createdByUserEmail = String(createdByUser?.email || '').toLowerCase().trim();
+        if (createdByUserEmail === userEmail) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+  }, [user, allUsers]);
+
   // Handler: Open delete confirmation modal
   const openDeleteModal = (auditId: string) => {
     // Find the plan to check its status
@@ -758,6 +822,12 @@ const SQAStaffAuditPlanning = () => {
       return;
     }
 
+    // Check if current user is the creator of the plan
+    if (!isCurrentUserCreator(planToDelete)) {
+      toast.warning('Only the creator of the plan can delete it.');
+      return;
+    }
+
     
     setPlanToDeleteId(auditId);
     setShowDeleteModal(true);
@@ -769,9 +839,33 @@ const SQAStaffAuditPlanning = () => {
     setPlanToDeleteId(null);
   };
 
-  // Handler: Delete plan (only allowed for Draft status)
+  // Handler: Delete plan (only allowed for Draft status and by creator)
   const handleDeletePlan = async () => {
     if (!planToDeleteId) return;
+    
+    // Find the plan to verify permissions
+    const planToDelete = existingPlans.find(p => (p.auditId || p.id) === planToDeleteId);
+    
+    if (!planToDelete) {
+      toast.error('Plan not found.');
+      closeDeleteModal();
+      return;
+    }
+
+    // Double-check status (defense in depth)
+    const normalizedStatus = String(planToDelete.status || 'draft').toLowerCase().replace(/\s+/g, '');
+    if (normalizedStatus !== 'draft') {
+      toast.warning('Only Draft status can be deleted.');
+      closeDeleteModal();
+      return;
+    }
+
+    // Double-check creator (defense in depth)
+    if (!isCurrentUserCreator(planToDelete)) {
+      toast.warning('Only the creator of the plan can delete it.');
+      closeDeleteModal();
+      return;
+    }
     
     try {
       await deleteAuditPlan(planToDeleteId);
