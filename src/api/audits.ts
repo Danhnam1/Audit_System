@@ -181,6 +181,11 @@ export const getAuditReportNote = async (auditId: string): Promise<string> => {
   return String(data);
 };
 
+// Archive audit
+export const archiveAudit = async (auditId: string): Promise<any> => {
+  return apiClient.put(`/Audits/archive/${auditId}`) as any;
+};
+
 // Backwards compatibility (will be deprecated)
 export const approveAudit = approveAuditReport;
 export const rejectAudit = rejectAuditReport;
@@ -203,6 +208,7 @@ export default {
   approveAuditReport,
   rejectAuditReport,
   getAuditReportNote,
+  archiveAudit,
   // legacy names
   approveAudit,
   rejectAudit,

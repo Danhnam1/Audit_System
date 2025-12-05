@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { getStatusColor } from '../../../constants';
 import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../components';
-import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
+import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote, archiveAudit } from '../../../api/audits';
 import { getDepartments } from '../../../api/departments';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
 import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
@@ -571,7 +571,7 @@ const SQAStaffReports = () => {
       setUploadLoading(prev => ({ ...prev, [auditId]: true }));
       
       // Always use the multiple-upload API, even for a single file
-        await uploadMultipleAuditDocuments(auditIdRaw, files);
+      await uploadMultipleAuditDocuments(auditIdRaw, files);
       
       const successMessage = files.length === 1 
         ? 'Signed report uploaded successfully.' 
@@ -584,6 +584,17 @@ const SQAStaffReports = () => {
       // Không cần reloadReports ở đây để tránh phải reload lại trang mới thấy trạng thái Uploaded
       // và cũng tránh việc state uploadedAudits bị ghi đè bởi dữ liệu cũ từ API.
       setUploadedAudits(prev => new Set(prev).add(auditId));
+      
+      // Archive audit after successful upload
+      try {
+        await archiveAudit(auditIdRaw);
+        console.log('Audit archived successfully');
+        // Reload reports after successful archive
+        await reloadReports();
+      } catch (archiveErr) {
+        console.error('Failed to archive audit:', archiveErr);
+        // Don't show error to user, just log it
+      }
     } catch (err) {
       console.error('Upload signed report failed', err);
       const errorMessage = 'Upload failed. Please try again.';
