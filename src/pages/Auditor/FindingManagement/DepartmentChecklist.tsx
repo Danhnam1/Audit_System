@@ -2,7 +2,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getChecklistItemsByDepartment, markChecklistItemCompliant } from '../../../api/checklists';
+import { getChecklistItemsByDepartment, markChecklistItemCompliant, createAuditChecklistItem, type CreateAuditChecklistItemDto } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
 import { getFindings, getMyFindings, type Finding, approveFindingAction, returnFindingAction } from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
@@ -11,6 +11,7 @@ import FindingDetailModal from './FindingDetailModal';
 import { Toast } from '../AuditPlanning/components/Toast';
 import { getActionsByFinding, type Action } from '../../../api/actions';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
+import { getAuditPlanById } from '../../../api/audits';
 
 interface ChecklistItem {
   auditItemId: string;
@@ -39,6 +40,18 @@ const DepartmentChecklist = () => {
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [showCompliantConfirmModal, setShowCompliantConfirmModal] = useState(false);
   const [itemToMarkCompliant, setItemToMarkCompliant] = useState<ChecklistItem | null>(null);
+  
+  // Audit info state
+  const [auditType, setAuditType] = useState<string>('');
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  
+  // Add checklist item modal state
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [newItemForm, setNewItemForm] = useState({
+    questionTextSnapshot: '',
+    section: '',
+  });
+  const [submittingItem, setSubmittingItem] = useState(false);
   
   // Tab state
   const [activeTab, setActiveTab] = useState<'checklist' | 'action'>('checklist');
@@ -69,8 +82,36 @@ const DepartmentChecklist = () => {
     isVisible: false,
   });
 
-  // Get auditId from location state (passed from parent component)
+  // Get auditId and auditType from location state (passed from parent component)
   const auditId = (location.state as any)?.auditId || '';
+  const auditTypeFromState = (location.state as any)?.auditType || '';
+  
+  // Set audit type from state or load from API
+  useEffect(() => {
+    if (auditTypeFromState) {
+      // Use audit type from state (from assignment)
+      setAuditType(auditTypeFromState);
+    } else if (auditId) {
+      // Fallback: Load audit info from API if not in state
+      const loadAuditInfo = async () => {
+        setLoadingAudit(true);
+        try {
+          const auditData = await getAuditPlanById(auditId);
+          // Try different possible field names for type - check both root and nested audit object
+          const type = auditData.type || auditData.Type || auditData.auditType || 
+                       auditData.audit?.type || auditData.audit?.Type || auditData.audit?.auditType || '';
+          setAuditType(type);
+        } catch (err: any) {
+          console.error('Error loading audit info:', err);
+          // Don't show error, just log it
+        } finally {
+          setLoadingAudit(false);
+        }
+      };
+      
+      loadAuditInfo();
+    }
+  }, [auditId, auditTypeFromState]);
 
   // Helper function to show toast
   const showToast = (message: string, type: 'error' | 'success' | 'info' | 'warning' = 'info') => {
@@ -414,6 +455,26 @@ const DepartmentChecklist = () => {
               </div>
             ) : (
               <div className="divide-y divide-gray-200">
+                {/* Add Item Button - Show at the top of the list if External audit */}
+                {auditType?.toLowerCase() === 'external' && (
+                  <div className="px-4 sm:px-6 py-2 bg-gray-50 border-b border-gray-200">
+                    <button
+                      onClick={() => {
+                        setNewItemForm({
+                          questionTextSnapshot: '',
+                          section: '',
+                        });
+                        setShowAddItemModal(true);
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add New Item
+                    </button>
+                  </div>
+                )}
                 {checklistItems.map((item, index) => (
                   <div
                     key={item.auditItemId}
@@ -876,6 +937,142 @@ const DepartmentChecklist = () => {
           />
         );
       })()}
+
+      {/* Add Checklist Item Modal */}
+      {showAddItemModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={() => setShowAddItemModal(false)} />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+                <h2 className="text-xl font-semibold text-gray-900">Add Checklist Item</h2>
+                <button
+                  onClick={() => setShowAddItemModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Question Text <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={newItemForm.questionTextSnapshot}
+                    onChange={(e) => setNewItemForm(prev => ({ ...prev, questionTextSnapshot: e.target.value }))}
+                    placeholder="Enter the question text for this checklist item"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
+                    rows={4}
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Section
+                  </label>
+                  <input
+                    type="text"
+                    value={departmentName || newItemForm.section}
+                    onChange={(e) => setNewItemForm(prev => ({ ...prev, section: e.target.value }))}
+                    placeholder="Enter section name (optional)"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-gray-50"
+                    disabled
+                    title="Section is automatically set to department name"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Section is automatically set to department name</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Order
+                  </label>
+                  <input
+                    type="number"
+                    value={checklistItems.length > 0 
+                      ? Math.max(...checklistItems.map(item => item.order || 0)) + 1
+                      : 1}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                    title="Order is automatically calculated"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Order is automatically set to the next available number</p>
+                </div>
+              </div>
+              
+              <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setShowAddItemModal(false)}
+                  disabled={submittingItem}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!newItemForm.questionTextSnapshot.trim()) {
+                      showToast('Please enter question text', 'warning');
+                      return;
+                    }
+                    
+                    if (!auditId) {
+                      showToast('Audit ID is required', 'error');
+                      return;
+                    }
+                    
+                    setSubmittingItem(true);
+                    try {
+                      // Calculate order: get max order from current checklist items and add 1
+                      const maxOrder = checklistItems.length > 0 
+                        ? Math.max(...checklistItems.map(item => item.order || 0))
+                        : 0;
+                      const nextOrder = maxOrder + 1;
+                      
+                      const payload: CreateAuditChecklistItemDto = {
+                        auditId: auditId,
+                        questionTextSnapshot: newItemForm.questionTextSnapshot.trim(),
+                        section: departmentName || newItemForm.section || undefined,
+                        order: nextOrder,
+                        status: 'Open',
+                        comment: '',
+                      };
+                      
+                      await createAuditChecklistItem(payload);
+                      showToast('Checklist item created successfully', 'success');
+                      setShowAddItemModal(false);
+                      setNewItemForm({ questionTextSnapshot: '', section: '' });
+                      
+                      // Reload checklist items
+                      if (deptId) {
+                        const deptIdNum = parseInt(deptId, 10);
+                        const items = await getChecklistItemsByDepartment(deptIdNum);
+                        const filteredItems = items.filter((item: ChecklistItem) => {
+                          const statusLower = (item.status || '').toLowerCase().trim();
+                          return statusLower !== 'archived';
+                        });
+                        const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
+                        setChecklistItems(sortedItems);
+                      }
+                    } catch (err: any) {
+                      console.error('Error creating checklist item:', err);
+                      showToast(err?.message || 'Failed to create checklist item', 'error');
+                    } finally {
+                      setSubmittingItem(false);
+                    }
+                  }}
+                  disabled={submittingItem || !newItemForm.questionTextSnapshot.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submittingItem ? 'Creating...' : 'Create Item'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       <Toast

@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuditFindings } from '../../../hooks/useAuditFindings';
 import { getMyAssignments } from '../../../api/auditAssignments';
 import { getDepartmentById } from '../../../api/departments';
+import { getAuditPlanById } from '../../../api/audits';
 import { unwrap } from '../../../utils/normalize';
 
 interface DepartmentCard {
@@ -17,6 +18,7 @@ interface DepartmentCard {
   auditId: string;
   auditTitle: string;
   status: string;
+  auditType?: string;
 }
 
 
@@ -135,6 +137,20 @@ const SQAStaffFindingManagement = () => {
             
             // Return department card data (using first assignment for audit info)
             const firstAssignment = deptAssignments[0];
+            let auditType = '';
+            
+            // Get audit type by calling getAuditPlanById with auditId from assignment
+            if (firstAssignment.auditId) {
+              try {
+                const auditData = await getAuditPlanById(firstAssignment.auditId);
+                // Try both root level and nested audit object
+                auditType = auditData.type || auditData.Type || auditData.auditType || 
+                           auditData.audit?.type || auditData.audit?.Type || auditData.audit?.auditType || '';
+              } catch (err) {
+                console.warn(`Failed to load audit type for ${firstAssignment.auditId}:`, err);
+              }
+            }
+            
             const cardData = {
               deptId: deptData.deptId || deptId,
               name: deptData.name || 'Unknown Department',
@@ -144,6 +160,7 @@ const SQAStaffFindingManagement = () => {
               auditId: firstAssignment.auditId,
               auditTitle: firstAssignment.auditTitle || 'Untitled Audit',
               status: firstAssignment.status || 'Unknown',
+              auditType: auditType,
             };
             console.log(`✅ Created card for department ${deptId}:`, cardData);
             return cardData;

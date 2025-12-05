@@ -214,6 +214,21 @@ export const createAuditChecklistItemsFromTemplate = async (auditId: string, dep
   }
 };
 
+// Create audit checklist item
+export interface CreateAuditChecklistItemDto {
+  auditId: string;
+  questionTextSnapshot: string;
+  section?: string;
+  order?: number;
+  status?: string;
+  comment?: string;
+}
+
+export const createAuditChecklistItem = async (data: CreateAuditChecklistItemDto): Promise<any> => {
+  const res: any = await apiClient.post('/AuditChecklistItems', data);
+  return res.data || res;
+};
+
 export default {
   getChecklistTemplates,
   getChecklistItemsByTemplate,
@@ -222,4 +237,5 @@ export default {
   markChecklistItemCompliant,
   markChecklistItemNonCompliant,
   createAuditChecklistItemsFromTemplate,
+  createAuditChecklistItem,
 };
