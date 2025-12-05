@@ -52,6 +52,7 @@ export const STATUS_COLORS = {
   // Special States
   'Reopened': 'bg-purple-100 text-purple-800',
   'Overdue': 'bg-red-500 text-white',
+  'Archived': 'bg-orange-500 text-white',
   
   // User/System States
   'Active': 'bg-teal-500 text-white',

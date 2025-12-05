@@ -62,6 +62,9 @@ const DirectorAuditPlanDetail = lazy(() => import("../pages/Director/AuditPlanDe
 const DirectorReviewAuditResults = lazy(() => import("../pages/Director/ReviewAuditResults"));
 const DirectorSummaryReport = lazy(() => import("../pages/Director/SummaryReport"));
 
+// Shared pages
+const ArchivedHistory = lazy(() => import("../pages/Shared/ArchivedHistory"));
+
 
 // AppRoutes component - contains only route definitions
 export function AppRoutes() {
@@ -143,6 +146,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Admin"]}>
                         <AdminChecklistManagement />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/admin/archived-history"
+                element={
+                    <ProtectedRoute allowedRoles={["Admin"]}>
+                        <ArchivedHistory />
                     </ProtectedRoute>
                 }
             />
@@ -477,6 +488,14 @@ export function AppRoutes() {
                 }
             />
             <Route
+                path="/director/archived-history"
+                element={
+                    <ProtectedRoute allowedRoles={["Director"]}>
+                        <ArchivedHistory />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
                 path="/lead-auditor/auditplanning"
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
@@ -505,6 +524,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <LeadAuditorActionReview />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/archived-history"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <ArchivedHistory />
                     </ProtectedRoute>
                 }
             />

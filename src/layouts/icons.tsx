@@ -226,3 +226,14 @@ export const ClipboardCheckIcon = () => (
     />
   </svg>
 );
+
+export const ArchiveIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm0 2h12v10H4V5zm2 2a1 1 0 000 2h8a1 1 0 100-2H6zm0 4a1 1 0 100 2h4a1 1 0 100-2H6z"
+      fill="currentColor"
+    />
+  </svg>
+);

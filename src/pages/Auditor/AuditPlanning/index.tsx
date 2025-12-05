@@ -214,8 +214,8 @@ const SQAStaffAuditPlanning = () => {
       formState.kickoffMeeting ? { key: 'kickoffMeeting' as any, value: formState.kickoffMeeting, label: 'Kickoff Meeting' } : null,
       formState.fieldworkStart ? { key: 'fieldworkStart' as any, value: formState.fieldworkStart, label: 'Fieldwork Start' } : null,
       formState.evidenceDue ? { key: 'evidenceDue' as any, value: formState.evidenceDue, label: 'Evidence Due' } : null,
-      formState.draftReportDue ? { key: 'draftReportDue' as any, value: formState.draftReportDue, label: 'Draft Report Due' } : null,
       formState.capaDue ? { key: 'capaDue' as any, value: formState.capaDue, label: 'CAPA Due' } : null,
+      formState.draftReportDue ? { key: 'draftReportDue' as any, value: formState.draftReportDue, label: 'Draft Report Due' } : null,
     ].filter(Boolean) as any[];
 
     // Get period dates for validation
@@ -353,8 +353,39 @@ const SQAStaffAuditPlanning = () => {
   }, [formState.level, formState.selectedDeptIds, formState.selectedCriteriaIds]);
 
   const validateStep3 = useMemo(() => {
-    return Array.isArray(formState.selectedTemplateIds) && formState.selectedTemplateIds.length > 0;
-  }, [formState.selectedTemplateIds]);
+    // Basic check: must have at least one template selected
+    if (!Array.isArray(formState.selectedTemplateIds) || formState.selectedTemplateIds.length === 0) {
+      return false;
+    }
+
+    // If level is 'department' and departments are selected, validate that each department has at least one template
+    if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
+      // Get selected templates with their deptId
+      const selectedTemplates = checklistTemplates.filter((tpl: any) =>
+        formState.selectedTemplateIds.includes(String(tpl.templateId || tpl.id || tpl.$id))
+      );
+
+      // Check if each selected department has at least one template selected
+      const selectedDeptIdsSet = new Set(formState.selectedDeptIds.map(id => String(id).trim()));
+      const deptIdsWithTemplates = new Set<string>();
+
+      selectedTemplates.forEach((tpl: any) => {
+        const tplDeptId = tpl.deptId;
+        if (tplDeptId != null && tplDeptId !== undefined) {
+          deptIdsWithTemplates.add(String(tplDeptId).trim());
+        }
+      });
+
+      // Check if all selected departments have at least one template
+      for (const deptId of selectedDeptIdsSet) {
+        if (!deptIdsWithTemplates.has(deptId)) {
+          return false; // At least one department doesn't have a template selected
+        }
+      }
+    }
+
+    return true;
+  }, [formState.selectedTemplateIds, formState.level, formState.selectedDeptIds, checklistTemplates]);
 
   const validateStep4 = useMemo(() => {
     return formState.selectedAuditorIds.length >= 2;
@@ -1199,8 +1230,8 @@ const SQAStaffAuditPlanning = () => {
           { name: MILESTONE_NAMES.KICKOFF, date: formState.kickoffMeeting },
           { name: MILESTONE_NAMES.FIELDWORK, date: formState.fieldworkStart },
           { name: MILESTONE_NAMES.EVIDENCE, date: formState.evidenceDue },
-          { name: MILESTONE_NAMES.DRAFT, date: formState.draftReportDue },
           { name: MILESTONE_NAMES.CAPA, date: formState.capaDue },
+          { name: MILESTONE_NAMES.DRAFT, date: formState.draftReportDue },
         ].filter(pair => pair.date);
 
         if (schedulePairs.length > 0) {
@@ -1393,6 +1424,7 @@ const SQAStaffAuditPlanning = () => {
                   onSelectionChange={formState.setSelectedTemplateIds}
                   level={formState.level}
                   selectedDeptIds={formState.selectedDeptIds}
+                  departments={departments}
                 />
               )}
 
@@ -1468,7 +1500,32 @@ const SQAStaffAuditPlanning = () => {
                                 : 'Please select at least 1 inspection criterion';
                               break;
                             case 3:
-                              message = 'Please select a Checklist Template.';
+                              if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
+                                // Get selected templates with their deptId
+                                const selectedTemplates = checklistTemplates.filter((tpl: any) =>
+                                  formState.selectedTemplateIds.includes(String(tpl.templateId || tpl.id || tpl.$id))
+                                );
+                                const selectedDeptIdsSet = new Set(formState.selectedDeptIds.map(id => String(id).trim()));
+                                const deptIdsWithTemplates = new Set<string>();
+                                selectedTemplates.forEach((tpl: any) => {
+                                  const tplDeptId = tpl.deptId;
+                                  if (tplDeptId != null && tplDeptId !== undefined) {
+                                    deptIdsWithTemplates.add(String(tplDeptId).trim());
+                                  }
+                                });
+                                const missingDepts = Array.from(selectedDeptIdsSet).filter(deptId => !deptIdsWithTemplates.has(deptId));
+                                if (missingDepts.length > 0) {
+                                  const deptNames = missingDepts.map(deptId => {
+                                    const dept = departments.find(d => String(d.deptId) === deptId);
+                                    return dept?.name || deptId;
+                                  }).join(', ');
+                                  message = `Please select at least one template for each selected department. Missing templates for: ${deptNames}`;
+                                } else {
+                                  message = 'Please select a Checklist Template.';
+                                }
+                              } else {
+                                message = 'Please select a Checklist Template.';
+                              }
                               break;
                             case 4:
                               message = 'Please select Lead Auditor.';

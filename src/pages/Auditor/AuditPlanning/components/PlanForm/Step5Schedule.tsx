@@ -108,21 +108,6 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Draft Report Due
-            <InfoHint text="Deadline for auditors to complete the draft report and submit it to the Lead Auditor for review. This milestone is used to track reporting progress." />
-          </label>
-          <input
-            type="date"
-            value={draftReportDue}
-            onChange={(e) => onDraftReportChange(e.target.value)}
-            placeholder="dd/mm/yyyy"
-            {...dateAttrs}
-            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.draftReportDue ? 'border-red-500' : 'border-gray-300'}`}
-          />
-          {errors.draftReportDue && <p className="text-xs text-red-600 mt-1">{errors.draftReportDue}</p>}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
             CAPA Due
             <InfoHint text="Deadline to complete corrective and preventive actions (CAPA) for the audit findings." />
           </label>
@@ -135,6 +120,21 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.capaDue ? 'border-red-500' : 'border-gray-300'}`}
           />
           {errors.capaDue && <p className="text-xs text-red-600 mt-1">{errors.capaDue}</p>}
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Report Due
+            <InfoHint text="Deadline for auditors to complete the report and submit it to the Lead Auditor for review. This milestone is used to track reporting progress." />
+          </label>
+          <input
+            type="date"
+            value={draftReportDue}
+            onChange={(e) => onDraftReportChange(e.target.value)}
+            placeholder="dd/mm/yyyy"
+            {...dateAttrs}
+            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.draftReportDue ? 'border-red-500' : 'border-gray-300'}`}
+          />
+          {errors.draftReportDue && <p className="text-xs text-red-600 mt-1">{errors.draftReportDue}</p>}
         </div>
         {/* <div className="border-t pt-4 mt-4">
           <label className="flex items-center gap-2">

@@ -6,6 +6,7 @@ interface Step3ChecklistProps {
   onSelectionChange: (ids: string[]) => void;
   level?: string;
   selectedDeptIds?: string[];
+  departments?: Array<{ deptId: number | string; name: string }>;
 }
 
 export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
@@ -14,8 +15,36 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
   onSelectionChange,
   level = 'academy',
   selectedDeptIds = [],
+  departments = [],
 }) => {
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
+
+  // Check which departments are missing templates
+  const missingTemplateDepts = useMemo(() => {
+    if (level !== 'department' || selectedDeptIds.length === 0) {
+      return [];
+    }
+
+    const selectedTemplates = checklistTemplates.filter((tpl: any) =>
+      selectedTemplateIds.includes(String(tpl.templateId || tpl.id || tpl.$id))
+    );
+
+    const selectedDeptIdsSet = new Set(selectedDeptIds.map(id => String(id).trim()));
+    const deptIdsWithTemplates = new Set<string>();
+
+    selectedTemplates.forEach((tpl: any) => {
+      const tplDeptId = tpl.deptId;
+      if (tplDeptId != null && tplDeptId !== undefined) {
+        deptIdsWithTemplates.add(String(tplDeptId).trim());
+      }
+    });
+
+    const missing = Array.from(selectedDeptIdsSet).filter(deptId => !deptIdsWithTemplates.has(deptId));
+    return missing.map(deptId => {
+      const dept = departments.find(d => String(d.deptId) === deptId);
+      return dept?.name || deptId;
+    });
+  }, [level, selectedDeptIds, selectedTemplateIds, checklistTemplates, departments]);
 
   // Filter templates based on selected departments
   const filteredTemplates = useMemo(() => {
@@ -96,8 +125,18 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
             Select a Checklist Template *
           </label>
           <p className="text-xs text-gray-500 mb-2">
-            You can select multiple templates. The first selection will be treated as the primary template for summary info.
+            {level === 'department' && selectedDeptIds.length > 0
+              ? `You must select at least one template for each selected department (${selectedDeptIds.length} department(s) selected). The first selection will be treated as the primary template for summary info.`
+              : 'You can select multiple templates. The first selection will be treated as the primary template for summary info.'}
           </p>
+          {missingTemplateDepts.length > 0 && (
+            <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-sm font-semibold text-yellow-800 mb-1">⚠️ Missing Templates</p>
+              <p className="text-xs text-yellow-700">
+                Please select at least one template for: <span className="font-semibold">{missingTemplateDepts.join(', ')}</span>
+              </p>
+            </div>
+          )}
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {filteredTemplates.length === 0 ? (
               <p className="text-sm text-gray-500">

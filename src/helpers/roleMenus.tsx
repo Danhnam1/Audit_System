@@ -9,6 +9,7 @@ import {
   DocumentIcon,
   QualityIcon,
   ClockIcon,
+  ArchiveIcon,
 } from '../layouts/icons';
 import { HiOutlineUpload } from 'react-icons/hi';
 
@@ -36,6 +37,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
         { icon: <QualityIcon />, label: 'Criteria Management', path: '/admin/criteria' },
         { icon: <ClipboardCheckIcon />, label: 'Checklist Management', path: '/admin/checklists' },
+        { icon: <ArchiveIcon />, label: 'Archived History', path: '/admin/archived-history' },
         // { icon: <AuditIcon />, label: 'Audit Logs', path: '/admin/audit-logs' },
         // { icon: <ReportsIcon />, label: 'Reports', path: '/admin/reports' },
         // { icon: <DatabaseIcon />, label: 'Database', path: '/admin/database' },
@@ -87,6 +89,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
       return [
         // { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.DIRECTOR },
         { icon: <AuditIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
+        { icon: <ArchiveIcon />, label: 'Archived History', path: '/director/archived-history' },
         // { icon: <AuditIcon />, label: 'Review Audit Results', path: '/director/review-results' },
         // { icon: <ReportsIcon />, label: 'Summary Report', path: '/director/summary-report' },
       ];
@@ -96,6 +99,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <AuditIcon />, label: 'Audit Assignment', path: '/auditor/audit-assignment' },
         { icon: <DocumentIcon />, label: 'Review Reports', path: '/lead-auditor/lead-reports' },
         { icon: <ClipboardCheckIcon />, label: 'Action Review', path: '/lead-auditor/action-review' },
+        { icon: <ArchiveIcon />, label: 'Archived History', path: '/lead-auditor/archived-history' },
       ];
 
     default:
