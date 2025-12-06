@@ -13,6 +13,9 @@ import { getActionsByFinding, type Action } from '../../../api/actions';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById } from '../../../api/audits';
 
+import { STATUS_COLORS, getStatusColor } from '../../../constants';
+
+
 interface ChecklistItem {
   auditItemId: string;
   auditId: string;
@@ -52,6 +55,10 @@ const DepartmentChecklist = () => {
   });
   const [submittingItem, setSubmittingItem] = useState(false);
   
+
+   const getStatusBadgeColor = (status: string) => {
+    return getStatusColor(status) || 'bg-gray-100 text-gray-700';
+  };
   // Tab state
   const [activeTab, setActiveTab] = useState<'checklist' | 'action'>('checklist');
   
@@ -121,25 +128,26 @@ const DepartmentChecklist = () => {
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
   // Helper function to get background color based on status
-  const getStatusColor = (status: string) => {
-    const statusLower = (status || '').toLowerCase().trim();
-    
-    // Check for NonCompliant first (must check this before Compliant)
-    // Handle both "NonCompliant" and "Non-Compliant" formats
-    if (statusLower.startsWith('non') || (statusLower.includes('non') && statusLower.includes('compliant'))) {
-      // Non-compliant - red background rõ ràng hơn với border đậm
-      return 'bg-red-50 border-l-4 border-red-200 hover:bg-red-200 shadow-sm';
-    }
-    
-    // Check for Compliant (only if not NonCompliant)
-    if (statusLower === 'compliant' || statusLower.includes('compliant')) {
-      // Compliant - green background with hover
-      return 'bg-green-50 border-l-4 border-green-500 hover:bg-green-100';
-    }
-    
-    // Default - no special color
-    return 'bg-white border-l-4 border-transparent hover:bg-gray-50';
-  };
+const getStatusColor = (status: string) => {
+  const statusLower = (status || '').toLowerCase().trim();
+
+  // NonCompliant
+  if (
+    statusLower.startsWith('non') ||
+    (statusLower.includes('non') && statusLower.includes('compliant'))
+  ) {
+    return 'bg-red-50 hover:bg-red-200 shadow-sm';
+  }
+
+  // Compliant
+  if (statusLower === 'compliant' || statusLower.includes('compliant')) {
+    return 'bg-green-50 hover:bg-green-100';
+  }
+
+  // Default
+  return 'bg-white hover:bg-gray-50';
+};
+
 
   // Check if item is non-compliant
   const isNonCompliant = (status: string) => {
@@ -472,11 +480,12 @@ const DepartmentChecklist = () => {
                   </div>
                 )}
                 {checklistItems.map((item, index) => (
-                  <div
-                    key={item.auditItemId}
-                    className={`px-3 sm:px-4 md:px-6 py-3 sm:py-4 transition-colors ${getStatusColor(item.status)}`}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                <div
+  key={item.auditItemId}
+  className={`px-3 sm:px-4 md:px-6 py-3 sm:py-4 transition-colors ${getStatusColor(item.status)} focus:outline-none focus:ring-0`}
+>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 focus:outline-none focus:ring-0">
                       <div className="flex items-start sm:items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0">
                         {/* Order Number */}
                         <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center bg-primary-100 text-primary-700 rounded-lg font-semibold text-xs sm:text-sm md:text-base">
@@ -489,14 +498,17 @@ const DepartmentChecklist = () => {
                       <div className="flex items-center justify-end sm:justify-start gap-2 sm:gap-3 flex-shrink-0">
                         {isCompliant(item.status) ? (
                           /* Text for Compliant items */
-                          <div className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 bg-green-100 text-green-700 rounded-lg text-[10px] sm:text-xs md:text-sm font-semibold whitespace-nowrap">
-                            <span className="hidden sm:inline">Meets Requirements</span>
-                            <span className="sm:hidden">Meets</span>
-                          </div>
+                          <div className="px-3 sm:px-4 py-1. 5 sm:py-2  rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap border shadow-sm flex items-center gap-1. 5">
+            {/* <svg className="w-3. 5 h-3.5 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+            </svg> */}
+            <span className="hidden sm:inline">Meets Requirements</span>
+            <span className="sm:hidden">Meets</span>
+          </div>
                         ) : isNonCompliant(item.status) ? (
                           /* Eye icon for Non-compliant items (no badge) */
                           <button
-                            className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95 flex-shrink-0"
+                            className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95 flex-shrink-0 focus:outline-none focus:ring-0"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleViewFinding(item);
@@ -511,19 +523,19 @@ const DepartmentChecklist = () => {
                         ) : (
                           <>
                             {/* Green Checkmark */}
-                            <button
-                              className={`w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-green-100 hover:bg-green-200 text-green-600 transition-colors active:scale-95 flex-shrink-0 ${
-                                updatingItemId === item.auditItemId ? 'opacity-50 cursor-not-allowed' : ''
-                              }`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMarkCompliant(item);
-                              }}
-                              disabled={updatingItemId === item.auditItemId}
-                              title="Mark as Compliant"
-                            >
+                             <button
+              className={`w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-gradient-to-br from-emerald-50 to-green-50 hover:from-emerald-100 hover:to-green-100 text-emerald-600 hover:text-emerald-700 border border-emerald-200 shadow-sm hover:shadow-md transition-all   focus:outline-none focus:ring-0 duration-200 active:scale-95 flex-shrink-0 ${
+                updatingItemId === item.auditItemId ?  'opacity-50 cursor-not-allowed' : ''
+              }`}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleMarkCompliant(item);
+              }}
+              disabled={updatingItemId === item. auditItemId}
+              title="Mark as Compliant"
+            >
                               {updatingItemId === item.auditItemId ? (
-                                <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5 border-b-2 border-green-600"></div>
+                                <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5 border-b-2 border-green-600 focus:outline-none focus:ring-0"></div>
                               ) : (
                                 <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -602,7 +614,8 @@ const DepartmentChecklist = () => {
                             <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">
                               {finding.description || 'No description'}
                             </p>
-                            <div className="flex items-center gap-3 mt-2">
+                           
+                            <div className="flex items-center gap-6 mt-2">
                               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                                 finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
                                   ? 'bg-red-100 text-red-700'
@@ -612,6 +625,9 @@ const DepartmentChecklist = () => {
                               }`}>
                                 {finding.severity || 'N/A'}
                               </span>
+                               <p className={`text-xs  sm:text-sm line-clamp-2 font-medium ${getStatusBadgeColor(finding.status)}`}>
+  {finding.status || 'No status'}
+</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">

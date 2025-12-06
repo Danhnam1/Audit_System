@@ -10,6 +10,7 @@ import { unwrap } from '../../../utils/normalize';
 import { Toast } from '../../Auditor/AuditPlanning/components/Toast';
 import FindingDetailModal from '../../Auditor/FindingManagement/FindingDetailModal';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
+import { getStatusColor } from '../../../constants';
 
 interface Audit {
   auditId: string;
@@ -63,7 +64,9 @@ const ActionReview = () => {
     type: 'info',
     isVisible: false,
   });
-
+ const getStatusBadgeColor = (status: string) => {
+    return getStatusColor(status) || 'bg-gray-100 text-gray-700';
+  };
   const showToast = (message: string, type: 'error' | 'success' | 'info' | 'warning' = 'info') => {
     setToast({ message, type, isVisible: true });
   };
@@ -303,7 +306,7 @@ const ActionReview = () => {
         {/* Content */}
         {!selectedAuditId ? (
           // Level 1: Audits
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+          <div className="bg-white rounded-xl border border-primary-100 overflow-hidden">
             {loadingAudits ? (
               <div className="p-8 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
@@ -319,7 +322,8 @@ const ActionReview = () => {
                   <div
                     key={audit.auditId}
                     onClick={() => handleAuditSelect(audit.auditId)}
-                    className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group border-l-4 border-transparent hover:border-primary-500"
+                    className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group"
+
                   >
                     <div className="flex items-center justify-between">
                       <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700">
@@ -336,7 +340,7 @@ const ActionReview = () => {
           </div>
         ) : !selectedDeptId ? (
           // Level 2: Departments
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+          <div className="bg-white rounded-xl border border-primary-100  overflow-hidden">
             {loadingDepartments ? (
               <div className="p-8 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
@@ -352,7 +356,8 @@ const ActionReview = () => {
                   <div
                     key={dept.deptId}
                     onClick={() => handleDepartmentSelect(dept.deptId)}
-                    className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group border-l-4 border-transparent hover:border-primary-500"
+                  className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group"
+
                   >
                     <div className="flex items-center justify-between">
                       <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700">
@@ -367,10 +372,10 @@ const ActionReview = () => {
               </div>
             )}
           </div>
-        ) : !selectedFindingId ? (
+               ) : ! selectedFindingId ? (
           // Level 3: Findings
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-            {loadingFindings ? (
+          <div className="bg-white rounded-xl border border-primary-100  overflow-hidden">
+            {loadingFindings ?  (
               <div className="p-8 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
                 <p className="text-gray-600">Loading findings...</p>
@@ -384,36 +389,45 @@ const ActionReview = () => {
                 {findings.map((finding) => (
                   <div
                     key={finding.findingId}
-                    className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors group border-l-4 border-transparent"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 flex items-center gap-3">
-                        <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700">
+                  className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
+>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-semibold text-gray-900 mb-2">
                           {finding.title}
                         </h3>
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
-                            ? 'bg-red-100 text-red-700'
-                            : finding.severity?.toLowerCase() === 'medium' || finding.severity?.toLowerCase() === 'normal'
-                            ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-green-100 text-green-700'
-                        }`}>
-                          {finding.severity || 'N/A'}
-                        </span>
-                        {hasApprovedAction(finding.findingId) && (
-                          <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
-                            Review
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            finding. severity?. toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
+                              ? 'bg-red-100 text-red-700'
+                              : finding.severity?.toLowerCase() === 'medium' || finding.severity?.toLowerCase() === 'normal'
+                              ? 'bg-yellow-100 text-yellow-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            {finding.severity || 'N/A'}
+                                                  
                           </span>
-                        )}
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${getStatusBadgeColor(finding.status)}`}>
+
+  {finding.status || 'No status'}
+
+                          </span>
+                        
+                          {hasApprovedAction(finding.findingId) && (
+                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
+                              Review
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-shrink-0">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedFindingForDetail(finding.findingId);
                             setShowFindingDetailModal(true);
                           }}
-                          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                          className="px-3 py-1. 5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
                         >
                           Detail
                         </button>
@@ -422,7 +436,7 @@ const ActionReview = () => {
                             e.stopPropagation();
                             handleFindingSelect(finding.findingId);
                           }}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+                          className="px-3 py-1. 5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors whitespace-nowrap"
                         >
                           View Actions
                         </button>
@@ -432,10 +446,9 @@ const ActionReview = () => {
                 ))}
               </div>
             )}
-          </div>
-        ) : (
+          </div> ) : (
           // Level 4: Actions
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+          <div className="bg-white rounded-xl border border-primary-100  overflow-hidden">
             {loadingActions ? (
               <div className="p-8 text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>

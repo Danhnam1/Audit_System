@@ -9,6 +9,7 @@ import { markFindingAsReceived } from '../../../api/findings';
 import { Pagination } from '../../../components';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { Toast } from '../../../pages/Auditor/AuditPlanning/components/Toast';
+import { STATUS_COLORS, getStatusColor } from '../../../constants';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
@@ -41,6 +42,10 @@ const FindingsProgress = () => {
   const [returnedActionsMap, setReturnedActionsMap] = useState<Record<string, Action>>({}); // findingId -> returned action
   const [rejectedActionsMap, setRejectedActionsMap] = useState<Record<string, Action>>({}); // findingId -> rejected action
 
+    // Helper function to get status badge color
+  const getStatusBadgeColor = (status: string) => {
+    return getStatusColor(status) || 'bg-gray-100 text-gray-700';
+  };
   // Toast state
   const [toast, setToast] = useState<{
     message: string;
@@ -463,12 +468,15 @@ const FindingsProgress = () => {
                           Severity
                         </th>
                         <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Deadline
                         </th>
                         <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Assigned To
                         </th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Actions
                         </th>
                       </tr>
@@ -513,8 +521,13 @@ const FindingsProgress = () => {
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityBadgeColor(finding.severity)}`}>
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(finding.severity)}`}>
                               {finding.severity || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(finding.status)}`}>
+                              {finding.status || 'N/A'}
                             </span>
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
@@ -528,7 +541,7 @@ const FindingsProgress = () => {
                             )}
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2 justify-end" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-2 justify-center" onClick={(e) => e.stopPropagation()}>
                               {returnedActionsMap[finding.findingId] ? (
                                 <button
                                   onClick={async () => {
