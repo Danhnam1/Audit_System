@@ -9,7 +9,7 @@ import { markFindingAsReceived } from '../../../api/findings';
 import { Pagination } from '../../../components';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { Toast } from '../../../pages/Auditor/AuditPlanning/components/Toast';
-import { STATUS_COLORS, getStatusColor } from '../../../constants';
+import { getStatusColor } from '../../../constants';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
@@ -206,15 +206,6 @@ const FindingsProgress = () => {
     }
   };
 
-
-  // Get severity badge color
-  const getSeverityBadgeColor = (severity: string) => {
-    const severityLower = severity?.toLowerCase() || '';
-    if (severityLower === 'hight' || severityLower === 'major') return 'bg-red-100 text-red-700';
-    if (severityLower === 'normal') return 'bg-yellow-100 text-yellow-700';
-    if (severityLower === 'low' || severityLower === 'minor') return 'bg-green-100 text-green-700';
-    return 'bg-gray-100 text-gray-700';
-  };
 
   // Load staff members for assignment (only CAPAOwner role)
   const loadStaffMembers = async (deptId?: number) => {

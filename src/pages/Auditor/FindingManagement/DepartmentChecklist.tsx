@@ -13,8 +13,6 @@ import { getActionsByFinding, type Action } from '../../../api/actions';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById } from '../../../api/audits';
 
-import { STATUS_COLORS, getStatusColor } from '../../../constants';
-
 
 interface ChecklistItem {
   auditItemId: string;
