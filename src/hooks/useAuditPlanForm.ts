@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MILESTONE_NAMES } from '../constants/audit';
 
 /**
  * Custom hook for managing audit plan form state
@@ -91,20 +92,30 @@ export const useAuditPlanForm = () => {
   // Load plan data for editing
   const loadPlanForEdit = (details: any) => {
     // Activate edit mode & initialize edit context
+    const auditIdValue = String(details.auditId || details.id || '');
+    console.log('📝 loadPlanForEdit called with details:', details);
+    console.log('📝 Extracted auditId:', auditIdValue);
+    console.log('📝 details.auditId:', details.auditId, 'details.id:', details.id);
+    
     setIsEditMode(true);
-    setEditingAuditId(String(details.auditId || details.id || ''));
+    setEditingAuditId(auditIdValue);
     setShowForm(true);
     setCurrentStep(1);
+    
+    console.log('📝 After setting - isEditMode: true, editingAuditId:', auditIdValue);
 
     // Step 1: Basic info
-    setTitle(details.title || '');
-    setAuditType(details.type || 'Internal');
-    setGoal(details.objective || '');
-    setPeriodFrom(details.startDate ? details.startDate.split('T')[0] : '');
-    setPeriodTo(details.endDate ? details.endDate.split('T')[0] : '');
+    setTitle(details.title || details.audit?.title || '');
+    setAuditType(details.type || details.audit?.type || 'Internal');
+    setGoal(details.objective || details.audit?.objective || '');
+    const startDate = details.startDate || details.audit?.startDate;
+    const endDate = details.endDate || details.audit?.endDate;
+    setPeriodFrom(startDate ? (startDate.split('T')[0] || startDate) : '');
+    setPeriodTo(endDate ? (endDate.split('T')[0] || endDate) : '');
     
     // Step 2: Scope
-    if (details.scope === 'Academy' || (!details.scopeDepartments?.values?.length && !details.scope)) {
+    const scope = details.scope || details.audit?.scope;
+    if (scope === 'Academy' || (!details.scopeDepartments?.values?.length && !scope)) {
       setLevel('academy');
       setSelectedDeptIds([]);
     } else {
@@ -116,12 +127,17 @@ export const useAuditPlanForm = () => {
           return String(dept);
         }).filter(Boolean);
         setSelectedDeptIds(deptIds);
+      } else {
+        setSelectedDeptIds([]);
       }
     }
     
     // Step 3: Template and criteria
-    if (details.templateId) {
-      setSelectedTemplateIds([String(details.templateId)]);
+    // Template IDs will be loaded by hydrateTemplateSelection in the component
+    // But we can set a fallback if templateId exists
+    const templateId = details.templateId || details.audit?.templateId;
+    if (templateId) {
+      setSelectedTemplateIds([String(templateId)]);
     } else {
       setSelectedTemplateIds([]);
     }
@@ -130,9 +146,12 @@ export const useAuditPlanForm = () => {
       const criteriaIds = details.criteria.values.map((c: any) => {
         if (typeof c === 'object' && c.criterionId) return String(c.criterionId);
         if (typeof c === 'object' && c.id) return String(c.id);
+        if (typeof c === 'object' && c.criteriaId) return String(c.criteriaId);
         return String(c);
-      });
+      }).filter(Boolean);
       setSelectedCriteriaIds(criteriaIds);
+    } else {
+      setSelectedCriteriaIds([]);
     }
     
     // Step 4: Team
@@ -157,20 +176,38 @@ export const useAuditPlanForm = () => {
       setSelectedAuditorIds(auditors);
       setSelectedLeadId(leadId);
       setSelectedOwnerId(ownerId);
+    } else {
+      setSelectedAuditorIds([]);
+      setSelectedLeadId('');
+      setSelectedOwnerId('');
     }
     
-    // Step 5: Schedules
+    // Step 5: Schedules - match exactly with MILESTONE_NAMES
     if (details.schedules?.values?.length > 0) {
       details.schedules.values.forEach((schedule: any) => {
-        const name = schedule.milestoneName || schedule.name;
+        const name = schedule.milestoneName || schedule.name || '';
         const date = schedule.dueDate ? schedule.dueDate.split('T')[0] : '';
         
-        if (name?.includes('Kickoff')) setKickoffMeeting(date);
-        else if (name?.includes('Fieldwork')) setFieldworkStart(date);
-        else if (name?.includes('Evidence')) setEvidenceDue(date);
-        else if (name?.includes('Draft')) setDraftReportDue(date);
-        else if (name?.includes('CAPA')) setCapaDue(date);
+        // Match exactly with MILESTONE_NAMES constants
+        if (name === MILESTONE_NAMES.KICKOFF || name === 'Kickoff Meeting') {
+          setKickoffMeeting(date);
+        } else if (name === MILESTONE_NAMES.FIELDWORK || name === 'Fieldwork Start') {
+          setFieldworkStart(date);
+        } else if (name === MILESTONE_NAMES.EVIDENCE || name === 'Evidence Due') {
+          setEvidenceDue(date);
+        } else if (name === MILESTONE_NAMES.DRAFT || name === 'Draft Report Due') {
+          setDraftReportDue(date);
+        } else if (name === MILESTONE_NAMES.CAPA || name === 'CAPA Due') {
+          setCapaDue(date);
+        }
       });
+    } else {
+      // Reset schedules if no schedules found
+      setKickoffMeeting('');
+      setFieldworkStart('');
+      setEvidenceDue('');
+      setDraftReportDue('');
+      setCapaDue('');
     }
   };
 

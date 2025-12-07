@@ -4,7 +4,15 @@ import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { AuditPlan, AuditPlanDetails } from '../../../types/auditPlan';
 import { getChecklistTemplates } from '../../../api/checklists';
-import { createAudit, addAuditScopeDepartment, getAuditApprovals } from '../../../api/audits';
+import { 
+  createAudit, 
+  addAuditScopeDepartment, 
+  getAuditApprovals, 
+  completeUpdateAuditPlan,
+  getAuditPlanById,
+  deleteAuditPlan,
+  submitToLeadAuditor
+} from '../../../api/audits';
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { addCriterionToAudit } from '../../../api/auditCriteriaMap';
 import { getAdminUsers } from '../../../api/adminUsers';
@@ -12,7 +20,6 @@ import { addTeamMember, getAuditTeam } from '../../../api/auditTeam';
 import { getDepartments } from '../../../api/departments';
 import { addAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule';
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
-import { getAuditPlanById, updateAuditPlan, deleteAuditPlan, submitToLeadAuditor } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
 import { getAuditChecklistTemplateMapsByAudit, syncAuditChecklistTemplateMaps } from '../../../api/auditChecklistTemplateMaps';
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
@@ -24,6 +31,9 @@ import { useAuditPlanFilters } from '../../../hooks/useAuditPlanFilters';
 // Import helper functions
 import { getCriterionName, getDepartmentName } from '../../../helpers/auditPlanHelpers';
 import { getStatusColor, getBadgeVariant } from '../../../constants';
+
+// Import edit plan service
+import { loadPlanDetailsForEdit, prepareCompleteUpdatePayload } from './components/editPlanService';
 
 // Import components
 import { FilterBar } from './components/FilterBar';
@@ -457,6 +467,49 @@ const SQAStaffAuditPlanning = () => {
       formState.setSelectedOwnerId('');
     }
   }, [formState.level]);
+
+  // Filter selected templates when departments change (for department level)
+  useEffect(() => {
+    if (formState.level === 'department' && formState.selectedDeptIds.length > 0 && formState.selectedTemplateIds.length > 0) {
+      const selectedDeptIdsSet = new Set(formState.selectedDeptIds.map(id => String(id).trim()));
+      
+      // Filter selectedTemplateIds to only keep templates that belong to selected departments
+      const validTemplateIds = formState.selectedTemplateIds.filter((templateId: string) => {
+        const template = checklistTemplates.find(
+          (tpl: any) => String(tpl.templateId || tpl.id || tpl.$id) === String(templateId)
+        );
+        
+        if (!template) return false;
+        
+        const templateDeptId = template.deptId;
+        // If template has no deptId, exclude it when specific departments are selected
+        if (templateDeptId == null || templateDeptId === undefined) {
+          return false;
+        }
+        
+        // Check if template's deptId matches one of the selected departments
+        const templateDeptIdStr = String(templateDeptId).trim();
+        return selectedDeptIdsSet.has(templateDeptIdStr);
+      });
+      
+      // Only update if there's a change (to avoid infinite loops)
+      if (validTemplateIds.length !== formState.selectedTemplateIds.length) {
+        console.log('🔍 Filtering selected templates by departments:', {
+          before: formState.selectedTemplateIds.length,
+          after: validTemplateIds.length,
+          selectedDeptIds: formState.selectedDeptIds,
+          removed: formState.selectedTemplateIds.filter(id => !validTemplateIds.includes(id))
+        });
+        formState.setSelectedTemplateIds(validTemplateIds);
+      }
+    } else if (formState.level === 'department' && formState.selectedDeptIds.length === 0) {
+      // If no departments selected, clear all template selections
+      if (formState.selectedTemplateIds.length > 0) {
+        console.log('🔍 Clearing template selections - no departments selected');
+        formState.setSelectedTemplateIds([]);
+      }
+    }
+  }, [formState.level, formState.selectedDeptIds, checklistTemplates]);
 
   useEffect(() => {
     if (!formState.selectedOwnerId) return;
@@ -924,55 +977,12 @@ const SQAStaffAuditPlanning = () => {
   // Handler: Edit plan
   const handleEditPlan = async (auditId: string) => {
     try {
-      let details: any;
-
-      try {
-        const rawDetails = await getAuditPlanById(auditId);
-
-        details = {
-          ...rawDetails,
-          scopeDepartments: {
-            ...rawDetails.scopeDepartments,
-            values: unwrap(rawDetails.scopeDepartments)
-          },
-          criteria: {
-            ...rawDetails.criteria,
-            values: unwrap(rawDetails.criteria)
-          },
-          auditTeams: {
-            ...rawDetails.auditTeams,
-            values: unwrap(rawDetails.auditTeams)
-          },
-          schedules: {
-            ...rawDetails.schedules,
-            values: unwrap(rawDetails.schedules)
-          }
-        };
-      } catch (apiError) {
-        // If detailed endpoint fails, fall back to using table data so the user can still edit basic fields
-
-        const planFromTable = existingPlans.find(p => p.auditId === auditId || p.id === auditId);
-        const planFromTableAny = planFromTable as any;
-
-        if (!planFromTable) {
-          console.error('❌ Plan not found in table and detailed API failed:', apiError);
-          alert('⚠️ Cannot Edit\n\nBackend API /AuditPlan/{id} is returning 500 error and the plan was not found in the list.');
-          throw new Error('Backend API /AuditPlan/{id} failed and plan not found in table.');
-        }
-
-        // Build a basic editable shape from table row
-        details = {
-          ...planFromTableAny,
-          scopeDepartments: { values: unwrap(planFromTableAny.scopeDepartments) },
-          criteria: { values: unwrap(planFromTableAny.criteria) },
-          auditTeams: { values: unwrap(planFromTableAny.auditTeams) },
-          schedules: { values: unwrap(planFromTableAny.schedules) },
-        };
-      }
-
+      // Load plan details using service
+      const detailsWithId = await loadPlanDetailsForEdit(auditId, existingPlans);
+      
       // Use formState.loadPlanForEdit with the best-effort details
-      formState.loadPlanForEdit(details);
-      await hydrateTemplateSelection(auditId, details?.templateId);
+      formState.loadPlanForEdit(detailsWithId);
+      await hydrateTemplateSelection(auditId, detailsWithId?.templateId);
 
     } catch (error) {
       console.error('❌ Failed to load plan for editing', error);
@@ -1113,7 +1123,7 @@ const SQAStaffAuditPlanning = () => {
 
     const primaryTemplateId = formState.selectedTemplateIds[0];
 
-    const payload: any = {
+    const basicPayload: any = {
       title: formState.title || 'Untitled Plan',
       type: formState.auditType || 'Internal',
       scope: formState.level === 'academy' ? 'Academy' : 'Department',
@@ -1128,11 +1138,51 @@ const SQAStaffAuditPlanning = () => {
     try {
       let auditId: string;
 
+      console.log('🔍 Submit Plan - isEditMode:', formState.isEditMode, 'editingAuditId:', formState.editingAuditId);
+      console.log('🔍 FormState object:', { 
+        isEditMode: formState.isEditMode, 
+        editingAuditId: formState.editingAuditId,
+        showForm: formState.showForm 
+      });
+
+      // Check if we're in edit mode but editingAuditId is missing
+      if (formState.isEditMode && !formState.editingAuditId) {
+        console.error('⚠️ WARNING: isEditMode is true but editingAuditId is empty!');
+        console.error('⚠️ This should not happen. Check loadPlanForEdit function.');
+        toast.error('Cannot update: Missing audit ID. Please try editing again.');
+        return;
+      }
+
       if (formState.isEditMode && formState.editingAuditId) {
-        await updateAuditPlan(formState.editingAuditId, payload);
+        // Use complete-update API for edit mode
+        console.log('✏️ EDIT MODE DETECTED - Will use complete-update API');
         auditId = formState.editingAuditId;
+        console.log('✏️ Using auditId for update:', auditId);
+
+        // Prepare complete update payload using service
+        const completeUpdatePayload = prepareCompleteUpdatePayload({
+          auditId,
+          basicPayload,
+          formState,
+          departments,
+          ownerOptions,
+          currentUserId,
+          user,
+        });
+
+        console.log('🔄 Calling complete-update API for audit:', auditId);
+        console.log('📦 Payload:', JSON.stringify(completeUpdatePayload, null, 2));
+        try {
+          const result = await completeUpdateAuditPlan(auditId, completeUpdatePayload);
+          console.log('✅ Complete-update API called successfully', result);
+        } catch (apiError) {
+          console.error('❌ Complete-update API failed:', apiError);
+          throw apiError; // Re-throw to be caught by outer try-catch
+        }
       } else {
-        const resp = await createAudit(payload);
+        // Create new audit (keep existing logic)
+        console.log('➕ CREATE MODE - Will use createAudit API');
+        const resp = await createAudit(basicPayload);
         auditId = resp?.auditId || resp?.id || resp;
 
         if (!auditId) {
@@ -1142,112 +1192,115 @@ const SQAStaffAuditPlanning = () => {
 
       const newAuditId = auditId;
 
-      try {
-        await syncAuditChecklistTemplateMaps({
-          auditId: String(newAuditId),
-          templateIds: formState.selectedTemplateIds,
-        });
-      } catch (templateMapErr) {
-        console.error('❌ Failed to sync checklist templates', templateMapErr);
-        toast.error('Failed to save checklist template mappings. Please retry from Step 3.');
-      }
-
-      // Attach departments
-      try {
-        let deptIdsToAttach: string[] = [];
-        
-        if (formState.level === 'academy') {
-          // When level is "Entire Aviation Academy", attach all departments
-          deptIdsToAttach = departments.map((d) => String(d.deptId));
-        } else if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
-          // When level is "Department", attach only selected departments
-          deptIdsToAttach = formState.selectedDeptIds;
-        }
-        
-        if (deptIdsToAttach.length > 0) {
-          const deptResults = await Promise.allSettled(
-            deptIdsToAttach.map((deptId) => addAuditScopeDepartment(String(newAuditId), Number(deptId)))
-          );
-          const failedDepts = deptResults.filter((r) => r.status === 'rejected');
-          if (failedDepts.length > 0) {
-          }
-          }
-        } catch (scopeErr) {
-          console.error('❌ Attach departments to audit failed', scopeErr);
-      }
-
-      // Attach criteria
-      if (Array.isArray(formState.selectedCriteriaIds) && formState.selectedCriteriaIds.length > 0) {
+      // For create mode, keep existing separate API calls
+      if (!formState.isEditMode) {
         try {
-          await Promise.allSettled(
-            formState.selectedCriteriaIds.map((cid) => addCriterionToAudit(String(newAuditId), String(cid)))
-          );
-        } catch (critErr) {
-          console.error('❌ Attach criteria to audit failed', critErr);
-        }
-      }
-
-      // Add team members
-      try {
-        const calls: Promise<any>[] = [];
-        const auditorSet = new Set<string>(formState.selectedAuditorIds);
-
-        auditorSet.forEach((uid) => {
-          calls.push(
-            addTeamMember({
-              auditId: String(newAuditId),
-              userId: uid,
-              roleInTeam: 'Auditor',
-              isLead: false,
-            })
-          );
-        });
-
-        if (formState.level === 'academy') {
-          const uniqueOwnerIds = Array.from(new Set(ownerOptions.map((o: any) => String(o.userId)).filter(Boolean)));
-          uniqueOwnerIds.forEach((uid) => {
-            calls.push(addTeamMember({ auditId: String(newAuditId), userId: uid, roleInTeam: 'AuditeeOwner', isLead: false }));
+          await syncAuditChecklistTemplateMaps({
+            auditId: String(newAuditId),
+            templateIds: formState.selectedTemplateIds,
           });
-        } else {
-          const ownersForDepts = ownerOptions.filter((o: any) => formState.selectedDeptIds.includes(String(o.deptId ?? '')));
-          ownersForDepts.forEach((owner: any) => {
-            if (owner.userId) {
-              calls.push(addTeamMember({ auditId: String(newAuditId), userId: String(owner.userId), roleInTeam: 'AuditeeOwner', isLead: false }));
+        } catch (templateMapErr) {
+          console.error('❌ Failed to sync checklist templates', templateMapErr);
+          toast.error('Failed to save checklist template mappings. Please retry from Step 3.');
+        }
+
+        // Attach departments
+        try {
+          let deptIdsToAttach: string[] = [];
+          
+          if (formState.level === 'academy') {
+            // When level is "Entire Aviation Academy", attach all departments
+            deptIdsToAttach = departments.map((d) => String(d.deptId));
+          } else if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
+            // When level is "Department", attach only selected departments
+            deptIdsToAttach = formState.selectedDeptIds;
+          }
+          
+          if (deptIdsToAttach.length > 0) {
+            const deptResults = await Promise.allSettled(
+              deptIdsToAttach.map((deptId) => addAuditScopeDepartment(String(newAuditId), Number(deptId)))
+            );
+            const failedDepts = deptResults.filter((r) => r.status === 'rejected');
+            if (failedDepts.length > 0) {
             }
+            }
+          } catch (scopeErr) {
+            console.error('❌ Attach departments to audit failed', scopeErr);
+        }
+
+        // Attach criteria
+        if (Array.isArray(formState.selectedCriteriaIds) && formState.selectedCriteriaIds.length > 0) {
+          try {
+            await Promise.allSettled(
+              formState.selectedCriteriaIds.map((cid) => addCriterionToAudit(String(newAuditId), String(cid)))
+            );
+          } catch (critErr) {
+            console.error('❌ Attach criteria to audit failed', critErr);
+          }
+        }
+
+        // Add team members
+        try {
+          const calls: Promise<any>[] = [];
+          const auditorSet = new Set<string>(formState.selectedAuditorIds);
+
+          auditorSet.forEach((uid) => {
+            calls.push(
+              addTeamMember({
+                auditId: String(newAuditId),
+                userId: uid,
+                roleInTeam: 'Auditor',
+                isLead: false,
+              })
+            );
           });
+
+          if (formState.level === 'academy') {
+            const uniqueOwnerIds = Array.from(new Set(ownerOptions.map((o: any) => String(o.userId)).filter(Boolean)));
+            uniqueOwnerIds.forEach((uid) => {
+              calls.push(addTeamMember({ auditId: String(newAuditId), userId: uid, roleInTeam: 'AuditeeOwner', isLead: false }));
+            });
+          } else {
+            const ownersForDepts = ownerOptions.filter((o: any) => formState.selectedDeptIds.includes(String(o.deptId ?? '')));
+            ownersForDepts.forEach((owner: any) => {
+              if (owner.userId) {
+                calls.push(addTeamMember({ auditId: String(newAuditId), userId: String(owner.userId), roleInTeam: 'AuditeeOwner', isLead: false }));
+              }
+            });
+          }
+
+          if (calls.length) {
+            await Promise.allSettled(calls);
+          }
+        } catch (teamErr) {
+          console.error('❌ Attach team failed', teamErr);
         }
 
-        if (calls.length) {
-          await Promise.allSettled(calls);
-        }
-      } catch (teamErr) {
-        console.error('❌ Attach team failed', teamErr);
-      }
+        // Post schedules
+        try {
+          const schedulePairs = [
+            { name: MILESTONE_NAMES.KICKOFF, date: formState.kickoffMeeting },
+            { name: MILESTONE_NAMES.FIELDWORK, date: formState.fieldworkStart },
+            { name: MILESTONE_NAMES.EVIDENCE, date: formState.evidenceDue },
+            { name: MILESTONE_NAMES.CAPA, date: formState.capaDue },
+            { name: MILESTONE_NAMES.DRAFT, date: formState.draftReportDue },
+          ].filter(pair => pair.date);
 
-      // Post schedules
-      try {
-        const schedulePairs = [
-          { name: MILESTONE_NAMES.KICKOFF, date: formState.kickoffMeeting },
-          { name: MILESTONE_NAMES.FIELDWORK, date: formState.fieldworkStart },
-          { name: MILESTONE_NAMES.EVIDENCE, date: formState.evidenceDue },
-          { name: MILESTONE_NAMES.CAPA, date: formState.capaDue },
-          { name: MILESTONE_NAMES.DRAFT, date: formState.draftReportDue },
-        ].filter(pair => pair.date);
-
-        if (schedulePairs.length > 0) {
-          const schedulePromises = schedulePairs.map(pair =>
-            addAuditSchedule({
-              auditId: String(newAuditId),
-              milestoneName: pair.name,
-              dueDate: new Date(pair.date).toISOString(),
-              status: SCHEDULE_STATUS.PLANNED,
-              notes: '',
-            })
-          );
-          await Promise.allSettled(schedulePromises);
+          if (schedulePairs.length > 0) {
+            const schedulePromises = schedulePairs.map(pair =>
+              addAuditSchedule({
+                auditId: String(newAuditId),
+                milestoneName: pair.name,
+                dueDate: new Date(pair.date).toISOString(),
+                status: SCHEDULE_STATUS.PLANNED,
+                notes: '',
+              })
+            );
+            await Promise.allSettled(schedulePromises);
+          }
+        } catch (scheduleErr) {
+          console.error('❌ Failed to post schedules', scheduleErr);
         }
-      } catch (scheduleErr) {
-        console.error('❌ Failed to post schedules', scheduleErr);
       }
 
       // Refresh plans list and related data
@@ -1279,10 +1332,13 @@ const SQAStaffAuditPlanning = () => {
         console.error('❌ Failed to refresh users', userErr);
       }
 
+      // Save edit mode state before resetting form
+      const wasEditMode = formState.isEditMode;
+      
       // Reset form (closes form after successful creation)
       formState.resetForm();
 
-      const successMsg = formState.isEditMode
+      const successMsg = wasEditMode
         ? 'Audit plan updated successfully.'
         : 'Create Audit plan successfully.';
       toast.success(successMsg);
