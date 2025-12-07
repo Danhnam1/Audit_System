@@ -8,7 +8,7 @@ import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers'
 import { markFindingAsReceived } from '../../../api/findings';
 import { Pagination } from '../../../components';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
-import { Toast } from '../../../pages/Auditor/AuditPlanning/components/Toast';
+import { toast } from 'react-toastify';
 import { getStatusColor } from '../../../constants';
 
 const FindingsProgress = () => {
@@ -45,25 +45,6 @@ const FindingsProgress = () => {
     // Helper function to get status badge color
   const getStatusBadgeColor = (status: string) => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
-  };
-  // Toast state
-  const [toast, setToast] = useState<{
-    message: string;
-    type: 'error' | 'success' | 'info' | 'warning';
-    isVisible: boolean;
-  }>({
-    message: '',
-    type: 'info',
-    isVisible: false,
-  });
-
-  // Helper function to show toast
-  const showToast = (message: string, type: 'error' | 'success' | 'info' | 'warning' = 'info') => {
-    setToast({ message, type, isVisible: true });
-  };
-
-  const hideToast = () => {
-    setToast(prev => ({ ...prev, isVisible: false }));
   };
 
   // Get user's department ID from token
@@ -318,7 +299,7 @@ const FindingsProgress = () => {
       setShowAssignModal(false);
       
       // Show success toast
-      showToast('Finding assigned successfully', 'success');
+      toast.success('Finding assigned successfully');
       
       // Reload findings and assigned users
       const deptId = getUserDeptId();
@@ -330,7 +311,7 @@ const FindingsProgress = () => {
     } catch (err: any) {
       console.error('Error creating action:', err);
       // Show error toast
-      showToast(err?.message || 'Failed to assign finding', 'error');
+      toast.error(err?.message || 'Failed to assign finding');
       // Also show error in UI
       setSelectedStaffError(err?.message || 'Failed to create action');
     } finally {
@@ -541,7 +522,7 @@ const FindingsProgress = () => {
                                     
                                     try {
                                       await rejectActionForResubmit(action.actionId);
-                                      showToast('Action redone successfully', 'success');
+                                      toast.success('Action redone successfully');
                                       // Reload findings and actions
                                       const deptId = getUserDeptId();
                                       if (deptId) {
@@ -551,7 +532,7 @@ const FindingsProgress = () => {
                                       }
                                     } catch (err: any) {
                                       console.error('Error resubmitting action:', err);
-                                      showToast(err?.message || 'Failed to redo action', 'error');
+                                      toast.error(err?.message || 'Failed to redo action');
                                     }
                                   }}
                                   className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95"
@@ -618,11 +599,11 @@ const FindingsProgress = () => {
                                               setSelectedActionForReview(null);
                                             }
                                           } else {
-                                            showToast('No actions found for this finding', 'info');
+                                            toast.info('No actions found for this finding');
                                           }
                                         } catch (err: any) {
                                           console.error('Error loading actions:', err);
-                                          showToast(err?.message || 'Failed to load actions', 'error');
+                                          toast.error(err?.message || 'Failed to load actions');
                                         }
                                       }}
                                       className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors active:scale-95"
@@ -1052,14 +1033,6 @@ const FindingsProgress = () => {
 
       </div>
 
-      {/* Toast Notification */}
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={hideToast}
-        duration={3000}
-      />
     </MainLayout>
   );
 };

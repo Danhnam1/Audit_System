@@ -7,7 +7,7 @@ import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getActionsByFinding, type Action } from '../../../api/actions';
 import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
-import { Toast } from '../../Auditor/AuditPlanning/components/Toast';
+import { toast } from 'react-toastify';
 import FindingDetailModal from '../../Auditor/FindingManagement/FindingDetailModal';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getStatusColor } from '../../../constants';
@@ -54,25 +54,8 @@ const ActionReview = () => {
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
 
-  // Toast state
-  const [toast, setToast] = useState<{
-    message: string;
-    type: 'error' | 'success' | 'info' | 'warning';
-    isVisible: boolean;
-  }>({
-    message: '',
-    type: 'info',
-    isVisible: false,
-  });
  const getStatusBadgeColor = (status: string) => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
-  };
-  const showToast = (message: string, type: 'error' | 'success' | 'info' | 'warning' = 'info') => {
-    setToast({ message, type, isVisible: true });
-  };
-
-  const hideToast = () => {
-    setToast(prev => ({ ...prev, isVisible: false }));
   };
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
@@ -92,7 +75,7 @@ const ActionReview = () => {
         setAudits(filteredAudits);
       } catch (err: any) {
         console.error('Error loading audits:', err);
-        showToast('Failed to load audits', 'error');
+        toast.error('Failed to load audits');
       } finally {
         setLoadingAudits(false);
       }
@@ -116,7 +99,7 @@ const ActionReview = () => {
       setDepartments(deptArray);
     } catch (err: any) {
       console.error('Error loading departments:', err);
-      showToast('Failed to load departments', 'error');
+      toast.error('Failed to load departments');
       setDepartments([]);
     } finally {
       setLoadingDepartments(false);
@@ -149,7 +132,7 @@ const ActionReview = () => {
       setFindingActionsMap(actionsMap);
     } catch (err: any) {
       console.error('Error loading findings:', err);
-      showToast('Failed to load findings', 'error');
+      toast.error('Failed to load findings');
       setFindings([]);
     } finally {
       setLoadingFindings(false);
@@ -173,7 +156,7 @@ const ActionReview = () => {
       setActions(Array.isArray(actionsData) ? actionsData : []);
     } catch (err: any) {
       console.error('Error loading actions:', err);
-      showToast('Failed to load actions', 'error');
+      toast.error('Failed to load actions');
       setActions([]);
     } finally {
       setLoadingActions(false);
@@ -202,7 +185,7 @@ const ActionReview = () => {
 
     // For reject, feedback is required
     if (feedbackType === 'reject' && !feedback.trim()) {
-      showToast('Please enter feedback for rejection', 'warning');
+      toast.warning('Please enter feedback for rejection');
       return;
     }
 
@@ -210,10 +193,10 @@ const ActionReview = () => {
     try {
       if (feedbackType === 'approve') {
         await approveFindingActionHigherLevel(pendingActionId, feedback || '');
-        showToast('Action approved successfully', 'success');
+        toast.success('Action approved successfully');
       } else {
         await rejectFindingActionHigherLevel(pendingActionId, feedback);
-        showToast('Action rejected successfully', 'success');
+        toast.success('Action rejected successfully');
       }
       
       setShowFeedbackModal(false);
@@ -232,7 +215,7 @@ const ActionReview = () => {
       }
     } catch (err: any) {
       console.error(`Error ${feedbackType === 'approve' ? 'approving' : 'rejecting'} action:`, err);
-      showToast(err?.message || `Failed to ${feedbackType === 'approve' ? 'approve' : 'reject'} action`, 'error');
+      toast.error(err?.message || `Failed to ${feedbackType === 'approve' ? 'approve' : 'reject'} action`);
     } finally {
       setProcessingActionId(null);
     }
@@ -620,14 +603,6 @@ const ActionReview = () => {
         </div>
       )}
 
-      {/* Toast Notification */}
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={hideToast}
-        duration={3000}
-      />
     </MainLayout>
   );
 };

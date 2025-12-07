@@ -8,7 +8,7 @@ import { getFindings, getMyFindings, type Finding, approveFindingAction, returnF
 import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
 import FindingDetailModal from './FindingDetailModal';
-import { Toast } from '../AuditPlanning/components/Toast';
+import { toast } from 'react-toastify';
 import { getActionsByFinding, type Action } from '../../../api/actions';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById } from '../../../api/audits';
@@ -75,17 +75,6 @@ const DepartmentChecklist = () => {
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   
-  // Toast state
-  const [toast, setToast] = useState<{
-    message: string;
-    type: 'error' | 'success' | 'info' | 'warning';
-    isVisible: boolean;
-  }>({
-    message: '',
-    type: 'info',
-    isVisible: false,
-  });
-
   // Get auditId and auditType from location state (passed from parent component)
   const auditId = (location.state as any)?.auditId || '';
   const auditTypeFromState = (location.state as any)?.auditType || '';
@@ -113,15 +102,6 @@ const DepartmentChecklist = () => {
       loadAuditInfo();
     }
   }, [auditId, auditTypeFromState]);
-
-  // Helper function to show toast
-  const showToast = (message: string, type: 'error' | 'success' | 'info' | 'warning' = 'info') => {
-    setToast({ message, type, isVisible: true });
-  };
-
-  const hideToast = () => {
-    setToast(prev => ({ ...prev, isVisible: false }));
-  };
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -179,7 +159,7 @@ const getStatusColor = (status: string) => {
         console.log('Findings map created:', map);
       } catch (err: any) {
         console.error('Error loading findings:', err);
-        showToast('Failed to load findings', 'warning');
+        toast.warning('Failed to load findings');
       }
     };
     loadFindings();
@@ -193,7 +173,7 @@ const getStatusColor = (status: string) => {
       setShowDetailModal(true);
     } else {
       console.warn('Finding not found for auditItemId:', item.auditItemId);
-      showToast('Finding not found for this item', 'warning');
+      toast.warning('Finding not found for this item');
     }
   };
 
@@ -223,10 +203,10 @@ const getStatusColor = (status: string) => {
       );
       
       console.log('Item marked as compliant:', itemToMarkCompliant.auditItemId);
-      showToast('Item marked as compliant successfully', 'success');
+      toast.success('Item marked as compliant successfully');
     } catch (err: any) {
       console.error('Error marking item as compliant:', err);
-      showToast(err?.message || 'Failed to mark item as compliant', 'error');
+      toast.error(err?.message || 'Failed to mark item as compliant');
     } finally {
       setUpdatingItemId(null);
       setItemToMarkCompliant(null);
@@ -270,7 +250,7 @@ const getStatusColor = (status: string) => {
         console.error('Error loading checklist items:', err);
         const errorMessage = err?.message || 'Failed to load checklist items';
         setError(errorMessage);
-        showToast(errorMessage, 'error');
+        toast.error(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -314,7 +294,7 @@ const getStatusColor = (status: string) => {
       setVerifiedActionsCount(verifiedCount);
     } catch (err: any) {
       console.error('Error loading my findings:', err);
-      showToast('Failed to load findings', 'error');
+      toast.error('Failed to load findings');
     } finally {
       setLoadingFindings(false);
     }
@@ -354,7 +334,7 @@ const getStatusColor = (status: string) => {
       setFindingActions(Array.isArray(actions) ? actions : []);
     } catch (err: any) {
       console.error('Error loading actions:', err);
-      showToast('Failed to load actions', 'error');
+      toast.error('Failed to load actions');
       setFindingActions([]);
     } finally {
       setLoadingActions(false);
@@ -783,7 +763,7 @@ const getStatusColor = (status: string) => {
                 setFindingsMap(map);
               } catch (err) {
                 console.error('Error reloading findings:', err);
-                showToast('Error reloading findings', 'warning');
+                toast.warning('Error reloading findings');
               }
             };
             reloadFindings();
@@ -801,10 +781,10 @@ const getStatusColor = (status: string) => {
                 });
                 const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
                 setChecklistItems(sortedItems);
-                showToast('Finding created successfully', 'success');
+                toast.success('Finding created successfully');
               } catch (err) {
                 console.error('Error reloading checklist items:', err);
-                showToast('Error reloading checklist items', 'warning');
+                toast.warning('Error reloading checklist items');
               }
             };
             reloadChecklistItems();
@@ -890,7 +870,7 @@ const getStatusColor = (status: string) => {
               setProcessingActionId(action.actionId);
               try {
                 await approveFindingAction(action.actionId);
-                showToast('Action approved successfully', 'success');
+                toast.success('Action approved successfully');
                 // Reload actions
                 if (selectedFindingForActions) {
                   const actions = await getActionsByFinding(selectedFindingForActions.findingId);
@@ -907,7 +887,7 @@ const getStatusColor = (status: string) => {
                 setSelectedActionId(null);
               } catch (err: any) {
                 console.error('Error approving action:', err);
-                showToast(err?.message || 'Failed to approve action', 'error');
+                toast.error(err?.message || 'Failed to approve action');
               } finally {
                 setProcessingActionId(null);
               }
@@ -915,13 +895,13 @@ const getStatusColor = (status: string) => {
             onReject={async (feedback: string) => {
               if (!action) return;
               if (!feedback.trim()) {
-                showToast('Please enter feedback when rejecting an action', 'error');
+                toast.error('Please enter feedback when rejecting an action');
                 return;
               }
               setProcessingActionId(action.actionId);
               try {
                 await returnFindingAction(action.actionId, feedback.trim());
-                showToast('Action rejected successfully', 'success');
+                toast.success('Action rejected successfully');
                 // Reload actions
                 if (selectedFindingForActions) {
                   const actions = await getActionsByFinding(selectedFindingForActions.findingId);
@@ -938,7 +918,7 @@ const getStatusColor = (status: string) => {
                 setSelectedActionId(null);
               } catch (err: any) {
                 console.error('Error rejecting action:', err);
-                showToast(err?.message || 'Failed to reject action', 'error');
+                toast.error(err?.message || 'Failed to reject action');
               } finally {
                 setProcessingActionId(null);
               }
@@ -1024,12 +1004,12 @@ const getStatusColor = (status: string) => {
                 <button
                   onClick={async () => {
                     if (!newItemForm.questionTextSnapshot.trim()) {
-                      showToast('Please enter question text', 'warning');
+                      toast.warning('Please enter question text');
                       return;
                     }
                     
                     if (!auditId) {
-                      showToast('Audit ID is required', 'error');
+                      toast.error('Audit ID is required');
                       return;
                     }
                     
@@ -1051,7 +1031,7 @@ const getStatusColor = (status: string) => {
                       };
                       
                       await createAuditChecklistItem(payload);
-                      showToast('Checklist item created successfully', 'success');
+                      toast.success('Checklist item created successfully');
                       setShowAddItemModal(false);
                       setNewItemForm({ questionTextSnapshot: '', section: '' });
                       
@@ -1068,7 +1048,7 @@ const getStatusColor = (status: string) => {
                       }
                     } catch (err: any) {
                       console.error('Error creating checklist item:', err);
-                      showToast(err?.message || 'Failed to create checklist item', 'error');
+                      toast.error(err?.message || 'Failed to create checklist item');
                     } finally {
                       setSubmittingItem(false);
                     }
@@ -1084,14 +1064,6 @@ const getStatusColor = (status: string) => {
         </div>
       )}
 
-      {/* Toast Notification */}
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        isVisible={toast.isVisible}
-        onClose={hideToast}
-        duration={3000}
-      />
     </MainLayout>
   );
 };
