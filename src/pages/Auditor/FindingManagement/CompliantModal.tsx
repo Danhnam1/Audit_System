@@ -7,7 +7,7 @@ import { useUserId } from '../../../store/useAuthStore';
 interface CompliantModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (compliantData?: any) => void;
   checklistItem: {
     auditItemId: string;
     auditId: string;
@@ -138,11 +138,9 @@ const CompliantModal = ({
 
       // Get current user ID from auth hook (decodes JWT token)
       // currentUserId is a GUID string from JWT, keep it as string
-      console.log('currentUserId (GUID from JWT):', currentUserId);
 
       // Get witness userId (it's a GUID string from departmentUsers)
       const witnessUserId = selectedWitnesses.length > 0 ? selectedWitnesses[0] : '';
-      console.log('Selected witness userId:', witnessUserId);
 
       // Create compliant payload for API
       // Backend expects: auditChecklistItemId, title, reason, dateOfCompliance, timeOfCompliance, department, witnessId (GUID string), createdBy (GUID string)
@@ -174,14 +172,31 @@ const CompliantModal = ({
       console.log('3. Compliant Payload:', JSON.stringify(compliantData, null, 2));
 
       // Call API to mark item as compliant
-      const response = await markChecklistItemCompliant1(checklistItem.auditItemId, compliantData);
-      console.log('✅ Item marked as compliant:', response);
+      let response;
+      try {
+        console.log('🔵 About to call markChecklistItemCompliant1 API...');
+        response = await markChecklistItemCompliant1(checklistItem.auditItemId, compliantData);
+        console.log('✅ markChecklistItemCompliant1 API call succeeded');
+        console.log('Response received:', JSON.stringify(response, null, 2));
+        console.log('Response type:', typeof response);
+        console.log('Response keys:', response ? Object.keys(response) : 'null');
+        console.log('Response.id:', response?.id);
+        console.log('Response.auditChecklistItemId:', response?.auditChecklistItemId);
+      } catch (apiErr: any) {
+        console.error('❌ ERROR calling markChecklistItemCompliant1:', apiErr);
+        console.error('API Error details:', {
+          message: apiErr?.message,
+          response: apiErr?.response,
+          data: apiErr?.response?.data,
+          status: apiErr?.response?.status,
+        });
+        throw apiErr; // Re-throw to outer catch
+      }
 
-      // Use auditChecklistItemId from response (GUID string) for file upload
-      // NOT the numeric 'id'
-      const compliantItemId = response?.auditChecklistItemId || checklistItem.auditItemId;
+      // Use the 'id' field from response for file upload (this is the new identifier)
+      const compliantItemId = response?.id || response?.auditChecklistItemId || checklistItem.auditItemId;
       
-      console.log('Using compliantItemId (GUID) for file upload:', compliantItemId);
+      console.log('Using compliantItemId for file upload:', compliantItemId, '(id type:', typeof compliantItemId, ')');
       
       // Upload files if any
       if (files.length > 0 && compliantItemId) {
@@ -241,10 +256,15 @@ const CompliantModal = ({
       setComplianceTime(defaultTime);
       setFiles([]);
       
-      onSuccess?.();
+      // Pass complete API response to parent (includes 'id', 'auditChecklistItemId', and other fields)
+      console.log('🟢 [CompliantModal] About to call onSuccess callback with response:', response);
+      console.log('🟢 [CompliantModal] response.id:', response?.id);
+      console.log('🟢 [CompliantModal] response.auditChecklistItemId:', response?.auditChecklistItemId);
+      onSuccess?.(response);
+      console.log('🟢 [CompliantModal] onSuccess callback completed');
       onClose();
     } catch (err: any) {
-      console.error('Error marking item as compliant:', err);
+      console.error('❌ Error in handleConfirmCompliant:', err);
       console.error('Error details:', {
         message: err?.message,
         response: err?.response,
@@ -649,7 +669,9 @@ const CompliantModal = ({
                 </button>
                 <button
                   type="button"
-                  onClick={handleConfirmCompliant}
+                  onClick={() => {
+                    handleConfirmCompliant();
+                  }}
                   disabled={submitting}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >

@@ -3,7 +3,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
-import { createAction, getActionsByFinding, type Action, approveActionWithFeedback, rejectAction, rejectActionForResubmit } from '../../../api/actions';
+import { createAction, getActionsByFinding, type Action, approveActionWithFeedback, rejectAction, rejectActionForResubmit, getAvailableCapaOwners } from '../../../api/actions';
 import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
 import { Pagination } from '../../../components';
@@ -189,21 +189,47 @@ const FindingsProgress = () => {
 
 
   // Load staff members for assignment (only CAPAOwner role)
-  const loadStaffMembers = async (deptId?: number) => {
+  const loadStaffMembers = async (deptId?: number, selectedDate?: string) => {
     if (!deptId) return;
     
     setLoadingStaff(true);
     try {
-      const users = await getAdminUsersByDepartment(deptId);
-      // Filter only CAPAOwner role
-      const capaOwners = (users || []).filter((user: any) => 
-        user.roleName?.toLowerCase() === 'capaowner'
-      );
-      setStaffMembers(capaOwners.map((user: any) => ({
-        userId: user.userId || user.id,
-        fullName: user.fullName || user.name || user.email || 'Unknown',
-        email: user.email,
-      })));
+      // If date is selected, get available CAPA owners for that date
+      if (selectedDate) {
+        console.log('🔵 Calling getAvailableCapaOwners with date:', selectedDate, 'deptId:', deptId);
+        const response = await getAvailableCapaOwners(selectedDate, deptId);
+        console.log('🟢 Available CAPA owners response:', response);
+        
+        // Unwrap response (handle $values wrapper)
+        let capaOwners = [];
+        if (response?.capaOwners?.$values) {
+          capaOwners = response.capaOwners.$values;
+        } else if (response?.capaOwners && Array.isArray(response.capaOwners)) {
+          capaOwners = response.capaOwners;
+        } else if (Array.isArray(response)) {
+          capaOwners = response;
+        }
+        
+        console.log('🟡 Unwrapped CAPA owners:', capaOwners);
+        
+        setStaffMembers(capaOwners.map((user: any) => ({
+          userId: user.userId || user.id,
+          fullName: user.fullName || user.name || user.email || 'Unknown',
+          email: user.email,
+        })));
+      } else {
+        // If no date selected, get all CAPA owners in department
+        const users = await getAdminUsersByDepartment(deptId);
+        // Filter only CAPAOwner role
+        const capaOwners = (users || []).filter((user: any) => 
+          user.roleName?.toLowerCase() === 'capaowner'
+        );
+        setStaffMembers(capaOwners.map((user: any) => ({
+          userId: user.userId || user.id,
+          fullName: user.fullName || user.name || user.email || 'Unknown',
+          email: user.email,
+        })));
+      }
     } catch (err: any) {
       console.error('Error loading staff members:', err);
       setStaffMembers([]);
@@ -702,7 +728,45 @@ const FindingsProgress = () => {
                       <p className="text-sm font-medium text-gray-900">{selectedFindingForAssign.title}</p>
                     </div>
                   </div>
-
+  {/* Due Date */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                      Due Date <span className="text-red-500">*</span>
+                    </label>
+                    {selectedFindingForAssign?.deadline && (
+                      <p className="text-xs text-gray-500 mb-2">
+                        Finding deadline: <span className="font-medium text-gray-700">{formatDate(selectedFindingForAssign.deadline)}</span>
+                      </p>
+                    )}
+                    <input
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        setDueDate(newDate);
+                        if (dueDateError) setDueDateError('');
+                        
+                        // Reload staff when date changes
+                        if (newDate && selectedFindingForAssign?.deptId) {
+                          setSelectedStaff(''); // Reset selected staff
+                          loadStaffMembers(selectedFindingForAssign.deptId, newDate);
+                        }
+                      }}
+                      min={new Date().toISOString().split('T')[0]}
+                      max={selectedFindingForAssign?.deadline ? new Date(selectedFindingForAssign.deadline).toISOString().split('T')[0] : undefined}
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                        dueDateError ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                    />
+                    {dueDateError && (
+                      <p className="mt-1 text-xs text-red-600">{dueDateError}</p>
+                    )}
+                    {selectedFindingForAssign?.deadline && !dueDateError && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Must be on or before finding deadline
+                      </p>
+                    )}
+                  </div>
                   {/* Staff Selection */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
@@ -740,38 +804,7 @@ const FindingsProgress = () => {
                     )}
                   </div>
 
-                  {/* Due Date */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                      Due Date <span className="text-red-500">*</span>
-                    </label>
-                    {selectedFindingForAssign?.deadline && (
-                      <p className="text-xs text-gray-500 mb-2">
-                        Finding deadline: <span className="font-medium text-gray-700">{formatDate(selectedFindingForAssign.deadline)}</span>
-                      </p>
-                    )}
-                    <input
-                      type="date"
-                      value={dueDate}
-                      onChange={(e) => {
-                        setDueDate(e.target.value);
-                        if (dueDateError) setDueDateError('');
-                      }}
-                      min={new Date().toISOString().split('T')[0]}
-                      max={selectedFindingForAssign?.deadline ? new Date(selectedFindingForAssign.deadline).toISOString().split('T')[0] : undefined}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                        dueDateError ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                    />
-                    {dueDateError && (
-                      <p className="mt-1 text-xs text-red-600">{dueDateError}</p>
-                    )}
-                    {selectedFindingForAssign?.deadline && !dueDateError && (
-                      <p className="mt-1 text-xs text-gray-500">
-                        Must be on or before finding deadline
-                      </p>
-                    )}
-                  </div>
+                
                 </div>
 
                 {/* Footer */}

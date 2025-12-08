@@ -2,12 +2,13 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getChecklistItemsByDepartment, createAuditChecklistItem, type CreateAuditChecklistItemDto } from '../../../api/checklists';
+import { getChecklistItemsByDepartment, createAuditChecklistItem, type CreateAuditChecklistItemDto, getCompliantIdByAuditItemId } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
 import { getFindings, getMyFindings, type Finding, approveFindingAction, returnFindingAction } from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
 import CompliantModal from './CompliantModal';
+import CompliantDetailsViewer from './CompliantDetailsViewer';
 import FindingDetailModal from './FindingDetailModal';
 import { toast } from 'react-toastify';
 import { getActionsByFinding, type Action } from '../../../api/actions';
@@ -42,6 +43,18 @@ const DepartmentChecklist = () => {
   const [findingsMap, setFindingsMap] = useState<Record<string, string>>({}); // auditItemId -> findingId
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [itemToMarkCompliant, setItemToMarkCompliant] = useState<ChecklistItem | null>(null);
+  const [showCompliantDetailsViewer, setShowCompliantDetailsViewer] = useState(false);
+  const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null); // Compliant record ID from API response
+  const [loadingCompliantId, setLoadingCompliantId] = useState(false); // Loading state for fetching compliant ID
+  const [compliantIdMap, setCompliantIdMap] = useState<Record<string, string | number>>(() => {
+    // Load compliantIdMap from sessionStorage on init (survives page reload, clears when tab closes)
+    try {
+      const stored = sessionStorage.getItem(`compliantIdMap_${auditId}`);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  }); // auditItemId -> compliant record id (persisted to sessionStorage)
   
   // Audit info state
   const [auditType, setAuditType] = useState<string>('');
@@ -103,6 +116,14 @@ const DepartmentChecklist = () => {
       loadAuditInfo();
     }
   }, [auditId, auditTypeFromState]);
+
+  // Save compliantIdMap to sessionStorage whenever it changes
+  useEffect(() => {
+    if (auditId && Object.keys(compliantIdMap).length > 0) {
+      const key = `compliantIdMap_${auditId}`;
+      sessionStorage.setItem(key, JSON.stringify(compliantIdMap));
+    }
+  }, [compliantIdMap, auditId]);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -186,8 +207,16 @@ const getStatusColor = (status: string) => {
 
   // Confirm and actually mark item as compliant (called from CompliantModal)
   // CompliantModal handles the API call, we just need to update local state
-  const handleConfirmMarkCompliant = async () => {
-    if (!itemToMarkCompliant || updatingItemId) return; // Prevent multiple clicks
+  const handleConfirmMarkCompliant = (compliantData?: any) => {
+    console.log('🟡 [handleConfirmMarkCompliant] CALLED');
+    console.log('🟡 [handleConfirmMarkCompliant] compliantData:', compliantData);
+    console.log('🟡 [handleConfirmMarkCompliant] compliantData.id:', compliantData?.id);
+    console.log('🟡 [handleConfirmMarkCompliant] itemToMarkCompliant.auditItemId:', itemToMarkCompliant?.auditItemId);
+    
+    if (!itemToMarkCompliant || updatingItemId) {
+      console.warn('🔴 [handleConfirmMarkCompliant] Guard check failed');
+      return;
+    }
     
     setUpdatingItemId(itemToMarkCompliant.auditItemId);
     
@@ -204,7 +233,24 @@ const getStatusColor = (status: string) => {
         )
       );
       
-      console.log('Item marked as compliant:', itemToMarkCompliant.auditItemId);
+      // Save the compliant record ID for later viewing
+      if (compliantData?.id) {
+        console.log('🟢 [handleConfirmMarkCompliant] Saving to sessionStorage map:');
+        console.log('  - auditItemId:', itemToMarkCompliant.auditItemId);
+        console.log('  - compliant id:', compliantData.id);
+        
+        setCompliantIdMap(prev => {
+          const newMap = {
+            ...prev,
+            [itemToMarkCompliant.auditItemId]: compliantData.id
+          };
+          console.log('🟢 [handleConfirmMarkCompliant] Updated compliantIdMap:', newMap);
+          return newMap;
+        });
+      } else {
+        console.warn('⚠️ [handleConfirmMarkCompliant] No id field in compliantData');
+      }
+      
       toast.success('Item marked as compliant successfully');
     } catch (err: any) {
       console.error('Error marking item as compliant:', err);
@@ -471,18 +517,87 @@ const getStatusColor = (status: string) => {
                       </div>
                       <div className="flex items-center justify-end sm:justify-start gap-2 sm:gap-3 flex-shrink-0">
                         {isCompliant(item.status) ? (
-                          /* Text for Compliant items */
-                          <div className="px-3 sm:px-4 py-1. 5 sm:py-2  rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap border shadow-sm flex items-center gap-1. 5">
-            {/* <svg className="w-3. 5 h-3.5 sm:w-4 sm:h-4" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-            </svg> */}
-            <span className="hidden sm:inline">Meets Requirements</span>
-            <span className="sm:hidden">Meets</span>
-          </div>
+                          /* View button for Compliant items */
+                          <div className="flex items-center gap-2">
+                            <div className="px-3 sm:px-4 py-1.5 sm:py-2  rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap border shadow-sm flex items-center gap-1.5">
+                              <span className="hidden sm:inline">Meets Requirements</span>
+                              <span className="sm:hidden">Meets</span>
+                            </div>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                
+                                console.log('=== STEP 1: VIEW BUTTON CLICKED ===');
+                                console.log('auditItemId:', item.auditItemId);
+                                console.log('compliantIdMap:', compliantIdMap);
+                                
+                                // First try to get compliant ID from sessionStorage map
+                                const cachedCompliantId = compliantIdMap[item.auditItemId];
+                                console.log('=== STEP 2: CHECK sessionStorage ===');
+                                console.log('cachedCompliantId from map:', cachedCompliantId);
+                                
+                                if (cachedCompliantId) {
+                                  console.log('✅ STEP 3a: Found in sessionStorage, using cached ID:', cachedCompliantId);
+                                  setSelectedCompliantId(cachedCompliantId);
+                                  setShowCompliantDetailsViewer(true);
+                                  return;
+                                }
+                                
+                                // If not in cache, fetch from API
+                                console.log('❌ STEP 3b: Not in cache, calling API getCompliantIdByAuditItemId...');
+                                setLoadingCompliantId(true);
+                                try {
+                                  console.log('=== STEP 4: CALLING API ===');
+                                  console.log('Passing auditItemId (GUID) to getCompliantIdByAuditItemId:', item.auditItemId);
+                                  
+                                  const compliantId = await getCompliantIdByAuditItemId(item.auditItemId);
+                                  console.log('=== STEP 5: API RESPONSE ===');
+                                  console.log('compliantId returned from API:', compliantId);
+                                  
+                                  if (compliantId) {
+                                    console.log('✅ STEP 6: Valid ID, saving to map and showing viewer');
+                                    // Save to sessionStorage map for future use
+                                    setCompliantIdMap(prev => ({
+                                      ...prev,
+                                      [item.auditItemId]: compliantId
+                                    }));
+                                    
+                                    setSelectedCompliantId(compliantId);
+                                    setShowCompliantDetailsViewer(true);
+                                  } else {
+                                    console.warn('❌ STEP 6: API returned null or empty ID');
+                                    toast.warning('Compliant record not found');
+                                  }
+                                } catch (err: any) {
+                                  console.error('❌ STEP 5: API ERROR:', err?.message);
+                                  console.error('Full error:', err);
+                                  console.error('Error response:', err?.response?.data);
+                                  toast.error('Failed to load compliant details');
+                                } finally {
+                                  setLoadingCompliantId(false);
+                                }
+                              }}
+                              title="View Compliant Details"
+                              disabled={loadingCompliantId}
+                              className={`w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95 flex-shrink-0 focus:outline-none focus:ring-0 ${loadingCompliantId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              {loadingCompliantId ? (
+                                <svg className="w-2 h-2 sm:w-5 sm:h-5 md:w-6 md:h-6 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="5" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-50" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                              ) : (
+                                <svg className="w-2 h-2 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                              )}
+                            </button>
+                          </div>
                         ) : isNonCompliant(item.status) ? (
                           /* Eye icon for Non-compliant items (no badge) */
                           <button
-                            className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95 flex-shrink-0 focus:outline-none focus:ring-0"
+                            className="w-6 h-6 sm:w-6 sm:h-6 md:w-6 md:h-6 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95 flex-shrink-0 focus:outline-none focus:ring-0"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleViewFinding(item);
@@ -825,6 +940,16 @@ const getStatusColor = (status: string) => {
           }}
         />
       )}
+
+      {/* Compliant Details Viewer - Fetches from API */}
+      <CompliantDetailsViewer
+        isOpen={showCompliantDetailsViewer}
+        onClose={() => {
+          setShowCompliantDetailsViewer(false);
+          setSelectedCompliantId(null);
+        }}
+        compliantId={selectedCompliantId}
+      />
 
       {/* Action Detail Modal */}
       {selectedActionId && (() => {

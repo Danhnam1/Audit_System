@@ -41,6 +41,7 @@ export interface Finding {
   severity: string;
   rootCauseId?: number;
   deptId?: number;
+  witnessId?: string;
   createdBy: string;
   createdAt: string;
   status: string;

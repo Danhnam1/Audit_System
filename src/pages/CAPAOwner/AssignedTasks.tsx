@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MainLayout } from '../../layouts';
 import { getMyAssignedActions } from '../../api/actions';
+import FindingDetailModal from '../Auditor/FindingManagement/FindingDetailModal';
 import ActionDetailModal from './ActionDetailModal';
 import StartActionModal from './StartActionModal';
 
@@ -24,6 +25,8 @@ const AssignedTasks = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [showStartModal, setShowStartModal] = useState(false);
   const [selectedStartActionId, setSelectedStartActionId] = useState<string | null>(null);
@@ -154,9 +157,14 @@ const AssignedTasks = () => {
     }
   };
 
-  const handleViewDetail = (actionId: string) => {
-    setSelectedActionId(actionId);
+  const handleViewDetail = (task: Task) => {
+    setSelectedFindingId(task.findingId);
     setShowDetailModal(true);
+  };
+
+  const handleViewAction = (actionId: string) => {
+    setSelectedActionId(actionId);
+    setShowActionDetailModal(true);
   };
 
   const handleStart = (actionId: string) => {
@@ -356,13 +364,22 @@ const AssignedTasks = () => {
                               </button>
                             )}
                             <button
-                              onClick={() => handleViewDetail(task.actionId)}
+                              onClick={() => handleViewDetail(task)}
                               className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
-                              title="View Details"
+                              title="View Finding Details"
                             >
                               <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleViewAction(task.actionId)}
+                              className="p-1.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0"
+                              title="View Action Details"
+                            >
+                              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
                             </button>
                           </div>
@@ -392,12 +409,24 @@ const AssignedTasks = () => {
           )}
         </div>
 
-        {/* Action Detail Modal */}
-        {selectedActionId && (
-          <ActionDetailModal
+        {/* Finding Detail Modal */}
+        {selectedFindingId && (
+          <FindingDetailModal
             isOpen={showDetailModal}
             onClose={() => {
               setShowDetailModal(false);
+              setSelectedFindingId(null);
+            }}
+            findingId={selectedFindingId}
+          />
+        )}
+
+        {/* Action Detail Modal */}
+        {selectedActionId && (
+          <ActionDetailModal
+            isOpen={showActionDetailModal}
+            onClose={() => {
+              setShowActionDetailModal(false);
               setSelectedActionId(null);
             }}
             actionId={selectedActionId}

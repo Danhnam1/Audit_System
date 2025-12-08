@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { getFindingById, type Finding } from '../../../api/findings';
 import { getAttachments, type Attachment } from '../../../api/attachments';
+import { getUserById } from '../../../api/adminUsers';
+import { getDepartmentById } from '../../../api/departments';
 
 interface FindingDetailModalProps {
   isOpen: boolean;
@@ -14,6 +16,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [witnessName, setWitnessName] = useState<string>('');
+  const [departmentName, setDepartmentName] = useState<string>('');
 
   useEffect(() => {
     if (isOpen && findingId) {
@@ -28,6 +32,28 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     try {
       const data = await getFindingById(findingId);
       setFinding(data);
+      
+      // Fetch witness name if witnessId exists
+      if (data?.witnessId) {
+        try {
+          const witnessUser = await getUserById(data.witnessId);
+          setWitnessName(witnessUser?.fullName || '');
+        } catch (err) {
+          console.error('Error loading witness:', err);
+          setWitnessName('');
+        }
+      }
+      
+      // Fetch department name if deptId exists
+      if (data?.deptId) {
+        try {
+          const dept = await getDepartmentById(data.deptId);
+          setDepartmentName(dept?.name || '');
+        } catch (err) {
+          console.error('Error loading department:', err);
+          setDepartmentName('');
+        }
+      }
     } catch (err: any) {
       console.error('Error loading finding:', err);
       setError(err?.message || 'Failed to load finding details');
@@ -147,6 +173,32 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                     {finding.severity || 'N/A'}
                   </span>
                 </div>
+
+                {/* Department */}
+                {finding.deptId && (
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Department</label>
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                      <p className="text-sm sm:text-base font-medium text-gray-900">{departmentName || 'Loading...'}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Witness */}
+                {finding.witnessId && (
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Witness</label>
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <p className="text-sm sm:text-base font-medium text-gray-900">{witnessName || 'Loading...'}</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Dates - Side by side */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
