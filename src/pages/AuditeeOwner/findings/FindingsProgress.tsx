@@ -3,7 +3,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
-import { createAction, getActionsByFinding, type Action, approveActionWithFeedback, rejectAction, rejectActionForResubmit, getAvailableCapaOwners } from '../../../api/actions';
+import { createAction, getActionsByFinding, type Action, approveActionWithFeedback, rejectAction, rejectActionForResubmit } from '../../../api/actions';
 import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
 import { Pagination } from '../../../components';
@@ -189,47 +189,21 @@ const FindingsProgress = () => {
 
 
   // Load staff members for assignment (only CAPAOwner role)
-  const loadStaffMembers = async (deptId?: number, selectedDate?: string) => {
+  const loadStaffMembers = async (deptId?: number) => {
     if (!deptId) return;
     
     setLoadingStaff(true);
     try {
-      // If date is selected, get available CAPA owners for that date
-      if (selectedDate) {
-        console.log('🔵 Calling getAvailableCapaOwners with date:', selectedDate, 'deptId:', deptId);
-        const response = await getAvailableCapaOwners(selectedDate, deptId);
-        console.log('🟢 Available CAPA owners response:', response);
-        
-        // Unwrap response (handle $values wrapper)
-        let capaOwners = [];
-        if (response?.capaOwners?.$values) {
-          capaOwners = response.capaOwners.$values;
-        } else if (response?.capaOwners && Array.isArray(response.capaOwners)) {
-          capaOwners = response.capaOwners;
-        } else if (Array.isArray(response)) {
-          capaOwners = response;
-        }
-        
-        console.log('🟡 Unwrapped CAPA owners:', capaOwners);
-        
-        setStaffMembers(capaOwners.map((user: any) => ({
-          userId: user.userId || user.id,
-          fullName: user.fullName || user.name || user.email || 'Unknown',
-          email: user.email,
-        })));
-      } else {
-        // If no date selected, get all CAPA owners in department
-        const users = await getAdminUsersByDepartment(deptId);
-        // Filter only CAPAOwner role
-        const capaOwners = (users || []).filter((user: any) => 
-          user.roleName?.toLowerCase() === 'capaowner'
-        );
-        setStaffMembers(capaOwners.map((user: any) => ({
-          userId: user.userId || user.id,
-          fullName: user.fullName || user.name || user.email || 'Unknown',
-          email: user.email,
-        })));
-      }
+      const users = await getAdminUsersByDepartment(deptId);
+      // Filter only CAPAOwner role
+      const capaOwners = (users || []).filter((user: any) => 
+        user.roleName?.toLowerCase() === 'capaowner'
+      );
+      setStaffMembers(capaOwners.map((user: any) => ({
+        userId: user.userId || user.id,
+        fullName: user.fullName || user.name || user.email || 'Unknown',
+        email: user.email,
+      })));
     } catch (err: any) {
       console.error('Error loading staff members:', err);
       setStaffMembers([]);
@@ -742,15 +716,8 @@ const FindingsProgress = () => {
                       type="date"
                       value={dueDate}
                       onChange={(e) => {
-                        const newDate = e.target.value;
-                        setDueDate(newDate);
+                        setDueDate(e.target.value);
                         if (dueDateError) setDueDateError('');
-                        
-                        // Reload staff when date changes
-                        if (newDate && selectedFindingForAssign?.deptId) {
-                          setSelectedStaff(''); // Reset selected staff
-                          loadStaffMembers(selectedFindingForAssign.deptId, newDate);
-                        }
                       }}
                       min={new Date().toISOString().split('T')[0]}
                       max={selectedFindingForAssign?.deadline ? new Date(selectedFindingForAssign.deadline).toISOString().split('T')[0] : undefined}
