@@ -114,12 +114,3 @@ export const rejectActionForResubmit = async (actionId: string): Promise<void> =
   await apiClient.put(`/Action/${actionId}/reject`);
 };
 
-// Get available CAPA owners by date and department
-export const getAvailableCapaOwners = async (date: string, deptId: number): Promise<any> => {
-  const res = await apiClient.post('/Action/available-capa-owners', {
-    date: date,
-    deptId: deptId
-  }) as any;
-  return res;
-};
-
