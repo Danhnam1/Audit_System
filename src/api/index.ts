@@ -5,3 +5,4 @@ export * from './findingSeverity.ts';
 export * from './rootCauses.ts';
 export * from './attachments.ts';
 export * from './auditAssignments.ts';
+export * from './auditPlanAssignment.ts';

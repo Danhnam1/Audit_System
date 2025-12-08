@@ -23,6 +23,8 @@ import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
 import { getAuditChecklistTemplateMapsByAudit, syncAuditChecklistTemplateMaps } from '../../../api/auditChecklistTemplateMaps';
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
+import { useUserId } from '../../../store/useAuthStore';
+import { hasAuditPlanCreationPermission } from '../../../api/auditPlanAssignment';
 
 // Import custom hooks
 import { useAuditPlanForm } from '../../../hooks/useAuditPlanForm';
@@ -48,9 +50,15 @@ import { Step5Schedule } from './components/PlanForm/Step5Schedule';
 
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
+  const userIdFromToken = useUserId();
 
   // Use custom hooks for form state management
   const formState = useAuditPlanForm();
+
+  // Check permission to create plans
+  const [hasPlanPermission, setHasPlanPermission] = useState<boolean | null>(null);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [isCheckingPermission, setIsCheckingPermission] = useState(true);
 
   // Data fetching states
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
@@ -574,6 +582,64 @@ const SQAStaffAuditPlanning = () => {
     };
     loadDepartmentsForFilter();
   }, []);
+
+  // Check permission to create plans
+  useEffect(() => {
+    const checkPermission = async () => {
+      if (!user?.email) {
+        setIsCheckingPermission(false);
+        setHasPlanPermission(false);
+        return;
+      }
+
+      try {
+        // Get userId (GUID) from allUsers list by email
+        // This is the actual userId that matches the auditorId in assignments
+        let currentUserId: string | null = null;
+        
+        if (allUsers.length > 0) {
+          const currentUserInList = allUsers.find((u: any) => {
+            const uEmail = String(u?.email || '').toLowerCase().trim();
+            const userEmail = String(user.email || '').toLowerCase().trim();
+            return uEmail && userEmail && uEmail === userEmail;
+          });
+          
+          if (currentUserInList?.userId) {
+            currentUserId = String(currentUserInList.userId);
+          }
+        }
+        
+        // Fallback to userIdFromToken if not found in allUsers
+        if (!currentUserId && userIdFromToken) {
+          currentUserId = String(userIdFromToken);
+        }
+        
+        if (!currentUserId) {
+          console.warn('[AuditPlanning] Cannot find userId for permission check');
+          setHasPlanPermission(false);
+          setIsCheckingPermission(false);
+          return;
+        }
+        
+        console.log('[AuditPlanning] Checking permission for userId:', currentUserId);
+        
+        // Check permission using the actual userId (GUID)
+        const hasPermission = await hasAuditPlanCreationPermission(currentUserId);
+        console.log('[AuditPlanning] Permission result:', hasPermission);
+        setHasPlanPermission(hasPermission);
+      } catch (error) {
+        console.error('[AuditPlanning] Failed to check plan creation permission', error);
+        setHasPlanPermission(false);
+      } finally {
+        setIsCheckingPermission(false);
+      }
+    };
+
+    // Wait for allUsers to be loaded before checking permission
+    if (allUsers.length > 0 || user?.email) {
+      checkPermission();
+    }
+  }, [userIdFromToken, user?.email, allUsers]);
 
   // Load audit plans
   useEffect(() => {
@@ -1369,6 +1435,18 @@ const SQAStaffAuditPlanning = () => {
           </div>
           <button
             onClick={() => {
+              // Check permission before opening form
+              if (isCheckingPermission) {
+                toast.info('Checking permission...');
+                return;
+              }
+
+              if (hasPlanPermission === false) {
+                // Show permission modal
+                setShowPermissionModal(true);
+                return;
+              }
+
               // If form is currently open and in edit mode, reset it first
               if (formState.showForm && formState.isEditMode) {
                 formState.resetFormForCreate();
@@ -1389,6 +1467,27 @@ const SQAStaffAuditPlanning = () => {
       </div>
 
       <div className="px-6 pb-6 space-y-6">
+        {/* Permission Granted Banner */}
+        {hasPlanPermission === true && !isCheckingPermission && (
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 rounded-lg shadow-sm p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-green-800 mb-1">
+                  Plan Creation Permission Granted
+                </h3>
+                <p className="text-sm text-green-700">
+                  You have been granted permission to create audit plans. Click the "Create New Plan" button above to get started.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {formState.showForm && (
           <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
             <div className="flex items-center justify-between mb-4">
@@ -1721,6 +1820,35 @@ const SQAStaffAuditPlanning = () => {
               return t?.title || t?.name || `Template ${String(tid ?? '')}`;
             }}
           />
+        )}
+
+        {/* Permission Denied Modal */}
+        {showPermissionModal && createPortal(
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/40" onClick={() => setShowPermissionModal(false)}></div>
+            <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full">
+                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 text-center mb-2">
+                Permission Denied
+              </h3>
+              <p className="text-gray-600 text-center mb-6">
+                You have not been selected by the lead auditor to create a plan.
+              </p>
+              <div className="flex justify-center">
+                <button
+                  onClick={() => setShowPermissionModal(false)}
+                  className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-all duration-150"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
 
         {/* Delete Confirmation Modal */}
