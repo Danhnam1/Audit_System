@@ -20,6 +20,7 @@ const SQAStaffAuditTeam = lazy(() => import("../pages/Auditor/AuditTeam"));
 const SQAStaffFindingManagement = lazy(() => import("../pages/Auditor/FindingManagement"));
 const SQAStaffAuditExecutionDetail = lazy(() => import("../pages/Auditor/FindingManagement/AuditExecutionDetail"));
 const SQAStaffDepartmentChecklist = lazy(() => import("../pages/Auditor/FindingManagement/DepartmentChecklist"));
+const SQAStaffAuditDepartments = lazy(() => import("../pages/Auditor/FindingManagement/AuditDepartments"));
 const SQAStaffReports = lazy(() => import("../pages/Auditor/Reports"));
 const SQAStaffAuditReview = lazy(() => import("../pages/Auditor/AuditReview"));
 // const SQAStaffRequests = lazy(() => import("../pages/Auditor/Requests"));
@@ -37,6 +38,7 @@ const LeadAuditorActionReview = lazy(() => import("../pages/LeadAuditor/ActionRe
 const SQAStaffLeadFinalReview = lazy(() => import("../pages/Auditor/LeadFinalReview/LeadFinalReview"));
 
 // CAPA Owner pages (formerly Department Staff)
+const CAPAOwnerAuditList = lazy(() => import("../pages/CAPAOwner/AuditList"));
 const DepartmentStaffAssignedTasks = lazy(() => import("../pages/CAPAOwner/AssignedTasks"));
 const DepartmentStaffTaskDetail = lazy(() => import("../pages/CAPAOwner/TaskDetail"));
 const DepartmentStaffUploadEvidence = lazy(() => import("../pages/CAPAOwner/UploadEvidence"));
@@ -51,6 +53,7 @@ const DepartmentHeadAuditPlanDetail = lazy(() => import("../pages/AuditeeOwner/a
 const DepartmentHeadAuditPlanConfirm = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlanConfirm"));
 const DepartmentHeadAssignTasks = lazy(() => import("../pages/AuditeeOwner/taskasign/AssignTasks"));
 const DepartmentHeadFindingsList = lazy(() => import("../pages/AuditeeOwner/findings/FindingsList"));
+const AuditeeOwnerAuditList = lazy(() => import("../pages/AuditeeOwner/findings/AuditList"));
 const DepartmentHeadAssignStaff = lazy(() => import("../pages/AuditeeOwner/taskasign/AssignStaff"));
 const DepartmentHeadReviewEvidence = lazy(() => import("../pages/AuditeeOwner/ReviewEvidence"));
 const DepartmentHeadEvidenceDetail = lazy(() => import("../pages/AuditeeOwner/EvidenceDetail"));
@@ -201,6 +204,14 @@ export function AppRoutes() {
                 }
             />
             <Route
+                path="/auditor/findings/audit/:auditId"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffAuditDepartments />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
                 path="/auditor/findings/:id"
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
@@ -301,6 +312,14 @@ export function AppRoutes() {
             />
             <Route
                 path="/capa-owner/tasks"
+                element={
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
+                        <CAPAOwnerAuditList />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/capa-owner/tasks/audit/:auditId"
                 element={
                     <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffAssignedTasks />
@@ -432,6 +451,14 @@ export function AppRoutes() {
             />
             <Route
                 path="/auditee-owner/findings"
+                element={
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
+                        <AuditeeOwnerAuditList />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditee-owner/findings/audit/:auditId"
                 element={
                     <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadFindingsProgress />

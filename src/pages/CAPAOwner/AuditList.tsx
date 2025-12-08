@@ -1,24 +1,22 @@
-import { MainLayout } from '../../../layouts';
-import { useAuth } from '../../../contexts';
+import { MainLayout } from '../../layouts';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuditFindings } from '../../../hooks/useAuditFindings';
-import { getMyAssignments } from '../../../api/auditAssignments';
-import { getAuditPlanById } from '../../../api/audits';
-import { unwrap } from '../../../utils/normalize';
+import { getMyAssignedActions } from '../../api/actions';
+import { getFindingById } from '../../api/findings';
+import { getAuditPlanById } from '../../api/audits';
 
 interface AuditCard {
   auditId: string;
   auditTitle: string;
   auditType: string;
   status: string;
-  departmentCount: number;
+  taskCount: number;
   startDate?: string;
   endDate?: string;
 }
 
 const getStatusBadgeColor = (status: string) => {
-  const statusLower = status?. toLowerCase() || '';
+  const statusLower = status?.toLowerCase() || '';
   switch (statusLower) {
     case 'assigned':
       return 'bg-blue-100 text-blue-800 border border-blue-300';
@@ -47,25 +45,11 @@ const getAuditTypeBadgeColor = (auditType: string) => {
   }
 };
 
-const SQAStaffFindingManagement = () => {
-  const { user } = useAuth();
+const CAPAOwnerAuditList = () => {
   const navigate = useNavigate();
   const [audits, setAudits] = useState<AuditCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
-
-  const {
-    loading: loadingAudits,
-    error: auditsError,
-    fetchAuditPlans,
-    auditPlans: _auditPlans,
-  } = useAuditFindings();
-
-  useEffect(() => {
-    fetchAuditPlans();
-  }, [fetchAuditPlans]);
 
   useEffect(() => {
     const loadAudits = async () => {
@@ -73,127 +57,142 @@ const SQAStaffFindingManagement = () => {
       setError(null);
       
       try {
-        console.log('🔍 Fetching my assignments...');
-        const assignmentsResponse: any = await getMyAssignments();
-        console.log('📦 Raw assignments response:', assignmentsResponse);
+        console.log('🔍 Fetching my assigned actions...');
+        const actions = await getMyAssignedActions();
+        console.log('📦 Actions from API:', actions);
         
-        let responseData = assignmentsResponse;
-        if (assignmentsResponse?.status && assignmentsResponse?.data) {
-          responseData = assignmentsResponse.data;
-          console.log('📦 Extracted data from axios response:', responseData);
-        }
-        console.log('📦 Processed responseData:', responseData);
-        let assignments: any[] = [];
-        if (Array.isArray(responseData)) {
-          assignments = responseData;
-          console.log('✅ Response is direct array');
-        } else if (responseData?.$values && Array.isArray(responseData.$values)) {
-          assignments = responseData.$values;
-          console.log('✅ Found $values array with', assignments.length, 'items');
-        } else if (responseData?.values && Array.isArray(responseData.values)) {
-          assignments = responseData.values;
-          console.log('✅ Found values array');
-        } else if (responseData?.data && Array.isArray(responseData.data)) {
-          assignments = responseData.data;
-          console.log('✅ Found data array');
-        } else {
-          assignments = unwrap(responseData);
-          console.log('✅ Used unwrap fallback, got', assignments.length, 'items');
-        }
-        
-        console.log('✅ Final assignments array:', assignments);
-        console.log('✅ Assignments count:', assignments.length);
-        
-        if (!assignments || assignments.length === 0) {
-          console.log('⚠️ No assignments found');
+        if (!actions || actions.length === 0) {
+          console.log('⚠️ No actions found');
           setAudits([]);
           setLoading(false);
           return;
         }
 
-        // Filter active assignments
-        const activeAssignments = assignments.filter((a: any) => {
-          const status = (a.status || '').toLowerCase().trim();
-          return status !== 'archived';
+        // Get unique findingIds from actions
+        const uniqueFindingIds = Array.from(new Set(actions.map((a: any) => a.findingId).filter(Boolean)));
+        console.log('📋 Unique findingIds:', uniqueFindingIds);
+
+        // Fetch findings to get auditIds
+        const findingPromises = uniqueFindingIds.map(async (findingId: string) => {
+          try {
+            const finding = await getFindingById(findingId);
+            return finding;
+          } catch (err) {
+            console.error(`❌ Error loading finding ${findingId}:`, err);
+            return null;
+          }
         });
-        console.log('✅ Active assignments (excluding archived):', activeAssignments.length);
 
-        if (activeAssignments.length === 0) {
-          console.log('⚠️ No active assignments found (all are archived)');
-          setAudits([]);
-          setLoading(false);
-          return;
-        }
+        const findings = await Promise.all(findingPromises);
+        const validFindings = findings.filter((f): f is any => f !== null);
+        console.log('✅ Valid findings:', validFindings.length);
 
-        // Group assignments by auditId
+        // Group actions by auditId (from findings)
         const auditMap = new Map<string, any[]>();
-        activeAssignments.forEach((assignment: any) => {
-          const auditId = assignment.auditId;
+        validFindings.forEach((finding: any) => {
+          const auditId = finding.auditId || finding.AuditId || finding.auditPlanId;
           if (auditId) {
+            // Find all actions for this finding
+            const relatedActions = actions.filter((a: any) => a.findingId === finding.findingId);
             if (!auditMap.has(auditId)) {
               auditMap.set(auditId, []);
             }
-            auditMap.get(auditId)!.push(assignment);
+            auditMap.get(auditId)!.push(...relatedActions);
           }
         });
 
         console.log('📊 Grouped audits:', Array.from(auditMap.keys()));
 
         // Load audit info and create audit cards
-        const auditPromises = Array.from(auditMap.entries()).map(async ([auditId, auditAssignments]) => {
+        const auditPromises = Array.from(auditMap.entries()).map(async ([auditId, auditActions]) => {
           try {
             console.log(`📥 Fetching audit info for ${auditId}...`);
             const auditData = await getAuditPlanById(auditId);
-            const auditType = auditData.type || auditData.Type || auditData.auditType || 
-                             auditData.audit?.type || auditData.audit?.Type || auditData.audit?.auditType || '';
-            const auditTitle = auditData.title || auditData.name || auditAssignments[0]?.auditTitle || 'Untitled Audit';
-            // Try multiple possible field names for status
+            console.log(`📋 Raw audit data for ${auditId}:`, auditData);
+            
+            // Try multiple possible field names for title (same as Auditor component)
+            let auditTitle = auditData.title || 
+                            auditData.Title || 
+                            auditData.name || 
+                            auditData.Name ||
+                            auditData.auditTitle ||
+                            auditData.audit?.title ||
+                            auditData.audit?.Title ||
+                            auditData.audit?.name ||
+                            auditData.audit?.Name ||
+                            auditData.audit?.auditTitle ||
+                            '';
+            
+            // If still no title, try to get from finding
+            if (!auditTitle) {
+              const firstFinding = validFindings.find((f: any) => {
+                const findingAuditId = f.auditId || f.AuditId || f.auditPlanId;
+                return String(findingAuditId) === String(auditId);
+              });
+              // Finding might have audit title in nested structure
+              auditTitle = firstFinding?.audit?.title || 
+                          firstFinding?.audit?.Title ||
+                          firstFinding?.audit?.name ||
+                          firstFinding?.auditPlan?.title ||
+                          '';
+            }
+            
+            if (!auditTitle) {
+              console.warn(`⚠️ No title found for audit ${auditId}. Available fields:`, Object.keys(auditData));
+              console.warn(`⚠️ Audit data structure:`, JSON.stringify(auditData, null, 2));
+              // Last resort: use partial auditId
+              auditTitle = `Audit ${auditId.substring(0, 8)}...`;
+            } else {
+              console.log(`✅ Found title for audit ${auditId}: "${auditTitle}"`);
+            }
+            
+            const auditType = auditData.type || 
+                             auditData.Type || 
+                             auditData.auditType || 
+                             auditData.audit?.type || 
+                             auditData.audit?.Type || 
+                             auditData.audit?.auditType || '';
+            
             const status = auditData.status || 
                           auditData.Status || 
                           auditData.auditStatus ||
-                          auditData.auditStatus ||
                           auditData.audit?.status ||
                           auditData.audit?.Status ||
-                          auditAssignments[0]?.status || 
                           'Unknown';
-            
-            console.log(`📋 Audit ${auditId} status check:`, {
-              auditTitle,
-              finalStatus: status,
-              statusFromData: auditData.status,
-              statusFromAssignment: auditAssignments[0]?.status,
-              allStatusFields: {
-                status: auditData.status,
-                Status: auditData.Status,
-                auditStatus: auditData.auditStatus
-              }
-            });
-            
-            // Get unique department count
-            const uniqueDeptIds = new Set(auditAssignments.map((a: any) => a.deptId));
             
             const auditCard: AuditCard = {
               auditId: auditId,
               auditTitle: auditTitle,
               auditType: auditType,
               status: status,
-              departmentCount: uniqueDeptIds.size,
-              startDate: auditData.startDate,
-              endDate: auditData.endDate,
+              taskCount: auditActions.length,
+              startDate: auditData.startDate || auditData.audit?.startDate,
+              endDate: auditData.endDate || auditData.audit?.endDate,
             };
             console.log(`✅ Created card for audit ${auditId}:`, auditCard);
             return auditCard;
           } catch (err) {
             console.error(`❌ Error loading audit ${auditId}:`, err);
-            // Fallback: use assignment data
-            const firstAssignment = auditAssignments[0];
-            const uniqueDeptIds = new Set(auditAssignments.map((a: any) => a.deptId));
+            // Even if API fails, create a card with basic info from finding
+            const firstFinding = validFindings.find((f: any) => {
+              const findingAuditId = f.auditId || f.AuditId || f.auditPlanId;
+              return String(findingAuditId) === String(auditId);
+            });
+            
+            // Try to get title from finding's nested audit data
+            const fallbackTitle = firstFinding?.audit?.title || 
+                                 firstFinding?.audit?.Title ||
+                                 firstFinding?.audit?.name ||
+                                 firstFinding?.auditPlan?.title ||
+                                 firstFinding?.auditPlan?.Title ||
+                                 `Audit ${auditId.substring(0, 8)}...`;
+            
             return {
               auditId: auditId,
-              auditTitle: firstAssignment?.auditTitle || 'Untitled Audit',
+              auditTitle: fallbackTitle,
               auditType: '',
-              status: firstAssignment?.status || 'Unknown',
-              departmentCount: uniqueDeptIds.size,
+              status: 'Unknown',
+              taskCount: auditActions.length,
             };
           }
         });
@@ -206,7 +205,6 @@ const SQAStaffFindingManagement = () => {
           const status = audit.status || '';
           const statusLower = String(status).toLowerCase().trim();
           
-          // Check for various forms of "archived"
           const isArchived = statusLower === 'archived' || 
                            statusLower === 'archive' ||
                            statusLower.includes('archived');
@@ -221,25 +219,12 @@ const SQAStaffFindingManagement = () => {
         console.log('🎯 Final audits to display (excluding archived):', {
           total: validAudits.length,
           nonArchived: nonArchivedAudits.length,
-          removed: validAudits.length - nonArchivedAudits.length,
-          audits: nonArchivedAudits.map(a => ({ title: a.auditTitle, status: a.status }))
+          audits: nonArchivedAudits
         });
-        
-        // Debug: Log all statuses to see what we're getting
-        console.log('📊 All audit statuses:', validAudits.map(a => ({
-          title: a.auditTitle,
-          status: a.status,
-          statusType: typeof a.status
-        })));
         
         setAudits(nonArchivedAudits);
       } catch (err: any) {
         console.error('❌ Error loading audits:', err);
-        console.error('Error details:', {
-          message: err?.message,
-          response: err?.response,
-          stack: err?.stack
-        });
         setError(err?.message || 'Failed to load audits');
       } finally {
         setLoading(false);
@@ -250,16 +235,18 @@ const SQAStaffFindingManagement = () => {
   }, []);
 
   const handleAuditClick = (audit: AuditCard) => {
-    navigate(`/auditor/findings/audit/${audit.auditId}`);
+    navigate(`/capa-owner/tasks/audit/${audit.auditId}`, {
+      state: { auditId: audit.auditId, auditTitle: audit.auditTitle }
+    });
   };
 
   return (
-    <MainLayout user={layoutUser}>
+    <MainLayout>
       {/* Header */}
       <div className="bg-gradient-to-r from-primary-500 to-primary-600 shadow-lg mb-6">
         <div className="px-4 sm:px-6 py-4 sm:py-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Task Management</h1>
-          <p className="text-primary-100 text-sm sm:text-base mt-2">Select a department to manage audit findings</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Tasks</h1>
+          <p className="text-primary-100 text-sm sm:text-base mt-2">Select an audit to view assigned tasks</p>
         </div>
       </div>
 
@@ -302,7 +289,7 @@ const SQAStaffFindingManagement = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <p className="text-gray-500 font-semibold text-lg">No audits available</p>
-                <p className="text-sm text-gray-400 mt-2">Audits will appear here when you are assigned</p>
+                <p className="text-sm text-gray-400 mt-2">Audits will appear here when you have assigned tasks</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-200">
@@ -313,10 +300,26 @@ const SQAStaffFindingManagement = () => {
                     className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group"
                   >
                     <div className="flex items-center justify-between">
-                      <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700">
-                        {audit.auditTitle}
-                      </h3>
-                      <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex-1">
+                        <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 mb-2">
+                          {audit.auditTitle}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(audit.auditType)}`}>
+                            {audit.auditType || 'N/A'}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(audit.status)}`}>
+                            {audit.status || 'Unknown'}
+                          </span>
+                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            {audit.taskCount} {audit.taskCount === 1 ? 'task' : 'tasks'}
+                          </span>
+                        </div>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600 flex-shrink-0 ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
@@ -331,4 +334,5 @@ const SQAStaffFindingManagement = () => {
   );
 };
 
-export default SQAStaffFindingManagement;
+export default CAPAOwnerAuditList;
+

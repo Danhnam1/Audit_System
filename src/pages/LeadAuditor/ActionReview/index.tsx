@@ -410,7 +410,7 @@ const ActionReview = () => {
                             setSelectedFindingForDetail(finding.findingId);
                             setShowFindingDetailModal(true);
                           }}
-                          className="px-3 py-1. 5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
+                          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
                         >
                           Detail
                         </button>
@@ -419,7 +419,7 @@ const ActionReview = () => {
                             e.stopPropagation();
                             handleFindingSelect(finding.findingId);
                           }}
-                          className="px-3 py-1. 5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors whitespace-nowrap"
+                          className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors whitespace-nowrap"
                         >
                           View Actions
                         </button>
