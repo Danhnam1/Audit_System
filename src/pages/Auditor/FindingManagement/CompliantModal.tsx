@@ -116,6 +116,12 @@ const CompliantModal = ({
       return;
     }
     
+    // Validate file upload is required
+    if (files.length === 0) {
+      alert('At least one file attachment is required');
+      return;
+    }
+    
     // Show confirmation modal before marking as compliant
     setShowCompliantConfirmModal(true);
   };
@@ -502,7 +508,7 @@ const CompliantModal = ({
             {/* File Upload */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Attachments (Optional)
+                Attachments <span className="text-red-500">*</span>
               </label>
               <input
                 type="file"
