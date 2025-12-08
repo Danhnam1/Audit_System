@@ -306,6 +306,7 @@ export default {
   getAuditChecklistItems,
   getChecklistItemsByDepartment,
   markChecklistItemCompliant,
+  markChecklistItemCompliant1,
   markChecklistItemNonCompliant,
   createAuditChecklistItemsFromTemplate,
   createAuditChecklistItem,

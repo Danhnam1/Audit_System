@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { markChecklistItemCompliant1 } from '../../../api/checklists';
+import { markChecklistItemCompliant, markChecklistItemCompliant1 } from '../../../api/checklists';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { uploadAttachment } from '../../../api/attachments';
 import { useUserId } from '../../../store/useAuthStore';
@@ -168,7 +168,7 @@ const CompliantModal = ({
       console.log('3. Compliant Payload:', JSON.stringify(compliantData, null, 2));
 
       // Call API to mark item as compliant
-      const response = await markChecklistItemCompliant(checklistItem.auditItemId, compliantData);
+      const response = await markChecklistItemCompliant1(checklistItem.auditItemId, compliantData);
       console.log('✅ Item marked as compliant:', response);
 
       // Use auditChecklistItemId from response (GUID string) for file upload
@@ -217,6 +217,16 @@ const CompliantModal = ({
         }
       } else if (files.length > 0) {
         console.warn('⚠️ Cannot upload files: compliantItemId is missing');
+      }
+      
+      // Mark the audit item as compliant (final step)
+      console.log('Marking audit item as compliant via PUT endpoint...');
+      try {
+        await markChecklistItemCompliant(checklistItem.auditItemId);
+        console.log('✅ Audit item marked as compliant successfully');
+      } catch (markCompliantErr: any) {
+        console.error('⚠️ Error marking audit item as compliant:', markCompliantErr);
+        // Don't fail - the compliant record was already created
       }
       
       // Reset form
