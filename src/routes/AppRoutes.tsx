@@ -53,6 +53,7 @@ const DepartmentHeadAuditPlanDetail = lazy(() => import("../pages/AuditeeOwner/a
 const DepartmentHeadAuditPlanConfirm = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlanConfirm"));
 const DepartmentHeadAssignTasks = lazy(() => import("../pages/AuditeeOwner/taskasign/AssignTasks"));
 const DepartmentHeadFindingsList = lazy(() => import("../pages/AuditeeOwner/findings/FindingsList"));
+const AuditeeOwnerAuditList = lazy(() => import("../pages/AuditeeOwner/findings/AuditList"));
 const DepartmentHeadAssignStaff = lazy(() => import("../pages/AuditeeOwner/taskasign/AssignStaff"));
 const DepartmentHeadReviewEvidence = lazy(() => import("../pages/AuditeeOwner/ReviewEvidence"));
 const DepartmentHeadEvidenceDetail = lazy(() => import("../pages/AuditeeOwner/EvidenceDetail"));
@@ -450,6 +451,14 @@ export function AppRoutes() {
             />
             <Route
                 path="/auditee-owner/findings"
+                element={
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
+                        <AuditeeOwnerAuditList />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditee-owner/findings/audit/:auditId"
                 element={
                     <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadFindingsProgress />

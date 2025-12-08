@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
 import { createAction, getActionsByFinding, type Action, approveActionWithFeedback, rejectAction, rejectActionForResubmit } from '../../../api/actions';
@@ -13,6 +14,12 @@ import { getStatusColor } from '../../../constants';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
+  const { auditId } = useParams<{ auditId: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const auditIdFromState = (location.state as any)?.auditId || auditId || '';
+  const auditTitle = (location.state as any)?.auditTitle || '';
+
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,11 +134,23 @@ const FindingsProgress = () => {
           return;
         }
 
-        const data = await getFindingsByDepartment(deptId);
-        setFindings(data);
+        const allFindings = await getFindingsByDepartment(deptId);
+        
+        // Filter findings by auditId if provided
+        let filteredFindings = allFindings;
+        if (auditIdFromState) {
+          console.log(`🔍 Filtering findings by auditId: ${auditIdFromState}`);
+          filteredFindings = allFindings.filter((finding: Finding) => {
+            const findingAuditId = finding.auditId || (finding as any).AuditId || (finding as any).auditPlanId;
+            return String(findingAuditId) === String(auditIdFromState);
+          });
+          console.log(`✅ Filtered findings: ${filteredFindings.length} out of ${allFindings.length} for audit ${auditIdFromState}`);
+        }
+        
+        setFindings(filteredFindings);
         
         // Load assigned users for findings
-        await loadAssignedUsers(data);
+        await loadAssignedUsers(filteredFindings);
       } catch (err: any) {
         console.error('Error fetching findings:', err);
         setError(err?.message || 'Failed to load findings');
@@ -141,7 +160,7 @@ const FindingsProgress = () => {
     };
 
     fetchFindings();
-  }, []);
+  }, [auditIdFromState]);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -348,7 +367,21 @@ const FindingsProgress = () => {
         {/* Header */}
         <div className="mb-4 sm:mb-6">
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
-            Findings Progress
+            <div className="flex items-center gap-3">
+              {auditIdFromState && (
+                <button
+                  onClick={() => navigate('/auditee-owner/findings')}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              )}
+              <span>
+                {auditTitle ? `${auditTitle} - Findings Progress` : 'Findings Progress'}
+              </span>
+            </div>
           </h1>
         </div>
 
