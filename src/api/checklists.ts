@@ -1,6 +1,20 @@
 import apiClient from './client';
 import { unwrap } from '../utils/normalize';
 
+// Helper function to convert camelCase to PascalCase
+const toPascalCase = (obj: any): any => {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(toPascalCase);
+  if (typeof obj !== 'object') return obj;
+  
+  return Object.keys(obj).reduce((acc, key) => {
+    const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
+    const value = obj[key];
+    acc[pascalKey] = toPascalCase(value);
+    return acc;
+  }, {} as any);
+};
+
 const unwrapArray = (data: any): any[] => {
   if (!data) return [];
   if (Array.isArray(data)) return data;
@@ -169,11 +183,68 @@ export const getChecklistItemsByDepartment = async (deptId: number) => {
 export const markChecklistItemCompliant = async (auditItemId: string) => {
   const res = await apiClient.put(`/AuditChecklistItems/${auditItemId}/compliant`);
   return res.data;
+}
+export const markChecklistItemCompliant1 = async (
+  auditItemId: string,
+  data: {
+    title?: string;
+    reason?: string;
+    dateOfCompliance?: string;
+    timeOfCompliance?: string;
+    department?: string;
+    witnessId?: string; // Witness user ID (GUID string)
+    createdBy?: string | number; // Current user ID (GUID string from JWT or int)
+  }
+) => {
+  // Validate required fields
+  if (!data.title?.trim()) {
+    throw new Error('Title is required');
+  }
+  if (!data.reason?.trim()) {
+    throw new Error('Reason is required');
+  }
+  if (!data.department?.trim()) {
+    throw new Error('Department is required');
+  }
+
+  // Convert timeOfCompliance to HH:MM:SS format (TimeOnly in .NET)
+  const formatTimeOnly = (timeStr: string): string => {
+    if (!timeStr) return '00:00:00';
+    // If format is HH:MM, add :00 for seconds
+    if (timeStr.match(/^\d{2}:\d{2}$/)) {
+      return `${timeStr}:00`;
+    }
+    // If format is HH:MM:SS, return as is
+    if (timeStr.match(/^\d{2}:\d{2}:\d{2}$/)) {
+      return timeStr;
+    }
+    return '00:00:00';
+  };
+
+  // Create payload in camelCase (backend expects camelCase directly)
+  const payload = {
+    auditChecklistItemId: auditItemId, // GUID string
+    title: data.title!.trim(),
+    reason: data.reason!.trim(),
+    dateOfCompliance: data.dateOfCompliance || new Date().toISOString().split('T')[0],
+    timeOfCompliance: formatTimeOnly(data.timeOfCompliance || ''), // Convert to HH:MM:SS
+    department: data.department!.trim(),
+    witnessId: data.witnessId || '', // Witness userId (GUID string)
+    createdBy: data.createdBy || '', // Keep as GUID string or int from caller
+  };
+  
+  console.log('1. Payload (camelCase):', JSON.stringify(payload, null, 2));
+  
+  // Send to POST /api/ChecklistItemNoFinding with camelCase payload
+  const res = await apiClient.post(`/ChecklistItemNoFinding`, payload);
+  return res.data;
 };
 
 // Mark checklist item as non-compliant
 export const markChecklistItemNonCompliant = async (auditItemId: string) => {
-  const res = await apiClient.put(`/AuditChecklistItems/${auditItemId}/non-compliant`);
+  const res = await apiClient.put(`/AuditChecklistItems/${auditItemId}/non-compliant`, {
+    entityId: auditItemId,
+  });
   return res.data;
 };
 
@@ -235,6 +306,7 @@ export default {
   getAuditChecklistItems,
   getChecklistItemsByDepartment,
   markChecklistItemCompliant,
+  markChecklistItemCompliant1,
   markChecklistItemNonCompliant,
   createAuditChecklistItemsFromTemplate,
   createAuditChecklistItem,

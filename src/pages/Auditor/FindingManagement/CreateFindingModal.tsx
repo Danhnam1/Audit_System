@@ -4,6 +4,7 @@ import { getFindingSeverities } from '../../../api/findingSeverity';
 import { uploadAttachment } from '../../../api/attachments';
 import { markChecklistItemNonCompliant } from '../../../api/checklists';
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
+import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 
 interface CreateFindingModalProps {
@@ -16,6 +17,7 @@ interface CreateFindingModalProps {
     questionTextSnapshot: string;
   };
   deptId: number;
+  departmentName?: string; // Department name
 }
 
 const CreateFindingModal = ({
@@ -24,6 +26,7 @@ const CreateFindingModal = ({
   onSuccess,
   checklistItem,
   deptId,
+  departmentName = '',
 }: CreateFindingModalProps) => {
   const [severities, setSeverities] = useState<Array<{ severity: string }>>([]);
   const [loadingSeverities, setLoadingSeverities] = useState(false);
@@ -39,6 +42,34 @@ const CreateFindingModal = ({
   const [severity, setSeverity] = useState('');
   const [deadline, setDeadline] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [witnesses, setWitnesses] = useState<string[]>([]);
+  
+  // Department users for witnesses dropdown
+  const [departmentUsers, setDepartmentUsers] = useState<AdminUserDto[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [showWitnessesDropdown, setShowWitnessesDropdown] = useState(false);
+  
+  // Additional fields
+  const [findingDate] = useState(() => {
+    const now = new Date();
+    return now.toISOString().split('T')[0];
+  });
+  const [findingTime, setFindingTime] = useState(() => {
+    const now = new Date();
+    return now.toTimeString().slice(0, 5);
+  });
+  const [findingType, setFindingType] = useState('');
+  
+  // Mock finding types
+  const findingTypes = [
+    'Non-Compliance',
+    'Process Gap',
+    'Documentation Issue',
+    'Training Deficiency',
+    'Control Weakness',
+    'System Issue',
+    'Other',
+  ];
   
   // Errors
   const [errors, setErrors] = useState<{
@@ -52,13 +83,29 @@ const CreateFindingModal = ({
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
   const [showCreateConfirmModal, setShowCreateConfirmModal] = useState(false);
 
-  // Load severities and schedule on mount
+  // Get current date and time automatically
   useEffect(() => {
     if (isOpen) {
       loadSeverities();
       loadSchedule();
+      loadDepartmentUsers();
     }
   }, [isOpen]);
+
+  const loadDepartmentUsers = async () => {
+    if (!deptId || deptId <= 0) return;
+    
+    setLoadingUsers(true);
+    try {
+      const users = await getAdminUsersByDepartment(deptId);
+      setDepartmentUsers(users);
+      console.log(`Loaded ${users.length} users from department ${deptId}:`, users);
+    } catch (err: any) {
+      console.error('Error loading department users:', err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
 
   // Load audit schedule
   const loadSchedule = async () => {
@@ -150,6 +197,22 @@ const CreateFindingModal = ({
     }
   };
 
+  const handleWitnessToggle = (userId: string) => {
+    setWitnesses(prev =>
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  const getSelectedWitnessesDisplay = (): string => {
+    if (witnesses.length === 0) return '';
+    return witnesses
+      .map(id => departmentUsers.find(u => u.userId === id)?.fullName || '')
+      .filter(name => name)
+      .join(', ');
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
@@ -228,11 +291,23 @@ const CreateFindingModal = ({
         reviewerId: null, // null is accepted by backend
         source: '', // Empty string
         externalAuditorName: '', // Empty string
+        witnessId: witnesses.length > 0 ? witnesses[0] : '', // First witness's userId (GUID string)
       };
 
       console.log('========== CREATE FINDING DEBUG ==========');
       console.log('1. Checklist Item:', checklistItem);
-      console.log('2. Form Data:', { description, severity, deadline, filesCount: files.length });
+      console.log('2. Form Data:', { 
+        description, 
+        severity, 
+        deadline, 
+        filesCount: files.length,
+        findingDate,
+        findingTime,
+        departmentName,
+        findingType,
+        witnesses: witnesses,
+        witnessesDisplay: getSelectedWitnessesDisplay(),
+      });
       console.log('3. Finding Payload (camelCase):', JSON.stringify(findingPayload, null, 2));
       
       // Create finding
@@ -301,6 +376,7 @@ const CreateFindingModal = ({
       setDeadline('');
       setFiles([]);
       setErrors({});
+      setWitnesses([]);
       setFieldworkStartDate(null);
       setEvidenceDueDate(null);
       
@@ -332,6 +408,7 @@ const CreateFindingModal = ({
     const hasData = description.trim() !== '' ||
                    severity !== '' ||
                    deadline !== '' ||
+                   witnesses.length > 0 ||
                    files.length > 0;
 
     if (hasData) {
@@ -354,6 +431,7 @@ const CreateFindingModal = ({
     setDeadline('');
     setFiles([]);
     setErrors({});
+    setWitnesses([]);
     setFieldworkStartDate(null);
     setEvidenceDueDate(null);
     setShowCancelConfirmModal(false);
@@ -534,6 +612,158 @@ const CreateFindingModal = ({
                   )}
                 </>
               )}
+            </div>
+            {/* Witnesses - Multi-select dropdown */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Witnesses
+              </label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowWitnessesDropdown(!showWitnessesDropdown)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg text-left bg-white hover:bg-gray-50 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 flex items-center justify-between"
+                >
+                  <span className="text-gray-700">
+                    {loadingUsers ? (
+                      <span className="text-gray-500">Loading users...</span>
+                    ) : witnesses.length === 0 ? (
+                      <span className="text-gray-500">Select witnesses from department...</span>
+                    ) : (
+                      getSelectedWitnessesDisplay()
+                    )}
+                  </span>
+                  <svg  
+                    className={`w-4 h-4 text-gray-600 transition-transform ${
+                      showWitnessesDropdown ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                    />
+                  </svg>
+                </button>
+
+                {/* Dropdown menu */}
+                {showWitnessesDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
+                    {loadingUsers ? (
+                      <div className="px-4 py-3 text-center text-gray-500">
+                        <div className="inline-block animate-spin">
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+                    ) : departmentUsers.length === 0 ? (
+                      <div className="px-4 py-3 text-center text-gray-500 text-sm">
+                        No users found in this department
+                      </div>
+                    ) : (
+                      departmentUsers.map(user => (
+                        <label
+                          key={user.userId}
+                          className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={witnesses.includes(user.userId || '')}
+                            onChange={() =>
+                              handleWitnessToggle(user.userId || '')
+                            }
+                            className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-2 focus:ring-primary-500"
+                          />
+                          <span className="ml-3 text-sm text-gray-700">
+                            {user.fullName}
+                          </span>
+                          {user.email && (
+                            <span className="ml-2 text-xs text-gray-500">
+                              ({user.email})
+                            </span>
+                          )}
+                        </label>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Finding Type */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Finding Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={findingType}
+                onChange={(e) => setFindingType(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="">Select finding type</option>
+                {findingTypes.map((type, index) => (
+                  <option key={index} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Two-column layout for date/time */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Finding Date - Read-only, auto-filled */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date of Finding <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={findingDate}
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+                />
+              </div>
+
+              {/* Finding Time */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Time of Finding
+                </label>
+                <input
+                  type="time"
+                  value={findingTime}
+                  onChange={(e) => setFindingTime(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                />
+              </div>
+            </div>
+
+            {/* Department - Read-only, auto-filled */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Department <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={departmentName}
+                readOnly
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+              />
             </div>
 
             {/* File Upload */}

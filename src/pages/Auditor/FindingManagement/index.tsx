@@ -85,9 +85,7 @@ const SQAStaffFindingManagement = () => {
           responseData = assignmentsResponse.data;
           console.log('📦 Extracted data from axios response:', responseData);
         }
-        
         console.log('📦 Processed responseData:', responseData);
-        
         let assignments: any[] = [];
         if (Array.isArray(responseData)) {
           assignments = responseData;
@@ -204,7 +202,7 @@ const SQAStaffFindingManagement = () => {
       {/* Header */}
       <div className="bg-gradient-to-r from-primary-500 to-primary-600 shadow-lg mb-6">
         <div className="px-4 sm:px-6 py-4 sm:py-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Finding Management</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Task Management</h1>
           <p className="text-primary-100 text-sm sm:text-base mt-2">Select a department to manage audit findings</p>
         </div>
       </div>
@@ -299,6 +297,7 @@ const SQAStaffFindingManagement = () => {
                         <tr
                           key={dept. deptId}
                           // onClick={() => handleDepartmentClick(dept)}
+                          onClick={() => handleDepartmentClick(dept)}
                           className="bg-white hover:bg-primary-50 transition-colors duration-200 cursor-pointer border-b border-gray-100 last:border-b-0"
                         >
                           <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
@@ -345,7 +344,7 @@ const SQAStaffFindingManagement = () => {
                           </td>
                           <td className="hidden lg:table-cell px-4 sm:px-6 py-4">
                              <button
-                                                         onClick={() => handleDepartmentClick(dept)}
+                                onClick={() => handleDepartmentClick(dept)}
                                 className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
                                 title="View "
                               >

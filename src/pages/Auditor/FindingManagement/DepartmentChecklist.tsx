@@ -2,11 +2,12 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getChecklistItemsByDepartment, markChecklistItemCompliant, createAuditChecklistItem, type CreateAuditChecklistItemDto } from '../../../api/checklists';
+import { getChecklistItemsByDepartment, createAuditChecklistItem, type CreateAuditChecklistItemDto } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
 import { getFindings, getMyFindings, type Finding, approveFindingAction, returnFindingAction } from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
+import CompliantModal from './CompliantModal';
 import FindingDetailModal from './FindingDetailModal';
 import { toast } from 'react-toastify';
 import { getActionsByFinding, type Action } from '../../../api/actions';
@@ -35,11 +36,11 @@ const DepartmentChecklist = () => {
   const [departmentName, setDepartmentName] = useState<string>('');
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCompliantModal, setShowCompliantModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [findingsMap, setFindingsMap] = useState<Record<string, string>>({}); // auditItemId -> findingId
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
-  const [showCompliantConfirmModal, setShowCompliantConfirmModal] = useState(false);
   const [itemToMarkCompliant, setItemToMarkCompliant] = useState<ChecklistItem | null>(null);
   
   // Audit info state
@@ -177,21 +178,22 @@ const getStatusColor = (status: string) => {
     }
   };
 
-  // Handle mark item as compliant - show confirmation modal first
+  // Handle mark item as compliant - show modal first
   const handleMarkCompliant = (item: ChecklistItem) => {
     setItemToMarkCompliant(item);
-    setShowCompliantConfirmModal(true);
+    setShowCompliantModal(true);
   };
 
-  // Confirm and actually mark item as compliant
+  // Confirm and actually mark item as compliant (called from CompliantModal)
+  // CompliantModal handles the API call, we just need to update local state
   const handleConfirmMarkCompliant = async () => {
     if (!itemToMarkCompliant || updatingItemId) return; // Prevent multiple clicks
     
     setUpdatingItemId(itemToMarkCompliant.auditItemId);
-    setShowCompliantConfirmModal(false);
     
     try {
-      await markChecklistItemCompliant(itemToMarkCompliant.auditItemId);
+      // CompliantModal already called markChecklistItemCompliant API
+      // We just update the local UI state here
       
       // Update local state to reflect the change
       setChecklistItems(prevItems =>
@@ -211,12 +213,6 @@ const getStatusColor = (status: string) => {
       setUpdatingItemId(null);
       setItemToMarkCompliant(null);
     }
-  };
-
-  // Cancel marking as compliant
-  const handleCancelMarkCompliant = () => {
-    setShowCompliantConfirmModal(false);
-    setItemToMarkCompliant(null);
   };
 
   useEffect(() => {
@@ -795,6 +791,7 @@ const getStatusColor = (status: string) => {
             questionTextSnapshot: selectedItem.questionTextSnapshot,
           }}
           deptId={parseInt(deptId, 10)}
+          departmentName={departmentName}
         />
       )}
 
@@ -810,45 +807,23 @@ const getStatusColor = (status: string) => {
         />
       )}
 
-      {/* Confirmation Modal for Marking as Compliant */}
-      {showCompliantConfirmModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-            onClick={handleCancelMarkCompliant}
-          />
-          
-          {/* Modal */}
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto max-h-[90vh] overflow-y-auto">
-            <div className="p-4 sm:p-6">
-              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
-                Confirm Compliance
-              </h3>
-              <p className="text-xs sm:text-sm text-gray-600 mb-4 sm:mb-6">
-                Are you sure that this item meets all requirements and standards?
-              </p>
-              
-              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-                <button
-                  type="button"
-                  onClick={handleCancelMarkCompliant}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm sm:text-base"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmMarkCompliant}
-                  disabled={updatingItemId !== null}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
-                >
-                  {updatingItemId ? 'Marking...' : 'Yes, Mark as Compliant'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Compliant Modal */}
+      {itemToMarkCompliant && deptId && (
+        <CompliantModal
+          isOpen={showCompliantModal}
+          onClose={() => {
+            setShowCompliantModal(false);
+            setItemToMarkCompliant(null);
+          }}
+          onSuccess={handleConfirmMarkCompliant}
+          departmentName={departmentName}
+          deptId={parseInt(deptId, 10)}
+          checklistItem={{
+            auditItemId: itemToMarkCompliant.auditItemId,
+            auditId: auditId || itemToMarkCompliant.auditId,
+            questionTextSnapshot: itemToMarkCompliant.questionTextSnapshot,
+          }}
+        />
       )}
 
       {/* Action Detail Modal */}

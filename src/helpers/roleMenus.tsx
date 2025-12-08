@@ -65,7 +65,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         {
           label: 'Audit Assignment',
           children: [
-            { icon: <DashboardIcon />, label: 'Finding Management', path: `${ROUTES.AUDITOR}/findings` },
+            { icon: <DashboardIcon />, label: 'Task Management', path: `${ROUTES.AUDITOR}/findings` },
             { icon: <AuditIcon />, label: 'Lead Audit Final Review', path: `${ROUTES.AUDITOR}/lead-final-review` },
           ],
         },
