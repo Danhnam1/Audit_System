@@ -4,20 +4,17 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuditFindings } from '../../../hooks/useAuditFindings';
 import { getMyAssignments } from '../../../api/auditAssignments';
-import { getDepartmentById } from '../../../api/departments';
 import { getAuditPlanById } from '../../../api/audits';
 import { unwrap } from '../../../utils/normalize';
 
-interface DepartmentCard {
-  deptId: number;
-  name: string;
-  code: string;
-  description: string;
-  assignmentId: string;
+interface AuditCard {
   auditId: string;
   auditTitle: string;
-  status: string;
   auditType: string;
+  status: string;
+  departmentCount: number;
+  startDate?: string;
+  endDate?: string;
 }
 
 const getStatusBadgeColor = (status: string) => {
@@ -53,11 +50,11 @@ const getAuditTypeBadgeColor = (auditType: string) => {
 const SQAStaffFindingManagement = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [departments, setDepartments] = useState<DepartmentCard[]>([]);
-  const [loadingDepartments, setLoadingDepartments] = useState(false);
-  const [errorDepartments, setErrorDepartments] = useState<string | null>(null);
+  const [audits, setAudits] = useState<AuditCard[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const layoutUser = user ?  { name: user.fullName, avatar: undefined } : undefined;
+  const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
   const {
     loading: loadingAudits,
@@ -71,9 +68,9 @@ const SQAStaffFindingManagement = () => {
   }, [fetchAuditPlans]);
 
   useEffect(() => {
-    const loadDepartments = async () => {
-      setLoadingDepartments(true);
-      setErrorDepartments(null);
+    const loadAudits = async () => {
+      setLoading(true);
+      setError(null);
       
       try {
         console.log('🔍 Fetching my assignments...');
@@ -96,8 +93,8 @@ const SQAStaffFindingManagement = () => {
         } else if (responseData?.values && Array.isArray(responseData.values)) {
           assignments = responseData.values;
           console.log('✅ Found values array');
-        } else if (responseData?.data && Array. isArray(responseData.data)) {
-          assignments = responseData. data;
+        } else if (responseData?.data && Array.isArray(responseData.data)) {
+          assignments = responseData.data;
           console.log('✅ Found data array');
         } else {
           assignments = unwrap(responseData);
@@ -107,94 +104,153 @@ const SQAStaffFindingManagement = () => {
         console.log('✅ Final assignments array:', assignments);
         console.log('✅ Assignments count:', assignments.length);
         
-        if (! assignments || assignments.length === 0) {
+        if (!assignments || assignments.length === 0) {
           console.log('⚠️ No assignments found');
-          setDepartments([]);
-          setLoadingDepartments(false);
+          setAudits([]);
+          setLoading(false);
           return;
         }
 
+        // Filter active assignments
         const activeAssignments = assignments.filter((a: any) => {
-          const status = (a. status || '').toLowerCase(). trim();
+          const status = (a.status || '').toLowerCase().trim();
           return status !== 'archived';
         });
-        console.log('✅ Active assignments (excluding archived):', activeAssignments. length);
+        console.log('✅ Active assignments (excluding archived):', activeAssignments.length);
 
         if (activeAssignments.length === 0) {
-          console. log('⚠️ No active assignments found (all are archived)');
-          setDepartments([]);
-          setLoadingDepartments(false);
+          console.log('⚠️ No active assignments found (all are archived)');
+          setAudits([]);
+          setLoading(false);
           return;
         }
 
-        const uniqueDeptIds = Array.from(new Set(activeAssignments.map((a: any) => a. deptId)));
-        console.log('🏢 Unique department IDs:', uniqueDeptIds);
-        
-        const departmentPromises = uniqueDeptIds.map(async (deptId: number) => {
-          try {
-            console.log(`📥 Fetching department ${deptId}...`);
-            const deptData = await getDepartmentById(deptId);
-            console.log(`✅ Department ${deptId} data:`, deptData);
-            
-            const deptAssignments = activeAssignments.filter((a: any) => a. deptId === deptId);
-            
-            const firstAssignment = deptAssignments[0];
-            let auditType = '';
-            
-            if (firstAssignment. auditId) {
-              try {
-                const auditData = await getAuditPlanById(firstAssignment.auditId);
-                auditType = auditData.type || auditData.Type || auditData.auditType || 
-                           auditData.audit?.type || auditData.audit?.Type || auditData.audit?.auditType || '';
-              } catch (err) {
-                console.warn(`Failed to load audit type for ${firstAssignment.auditId}:`, err);
-              }
+        // Group assignments by auditId
+        const auditMap = new Map<string, any[]>();
+        activeAssignments.forEach((assignment: any) => {
+          const auditId = assignment.auditId;
+          if (auditId) {
+            if (!auditMap.has(auditId)) {
+              auditMap.set(auditId, []);
             }
-            
-            const cardData: DepartmentCard = {
-              deptId: deptData. deptId || deptId,
-              name: deptData.name || 'Unknown Department',
-              code: deptData.code || '',
-              description: deptData. description || '',
-              assignmentId: firstAssignment.assignmentId,
-              auditId: firstAssignment.auditId,
-              auditTitle: firstAssignment. auditTitle || 'Untitled Audit',
-              status: firstAssignment.status || 'Unknown',
-              auditType: auditType || '',
-            };
-            console.log(`✅ Created card for department ${deptId}:`, cardData);
-            return cardData;
-          } catch (err) {
-            console.error(`❌ Error loading department ${deptId}:`, err);
-            return null;
+            auditMap.get(auditId)!.push(assignment);
           }
         });
 
-        const departmentResults = await Promise.all(departmentPromises);
-        const validDepartments: DepartmentCard[] = departmentResults.filter((dept): dept is DepartmentCard => dept !== null);
-        console.log('🎯 Final departments to display:', validDepartments);
+        console.log('📊 Grouped audits:', Array.from(auditMap.keys()));
+
+        // Load audit info and create audit cards
+        const auditPromises = Array.from(auditMap.entries()).map(async ([auditId, auditAssignments]) => {
+          try {
+            console.log(`📥 Fetching audit info for ${auditId}...`);
+            const auditData = await getAuditPlanById(auditId);
+            const auditType = auditData.type || auditData.Type || auditData.auditType || 
+                             auditData.audit?.type || auditData.audit?.Type || auditData.audit?.auditType || '';
+            const auditTitle = auditData.title || auditData.name || auditAssignments[0]?.auditTitle || 'Untitled Audit';
+            // Try multiple possible field names for status
+            const status = auditData.status || 
+                          auditData.Status || 
+                          auditData.auditStatus ||
+                          auditData.auditStatus ||
+                          auditData.audit?.status ||
+                          auditData.audit?.Status ||
+                          auditAssignments[0]?.status || 
+                          'Unknown';
+            
+            console.log(`📋 Audit ${auditId} status check:`, {
+              auditTitle,
+              finalStatus: status,
+              statusFromData: auditData.status,
+              statusFromAssignment: auditAssignments[0]?.status,
+              allStatusFields: {
+                status: auditData.status,
+                Status: auditData.Status,
+                auditStatus: auditData.auditStatus
+              }
+            });
+            
+            // Get unique department count
+            const uniqueDeptIds = new Set(auditAssignments.map((a: any) => a.deptId));
+            
+            const auditCard: AuditCard = {
+              auditId: auditId,
+              auditTitle: auditTitle,
+              auditType: auditType,
+              status: status,
+              departmentCount: uniqueDeptIds.size,
+              startDate: auditData.startDate,
+              endDate: auditData.endDate,
+            };
+            console.log(`✅ Created card for audit ${auditId}:`, auditCard);
+            return auditCard;
+          } catch (err) {
+            console.error(`❌ Error loading audit ${auditId}:`, err);
+            // Fallback: use assignment data
+            const firstAssignment = auditAssignments[0];
+            const uniqueDeptIds = new Set(auditAssignments.map((a: any) => a.deptId));
+            return {
+              auditId: auditId,
+              auditTitle: firstAssignment?.auditTitle || 'Untitled Audit',
+              auditType: '',
+              status: firstAssignment?.status || 'Unknown',
+              departmentCount: uniqueDeptIds.size,
+            };
+          }
+        });
+
+        const auditResults = await Promise.all(auditPromises);
+        const validAudits: AuditCard[] = auditResults.filter((audit): audit is AuditCard => audit !== null);
         
-        setDepartments(validDepartments);
+        // Filter out audits with status "Archived" (case-insensitive)
+        const nonArchivedAudits = validAudits.filter((audit) => {
+          const status = audit.status || '';
+          const statusLower = String(status).toLowerCase().trim();
+          
+          // Check for various forms of "archived"
+          const isArchived = statusLower === 'archived' || 
+                           statusLower === 'archive' ||
+                           statusLower.includes('archived');
+          
+          if (isArchived) {
+            console.log(`🚫 Filtering out archived audit: ${audit.auditTitle} (status: "${status}")`);
+          }
+          
+          return !isArchived;
+        });
+        
+        console.log('🎯 Final audits to display (excluding archived):', {
+          total: validAudits.length,
+          nonArchived: nonArchivedAudits.length,
+          removed: validAudits.length - nonArchivedAudits.length,
+          audits: nonArchivedAudits.map(a => ({ title: a.auditTitle, status: a.status }))
+        });
+        
+        // Debug: Log all statuses to see what we're getting
+        console.log('📊 All audit statuses:', validAudits.map(a => ({
+          title: a.auditTitle,
+          status: a.status,
+          statusType: typeof a.status
+        })));
+        
+        setAudits(nonArchivedAudits);
       } catch (err: any) {
-        console.error('❌ Error loading departments:', err);
+        console.error('❌ Error loading audits:', err);
         console.error('Error details:', {
-          message: err?. message,
+          message: err?.message,
           response: err?.response,
           stack: err?.stack
         });
-        setErrorDepartments(err?.message || 'Failed to load departments');
+        setError(err?.message || 'Failed to load audits');
       } finally {
-        setLoadingDepartments(false);
+        setLoading(false);
       }
     };
 
-    loadDepartments();
+    loadAudits();
   }, []);
 
-  const handleDepartmentClick = (dept: DepartmentCard) => {
-    navigate(`/auditor/findings/department/${dept.deptId}`, {
-      state: { auditId: dept.auditId, department: dept }
-    });
+  const handleAuditClick = (audit: AuditCard) => {
+    navigate(`/auditor/findings/audit/${audit.auditId}`);
   };
 
   return (
@@ -209,27 +265,27 @@ const SQAStaffFindingManagement = () => {
 
       <div className="px-4 sm:px-6 pb-6 sm:pb-8 space-y-6">
         {/* Loading State */}
-        {loadingAudits && (
+        {loading && (
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-8 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-primary-600 mx-auto mb-4"></div>
-            <p className="text-gray-600 font-medium">Loading audit plans...</p>
+            <p className="text-gray-600 font-medium">Loading audits...</p>
           </div>
         )}
         
         {/* Error State */}
-        {auditsError && (
+        {error && (
           <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm">
             <div className="flex items-start gap-3">
               <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101. 414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1. 414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8. 586 8.707 7. 293z" clipRule="evenodd" />
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
               </svg>
               <div className="flex-1">
                 <p className="text-red-800 font-semibold">Error loading audits</p>
-                <p className="text-red-700 text-sm mt-1">{auditsError}</p>
+                <p className="text-red-700 text-sm mt-1">{error}</p>
               </div>
               <button
-                onClick={() => fetchAuditPlans()}
-                className="px-3 py-1. 5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium"
+                onClick={() => window.location.reload()}
+                className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium"
               >
                 Retry
               </button>
@@ -237,132 +293,39 @@ const SQAStaffFindingManagement = () => {
           </div>
         )}
         
-        {/* Available Audit Plans - Table View */}
-        <div className="bg-white rounded-lg border border-gray-200 shadow-md overflow-hidden">
-          {/* Header */}
-          <div className="px-4 sm:px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-            <h2 className="text-lg font-bold text-gray-900">Available Departments</h2>
-            <p className="text-sm text-gray-600 mt-1">Click on any department to start managing audit findings</p>
+        {/* Available Audits - Card List View */}
+        {!loading && !error && (
+          <div className="bg-white rounded-xl border border-primary-100 overflow-hidden">
+            {audits.length === 0 ? (
+              <div className="p-8 text-center">
+                <svg className="w-20 h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p className="text-gray-500 font-semibold text-lg">No audits available</p>
+                <p className="text-sm text-gray-400 mt-2">Audits will appear here when you are assigned</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {audits.map((audit) => (
+                  <div
+                    key={audit.auditId}
+                    onClick={() => handleAuditClick(audit)}
+                    className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700">
+                        {audit.auditTitle}
+                      </h3>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-
-          {/* Loading State */}
-          {loadingDepartments && (
-            <div className="p-8 text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-primary-600 mx-auto mb-4"></div>
-              <p className="text-gray-600 font-medium">Loading departments...</p>
-            </div>
-          )}
-
-          {/* Error State */}
-          {errorDepartments && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg mx-4 my-4">
-              <p className="text-red-700 font-semibold text-sm">Error: {errorDepartments}</p>
-              <button
-                onClick={() => window.location.reload()}
-                className="mt-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium transition-colors"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
-          {/* Content */}
-          {! loadingDepartments && !errorDepartments && (
-            <>
-              {departments.length === 0 ? (
-                <div className="text-center py-16 px-4">
-                  <svg className="w-20 h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                  <p className="text-gray-500 font-semibold text-lg">No departments available</p>
-                  <p className="text-sm text-gray-400 mt-2">Departments will appear here when assigned</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">STT</th>
-                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department</th>
-                        <th className="hidden sm:table-cell px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Code</th>
-                        <th className="hidden md:table-cell px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit Type</th>
-                        <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                        <th className="hidden lg:table-cell px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
-                        <th className="hidden lg:table-cell px-4 sm:px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Action</th>
-
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {departments.map((dept, index) => (
-                        <tr
-                          key={dept. deptId}
-                          // onClick={() => handleDepartmentClick(dept)}
-                          onClick={() => handleDepartmentClick(dept)}
-                          className="bg-white hover:bg-primary-50 transition-colors duration-200 cursor-pointer border-b border-gray-100 last:border-b-0"
-                        >
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center justify-center w-8 h-8 bg-primary-100 text-primary-700 rounded-lg font-semibold text-sm">
-                              {index + 1}
-                            </div>
-                          </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2 sm:gap-3">
-                              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0">
-                                <span className="text-white font-semibold text-sm">
-                                  {dept.name. charAt(0).toUpperCase()}
-                                </span>
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-semibold text-gray-900 truncate text-sm sm:text-base">
-                                  {dept.name}
-                                </p>
-                                <p className="text-xs text-gray-500 truncate">
-                                  {dept.auditTitle}
-                                </p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="hidden sm:table-cell px-4 sm:px-6 py-4 whitespace-nowrap">
-                            <code className="bg-gray-100 text-gray-800 px-2. 5 py-1. 5 rounded font-mono text-xs font-semibold">
-                              {dept.code}
-                            </code>
-                          </td>
-                          <td className="hidden md:table-cell px-4 sm:px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(dept.auditType)}`}>
-                              {dept.auditType || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-block px-3 py-1. 5 rounded-full text-xs font-semibold ${getStatusBadgeColor(dept.status)}`}>
-                              {dept.status}
-                            </span>
-                          </td>
-                          <td className="hidden lg:table-cell px-4 sm:px-6 py-4">
-                            <p className="text-gray-600 text-sm truncate max-w-xs">
-                              {dept.description}
-                            </p>
-                          </td>
-                          <td className="hidden lg:table-cell px-4 sm:px-6 py-4">
-                             <button
-                                onClick={() => handleDepartmentClick(dept)}
-                                className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
-                                title="View "
-                              >
-                                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        )}
       </div>
     </MainLayout>
   );

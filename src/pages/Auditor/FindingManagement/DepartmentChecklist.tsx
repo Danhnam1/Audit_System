@@ -279,14 +279,54 @@ const getStatusColor = (status: string) => {
         setDepartmentName(deptData.name || 'Department');
 
         // Load checklist items
-        const items = await getChecklistItemsByDepartment(deptIdNum);
+        console.log(`📋 Loading checklist items for department ${deptIdNum}${auditId ? ` and audit ${auditId}` : ''}`);
+        const allItems = await getChecklistItemsByDepartment(deptIdNum);
+        console.log(`📦 Received ${allItems.length} total checklist items from API`);
+        
+        // Filter by auditId if available (from location state)
+        let itemsByAudit: ChecklistItem[] = allItems;
+        if (auditId) {
+          itemsByAudit = allItems.filter((item: ChecklistItem | any) => {
+            // Check various possible field names for auditId
+            const itemAuditId = item.auditId || 
+                               item.auditPlanId || 
+                               item.AuditId ||
+                               item.audit?.auditId ||
+                               item.audit?.id ||
+                               item.auditPlan?.auditId;
+            
+            // Compare auditIds (handle both string and number)
+            const matches = String(itemAuditId) === String(auditId);
+            
+            if (!matches && itemAuditId) {
+              console.debug(`⚠️ Item ${item.auditItemId} has auditId ${itemAuditId}, expected ${auditId}`);
+            }
+            
+            return matches;
+          });
+          
+          console.log(`🔍 Filtered checklist items by auditId ${auditId}:`, {
+            total: allItems.length,
+            filtered: itemsByAudit.length,
+            removed: allItems.length - itemsByAudit.length
+          });
+          
+          if (itemsByAudit.length === 0 && allItems.length > 0) {
+            console.warn(`⚠️ No items found for auditId ${auditId}. Sample item structure:`, allItems[0]);
+          }
+        } else {
+          console.warn('⚠️ No auditId provided, showing all checklist items for this department');
+        }
+        
         // Filter out items with status "Archived"
-        const filteredItems = items.filter((item: ChecklistItem) => {
+        const filteredItems = itemsByAudit.filter((item: ChecklistItem) => {
           const statusLower = (item.status || '').toLowerCase().trim();
           return statusLower !== 'archived';
         });
+        
         // Sort by order
         const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
+        console.log(`✅ Final checklist items to display: ${sortedItems.length}`);
         setChecklistItems(sortedItems);
       } catch (err: any) {
         console.error('Error loading checklist items:', err);
@@ -299,7 +339,7 @@ const getStatusColor = (status: string) => {
     };
 
     loadData();
-  }, [deptId]);
+  }, [deptId, auditId]);
 
   // Load my findings when action tab is active
   useEffect(() => {
@@ -884,9 +924,23 @@ const getStatusColor = (status: string) => {
               if (!deptId) return;
               try {
                 const deptIdNum = parseInt(deptId, 10);
-                const items = await getChecklistItemsByDepartment(deptIdNum);
+                const allItems = await getChecklistItemsByDepartment(deptIdNum);
+                
+                // Filter by auditId if available
+                let itemsByAudit = allItems;
+                if (auditId) {
+                  itemsByAudit = allItems.filter((item: ChecklistItem | any) => {
+                    const itemAuditId = item.auditId || 
+                                       item.auditPlanId || 
+                                       item.AuditId ||
+                                       item.audit?.auditId ||
+                                       item.audit?.id;
+                    return String(itemAuditId) === String(auditId);
+                  });
+                }
+                
                 // Filter out items with status "Archived"
-                const filteredItems = items.filter((item: ChecklistItem) => {
+                const filteredItems = itemsByAudit.filter((item: ChecklistItem) => {
                   const statusLower = (item.status || '').toLowerCase().trim();
                   return statusLower !== 'archived';
                 });
@@ -1138,8 +1192,22 @@ const getStatusColor = (status: string) => {
                       // Reload checklist items
                       if (deptId) {
                         const deptIdNum = parseInt(deptId, 10);
-                        const items = await getChecklistItemsByDepartment(deptIdNum);
-                        const filteredItems = items.filter((item: ChecklistItem) => {
+                        const allItems = await getChecklistItemsByDepartment(deptIdNum);
+                        
+                        // Filter by auditId if available
+                        let itemsByAudit = allItems;
+                        if (auditId) {
+                          itemsByAudit = allItems.filter((item: ChecklistItem | any) => {
+                            const itemAuditId = item.auditId || 
+                                               item.auditPlanId || 
+                                               item.AuditId ||
+                                               item.audit?.auditId ||
+                                               item.audit?.id;
+                            return String(itemAuditId) === String(auditId);
+                          });
+                        }
+                        
+                        const filteredItems = itemsByAudit.filter((item: ChecklistItem) => {
                           const statusLower = (item.status || '').toLowerCase().trim();
                           return statusLower !== 'archived';
                         });
