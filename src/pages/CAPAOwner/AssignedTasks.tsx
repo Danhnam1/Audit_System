@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { MainLayout } from '../../layouts';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { getMyAssignedActions } from '../../api/actions';
+import { getFindingById } from '../../api/findings';
 import FindingDetailModal from '../Auditor/FindingManagement/FindingDetailModal';
 import ActionDetailModal from './ActionDetailModal';
 import StartActionModal from './StartActionModal';
@@ -20,6 +22,12 @@ interface Task {
 }
 
 const AssignedTasks = () => {
+  const { auditId } = useParams<{ auditId: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const auditIdFromState = (location.state as any)?.auditId || auditId || '';
+  const auditTitle = (location.state as any)?.auditTitle || '';
+
   const [activeTab, setActiveTab] = useState<'action' | 'reject' | 'completed'>('action');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,8 +46,43 @@ const AssignedTasks = () => {
       try {
         setLoading(true);
         setError(null);
-        const actions = await getMyAssignedActions();
-        console.log('Actions from API:', actions);
+        const allActions = await getMyAssignedActions();
+        console.log('Actions from API:', allActions);
+        
+        // Filter actions by auditId if provided
+        let actions = allActions;
+        if (auditIdFromState) {
+          console.log(`🔍 Filtering actions by auditId: ${auditIdFromState}`);
+          
+          // Get unique findingIds from actions
+          const uniqueFindingIds = Array.from(new Set(allActions.map((a: any) => a.findingId).filter(Boolean)));
+          
+          // Fetch findings to get auditIds
+          const findingPromises = uniqueFindingIds.map(async (findingId: string) => {
+            try {
+              const finding = await getFindingById(findingId);
+              return finding;
+            } catch (err) {
+              console.error(`❌ Error loading finding ${findingId}:`, err);
+              return null;
+            }
+          });
+
+          const findings = await Promise.all(findingPromises);
+          const validFindings = findings.filter((f): f is any => f !== null);
+          
+          // Filter actions: only include those whose finding has matching auditId
+          const findingIdsForAudit = validFindings
+            .filter((f: any) => {
+              const findingAuditId = f.auditId || f.AuditId || f.auditPlanId;
+              return String(findingAuditId) === String(auditIdFromState);
+            })
+            .map((f: any) => f.findingId);
+          
+          actions = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
+          
+          console.log(`✅ Filtered actions: ${actions.length} out of ${allActions.length} for audit ${auditIdFromState}`);
+        }
         
         // Map API actions to Task interface
         const mappedTasks: Task[] = actions.map((action) => {
@@ -93,7 +136,7 @@ const AssignedTasks = () => {
     };
 
     fetchTasks();
-  }, []);
+  }, [auditIdFromState]);
 
   // Filter tasks based on active tab
   const filteredTasksByTab = activeTab === 'reject' 
@@ -178,7 +221,30 @@ const AssignedTasks = () => {
       try {
         setLoading(true);
         setError(null);
-        const actions = await getMyAssignedActions();
+        const allActions = await getMyAssignedActions();
+        
+        // Filter actions by auditId if provided
+        let actions = allActions;
+        if (auditIdFromState) {
+          const uniqueFindingIds = Array.from(new Set(allActions.map((a: any) => a.findingId).filter(Boolean)));
+          const findingPromises = uniqueFindingIds.map(async (findingId: string) => {
+            try {
+              const finding = await getFindingById(findingId);
+              return finding;
+            } catch (err) {
+              return null;
+            }
+          });
+          const findings = await Promise.all(findingPromises);
+          const validFindings = findings.filter((f): f is any => f !== null);
+          const findingIdsForAudit = validFindings
+            .filter((f: any) => {
+              const findingAuditId = f.auditId || f.AuditId || f.auditPlanId;
+              return String(findingAuditId) === String(auditIdFromState);
+            })
+            .map((f: any) => f.findingId);
+          actions = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
+        }
         
         const mappedTasks: Task[] = actions.map((action) => {
           let uiStatus: 'Pending' | 'In Progress' | 'Completed' | 'Overdue' = 'Pending';
@@ -234,7 +300,24 @@ const AssignedTasks = () => {
       <div className="space-y-4 sm:space-y-6 px-4 sm:px-0">
         {/* Header */}
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-4">Assigned Tasks</h1>
+          <div className="flex items-center gap-3 mb-2">
+            {auditIdFromState && (
+              <button
+                onClick={() => navigate('/capa-owner/tasks')}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+            )}
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">
+              {auditTitle ? `${auditTitle} - Assigned Tasks` : 'Assigned Tasks'}
+            </h1>
+          </div>
+          {auditTitle && (
+            <p className="text-gray-600 text-sm ml-11">Tasks for this audit</p>
+          )}
         </div>
 
         {/* Action Tab Container */}
