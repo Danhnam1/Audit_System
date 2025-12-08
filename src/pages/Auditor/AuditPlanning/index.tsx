@@ -18,7 +18,7 @@ import {
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { addCriterionToAudit } from '../../../api/auditCriteriaMap';
 import { getAdminUsers } from '../../../api/adminUsers';
-import { addTeamMember, getAuditTeam } from '../../../api/auditTeam';
+import { addTeamMember, getAuditTeam, getAvailableAuditors } from '../../../api/auditTeam';
 import { getDepartments } from '../../../api/departments';
 import { addAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule';
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
@@ -29,7 +29,8 @@ import { useUserId } from '../../../store/useAuthStore';
 import { hasAuditPlanCreationPermission } from '../../../api/auditPlanAssignment';
 import { 
   validateBeforeCreateAudit, 
-  validateBeforeAddDepartment
+  validateBeforeAddDepartment,
+  validateAssignmentBeforeCreate
 } from '../../../helpers/businessRulesValidation';
 
 // Import custom hooks
@@ -117,8 +118,8 @@ const SQAStaffAuditPlanning = () => {
       return normStatus !== 'inactive';
     });
 
-    // 2) Nếu không xác định được user hiện tại hoặc không có dữ liệu auditTeams, trả về rỗng
-    if (!currentId || !auditTeams.length) {
+    // 2) Nếu không xác định được user hiện tại, trả về rỗng
+    if (!currentId) {
       return [] as AuditPlan[];
     }
 
@@ -126,26 +127,27 @@ const SQAStaffAuditPlanning = () => {
 
     // 3) Xây set các auditId mà user hiện tại nằm trong AuditTeam (bất kỳ vai trò nào)
     const allowedAuditIds = new Set<string>();
-    auditTeams.forEach((m: any) => {
-      const memberUserId = m?.userId ?? m?.id ?? m?.$id;
-      if (memberUserId == null) return;
-      const memberNorm = String(memberUserId).toLowerCase().trim();
-      if (!memberNorm || memberNorm !== normalizedCurrentUserId) return;
+    if (auditTeams.length > 0) {
+      auditTeams.forEach((m: any) => {
+        const memberUserId = m?.userId ?? m?.id ?? m?.$id;
+        if (memberUserId == null) return;
+        const memberNorm = String(memberUserId).toLowerCase().trim();
+        if (!memberNorm || memberNorm !== normalizedCurrentUserId) return;
 
-      const candidates = [m.auditId, m.auditPlanId, m.planId]
-        .filter((v: any) => v != null)
-        .map((v: any) => String(v).trim())
-        .filter(Boolean);
+        const candidates = [m.auditId, m.auditPlanId, m.planId]
+          .filter((v: any) => v != null)
+          .map((v: any) => String(v).trim())
+          .filter(Boolean);
 
-      candidates.forEach((id) => {
-        allowedAuditIds.add(id);
-        allowedAuditIds.add(id.toLowerCase());
+        candidates.forEach((id) => {
+          allowedAuditIds.add(id);
+          allowedAuditIds.add(id.toLowerCase());
+        });
       });
-    });
-
-    if (!allowedAuditIds.size) {
-      return [] as AuditPlan[];
     }
+    
+    // Note: Không return empty ngay cả khi allowedAuditIds.size === 0
+    // Vì planMatchesUser có fallback check createdBy
 
     const planMatchesUser = (plan: any) => {
       const candidates = [plan.auditId, plan.id, (plan as any).$id]
@@ -155,7 +157,59 @@ const SQAStaffAuditPlanning = () => {
 
       if (!candidates.length) return false;
 
-      return candidates.some((id) => allowedAuditIds.has(id) || allowedAuditIds.has(id.toLowerCase()));
+      // Check if plan is in allowedAuditIds (user is in AuditTeam)
+      const isInTeam = candidates.some((id) => allowedAuditIds.has(id) || allowedAuditIds.has(id.toLowerCase()));
+      if (isInTeam) return true;
+
+      // Fallback: Check if current user is the plan creator
+      // This ensures plan creator always sees their plan, even if auditTeams hasn't refreshed yet
+      // Check multiple possible field names and nested structures
+      const planCreatedBy = plan.createdBy || 
+                           plan.createdByUserId || 
+                           plan.auditorId || 
+                           plan.userId ||
+                           (plan as any).audit?.createdBy ||
+                           (plan as any).audit?.createdByUserId ||
+                           (plan as any).audit?.auditorId ||
+                           (plan as any).audit?.userId ||
+                           null;
+      
+      if (currentId && planCreatedBy) {
+        const planCreatedByStr = String(planCreatedBy).trim();
+        const normalizedCreatedBy = planCreatedByStr.toLowerCase();
+        
+        // Direct userId match
+        if (normalizedCreatedBy === normalizedCurrentUserId) {
+          return true;
+        }
+        
+        // Email match (if createdBy is email)
+        if (user?.email) {
+          const userEmail = String(user.email).toLowerCase().trim();
+          if (normalizedCreatedBy === userEmail) {
+            return true;
+          }
+        }
+        
+        // Check if createdBy matches any userId in allUsers that matches current user's email
+        if (allUsers.length > 0) {
+          const createdByUser = allUsers.find((u: any) => {
+            const uId = String(u?.userId ?? '').toLowerCase().trim();
+            const uEmail = String(u?.email || '').toLowerCase().trim();
+            return (uId === normalizedCreatedBy) || (uEmail === normalizedCreatedBy);
+          });
+          
+          if (createdByUser) {
+            const createdByUserEmail = String(createdByUser?.email || '').toLowerCase().trim();
+            const currentUserEmail = String(user?.email || '').toLowerCase().trim();
+            if (createdByUserEmail && currentUserEmail && createdByUserEmail === currentUserEmail) {
+              return true;
+            }
+          }
+        }
+      }
+
+      return false;
     };
 
     return statusFiltered.filter(planMatchesUser) as AuditPlan[];
@@ -580,6 +634,40 @@ const SQAStaffAuditPlanning = () => {
     load();
   }, []);
 
+  // Reload available auditors based on selected period (exclude those who participated in previous periods)
+  useEffect(() => {
+    const loadAvailableAuditors = async () => {
+      const norm = (s: string) => String(s || '').toLowerCase().replace(/\s+/g, '');
+
+      // Fallback: if period is not selected, use all auditors from user list
+      const fallbackToAllAuditors = () => {
+        const auditors = (allUsers || []).filter((u: any) => norm(u.roleName || u.role) === 'auditor');
+        setAuditorOptions(auditors);
+      };
+
+      if (!formState.periodFrom || !formState.periodTo) {
+        fallbackToAllAuditors();
+        return;
+      }
+
+      try {
+        const available = await getAvailableAuditors({
+          periodFrom: formState.periodFrom,
+          periodTo: formState.periodTo,
+          excludePreviousPeriod: true,
+        });
+
+        const auditors = (available || []).filter((u: any) => norm(u.roleName || u.role) === 'auditor');
+        setAuditorOptions(auditors);
+      } catch (err) {
+        console.error('[AuditPlanning] Failed to load available auditors', err);
+        fallbackToAllAuditors();
+      }
+    };
+
+    loadAvailableAuditors();
+  }, [formState.periodFrom, formState.periodTo, allUsers]);
+
   // Load departments for filter
   useEffect(() => {
     const loadDepartmentsForFilter = async () => {
@@ -708,26 +796,9 @@ const SQAStaffAuditPlanning = () => {
             return false;
           }
           
-          // Exclude audits created by current auditor
-          const auditCreatedBy = audit.createdBy || audit.createdByUserId || audit.auditorId || audit.userId;
-          const auditCreatedById = auditCreatedBy ? String(auditCreatedBy) : null;
-          
-          console.log(`[AuditPlanning] 🔍 Comparing auditor IDs:`, {
-            auditCreatedById,
-            currentAuditorId,
-            match: currentAuditorId && auditCreatedById && auditCreatedById === currentAuditorId
-          });
-          
-          if (currentAuditorId && auditCreatedById && auditCreatedById === currentAuditorId) {
-            console.log(`[AuditPlanning] ⏭️ Skipping audit "${audit.title || audit.auditId}" - created by current auditor (${currentAuditorId})`);
-            return false;
-          }
-          
-          console.log(`[AuditPlanning] ✅✅✅ Audit "${audit.title || audit.auditId}" PASSED FILTER - overlaps with period and created by other auditor:`, {
+          console.log(`[AuditPlanning] ✅ Audit "${audit.title || audit.auditId}" PASSED FILTER - overlaps with period:`, {
             auditPeriod: `${auditPeriodFromDate.toISOString()} to ${auditPeriodToDate.toISOString()}`,
-            searchPeriod: `${periodFromDate.toISOString()} to ${periodToDate.toISOString()}`,
-            createdBy: auditCreatedById,
-            currentAuditor: currentAuditorId
+            searchPeriod: `${periodFromDate.toISOString()} to ${periodToDate.toISOString()}`
           });
           
           return true;
@@ -1559,6 +1630,21 @@ const SQAStaffAuditPlanning = () => {
         const endDate = formState.periodTo;
         
         if (startDate && endDate) {
+          // Kiểm tra auditor đã có plan/assignment trong kỳ này chưa
+          if (!currentUserId) {
+            toast.error('Cannot verify auditor assignment. Please re-login and try again.');
+            return;
+          }
+          const assignmentValidation = await validateAssignmentBeforeCreate(
+            String(currentUserId),
+            startDate,
+            endDate
+          );
+          if (!assignmentValidation.isValid) {
+            toast.error(assignmentValidation.message || 'Auditor already has a plan in this period.');
+            throw new Error(assignmentValidation.message || 'Auditor already has a plan in this period.');
+          }
+          
           // Lấy danh sách department IDs sẽ được thêm
           let deptIdsToValidate: number[] = [];
           if (formState.level === 'academy') {
@@ -1581,12 +1667,8 @@ const SQAStaffAuditPlanning = () => {
             throw new Error('Validation failed. Please check the errors above.');
           }
           
-          // Hiển thị cảnh báo nếu có (nhưng vẫn cho phép tiếp tục)
-          if (validation.warnings.length > 0) {
-            validation.warnings.forEach(warning => {
-              toast.warning(warning);
-            });
-          }
+          // Không hiển thị warnings khi validation pass (chỉ là thông tin debug)
+          // Warnings chỉ hiển thị khi có lỗi validation
         }
         
         const resp = await createAudit(basicPayload);

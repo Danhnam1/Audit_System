@@ -89,6 +89,52 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     return isLead;
   }, [currentUserId, auditTeamsForPlan, selectedPlanDetails.auditId, selectedPlanDetails.id]);
 
+  // Check if current user is the plan creator
+  const isCreator = React.useMemo(() => {
+    if (!currentUserId || !selectedPlanDetails) return false;
+    
+    const planCreatedBy = selectedPlanDetails.createdBy || selectedPlanDetails.createdByUser?.userId;
+    const planCreatedByEmail = selectedPlanDetails.createdByUser?.email;
+    
+    if (!planCreatedBy && !planCreatedByEmail) return false;
+    
+    const normalizedCurrentUserId = String(currentUserId).toLowerCase().trim();
+    
+    // Direct userId match
+    if (planCreatedBy) {
+      const normalizedCreatedBy = String(planCreatedBy).toLowerCase().trim();
+      if (normalizedCreatedBy === normalizedCurrentUserId) {
+        return true;
+      }
+    }
+    
+    // Check via auditorOptions and ownerOptions to match by email
+    const allUsersForLookup = [...(auditorOptions || []), ...(ownerOptions || [])];
+    const currentUserInList = allUsersForLookup.find((u: any) => {
+      const uId = String(u?.userId || '').toLowerCase().trim();
+      return uId === normalizedCurrentUserId;
+    });
+    
+    if (currentUserInList && planCreatedByEmail) {
+      const currentUserEmail = String(currentUserInList.email || '').toLowerCase().trim();
+      const createdByEmail = String(planCreatedByEmail).toLowerCase().trim();
+      if (currentUserEmail && createdByEmail && currentUserEmail === createdByEmail) {
+        return true;
+      }
+    }
+    
+    // Also check if planCreatedBy matches currentUserInList's userId
+    if (currentUserInList && planCreatedBy) {
+      const currentUserListId = String(currentUserInList.userId || '').toLowerCase().trim();
+      const normalizedCreatedBy = String(planCreatedBy).toLowerCase().trim();
+      if (currentUserListId === normalizedCreatedBy) {
+        return true;
+      }
+    }
+    
+    return false;
+  }, [currentUserId, selectedPlanDetails, auditorOptions, ownerOptions]);
+
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -765,8 +811,8 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               </button>
             )}
 
-            {/* If the plan is still Draft, allow submitting to Lead Auditor (but not if current user is Lead Auditor) */}
-            {selectedPlanDetails.status === 'Draft' && onSubmitToLead && !isLeadAuditor && (
+            {/* If the plan is still Draft, allow submitting to Lead Auditor (only if current user is the plan creator and not Lead Auditor) */}
+            {selectedPlanDetails.status === 'Draft' && onSubmitToLead && isCreator && !isLeadAuditor && (
               <button
                 onClick={() => setShowSubmitModal(true)}
                 className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"

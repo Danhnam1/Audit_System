@@ -73,8 +73,24 @@ export const validateDepartmentUniqueness = async (
     const result = await validateDepartment(request);
 
     if (!result.isValid) {
-      const conflictingDeptNames = result.conflictingDepartments?.join(', ') || 'unknown';
-      const conflictingAuditTitles = result.conflictingAudits?.map(a => a.title).join(', ') || 'unknown';
+      // Unwrap possible $values from backend (.NET) responses
+      const unwrap = (val: any) => {
+        if (Array.isArray(val)) return val;
+        if (val?.$values && Array.isArray(val.$values)) return val.$values;
+        return val;
+      };
+
+      const conflictsDeptArr = unwrap(result.conflictingDepartments);
+      const conflictsAuditArr = unwrap(result.conflictingAudits);
+
+      const conflictingDeptNames = Array.isArray(conflictsDeptArr)
+        ? conflictsDeptArr.join(', ')
+        : conflictsDeptArr
+        ? String(conflictsDeptArr)
+        : 'unknown';
+      const conflictingAuditTitles = Array.isArray(conflictsAuditArr)
+        ? conflictsAuditArr.map((a: any) => a?.title || a?.auditTitle || '').filter(Boolean).join(', ')
+        : 'unknown';
       
       return {
         isValid: false,

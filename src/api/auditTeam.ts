@@ -57,4 +57,28 @@ export const getAvailableTeamMembers = async (params: GetAvailableMembersParams)
   return values;
 }
 
-export default { addTeamMember, getAuditTeam, deleteTeamMember, getMyLeadAuditorAudits, getAuditorsByAuditId, getAvailableTeamMembers }
+// New endpoint: unified available auditors (filtered by previous periods)
+export interface GetAvailableAuditorsParams {
+  auditId?: string; // optional for new plan
+  periodFrom?: string;
+  periodTo?: string;
+  excludePreviousPeriod?: true;
+}
+
+export const getAvailableAuditors = async (params: GetAvailableAuditorsParams = {}): Promise<any[]> => {
+  const { auditId = '', periodFrom, periodTo, excludePreviousPeriod = true } = params;
+  const query = new URLSearchParams();
+  if (auditId) query.append('auditId', auditId);
+  query.append('excludePreviousPeriod', String(excludePreviousPeriod));
+  if (periodFrom) query.append('previousPeriodStartDate', periodFrom);
+  if (periodTo) query.append('previousPeriodEndDate', periodTo);
+
+  const url = `/AuditTeam/available-members${query.toString() ? `?${query.toString()}` : ''}`;
+  const res: any = await apiClient.get(url);
+  const values: any = unwrap(res);
+  if (Array.isArray(values)) return values;
+  if (values?.$values && Array.isArray(values.$values)) return values.$values;
+  return [];
+};
+
+export default { addTeamMember, getAuditTeam, deleteTeamMember, getMyLeadAuditorAudits, getAuditorsByAuditId, getAvailableTeamMembers, getAvailableAuditors }
