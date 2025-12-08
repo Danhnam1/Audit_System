@@ -1,6 +1,5 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { StatCard } from '../../../components';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuditFindings } from '../../../hooks/useAuditFindings';
@@ -196,13 +195,6 @@ const SQAStaffFindingManagement = () => {
     navigate(`/auditor/findings/department/${dept.deptId}`, {
       state: { auditId: dept.auditId, department: dept }
     });
-  };
-
-  const stats = {
-    total: 0,
-    open: 0,
-    inProgress: 0,
-    resolved: 0,
   };
 
   return (

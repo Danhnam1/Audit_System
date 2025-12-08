@@ -67,6 +67,12 @@ export const updateAuditPlanFull = async (auditId: string, payload: any): Promis
   return apiClient.put(`/AuditPlan/${auditId}`, payload) as any;
 };
 
+// Complete update audit plan with all relationships (uses /Audits/{id}/complete-update endpoint)
+export const completeUpdateAuditPlan = async (auditId: string, payload: any): Promise<any> => {
+  console.log(`🌐 PUT /Audits/${auditId}/complete-update`);
+  return apiClient.put(`/Audits/${auditId}/complete-update`, payload) as any;
+};
+
 // Delete audit plan
 export const deleteAuditPlan = async (auditId: string): Promise<any> => {
   return apiClient.delete(`/Audits/${auditId}`) as any;
@@ -198,6 +204,7 @@ export default {
   getAuditPlanById,
   updateAuditPlan,
   updateAuditPlanFull,
+  completeUpdateAuditPlan,
   deleteAuditPlan,
   getAuditChartLine,
   getAuditChartPie,

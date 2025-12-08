@@ -34,9 +34,37 @@ export const deleteNotification = async (notificationId: string): Promise<void> 
   await apiClient.delete(`/admin/AdminNotification/${notificationId}`);
 };
 
+// Create a new notification
+export const createNotification = async (notification: {
+  userId: string; // recipient user id
+  title: string;
+  message: string;
+  remarks?: string; // Remarks field (required by backend)
+  entityType?: string;
+  entityId?: string;
+  category?: string;
+}): Promise<AdminNotificationDTO> => {
+  // Convert to PascalCase for .NET API
+  const payload = {
+    UserId: notification.userId,
+    Title: notification.title,
+    Message: notification.message,
+    Remarks: notification.remarks || '', // Required field - use empty string if not provided
+    EntityType: notification.entityType || null,
+    EntityId: notification.entityId || null,
+    Category: notification.category || null,
+    Status: 'Sent',
+    IsRead: false,
+  };
+  
+  const res: any = await apiClient.post('/admin/AdminNotification', payload);
+  return res?.data || res;
+};
+
 export default {
   getNotifications,
   getNotificationById,
   markNotificationRead,
   deleteNotification,
+  createNotification,
 };

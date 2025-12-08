@@ -31,6 +31,7 @@ const SQAStaffSchedule = lazy(() => import("../pages/Auditor/Schedule"));
 const LeadAuditorAuditAssignment = lazy(() => import("../pages/LeadAuditor/AuditAssignment"));
 const LeadAuditorAuditPlanning = lazy(() => import("../pages/LeadAuditor/auditplanning"));
 const LeadAuditorAuditDetail = lazy(() => import("../pages/LeadAuditor/auditplanning/AuditDetail"));
+const LeadAuditorSpecifyCreatePlan = lazy(() => import("../pages/LeadAuditor/SpecifyCreatePlan"));
 const LeadAuditorLeadReports = lazy(() => import("../pages/LeadAuditor/LeadReports"));
 const LeadAuditorActionReview = lazy(() => import("../pages/LeadAuditor/ActionReview"));
 const SQAStaffLeadFinalReview = lazy(() => import("../pages/Auditor/LeadFinalReview/LeadFinalReview"));
@@ -508,6 +509,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <LeadAuditorAuditDetail />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/specify-create-plan"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <LeadAuditorSpecifyCreatePlan />
                     </ProtectedRoute>
                 }
             />

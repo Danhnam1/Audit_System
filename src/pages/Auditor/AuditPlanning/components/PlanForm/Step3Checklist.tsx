@@ -79,15 +79,28 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
       
       // If template has no deptId (general template), exclude it when specific departments are selected
       if (templateDeptId == null || templateDeptId === undefined) {
-        console.log(`[Step3Checklist] Excluding general template: ${template.name} (deptId: null) - specific departments selected`);
+        console.log(`[Step3Checklist] Excluding general template: ${template.title || template.name} (deptId: null) - specific departments selected`);
         return false;
       }
       
       // Normalize template's deptId to string for comparison
       const templateDeptIdStr = String(templateDeptId).trim();
-      const matches = selectedDeptIdsSet.has(templateDeptIdStr);
       
-      console.log(`[Step3Checklist] Template: ${template.name}, deptId: ${templateDeptId} (${typeof templateDeptId}), matches: ${matches}`);
+      // Try to match with selectedDeptIdsSet
+      let matches = selectedDeptIdsSet.has(templateDeptIdStr);
+      
+      // Also try number comparison if string comparison fails
+      if (!matches) {
+        const templateDeptIdNum = Number(templateDeptId);
+        if (!isNaN(templateDeptIdNum)) {
+          matches = Array.from(selectedDeptIdsSet).some(selectedId => {
+            const selectedNum = Number(selectedId);
+            return !isNaN(selectedNum) && selectedNum === templateDeptIdNum;
+          });
+        }
+      }
+      
+      console.log(`[Step3Checklist] Template: ${template.title || template.name}, deptId: ${templateDeptId} (${typeof templateDeptId}), normalized: ${templateDeptIdStr}, matches: ${matches}`);
       
       // Only include if template's deptId matches one of the selected departments
       return matches;

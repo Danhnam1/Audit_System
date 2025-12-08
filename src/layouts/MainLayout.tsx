@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react';
 import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
 import './icons.tsx';
-import useAuthStore from '../store/useAuthStore';
+import useAuthStore, { useUserId } from '../store/useAuthStore';
 import { getRoleMenu } from '../helpers/roleMenus';
+import { hasAuditPlanCreationPermission } from '../api/auditPlanAssignment';
 
 
 export interface Team {
@@ -53,19 +54,67 @@ export const MainLayout = ({
 
   // Default menu handled by role-based helper. If caller passes `menuItems`, that will be used instead.
   const { user: authUser } = useAuthStore();
+  const userIdFromToken = useUserId();
   // Get role from either 'role' or 'roleName' field
   const role = authUser?.role || (authUser as any)?.roleName;
+  const normalizedRole = role?.toLowerCase().replace(/\s+/g, '') || '';
   
   console.log('=== MainLayout Debug ===');
   console.log('Auth User:', authUser);
   console.log('Role:', role);
+  console.log('UserId from token:', userIdFromToken);
+  
+  // Check if auditor has permission to create plans
+  const [hasPlanPermission, setHasPlanPermission] = useState<boolean | null>(null);
+  
+  useEffect(() => {
+    const checkPermission = async () => {
+      if (normalizedRole === 'auditor') {
+        // Get userId from token (JWT)
+        const userId = userIdFromToken;
+        
+        if (!userId) {
+          console.warn('[MainLayout] No userId found in token, cannot check permission');
+          setHasPlanPermission(false);
+          return;
+        }
+        
+        try {
+          // Use userId directly (can be UUID string or number)
+          console.log('[MainLayout] Checking permission for auditor:', {
+            userId,
+            userIdType: typeof userId,
+            userIdFromToken,
+          });
+          
+          if (!userId) {
+            console.warn('[MainLayout] Invalid userId, cannot check permission');
+            setHasPlanPermission(false);
+            return;
+          }
+          
+          // Pass userId directly (string or number)
+          const hasPermission = await hasAuditPlanCreationPermission(userId);
+          console.log('[MainLayout] Permission check result:', hasPermission);
+          setHasPlanPermission(hasPermission);
+        } catch (error) {
+          console.error('[MainLayout] Failed to check plan creation permission', error);
+          setHasPlanPermission(false);
+        }
+      } else {
+        setHasPlanPermission(null);
+      }
+    };
+    
+    checkPermission();
+  }, [normalizedRole, userIdFromToken]);
   
   const defaultMenuItems: SidebarMenuItem[] = getRoleMenu(role);
   const finalMenuItems: SidebarMenuItem[] = menuItems || defaultMenuItems;
   
   // Debug: log menu items for roles that reported missing items
-  if (role === 'Admin' || role === 'Lead Auditor') {
-    console.debug('[MainLayout] role:', role, 'menuItems:', finalMenuItems);
+  if (normalizedRole === 'auditor' || role === 'Admin' || role === 'Lead Auditor') {
+    console.debug('[MainLayout] role:', role, 'hasPlanPermission:', hasPlanPermission, 'menuItems:', finalMenuItems);
   }
 
  
