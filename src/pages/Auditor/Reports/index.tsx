@@ -189,13 +189,13 @@ const SQAStaffReports = () => {
       if (normalizedCurrentUserId) {
         teams.forEach((m: any) => {
           // Try multiple userId fields and normalize for comparison
-          const memberUserId = m?.userId || m?.id || m?.$id;
+          const memberUserId = m?.userId 
           if (memberUserId) {
             const normalizedMemberUserId = String(memberUserId).toLowerCase().trim();
             // Match if userIds match (case-insensitive)
             if (normalizedMemberUserId === normalizedCurrentUserId) {
               // Collect all possible auditId formats
-              const auditId = m?.auditId || m?.auditPlanId || m?.planId || m?.id;
+              const auditId = m?.auditId ;
               if (auditId) {
                 const auditIdStr = String(auditId).trim();
                 if (auditIdStr) {

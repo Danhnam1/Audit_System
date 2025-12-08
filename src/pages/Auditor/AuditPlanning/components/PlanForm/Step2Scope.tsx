@@ -43,15 +43,23 @@ export const Step2Scope: React.FC<Step2ScopeProps> = ({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Departments * (Select one or more)
             </label>
-            <MultiSelect
-              options={departments.map((d) => ({
-                label: d.name,
-                value: String(d.deptId),
-              }))}
-              value={selectedDeptIds}
-              onChange={onSelectedDeptIdsChange}
-              placeholder="Select departments..."
-            />
+            {departments.length === 0 ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                <p className="text-sm text-yellow-800">
+                  No available departments. All departments have been used in this period.
+                </p>
+              </div>
+            ) : (
+              <MultiSelect
+                options={departments.map((d) => ({
+                  label: d.name,
+                  value: String(d.deptId),
+                }))}
+                value={selectedDeptIds}
+                onChange={onSelectedDeptIdsChange}
+                placeholder="Select departments..."
+              />
+            )}
           </div>
         )}
 

@@ -13,6 +13,7 @@ import { AuditorSelectionTable } from './components/AuditorSelectionTable';
 import { AssignedAuditorsList } from './components/AssignedAuditorsList';
 import { useUserId } from '../../../store/useAuthStore';
 import { createNotification } from '../../../api/notifications';
+import { getPeriodStatus, type PeriodStatusResponse } from '../../../api/audits';
 
 const SpecifyCreatePlan = () => {
   const { user } = useAuth();
@@ -24,6 +25,12 @@ const SpecifyCreatePlan = () => {
   const [remarks, setRemarks] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Period management state
+  const [periodStartDate, setPeriodStartDate] = useState<string>('');
+  const [periodEndDate, setPeriodEndDate] = useState<string>('');
+  const [periodStatus, setPeriodStatus] = useState<PeriodStatusResponse | null>(null);
+  const [loadingPeriodStatus, setLoadingPeriodStatus] = useState(false);
 
   // Debug: Log when selectedAuditorId changes
   useEffect(() => {
@@ -68,6 +75,39 @@ const SpecifyCreatePlan = () => {
 
     loadData();
   }, []);
+
+  // Load period status when dates change
+  useEffect(() => {
+    const loadPeriodStatus = async () => {
+      if (!periodStartDate || !periodEndDate) {
+        setPeriodStatus(null);
+        return;
+      }
+
+      if (new Date(periodStartDate) >= new Date(periodEndDate)) {
+        setPeriodStatus(null);
+        return;
+      }
+
+      setLoadingPeriodStatus(true);
+      try {
+        const status = await getPeriodStatus(periodStartDate, periodEndDate);
+        setPeriodStatus(status);
+      } catch (error: any) {
+        console.error('Failed to load period status', error);
+        setPeriodStatus(null);
+      } finally {
+        setLoadingPeriodStatus(false);
+      }
+    };
+
+    // Debounce API call
+    const timeoutId = setTimeout(() => {
+      loadPeriodStatus();
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [periodStartDate, periodEndDate]);
 
   // Get assigned auditor IDs (convert to strings for comparison)
   const assignedAuditorIds = assignments.map((a) => String(a.auditorId));
@@ -322,6 +362,151 @@ const SpecifyCreatePlan = () => {
       </div>
 
       <div className="px-6 pb-6 space-y-6">
+        {/* Period Status Card */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
+            <h2 className="text-lg font-semibold text-white">
+              Period Status & Audit Count
+            </h2>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Period Start Date
+                </label>
+                <input
+                  type="date"
+                  value={periodStartDate}
+                  onChange={(e) => setPeriodStartDate(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Period End Date
+                </label>
+                <input
+                  type="date"
+                  value={periodEndDate}
+                  onChange={(e) => setPeriodEndDate(e.target.value)}
+                  min={periodStartDate || undefined}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            {loadingPeriodStatus ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+                <span className="ml-2 text-sm text-gray-600">Loading period status...</span>
+              </div>
+            ) : periodStatus ? (
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Current Audits</p>
+                    <p className="text-2xl font-bold text-primary-600">
+                      {periodStatus.currentAuditCount}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Max Allowed</p>
+                    <p className="text-2xl font-bold text-gray-700">
+                      {periodStatus.maxAuditsAllowed}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Remaining Slots</p>
+                    <p className={`text-2xl font-bold ${
+                      periodStatus.remainingSlots > 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {periodStatus.remainingSlots}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Status</p>
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                      periodStatus.isExpired
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : periodStatus.isActive
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {periodStatus.isExpired
+                        ? 'Expired'
+                        : periodStatus.isActive
+                        ? 'Active'
+                        : 'Upcoming'}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">
+                        Can Assign New Plans
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {periodStatus.canAssignNewPlans
+                          ? 'Lead Auditor can assign auditors to create new plans'
+                          : 'Cannot assign new plans. Period is active and slots are full.'}
+                      </p>
+                    </div>
+                    <span className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                      periodStatus.canAssignNewPlans
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {periodStatus.canAssignNewPlans ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">Progress</span>
+                    <span className="text-sm text-gray-500">
+                      {periodStatus.currentAuditCount} / {periodStatus.maxAuditsAllowed}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div
+                      className={`h-3 rounded-full transition-all duration-300 ${
+                        periodStatus.currentAuditCount >= periodStatus.maxAuditsAllowed
+                          ? 'bg-red-500'
+                          : periodStatus.currentAuditCount >= periodStatus.maxAuditsAllowed * 0.8
+                          ? 'bg-yellow-500'
+                          : 'bg-green-500'
+                      }`}
+                      style={{
+                        width: `${Math.min(
+                          (periodStatus.currentAuditCount / periodStatus.maxAuditsAllowed) * 100,
+                          100
+                        )}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            ) : periodStartDate && periodEndDate ? (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-sm text-yellow-800">
+                  Please select a valid date range (End Date must be after Start Date).
+                </p>
+              </div>
+            ) : (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm text-gray-600">
+                  Please select a period (Start Date and End Date) to view audit count and status.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Available Auditors Section */}
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">

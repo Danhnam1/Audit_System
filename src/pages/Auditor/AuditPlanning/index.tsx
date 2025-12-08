@@ -11,7 +11,9 @@ import {
   completeUpdateAuditPlan,
   getAuditPlanById,
   deleteAuditPlan,
-  submitToLeadAuditor
+  submitToLeadAuditor,
+  getAuditScopeDepartmentsByAuditId,
+  getAuditPlans
 } from '../../../api/audits';
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { addCriterionToAudit } from '../../../api/auditCriteriaMap';
@@ -25,6 +27,10 @@ import { getAuditChecklistTemplateMapsByAudit, syncAuditChecklistTemplateMaps } 
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
 import { useUserId } from '../../../store/useAuthStore';
 import { hasAuditPlanCreationPermission } from '../../../api/auditPlanAssignment';
+import { 
+  validateBeforeCreateAudit, 
+  validateBeforeAddDepartment
+} from '../../../helpers/businessRulesValidation';
 
 // Import custom hooks
 import { useAuditPlanForm } from '../../../hooks/useAuditPlanForm';
@@ -62,6 +68,7 @@ const SQAStaffAuditPlanning = () => {
 
   // Data fetching states
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
+  const [usedDepartmentIds, setUsedDepartmentIds] = useState<Set<number>>(new Set());
   const [criteria, setCriteria] = useState<any[]>([]);
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
@@ -458,7 +465,7 @@ const SQAStaffAuditPlanning = () => {
     try {
       const res: any = await getDepartments();
       const list = (res || []).map((d: any) => ({
-        deptId: d.deptId ?? d.$id ?? d.id,
+        deptId: d.deptId ,
         name: d.name || d.code || '—',
       }));
       setDepartments(list);
@@ -582,6 +589,304 @@ const SQAStaffAuditPlanning = () => {
     };
     loadDepartmentsForFilter();
   }, []);
+
+  // Load used departments in period (Business Rule: Filter departments already used)
+  useEffect(() => {
+    console.log('[AuditPlanning] 🎯🎯🎯 useEffect triggered for loadUsedDepartments', {
+      periodFrom: formState.periodFrom,
+      periodTo: formState.periodTo,
+      isEditMode: formState.isEditMode,
+      editingAuditId: formState.editingAuditId,
+      userIdFromToken: userIdFromToken,
+      allUsersLength: allUsers.length,
+      userEmail: user?.email
+    });
+
+    // Early return if no period dates
+    if (!formState.periodFrom || !formState.periodTo) {
+      console.log('[AuditPlanning] ⚠️ No period dates, clearing used departments');
+      setUsedDepartmentIds(new Set());
+      return;
+    }
+
+    const loadUsedDepartments = async () => {
+      console.log('[AuditPlanning] 🔍🔍🔍 START Loading used departments for period:', formState.periodFrom, 'to', formState.periodTo);
+
+      try {
+        // Get all audits (including Draft status) and filter by period on frontend
+        // This ensures we catch all audits regardless of status
+        console.log('[AuditPlanning] 📡 Calling getAuditPlans API to get all audits...');
+        const allAuditsResponse = await getAuditPlans();
+        console.log('[AuditPlanning] 📡 All audits response (raw):', allAuditsResponse);
+        
+        const allAuditsList = unwrap(allAuditsResponse);
+        console.log('[AuditPlanning] 📡 All audits response (unwrapped):', allAuditsList);
+        
+        const allAuditsArray = Array.isArray(allAuditsList) ? allAuditsList : [];
+        console.log('[AuditPlanning] 📋 Total audits in system:', allAuditsArray.length);
+        
+        // Get current auditor's userId to exclude their own audits
+        let currentAuditorId: string | null = null;
+        if (userIdFromToken) {
+          currentAuditorId = String(userIdFromToken);
+          console.log('[AuditPlanning] 👤 Got auditor ID from token:', currentAuditorId);
+        } else if (allUsers.length > 0 && user?.email) {
+          console.log('[AuditPlanning] 👤 Looking up auditor ID from allUsers, total users:', allUsers.length);
+          const currentUserInList = allUsers.find((u: any) => {
+            const uEmail = String(u?.email || '').toLowerCase().trim();
+            const userEmail = String(user.email || '').toLowerCase().trim();
+            return uEmail && userEmail && uEmail === userEmail;
+          });
+          if (currentUserInList?.userId) {
+            currentAuditorId = String(currentUserInList.userId);
+            console.log('[AuditPlanning] 👤 Found auditor ID from allUsers:', currentAuditorId);
+          } else {
+            console.log('[AuditPlanning] ⚠️ Could not find current user in allUsers list');
+          }
+        } else {
+          console.log('[AuditPlanning] ⚠️ No userIdFromToken and allUsers not loaded yet');
+        }
+        
+        console.log('[AuditPlanning] 👤 Final current auditor ID:', currentAuditorId);
+        
+        // Filter audits by period (check if period overlaps) AND exclude current auditor's audits
+        const periodFromDate = new Date(formState.periodFrom);
+        const periodToDate = new Date(formState.periodTo);
+        
+        console.log('[AuditPlanning] 🔍 Filtering audits by period overlap and excluding current auditor...');
+        console.log('[AuditPlanning] 🔍 Period to check:', {
+          from: periodFromDate.toISOString(),
+          to: periodToDate.toISOString()
+        });
+        
+        const auditsInPeriod = allAuditsArray.filter((audit: any) => {
+          // Log full audit object to see structure
+          console.log(`[AuditPlanning] 🔍 Checking audit: "${audit.title || audit.auditId}"`, {
+            fullAudit: audit,
+            periodFrom: audit.periodFrom,
+            periodTo: audit.periodTo,
+            PeriodFrom: audit.PeriodFrom,
+            PeriodTo: audit.PeriodTo,
+            startDate: audit.startDate,
+            endDate: audit.endDate,
+            auditPlan: audit.auditPlan,
+            createdBy: audit.createdBy || audit.createdByUserId || audit.auditorId || audit.userId
+          });
+          
+          // Try multiple field names for period dates
+          const auditPeriodFrom = audit.periodFrom || audit.PeriodFrom || audit.startDate || 
+                                  (audit.auditPlan && audit.auditPlan.periodFrom) ||
+                                  (audit.auditPlan && audit.auditPlan.PeriodFrom);
+          const auditPeriodTo = audit.periodTo || audit.PeriodTo || audit.endDate ||
+                                (audit.auditPlan && audit.auditPlan.periodTo) ||
+                                (audit.auditPlan && audit.auditPlan.PeriodTo);
+          
+          const auditPeriodFromDate = auditPeriodFrom ? new Date(auditPeriodFrom) : null;
+          const auditPeriodToDate = auditPeriodTo ? new Date(auditPeriodTo) : null;
+          
+          console.log(`[AuditPlanning] 🔍 Parsed period dates:`, {
+            auditPeriodFrom,
+            auditPeriodTo,
+            auditPeriodFromDate,
+            auditPeriodToDate,
+            isValidFrom: auditPeriodFromDate && !isNaN(auditPeriodFromDate.getTime()),
+            isValidTo: auditPeriodToDate && !isNaN(auditPeriodToDate.getTime())
+          });
+          
+          if (!auditPeriodFromDate || !auditPeriodToDate || 
+              isNaN(auditPeriodFromDate.getTime()) || isNaN(auditPeriodToDate.getTime())) {
+            console.log(`[AuditPlanning] ⏭️ Skipping audit "${audit.title || audit.auditId}" - missing or invalid period dates`);
+            return false;
+          }
+          
+          // Check if periods overlap: 
+          // Periods overlap if: periodFrom <= auditPeriodTo && periodTo >= auditPeriodFrom
+          const overlaps = periodFromDate <= auditPeriodToDate && periodToDate >= auditPeriodFromDate;
+          
+          if (!overlaps) {
+            console.log(`[AuditPlanning] ⏭️ Skipping audit "${audit.title || audit.auditId}" - period does not overlap`);
+            return false;
+          }
+          
+          // Exclude audits created by current auditor
+          const auditCreatedBy = audit.createdBy || audit.createdByUserId || audit.auditorId || audit.userId;
+          const auditCreatedById = auditCreatedBy ? String(auditCreatedBy) : null;
+          
+          console.log(`[AuditPlanning] 🔍 Comparing auditor IDs:`, {
+            auditCreatedById,
+            currentAuditorId,
+            match: currentAuditorId && auditCreatedById && auditCreatedById === currentAuditorId
+          });
+          
+          if (currentAuditorId && auditCreatedById && auditCreatedById === currentAuditorId) {
+            console.log(`[AuditPlanning] ⏭️ Skipping audit "${audit.title || audit.auditId}" - created by current auditor (${currentAuditorId})`);
+            return false;
+          }
+          
+          console.log(`[AuditPlanning] ✅✅✅ Audit "${audit.title || audit.auditId}" PASSED FILTER - overlaps with period and created by other auditor:`, {
+            auditPeriod: `${auditPeriodFromDate.toISOString()} to ${auditPeriodToDate.toISOString()}`,
+            searchPeriod: `${periodFromDate.toISOString()} to ${periodToDate.toISOString()}`,
+            createdBy: auditCreatedById,
+            currentAuditor: currentAuditorId
+          });
+          
+          return true;
+        });
+        
+        console.log('[AuditPlanning] 📋 Found', auditsInPeriod.length, 'audits with overlapping period created by OTHER auditors');
+        console.log('[AuditPlanning] 📋 Audits in period details:', auditsInPeriod);
+        
+        if (auditsInPeriod.length === 0) {
+          console.log('[AuditPlanning] ✅ No audits with overlapping period from other auditors, all departments available');
+          setUsedDepartmentIds(new Set());
+          return;
+        }
+        
+        const auditsArray = auditsInPeriod;
+
+        // Get all departments from these audits
+        const usedDeptIds = new Set<number>();
+        
+        // Load departments from each audit in parallel
+        console.log('[AuditPlanning] 📦 Starting to load departments from', auditsArray.length, 'audits...');
+        const departmentPromises = auditsArray.map(async (audit: any) => {
+          try {
+            const auditId = audit.auditId || audit.id || audit.$id;
+            if (!auditId) {
+              console.warn('[AuditPlanning] ⚠️ Audit missing ID:', audit);
+              return [];
+            }
+            
+            // Skip if this is the audit being edited
+            if (formState.isEditMode && formState.editingAuditId === String(auditId)) {
+              console.log('[AuditPlanning] ⏭️ Skipping current audit being edited:', auditId);
+              return [];
+            }
+            
+            console.log(`[AuditPlanning] 📡 Loading departments for audit ${auditId}...`);
+            // Get departments for this audit
+            const auditDepts = await getAuditScopeDepartmentsByAuditId(String(auditId));
+            console.log(`[AuditPlanning] 📡 Departments response for audit ${auditId}:`, auditDepts);
+            
+            const deptList = unwrap(auditDepts);
+            const deptArray = Array.isArray(deptList) ? deptList : [];
+            
+            console.log(`[AuditPlanning] 📦 Audit "${audit.title || auditId}" has ${deptArray.length} departments:`, deptArray);
+            
+            const deptIds: number[] = [];
+            deptArray.forEach((dept: any) => {
+              // Try multiple ways to get deptId
+              const deptId = dept.deptId ?? dept.dept?.deptId ?? dept.id ?? dept.$id;
+              if (deptId) {
+                const deptIdNum = Number(deptId);
+                if (!isNaN(deptIdNum) && deptIdNum > 0) {
+                  deptIds.push(deptIdNum);
+                  const deptName = dept.name ?? dept.dept?.name ?? 'unknown';
+                  console.log(`[AuditPlanning] ✅ Found used department: ${deptName} (ID: ${deptIdNum})`);
+                } else {
+                  console.warn(`[AuditPlanning] ⚠️ Invalid deptId format:`, deptId, 'from dept:', dept);
+                }
+              } else {
+                console.warn(`[AuditPlanning] ⚠️ Department missing ID:`, dept);
+              }
+            });
+            
+            console.log(`[AuditPlanning] ✅ Audit ${auditId} returned ${deptIds.length} department IDs:`, deptIds);
+            return deptIds;
+          } catch (err: any) {
+            console.error(`[AuditPlanning] ❌ Failed to load departments for audit ${audit.auditId || audit.id}:`, err);
+            console.error(`[AuditPlanning] Error stack:`, err?.stack);
+            return [];
+          }
+        });
+
+        // Wait for all promises to resolve
+        console.log('[AuditPlanning] ⏳ Waiting for all department promises to resolve...');
+        const allDeptIdArrays = await Promise.all(departmentPromises);
+        console.log('[AuditPlanning] ✅ All promises resolved. Results:', allDeptIdArrays);
+        
+        // Flatten and add to set
+        allDeptIdArrays.forEach((deptIds, index) => {
+          console.log(`[AuditPlanning] Processing deptIds from audit ${index}:`, deptIds);
+          deptIds.forEach(deptId => {
+            usedDeptIds.add(deptId);
+          });
+        });
+
+        setUsedDepartmentIds(usedDeptIds);
+        console.log('[AuditPlanning] ✅✅✅ Final used departments SET:', Array.from(usedDeptIds), 'Total:', usedDeptIds.size);
+      } catch (error: any) {
+        console.error('[AuditPlanning] ❌❌❌ Failed to load used departments:', error);
+        console.error('[AuditPlanning] Error type:', typeof error);
+        console.error('[AuditPlanning] Error response:', error?.response);
+        console.error('[AuditPlanning] Error data:', error?.response?.data);
+        console.error('[AuditPlanning] Error message:', error?.message);
+        console.error('[AuditPlanning] Error stack:', error?.stack);
+        setUsedDepartmentIds(new Set());
+      }
+    };
+
+    // Call immediately, no debounce to ensure it runs
+    console.log('[AuditPlanning] ⏰ Calling loadUsedDepartments immediately...');
+    loadUsedDepartments().catch((error) => {
+      console.error('[AuditPlanning] ❌❌❌ Error in loadUsedDepartments:', error);
+    });
+  }, [formState.periodFrom, formState.periodTo, formState.isEditMode, formState.editingAuditId, userIdFromToken, allUsers, user?.email]);
+
+  // Filter departments: remove already used ones
+  const availableDepartments = useMemo(() => {
+    console.log('[AuditPlanning] 🔄 Computing availableDepartments...', {
+      hasPeriod: !!(formState.periodFrom && formState.periodTo),
+      periodFrom: formState.periodFrom,
+      periodTo: formState.periodTo,
+      totalDepartments: departments.length,
+      usedCount: usedDepartmentIds.size,
+      usedIds: Array.from(usedDepartmentIds)
+    });
+
+    // Only filter if we have period dates
+    if (!formState.periodFrom || !formState.periodTo) {
+      console.log('[AuditPlanning] ⚠️ No period dates, showing all departments');
+      return departments;
+    }
+    
+    // If no used departments found yet, show all (might still be loading)
+    if (usedDepartmentIds.size === 0) {
+      console.log('[AuditPlanning] ⚠️ No used departments found (might still be loading), showing all departments');
+      return departments;
+    }
+    
+    const filtered = departments.filter((dept) => {
+      const deptId = Number(dept.deptId);
+      if (isNaN(deptId)) {
+        console.warn('[AuditPlanning] ⚠️ Invalid department ID:', dept);
+        return true; // Keep invalid IDs (shouldn't happen)
+      }
+      const isUsed = usedDepartmentIds.has(deptId);
+      if (isUsed) {
+        console.log(`[AuditPlanning] 🔴 FILTERING OUT: ${dept.name} (ID: ${deptId}) - already used in period`);
+      }
+      return !isUsed;
+    });
+    
+    const usedDeptNames = departments
+      .filter(d => {
+        const id = Number(d.deptId);
+        return !isNaN(id) && usedDepartmentIds.has(id);
+      })
+      .map(d => `${d.name} (ID: ${d.deptId})`);
+    
+    console.log('[AuditPlanning] ✅ FILTERED DEPARTMENTS RESULT:', {
+      total: departments.length,
+      used: usedDepartmentIds.size,
+      available: filtered.length,
+      usedIds: Array.from(usedDepartmentIds),
+      usedDeptNames: usedDeptNames,
+      availableDeptNames: filtered.map(d => `${d.name} (ID: ${d.deptId})`)
+    });
+    
+    return filtered;
+  }, [departments, usedDepartmentIds, formState.periodFrom, formState.periodTo]);
 
   // Check permission to create plans
   useEffect(() => {
@@ -1248,6 +1553,42 @@ const SQAStaffAuditPlanning = () => {
       } else {
         // Create new audit (keep existing logic)
         console.log('➕ CREATE MODE - Will use createAudit API');
+        
+        // Business Rule Validation: Validate trước khi tạo audit
+        const startDate = formState.periodFrom;
+        const endDate = formState.periodTo;
+        
+        if (startDate && endDate) {
+          // Lấy danh sách department IDs sẽ được thêm
+          let deptIdsToValidate: number[] = [];
+          if (formState.level === 'academy') {
+            deptIdsToValidate = departments.map((d) => Number(d.deptId));
+          } else if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
+            deptIdsToValidate = formState.selectedDeptIds.map(id => Number(id));
+          }
+          
+          const validation = await validateBeforeCreateAudit(startDate, endDate, deptIdsToValidate);
+          
+          if (!validation.isValid) {
+            // Hiển thị tất cả lỗi
+            validation.errors.forEach(error => {
+              toast.error(error);
+            });
+            // Hiển thị cảnh báo nếu có
+            validation.warnings.forEach(warning => {
+              toast.warning(warning);
+            });
+            throw new Error('Validation failed. Please check the errors above.');
+          }
+          
+          // Hiển thị cảnh báo nếu có (nhưng vẫn cho phép tiếp tục)
+          if (validation.warnings.length > 0) {
+            validation.warnings.forEach(warning => {
+              toast.warning(warning);
+            });
+          }
+        }
+        
         const resp = await createAudit(basicPayload);
         auditId = resp?.auditId || resp?.id || resp;
 
@@ -1283,13 +1624,38 @@ const SQAStaffAuditPlanning = () => {
           }
           
           if (deptIdsToAttach.length > 0) {
+            // Business Rule Validation: Validate từng department trước khi thêm
+            const startDate = formState.periodFrom;
+            const endDate = formState.periodTo;
+            
             const deptResults = await Promise.allSettled(
-              deptIdsToAttach.map((deptId) => addAuditScopeDepartment(String(newAuditId), Number(deptId)))
+              deptIdsToAttach.map(async (deptId) => {
+                // Validate department không trùng
+                if (startDate && endDate) {
+                  const deptValidation = await validateBeforeAddDepartment(
+                    String(newAuditId),
+                    Number(deptId),
+                    startDate,
+                    endDate
+                  );
+                  
+                  if (!deptValidation.isValid) {
+                    toast.error(`Department validation failed: ${deptValidation.message}`);
+                    throw new Error(deptValidation.message);
+                  }
+                }
+                
+                // Nếu validation pass, mới thêm department
+                return await addAuditScopeDepartment(String(newAuditId), Number(deptId));
+              })
             );
+            
             const failedDepts = deptResults.filter((r) => r.status === 'rejected');
             if (failedDepts.length > 0) {
+              console.error('❌ Some departments failed to attach:', failedDepts);
+              toast.warning(`${failedDepts.length} department(s) failed to attach. Please check the errors above.`);
             }
-            }
+          }
           } catch (scopeErr) {
             console.error('❌ Attach departments to audit failed', scopeErr);
         }
@@ -1558,7 +1924,7 @@ const SQAStaffAuditPlanning = () => {
                 <Step2Scope
                   level={formState.level}
                   selectedDeptIds={formState.selectedDeptIds}
-                  departments={departments}
+                  departments={availableDepartments}
                   criteria={criteria}
                   selectedCriteriaIds={formState.selectedCriteriaIds}
                   onLevelChange={formState.setLevel}

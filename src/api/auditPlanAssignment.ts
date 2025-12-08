@@ -1,4 +1,5 @@
 import { apiClient } from '../hooks/axios';
+import { unwrap } from '../utils/normalize';
 
 export interface AuditPlanAssignment {
   assignmentId?: string;
@@ -191,5 +192,33 @@ export const hasAuditPlanCreationPermission = async (auditorId: number | string)
     console.error('[hasAuditPlanCreationPermission] Error checking permission:', error);
     return false;
   }
+};
+
+// Business Rules APIs
+
+// Get assignments by period
+export const getAssignmentsByPeriod = async (startDate: string, endDate: string): Promise<AuditPlanAssignment[]> => {
+  const res: any = await apiClient.get(`/AuditPlanAssignment/by-period?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`);
+  const values = unwrap(res);
+  return Array.isArray(values) ? values : [];
+};
+
+// Validate assignment before creating
+export interface ValidateAssignmentRequest {
+  auditorId: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface ValidateAssignmentResponse {
+  canCreate: boolean;
+  reason: string;
+  currentCount: number;
+  maxAllowed: number;
+  isPeriodExpired: boolean;
+}
+
+export const validateAssignment = async (request: ValidateAssignmentRequest): Promise<ValidateAssignmentResponse> => {
+  return apiClient.post('/AuditPlanAssignment/validate', request) as any;
 };
 

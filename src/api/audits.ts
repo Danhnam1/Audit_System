@@ -192,6 +192,49 @@ export const archiveAudit = async (auditId: string): Promise<any> => {
   return apiClient.put(`/Audits/archive/${auditId}`) as any;
 };
 
+// Business Rules APIs
+
+// Get audits by period
+export const getAuditsByPeriod = async (startDate: string, endDate: string): Promise<any> => {
+  return apiClient.get(`/Audits/by-period?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`) as any;
+};
+
+// Validate department uniqueness
+export interface ValidateDepartmentRequest {
+  auditId?: string | null;
+  departmentIds: number[];
+  startDate: string;
+  endDate: string;
+}
+
+export interface ValidateDepartmentResponse {
+  isValid: boolean;
+  conflictingDepartments: number[];
+  conflictingAudits?: Array<{
+    auditId: string;
+    title: string;
+    departments: number[];
+  }>;
+}
+
+export const validateDepartment = async (request: ValidateDepartmentRequest): Promise<ValidateDepartmentResponse> => {
+  return apiClient.post('/Audits/validate-department', request) as any;
+};
+
+// Get period status
+export interface PeriodStatusResponse {
+  isExpired: boolean;
+  isActive: boolean;
+  canAssignNewPlans: boolean;
+  currentAuditCount: number;
+  maxAuditsAllowed: number;
+  remainingSlots: number;
+}
+
+export const getPeriodStatus = async (startDate: string, endDate: string): Promise<PeriodStatusResponse> => {
+  return apiClient.get(`/Audits/period-status?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`) as any;
+};
+
 // Backwards compatibility (will be deprecated)
 export const approveAudit = approveAuditReport;
 export const rejectAudit = rejectAuditReport;
