@@ -1655,7 +1655,7 @@ const SQAStaffAuditPlanning = () => {
               console.error('❌ Some departments failed to attach:', failedDepts);
               toast.warning(`${failedDepts.length} department(s) failed to attach. Please check the errors above.`);
             }
-          }
+            }
           } catch (scopeErr) {
             console.error('❌ Attach departments to audit failed', scopeErr);
         }
