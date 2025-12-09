@@ -1069,10 +1069,10 @@ const AdminChecklistManagement = () => {
                            onChange={(e) => setItemForm({ ...itemForm, severityDefault: e.target.value })}
                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                          >
-                           <option value="Low">Low</option>
+                           <option value="Major">Major</option>
                            <option value="Medium">Medium</option>
-                           <option value="High">High</option>
-                           <option value="Critical">Critical</option>
+                           
+                           <option value="Minor">Minor</option>
                          </select>
                        </div>
                      </div>
