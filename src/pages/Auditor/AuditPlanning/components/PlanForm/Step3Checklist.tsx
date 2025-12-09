@@ -185,7 +185,7 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
                           <div className="flex gap-2 mt-2">
                             {template.version && (
                               <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
-                                v{template.version}
+                                {template.version}
                               </span>
                             )}
                             {template.category && (
