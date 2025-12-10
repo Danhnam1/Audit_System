@@ -33,105 +33,141 @@ export const AuditorSelectionTable = ({
     <div className="space-y-4">
       {/* Search Bar */}
       <div className="flex items-center gap-4">
-        <input
-          type="text"
-          placeholder="Search by name or email..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-        />
-        <span className="text-sm text-gray-600">
-          {filteredAuditors.length} auditor(s) found
-        </span>
+        <div className="flex-1 relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <input
+            type="text"
+            placeholder="Search by name or email..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+          />
+        </div>
+        <div className="bg-primary-50 border border-primary-200 rounded-lg px-4 py-2">
+          <span className="text-sm font-medium text-primary-700">
+            {filteredAuditors.length} {filteredAuditors.length === 1 ? 'auditor' : 'auditors'}
+          </span>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left w-12"></th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                Name
-              </th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                Email
-              </th>
-              
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredAuditors.length === 0 ? (
+      <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
-                  No auditors found
-                </td>
+                <th className="px-6 py-4 text-left w-12"></th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Name
+                  </div>
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  <div className="flex items-center gap-2">
+                    Email
+                  </div>
+                </th>
               </tr>
-            ) : (
-              filteredAuditors.map((auditor) => {
-                const auditorId = String(auditor.userId || '');
-                // Compare strings directly
-                const isSelected = selectedAuditorId !== null && selectedAuditorId === auditorId && auditorId !== '';
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredAuditors.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center">
+                      <svg className="w-12 h-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="text-gray-500 font-medium">No auditors found</p>
+                      <p className="text-gray-400 text-sm mt-1">Try adjusting your search terms</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredAuditors.map((auditor) => {
+                  const auditorId = String(auditor.userId || '');
+                  // Compare strings directly
+                  const isSelected = selectedAuditorId !== null && selectedAuditorId === auditorId && auditorId !== '';
 
-                const handleRowClick = (e: React.MouseEvent) => {
-                  // Don't trigger if clicking on the radio button itself
-                  if ((e.target as HTMLElement).tagName === 'INPUT') {
-                    return;
-                  }
-                  console.log('[AuditorSelectionTable] Row clicked:', { 
-                    auditorId, 
-                    userId: auditor.userId,
-                    selectedAuditorId 
-                  });
-                  if (auditorId && auditorId !== '') {
-                    handleSelection(auditorId);
-                  } else {
-                    console.warn('[AuditorSelectionTable] Invalid auditorId:', auditorId);
-                  }
-                };
+                  const handleRowClick = (e: React.MouseEvent) => {
+                    // Don't trigger if clicking on the radio button itself
+                    if ((e.target as HTMLElement).tagName === 'INPUT') {
+                      return;
+                    }
+                    console.log('[AuditorSelectionTable] Row clicked:', { 
+                      auditorId, 
+                      userId: auditor.userId,
+                      selectedAuditorId 
+                    });
+                    if (auditorId && auditorId !== '') {
+                      handleSelection(auditorId);
+                    } else {
+                      console.warn('[AuditorSelectionTable] Invalid auditorId:', auditorId);
+                    }
+                  };
 
-                const handleRadioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-                  e.stopPropagation();
-                  console.log('[AuditorSelectionTable] Radio changed:', { 
-                    auditorId, 
-                    userId: auditor.userId,
-                    checked: e.target.checked
-                  });
-                  if (e.target.checked && auditorId && auditorId !== '') {
-                    handleSelection(auditorId);
-                  }
-                };
+                  const handleRadioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+                    e.stopPropagation();
+                    console.log('[AuditorSelectionTable] Radio changed:', { 
+                      auditorId, 
+                      userId: auditor.userId,
+                      checked: e.target.checked
+                    });
+                    if (e.target.checked && auditorId && auditorId !== '') {
+                      handleSelection(auditorId);
+                    }
+                  };
 
-                return (
-                  <tr
-                    key={auditor.userId}
-                    className={`hover:bg-gray-50 cursor-pointer ${
-                      isSelected ? 'bg-primary-50' : ''
-                    }`}
-                    onClick={handleRowClick}
-                  >
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="radio"
-                        name="auditor-selection"
-                        checked={isSelected}
-                        onChange={handleRadioChange}
-                        className="w-4 h-4 text-primary-600 focus:ring-primary-500 cursor-pointer"
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {auditor.fullName || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {auditor.email || '—'}
-                    </td>
-                    
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                  return (
+                    <tr
+                      key={auditor.userId}
+                      className={`hover:bg-primary-50 cursor-pointer transition-colors duration-150 ${
+                        isSelected ? 'bg-primary-100 border-l-4 border-primary-600' : ''
+                      }`}
+                      onClick={handleRowClick}
+                    >
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center">
+                          <input
+                            type="radio"
+                            name="auditor-selection"
+                            checked={isSelected}
+                            onChange={handleRadioChange}
+                            className="w-5 h-5 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                          />
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10 bg-primary-100 rounded-full flex items-center justify-center mr-3">
+                            <span className="text-primary-700 font-semibold text-sm">
+                              {(auditor.fullName || 'U')[0].toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="text-sm font-medium text-gray-900">
+                            {auditor.fullName || '—'}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-600 flex items-center gap-2">
+                          
+                          {auditor.email || '—'}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

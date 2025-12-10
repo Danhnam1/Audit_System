@@ -59,6 +59,13 @@ const AdminUserManagement = () => {
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Reset password modal state
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [selectedUserForReset, setSelectedUserForReset] = useState<UIUser | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  
   const [formData, setFormData] = useState<CreateUserForm>({
     fullName: '',
     email: '',
@@ -391,6 +398,67 @@ const AdminUserManagement = () => {
     }
   };
 
+  // Open reset password modal
+  const handleOpenResetPassword = (user: UIUser) => {
+    setSelectedUserForReset(user);
+    setNewPassword('');
+    setConfirmPassword('');
+    setShowResetPasswordModal(true);
+  };
+
+  // Close reset password modal
+  const handleCloseResetPasswordModal = () => {
+    setShowResetPasswordModal(false);
+    setSelectedUserForReset(null);
+    setNewPassword('');
+    setConfirmPassword('');
+  };
+
+  // Handle reset password
+  const handleResetPassword = async () => {
+    // Validation
+    if (!newPassword.trim()) {
+      toast.error('Please enter a new password');
+      return;
+    }
+    
+    if (newPassword.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    
+    if (!specialCharRegex.test(newPassword)) {
+      toast.error('Password must contain at least one special character');
+      return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
+    if (!selectedUserForReset?.email) {
+      toast.error('User email not found');
+      return;
+    }
+
+    setIsResettingPassword(true);
+    try {
+      await apiClient.post('/Auth/reset-password', {
+        email: selectedUserForReset.email,
+        newPassword: newPassword
+      });
+      
+      toast.success(`Password reset successfully for ${selectedUserForReset.fullName}`);
+      handleCloseResetPasswordModal();
+    } catch (err: any) {
+      console.error('Reset password error:', err);
+      toast.error(err.response?.data?.message || err.message || 'Failed to reset password');
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
   return (
     <MainLayout user={layoutUser}>
       {/* Header */}
@@ -638,6 +706,15 @@ const AdminUserManagement = () => {
                           </svg>
                         </button>
                         <button
+                          onClick={() => handleOpenResetPassword(usr)}
+                          className="p-2 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors"
+                          title="Reset Password"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                          </svg>
+                        </button>
+                        <button
                           onClick={() => handleDelete(usr.userId)}
                           className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
                           title="Delete"
@@ -737,6 +814,104 @@ const AdminUserManagement = () => {
                 <button
                   onClick={handleCloseImportModal}
                   disabled={isImporting}
+                  className="border border-gray-300 text-gray-600 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {showResetPasswordModal && selectedUserForReset && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-primary-600">Reset Password</h2>
+              <button
+                onClick={handleCloseResetPasswordModal}
+                disabled={isResettingPassword}
+                className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="px-6 py-6 space-y-4">
+              {/* User Info */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-semibold">
+                    {selectedUserForReset.fullName.split(' ').map(n => n[0]).join('')}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{selectedUserForReset.fullName}</p>
+                    <p className="text-xs text-gray-600">{selectedUserForReset.email}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* New Password */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  New Password <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  disabled={isResettingPassword}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Minimum 6 characters with at least one special character
+                </p>
+              </div>
+
+              {/* Confirm Password */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Confirm Password <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter new password"
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  disabled={isResettingPassword}
+                />
+              </div>
+
+              {/* Warning */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-start gap-2">
+                <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <p className="text-xs text-yellow-800">
+                  This action will reset the user's password. The user will need to use the new password to log in.
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleResetPassword}
+                  disabled={isResettingPassword || !newPassword || !confirmPassword}
+                  className={`flex-1 bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
+                    isResettingPassword || !newPassword || !confirmPassword ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                >
+                  {isResettingPassword ? 'Resetting...' : 'Reset Password'}
+                </button>
+                <button
+                  onClick={handleCloseResetPasswordModal}
+                  disabled={isResettingPassword}
                   className="border border-gray-300 text-gray-600 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150 disabled:opacity-50"
                 >
                   Cancel

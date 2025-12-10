@@ -237,6 +237,18 @@ export const markChecklistItemCompliant1 = async (
   
   // Send to POST /api/ChecklistItemNoFinding with camelCase payload
   const res = await apiClient.post(`/ChecklistItemNoFinding`, payload);
+  
+  console.log('=== API RESPONSE FROM /ChecklistItemNoFinding ===');
+  console.log('Full response object:', res);
+  console.log('res.data:', res.data);
+  console.log('res.data type:', typeof res.data);
+  if (res.data) {
+    console.log('res.data keys:', Object.keys(res.data));
+    console.log('res.data.id:', res.data.id);
+    console.log('res.data.auditChecklistItemId:', res.data.auditChecklistItemId);
+  }
+  console.log('=== END API RESPONSE ===');
+  
   return res.data;
 };
 
@@ -300,6 +312,57 @@ export const createAuditChecklistItem = async (data: CreateAuditChecklistItemDto
   return res.data || res;
 };
 
+// Get compliant details for a compliant item by its ID
+export const getChecklistItemCompliantDetails = async (compliantItemId: string | number): Promise<any> => {
+  const res = await apiClient.get(`/ChecklistItemNoFinding/${compliantItemId}`);
+  return res.data;
+};
+
+// Get compliant record ID for an audit item (by auditItemId/auditChecklistItemId GUID)
+// Returns the numeric 'id' field of the compliant record
+export const getCompliantIdByAuditItemId = async (auditItemId: string): Promise<number | null> => {
+  try {
+    console.log('🔵 [API] getCompliantIdByAuditItemId called');
+    console.log('🔵 [API] Input auditItemId (GUID):', auditItemId);
+    
+    // GET /ChecklistItemNoFinding returns ALL compliant records
+    // We need to filter by auditChecklistItemId on the client side
+    console.log('🔵 [API] Making GET request to: /ChecklistItemNoFinding (fetching all records)');
+    
+    const res = await apiClient.get(`/ChecklistItemNoFinding`);
+    
+    console.log('🟢 [API] Response received, status:', res.status);
+    console.log('🟢 [API] Response data:', res.data);
+    
+    // Response is wrapped with $values array
+    const allRecords = unwrapArray(res.data);
+    console.log('🟢 [API] Unwrapped records array, length:', allRecords.length);
+    
+    // Find the record that matches our auditChecklistItemId
+    const compliantRecord = allRecords.find((record: any) => 
+      record.auditChecklistItemId === auditItemId
+    );
+    console.log('🟢 [API] Found matching compliantRecord:', compliantRecord);
+    
+    const compliantId = compliantRecord?.id;
+    console.log('🟢 [API] Extracted compliant id:', compliantId);
+    
+    if (!compliantId) {
+      console.warn('⚠️ [API] No compliant record found for auditChecklistItemId:', auditItemId);
+      return null;
+    }
+    
+    console.log('🟢 [API] Returning compliant id:', compliantId);
+    return compliantId;
+  } catch (err: any) {
+    console.error('🔴 [API] ERROR in getCompliantIdByAuditItemId:', err?.message);
+    console.error('🔴 [API] Error status:', err?.response?.status);
+    console.error('🔴 [API] Error response data:', err?.response?.data);
+    console.error('🔴 [API] Full error:', err);
+    return null;
+  }
+};
+
 export default {
   getChecklistTemplates,
   getChecklistItemsByTemplate,
@@ -310,4 +373,6 @@ export default {
   markChecklistItemNonCompliant,
   createAuditChecklistItemsFromTemplate,
   createAuditChecklistItem,
+  getChecklistItemCompliantDetails,
+  getCompliantIdByAuditItemId,
 };

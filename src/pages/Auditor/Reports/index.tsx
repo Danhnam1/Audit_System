@@ -1,5 +1,4 @@
 import { MainLayout } from '../../../layouts';
-import { UploadIcon, DownloadIcon } from '../../../layouts/icons';
 import { useAuth } from '../../../contexts';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -189,13 +188,13 @@ const SQAStaffReports = () => {
       if (normalizedCurrentUserId) {
         teams.forEach((m: any) => {
           // Try multiple userId fields and normalize for comparison
-          const memberUserId = m?.userId || m?.id || m?.$id;
+          const memberUserId = m?.userId 
           if (memberUserId) {
             const normalizedMemberUserId = String(memberUserId).toLowerCase().trim();
             // Match if userIds match (case-insensitive)
             if (normalizedMemberUserId === normalizedCurrentUserId) {
               // Collect all possible auditId formats
-              const auditId = m?.auditId || m?.auditPlanId || m?.planId || m?.id;
+              const auditId = m?.auditId ;
               if (auditId) {
                 const auditIdStr = String(auditId).trim();
                 if (auditIdStr) {
@@ -888,7 +887,11 @@ const SQAStaffReports = () => {
                                   title="Export PDF"
                                   aria-label="Export PDF"
                                 >
-                                  <DownloadIcon />
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 21v-8a2 2 0 00-2-2H9a2 2 0 00-2 2v8" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11v6m0 0l-2-2m2 2l2-2" />
+                                  </svg>
                                 </button>
                                 <button
                                   onClick={() =>
@@ -933,7 +936,9 @@ const SQAStaffReports = () => {
                                       />
                                     </svg>
                                   ) : (
-                                    <UploadIcon />
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                    </svg>
                                   )}
                                 </button>
                                 <input
@@ -963,7 +968,11 @@ const SQAStaffReports = () => {
                                 title={tooltip}
                                 aria-label="Export PDF (disabled)"
                               >
-                                <DownloadIcon />
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 21v-8a2 2 0 00-2-2H9a2 2 0 00-2 2v8" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11v6m0 0l-2-2m2 2l2-2" />
+                                </svg>
                               </button>
                               <button
                                 disabled
@@ -971,7 +980,9 @@ const SQAStaffReports = () => {
                                 title={tooltip}
                                 aria-label="Upload (disabled)"
                               >
-                                <UploadIcon />
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
                               </button>
                             </>
                           );

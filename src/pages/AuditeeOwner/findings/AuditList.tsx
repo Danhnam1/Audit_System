@@ -1,23 +1,51 @@
 import { MainLayout } from '../../../layouts';
-import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuditFindings } from '../../../hooks/useAuditFindings';
-import { getMyAssignments } from '../../../api/auditAssignments';
+import { useAuth } from '../../../contexts';
+import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getAuditPlanById } from '../../../api/audits';
-import { unwrap } from '../../../utils/normalize';
 
 interface AuditCard {
   auditId: string;
   auditTitle: string;
   auditType: string;
   status: string;
-  departmentCount: number;
+  findingCount: number;
   startDate?: string;
   endDate?: string;
 }
 
-const SQAStaffFindingManagement = () => {
+const getStatusBadgeColor = (status: string) => {
+  const statusLower = status?.toLowerCase() || '';
+  switch (statusLower) {
+    case 'assigned':
+      return 'bg-blue-100 text-blue-800 border border-blue-300';
+    case 'in progress':
+      return 'bg-yellow-100 text-yellow-800 border border-yellow-300';
+    case 'completed':
+      return 'bg-green-100 text-green-800';
+    case 'archived':
+      return 'bg-gray-100 text-gray-800 border border-gray-300';
+    default:
+      return 'bg-gray-100 text-gray-800 border border-gray-300';
+  }
+};
+
+const getAuditTypeBadgeColor = (auditType: string) => {
+  const typeLower = auditType?.toLowerCase() || '';
+  switch (typeLower) {
+    case 'internal':
+      return 'bg-purple-50 text-purple-700 border border-purple-200';
+    case 'external':
+      return 'bg-orange-50 text-orange-700 border border-orange-200';
+    case 'compliance':
+      return 'bg-indigo-50 text-indigo-700 border border-indigo-200';
+    default:
+      return 'bg-gray-50 text-gray-700 border border-gray-200';
+  }
+};
+
+const AuditeeOwnerAuditList = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [audits, setAudits] = useState<AuditCard[]>([]);
@@ -26,14 +54,26 @@ const SQAStaffFindingManagement = () => {
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const {
-    fetchAuditPlans,
-    auditPlans: _auditPlans,
-  } = useAuditFindings();
-
-  useEffect(() => {
-    fetchAuditPlans();
-  }, [fetchAuditPlans]);
+  // Get user's department ID from token
+  const getUserDeptId = (): number | null => {
+    const token = localStorage.getItem('auth-storage');
+    if (!token) return null;
+    
+    try {
+      const authData = JSON.parse(token);
+      const jwtToken = authData?.state?.token;
+      if (jwtToken) {
+        const base64Url = jwtToken.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(window.atob(base64));
+        const deptId = payload['DeptId'];
+        return deptId ? parseInt(deptId) : null;
+      }
+    } catch (err) {
+      console.error('Error parsing token:', err);
+    }
+    return null;
+  };
 
   useEffect(() => {
     const loadAudits = async () => {
@@ -41,127 +81,105 @@ const SQAStaffFindingManagement = () => {
       setError(null);
       
       try {
-        console.log('🔍 Fetching my assignments...');
-        const assignmentsResponse: any = await getMyAssignments();
-        console.log('📦 Raw assignments response:', assignmentsResponse);
-        
-        let responseData = assignmentsResponse;
-        if (assignmentsResponse?.status && assignmentsResponse?.data) {
-          responseData = assignmentsResponse.data;
-          console.log('📦 Extracted data from axios response:', responseData);
+        const deptId = getUserDeptId();
+        if (!deptId) {
+          setError('Department ID not found in token');
+          setLoading(false);
+          return;
         }
-        console.log('📦 Processed responseData:', responseData);
-        let assignments: any[] = [];
-        if (Array.isArray(responseData)) {
-          assignments = responseData;
-          console.log('✅ Response is direct array');
-        } else if (responseData?.$values && Array.isArray(responseData.$values)) {
-          assignments = responseData.$values;
-          console.log('✅ Found $values array with', assignments.length, 'items');
-        } else if (responseData?.values && Array.isArray(responseData.values)) {
-          assignments = responseData.values;
-          console.log('✅ Found values array');
-        } else if (responseData?.data && Array.isArray(responseData.data)) {
-          assignments = responseData.data;
-          console.log('✅ Found data array');
-        } else {
-          assignments = unwrap(responseData);
-          console.log('✅ Used unwrap fallback, got', assignments.length, 'items');
-        }
+
+        console.log('🔍 Fetching findings for department:', deptId);
+        const findings = await getFindingsByDepartment(deptId);
+        console.log('📦 Findings from API:', findings);
         
-        console.log('✅ Final assignments array:', assignments);
-        console.log('✅ Assignments count:', assignments.length);
-        
-        if (!assignments || assignments.length === 0) {
-          console.log('⚠️ No assignments found');
+        if (!findings || findings.length === 0) {
+          console.log('⚠️ No findings found');
           setAudits([]);
           setLoading(false);
           return;
         }
 
-        // Filter active assignments
-        const activeAssignments = assignments.filter((a: any) => {
-          const status = (a.status || '').toLowerCase().trim();
-          return status !== 'archived';
+        // Filter out archived findings
+        const activeFindings = findings.filter((f: Finding) => {
+          const statusLower = (f.status || '').toLowerCase().trim();
+          return statusLower !== 'archived';
         });
-        console.log('✅ Active assignments (excluding archived):', activeAssignments.length);
 
-        if (activeAssignments.length === 0) {
-          console.log('⚠️ No active assignments found (all are archived)');
-          setAudits([]);
-          setLoading(false);
-          return;
-        }
-
-        // Group assignments by auditId
-        const auditMap = new Map<string, any[]>();
-        activeAssignments.forEach((assignment: any) => {
-          const auditId = assignment.auditId;
+        // Group findings by auditId
+        const auditMap = new Map<string, Finding[]>();
+        activeFindings.forEach((finding: Finding) => {
+          const auditId = finding.auditId;
           if (auditId) {
             if (!auditMap.has(auditId)) {
               auditMap.set(auditId, []);
             }
-            auditMap.get(auditId)!.push(assignment);
+            auditMap.get(auditId)!.push(finding);
           }
         });
 
         console.log('📊 Grouped audits:', Array.from(auditMap.keys()));
 
         // Load audit info and create audit cards
-        const auditPromises = Array.from(auditMap.entries()).map(async ([auditId, auditAssignments]) => {
+        const auditPromises = Array.from(auditMap.entries()).map(async ([auditId, auditFindings]) => {
           try {
             console.log(`📥 Fetching audit info for ${auditId}...`);
             const auditData = await getAuditPlanById(auditId);
-            const auditType = auditData.type || auditData.Type || auditData.auditType || 
-                             auditData.audit?.type || auditData.audit?.Type || auditData.audit?.auditType || '';
-            const auditTitle = auditData.title || auditData.name || auditAssignments[0]?.auditTitle || 'Untitled Audit';
-            // Try multiple possible field names for status
+            console.log(`📋 Raw audit data for ${auditId}:`, auditData);
+            
+            // Try multiple possible field names for title
+            let auditTitle = auditData.title || 
+                            auditData.Title || 
+                            auditData.name || 
+                            auditData.Name ||
+                            auditData.auditTitle ||
+                            auditData.audit?.title ||
+                            auditData.audit?.Title ||
+                            auditData.audit?.name ||
+                            auditData.audit?.Name ||
+                            auditData.audit?.auditTitle ||
+                            '';
+            
+            if (!auditTitle) {
+              console.warn(`⚠️ No title found for audit ${auditId}. Available fields:`, Object.keys(auditData));
+              auditTitle = `Audit ${auditId.substring(0, 8)}...`;
+            } else {
+              console.log(`✅ Found title for audit ${auditId}: "${auditTitle}"`);
+            }
+            
+            const auditType = auditData.type || 
+                             auditData.Type || 
+                             auditData.auditType || 
+                             auditData.audit?.type || 
+                             auditData.audit?.Type || 
+                             auditData.audit?.auditType || '';
+            
             const status = auditData.status || 
                           auditData.Status || 
                           auditData.auditStatus ||
-                          auditData.auditStatus ||
                           auditData.audit?.status ||
                           auditData.audit?.Status ||
-                          auditAssignments[0]?.status || 
                           'Unknown';
-            
-            console.log(`📋 Audit ${auditId} status check:`, {
-              auditTitle,
-              finalStatus: status,
-              statusFromData: auditData.status,
-              statusFromAssignment: auditAssignments[0]?.status,
-              allStatusFields: {
-                status: auditData.status,
-                Status: auditData.Status,
-                auditStatus: auditData.auditStatus
-              }
-            });
-            
-            // Get unique department count
-            const uniqueDeptIds = new Set(auditAssignments.map((a: any) => a.deptId));
             
             const auditCard: AuditCard = {
               auditId: auditId,
               auditTitle: auditTitle,
               auditType: auditType,
               status: status,
-              departmentCount: uniqueDeptIds.size,
-              startDate: auditData.startDate,
-              endDate: auditData.endDate,
+              findingCount: auditFindings.length,
+              startDate: auditData.startDate || auditData.audit?.startDate,
+              endDate: auditData.endDate || auditData.audit?.endDate,
             };
             console.log(`✅ Created card for audit ${auditId}:`, auditCard);
             return auditCard;
           } catch (err) {
             console.error(`❌ Error loading audit ${auditId}:`, err);
-            // Fallback: use assignment data
-            const firstAssignment = auditAssignments[0];
-            const uniqueDeptIds = new Set(auditAssignments.map((a: any) => a.deptId));
+            // Fallback: create card with basic info
             return {
               auditId: auditId,
-              auditTitle: firstAssignment?.auditTitle || 'Untitled Audit',
+              auditTitle: `Audit ${auditId.substring(0, 8)}...`,
               auditType: '',
-              status: firstAssignment?.status || 'Unknown',
-              departmentCount: uniqueDeptIds.size,
+              status: 'Unknown',
+              findingCount: auditFindings.length,
             };
           }
         });
@@ -174,7 +192,6 @@ const SQAStaffFindingManagement = () => {
           const status = audit.status || '';
           const statusLower = String(status).toLowerCase().trim();
           
-          // Check for various forms of "archived"
           const isArchived = statusLower === 'archived' || 
                            statusLower === 'archive' ||
                            statusLower.includes('archived');
@@ -189,25 +206,12 @@ const SQAStaffFindingManagement = () => {
         console.log('🎯 Final audits to display (excluding archived):', {
           total: validAudits.length,
           nonArchived: nonArchivedAudits.length,
-          removed: validAudits.length - nonArchivedAudits.length,
-          audits: nonArchivedAudits.map(a => ({ title: a.auditTitle, status: a.status }))
+          audits: nonArchivedAudits
         });
-        
-        // Debug: Log all statuses to see what we're getting
-        console.log('📊 All audit statuses:', validAudits.map(a => ({
-          title: a.auditTitle,
-          status: a.status,
-          statusType: typeof a.status
-        })));
         
         setAudits(nonArchivedAudits);
       } catch (err: any) {
         console.error('❌ Error loading audits:', err);
-        console.error('Error details:', {
-          message: err?.message,
-          response: err?.response,
-          stack: err?.stack
-        });
         setError(err?.message || 'Failed to load audits');
       } finally {
         setLoading(false);
@@ -218,7 +222,9 @@ const SQAStaffFindingManagement = () => {
   }, []);
 
   const handleAuditClick = (audit: AuditCard) => {
-    navigate(`/auditor/findings/audit/${audit.auditId}`);
+    navigate(`/auditee-owner/findings/audit/${audit.auditId}`, {
+      state: { auditId: audit.auditId, auditTitle: audit.auditTitle }
+    });
   };
 
   return (
@@ -226,8 +232,8 @@ const SQAStaffFindingManagement = () => {
       {/* Header */}
       <div className="bg-gradient-to-r from-primary-500 to-primary-600 shadow-lg mb-6">
         <div className="px-4 sm:px-6 py-4 sm:py-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Task Management</h1>
-          <p className="text-primary-100 text-sm sm:text-base mt-2">Select a department to manage audit findings</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Findings Management</h1>
+          <p className="text-primary-100 text-sm sm:text-base mt-2">Select an audit to view findings</p>
         </div>
       </div>
 
@@ -270,7 +276,7 @@ const SQAStaffFindingManagement = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 <p className="text-gray-500 font-semibold text-lg">No audits available</p>
-                <p className="text-sm text-gray-400 mt-2">Audits will appear here when you are assigned</p>
+                <p className="text-sm text-gray-400 mt-2">Audits will appear here when findings are assigned to your department</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-200">
@@ -281,10 +287,26 @@ const SQAStaffFindingManagement = () => {
                     className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group"
                   >
                     <div className="flex items-center justify-between">
-                      <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700">
-                        {audit.auditTitle}
-                      </h3>
-                      <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <div className="flex-1">
+                        <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 mb-2">
+                          {audit.auditTitle}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(audit.auditType)}`}>
+                            {audit.auditType || 'N/A'}
+                          </span>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(audit.status)}`}>
+                            {audit.status || 'Unknown'}
+                          </span>
+                          <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            {audit.findingCount} {audit.findingCount === 1 ? 'finding' : 'findings'}
+                          </span>
+                        </div>
+                      </div>
+                      <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600 flex-shrink-0 ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
                     </div>
@@ -299,4 +321,5 @@ const SQAStaffFindingManagement = () => {
   );
 };
 
-export default SQAStaffFindingManagement;
+export default AuditeeOwnerAuditList;
+
