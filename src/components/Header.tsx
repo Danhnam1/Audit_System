@@ -65,9 +65,7 @@ export const Navigation = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-<div>
-  <h1 className="text-gray-800 font-bold text-xl">Hi,  {user?.fullName}</h1>
-            </div>
+
           </div>
        
 

@@ -325,88 +325,86 @@ const AdminDepartmentManagement = () => {
         )}
 
         {/* Departments Table */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-            <h2 className="text-lg font-semibold text-white">Departments List</h2>
-          </div>
+        <div className="bg-white rounded-xl shadow-md overflow-hidden font-noto">
+        <div className="bg-white p-4">
+      
           
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Code</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Staff</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Auditee Owner</th>
-                  
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
+              <thead className="bg-gray-100 border-b border-gray-200">
+            <tr>
+              <th className=" px-6 py-4 text-left text-sm  font-bold text-black uppercase tracking-wider">
+                No.
+              </th>
+              <th className=" w-1/6 px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
+                Department Name
+              </th>
+              <th className="px-6 py-4 text-left text-sm font-bold   text-black uppercase tracking-wider">
+                Code
+              </th>
+              <th className="px-6 py-4 text-left text-sm  font-bold text-black uppercase tracking-wider">
+                Staff
+              </th>
+              <th className="px-6 py-4 text-left text-sm font-bold   text-black uppercase tracking-wider">
+                Description
+              </th>
+              <th className="w-1/6 px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
+                Auditee Owner
+              </th>
+              <th className="px-6 py-4 text-left text-sm  font-bold text-black uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+              <tbody className="bg-white">
                 {paginatedDepartments.map((dept, idx) => {
                   const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
+                  
                   return (
-                  <tr key={dept.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-primary-600">{rowNumber}</span>
+                  <tr key={dept.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-gray-700">{rowNumber}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{dept.name}</p>
-                        
+                      <div className="flex items-center gap-3">
+                       
+                        <span className="text-ms font-bold text-black">{dept.name}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-3 py-1 rounded-lg bg-primary-100 text-primary-700 text-xs font-bold">
-                        {dept.code}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary-50 text-primary-700 text-sm font-semibold">
-                        {dept.staffCount}
-                      </span>
+                    <td className="px-6 py-4">
+                      <span className="text-ms text-[#5b6166]">{dept.code}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-gray-800">{dept.description}</span>
+                      <span className="text-ms  text-[#5b6166]">{dept.staffCount}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-gray-800">{dept.ownerName}</span>
+                      <span className="text-ms  text-[#5b6166]">{dept.description}</span>
                     </td>
-                    
-                    {/* <td className="px-6 py-4 text-center">
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary-100 text-primary-700 text-sm font-bold">
-                        {dept.activeAudits}
-                      </span>
-                    </td> */}
-                    {/* <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(dept.status)}`}>
-                        {dept.status}
-                      </span>
-                    </td> */}
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <div className="flex items-center justify-center gap-3">
+                    <td className="px-6 py-4">
+                      <span className="text-ms font-noto  text-[#5b6166]">{dept.ownerName}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => openEdit(dept)}
-                          className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                          className="p-1.5 text-gray-600 hover:text-primary-600 hover:bg-gray-100 rounded transition-colors"
                           title="Edit"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
                         <button
                           onClick={() => openDeleteModal(dept)}
                           disabled={deletingId === (dept.deptId ?? dept.id)}
-                          className={`p-2 rounded-lg transition-colors ${
+                          className={`p-1.5 rounded transition-colors ${
                             deletingId === (dept.deptId ?? dept.id)
                               ? 'text-gray-400 cursor-not-allowed'
-                              : 'text-red-600 hover:text-red-700 hover:bg-red-50'
+                              : 'text-gray-600 hover:text-red-600 hover:bg-gray-100'
                           }`}
                           title="Delete"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
@@ -417,7 +415,7 @@ const AdminDepartmentManagement = () => {
                 })}
                 {paginatedDepartments.length === 0 && (
                   <tr>
-                  <td colSpan={7} className="px-6 py-6 text-sm text-gray-500 text-center">
+                    <td colSpan={7} className="px-6 py-8 text-sm text-gray-500 text-center">
                       No departments available.
                     </td>
                   </tr>
@@ -437,7 +435,7 @@ const AdminDepartmentManagement = () => {
             </div>
           )}
         </div>
-
+</div>
         
          
           </div>

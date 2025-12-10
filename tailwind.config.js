@@ -1,3 +1,5 @@
+import defaultTheme from 'tailwindcss/defaultTheme';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -21,6 +23,10 @@ export default {
           900: '#0c4a6e',  // sky-900
           950: '#082f49',  // sky-950
         },
+      },
+      fontFamily: {
+        sans: ['Noto Sans', 'sans-serif'],
+        noto: ['Noto Sans', 'sans-serif'],
       },
     },
   },

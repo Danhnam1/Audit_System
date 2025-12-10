@@ -58,7 +58,7 @@ export const Sidebar = ({ logo: _logo, menuItems, teams, user: _user, theme, cla
   const defaultTheme: SidebarTheme = {
     activeBg: 'bg-[#f2f9ff]',           // Màu nền khi active
     activeText: 'text-[#008cff]',            // Màu chữ khi active
-    inactiveText: 'text-[5f5f5f]',       // Màu chữ khi không active (THAY ĐỔI TẠI ĐÂY)
+    inactiveText: 'text-[#5f5f5f]',       // Màu chữ khi không active (THAY ĐỔI TẠI ĐÂY)
     hoverBg: 'hover:bg-[#f2f9ff]',      // Màu nền khi hover (THAY ĐỔI TẠI ĐÂY)
     avatarBg: 'bg-gray-700',
     avatarText: 'text-gray-300',
@@ -177,7 +177,7 @@ const MenuLink = ({ item, depth, currentTheme, isCollapsed = false }: MenuLinkPr
       to={item.path}
       title={isCollapsed ? item.label : undefined}
       className={({ isActive }) =>
-        `flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} ${indentClass} pr-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+        `flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} ${indentClass} pr-3 py-2 rounded-lg text-base font-noto transition-colors ${
           isActive
             ? `${currentTheme.activeBg} ${currentTheme.activeText}`
             : `${currentTheme.inactiveText} ${currentTheme.hoverBg}`
