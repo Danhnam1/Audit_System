@@ -143,145 +143,189 @@ const AdminCriteriaManagement = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
-        <div className="px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-primary-600">Criteria Management</h1>
-            <p className="text-gray-600 text-sm mt-1">Create, update, and manage audit criteria (standards)</p>
+      <div>
+        {/* Header */}
+        <div className="mb-6 px-6 animate-slideInLeft">
+          <div className="rounded-xl border-b shadow-sm border-primary-100 bg-white px-6 py-8 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold text-black">Criteria Management</h1>
+              <p className="text-gray-600 text-sm mt-1">Create, update, and manage audit criteria (standards)</p>
+            </div>
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
+            >
+              + Create Criteria
+            </button>
           </div>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
-          >
-            + Create Criteria
-          </button>
         </div>
-      </div>
 
       <div className="px-6 pb-6 space-y-6">
-        {/* Create Criteria Form */}
+        {/* Create Criteria Modal */}
         {showCreateForm && (
-          <form onSubmit={handleCreate} className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <h2 className="text-lg font-semibold text-primary-600 mb-4">Create New Criteria</h2>
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fadeIn">
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300"
+              onClick={() => setShowCreateForm(false)}
+            />
             
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    type="text"
-                    placeholder="e.g., CAAV Circular 40/2015"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    required
-                  />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-hidden transform transition-all duration-300 scale-100 animate-slideUp">
+              <form onSubmit={handleCreate} className="flex flex-col max-h-[90vh]">
+                <div className="flex-shrink-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-white">Create New Criteria</h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors duration-200"
+                  >
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reference Code</label>
-                  <input
-                    value={form.referenceCode || ''}
-                    onChange={(e) => setForm({ ...form, referenceCode: e.target.value })}
-                    type="text"
-                    placeholder="e.g., CAAV"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        type="text"
+                        placeholder="e.g., CAAV Circular 40/2015"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Reference Code</label>
+                      <input
+                        value={form.referenceCode || ''}
+                        onChange={(e) => setForm({ ...form, referenceCode: e.target.value })}
+                        type="text"
+                        placeholder="e.g., CAAV"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea
+                      value={form.description || ''}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      rows={4}
+                      placeholder="Criteria description..."
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 resize-none"
+                    ></textarea>
+                  </div>
+
+                  <input type="hidden" value="" />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea
-                  value={form.description || ''}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  rows={3}
-                  placeholder="Criteria description..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                ></textarea>
-              </div>
-
-              {/* Published By field hidden but sent as empty string to backend */}
-              <input type="hidden" value="" />
-
-              <div className="flex gap-3 pt-2">
-                <Button type="submit" disabled={creating} isLoading={creating} variant="primary" size="md">
-                  Create Criteria
-                </Button>
-                <Button 
-                  type="button"
-                  onClick={() => setShowCreateForm(false)}
-                  variant="secondary"
-                  size="md"
-                >
-                  Cancel
-                </Button>
-              </div>
+                <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
+                  <Button 
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    variant="secondary"
+                    size="md"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={creating} isLoading={creating} variant="primary" size="md">
+                    Create Criteria
+                  </Button>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
         )}
 
         {editOpen && (
-          <form onSubmit={handleUpdate} className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <h2 className="text-lg font-semibold text-primary-600 mb-4">Edit Criteria</h2>
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fadeIn">
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300"
+              onClick={() => { setEditOpen(false); setEditingCriterion(null); }}
+            />
             
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    type="text"
-                    placeholder="Criteria name"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    required
-                  />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-hidden transform transition-all duration-300 scale-100 animate-slideUp">
+              <form onSubmit={handleUpdate} className="flex flex-col max-h-[90vh]">
+                <div className="flex-shrink-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-white">Edit Criteria</h2>
+                  <button
+                    type="button"
+                    onClick={() => { setEditOpen(false); setEditingCriterion(null); }}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors duration-200"
+                  >
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reference Code</label>
-                  <input
-                    value={form.referenceCode || ''}
-                    onChange={(e) => setForm({ ...form, referenceCode: e.target.value })}
-                    type="text"
-                    placeholder="Reference code"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  />
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        type="text"
+                        placeholder="Criteria name"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Reference Code</label>
+                      <input
+                        value={form.referenceCode || ''}
+                        onChange={(e) => setForm({ ...form, referenceCode: e.target.value })}
+                        type="text"
+                        placeholder="Reference code"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea
+                      value={form.description || ''}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      rows={4}
+                      placeholder="Description"
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 resize-none"
+                    ></textarea>
+                  </div>
+
+                  <input type="hidden" value="" />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea
-                  value={form.description || ''}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  rows={3}
-                  placeholder="Description"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                ></textarea>
-              </div>
-
-              {/* Published By field hidden but sent as empty string to backend */}
-              <input type="hidden" value="" />
-
-              <div className="flex gap-3 pt-2">
-                <Button type="submit" disabled={updating} isLoading={updating} variant="primary" size="md">
-                  Save Changes
-                </Button>
-                <Button 
-                  type="button"
-                  onClick={() => { setEditOpen(false); setEditingCriterion(null); }}
-                  variant="secondary"
-                  size="md"
-                >
-                  Cancel
-                </Button>
-              </div>
+                <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
+                  <Button 
+                    type="button"
+                    onClick={() => { setEditOpen(false); setEditingCriterion(null); }}
+                    variant="secondary"
+                    size="md"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={updating} isLoading={updating} variant="primary" size="md">
+                    Save Changes
+                  </Button>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
         )}
 
         {/* Criteria Table */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200">
           <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
             <h2 className="text-lg font-semibold text-white">Criteria List</h2>
           </div>
@@ -368,6 +412,7 @@ const AdminCriteriaManagement = () => {
             </>
           )}
         </div>
+      </div>
       </div>
 
       {/* Delete Confirmation Modal */}
