@@ -168,7 +168,7 @@ const CompliantModal = ({
       console.log('3. Compliant Payload:', JSON.stringify(compliantData, null, 2));
 
       // Call API to mark item as compliant
-      const response = await markChecklistItemCompliant(checklistItem.auditItemId, compliantData);
+      const response = await markChecklistItemCompliant1(checklistItem.auditItemId, compliantData);
       console.log('✅ Item marked as compliant:', response);
 
       // Use auditChecklistItemId from response (GUID string) for file upload

@@ -10,6 +10,7 @@ import {
   QualityIcon,
   ClockIcon,
   ArchiveIcon,
+  DepartmentIcon,
 } from '../layouts/icons';
 import { HiOutlineUpload } from 'react-icons/hi';
 
@@ -33,7 +34,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
     case 'admin':
       return [
         // { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
-        { icon: <UsersIcon />, label: 'Department Management', path: '/admin/departments' },
+        { icon: <DepartmentIcon />, label: 'Department Management', path: '/admin/departments' },
         { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
         { icon: <QualityIcon />, label: 'Criteria Management', path: '/admin/criteria' },
         { icon: <ClipboardCheckIcon />, label: 'Checklist Management', path: '/admin/checklists' },

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
+import { Navigation } from '../components';
 import './icons.tsx';
 import useAuthStore, { useUserId } from '../store/useAuthStore';
 import { getRoleMenu } from '../helpers/roleMenus';
@@ -40,6 +41,7 @@ export const MainLayout = ({
   sidebarTheme,
   showSidebar = true,
 }: MainLayoutProps) => {
+  const [isCollapsed, setIsCollapsed] = useState(false);
   // Default Logo (using global primary theme)
   const defaultLogo = (
     <div className="flex items-center gap-2">
@@ -131,17 +133,37 @@ export const MainLayout = ({
     return () => window.removeEventListener('ams:toggle-sidebar', handler as EventListener);
   }, []);
 
+  useEffect(() => {
+    const handler = () => setIsCollapsed((v) => !v);
+    window.addEventListener('ams:toggle-sidebar-collapse', handler as EventListener);
+    return () => window.removeEventListener('ams:toggle-sidebar-collapse', handler as EventListener);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setIsCollapsed((v) => !v);
+    window.addEventListener('ams:toggle-sidebar-collapse', handler as EventListener);
+    return () => window.removeEventListener('ams:toggle-sidebar-collapse', handler as EventListener);
+  }, []);
+
+  useEffect(() => {
+    const handler = () => setIsCollapsed((v) => !v);
+    window.addEventListener('ams:toggle-sidebar-collapse', handler as EventListener);
+    return () => window.removeEventListener('ams:toggle-sidebar-collapse', handler as EventListener);
+  }, []);
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen w-screen overflow-hidden bg-[#eff1f3]">
       {showSidebar && (
         <>
-          {/* Desktop sidebar */}
-          <div className="hidden md:block">
+          {/* Desktop sidebar - Full Height */}
+          <div className={`hidden md:block transition-all duration-300 ${isCollapsed ? 'w-[70px]' : 'w-[280px]'}`}>
             <Sidebar
               logo={logo || defaultLogo}
               menuItems={menuItems || finalMenuItems}
               user={user || defaultUser}
               theme={sidebarTheme}
+              className={isCollapsed ? 'w-[70px]' : 'w-[280px]'}
+              isCollapsed={isCollapsed}
             />
           </div>
 
@@ -154,12 +176,12 @@ export const MainLayout = ({
             />
 
             {/* Panel */}
-            <div className={`fixed top-0 left-0 bottom-0 w-64 bg-white border-r border-gray-200 transform transition-transform ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <div className={`fixed top-0 left-0 bottom-0 w-64 bg-white border-r border-gray-800 transform transition-transform ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
               <div className="h-full flex flex-col">
-                <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+                <div className="p-4 border-b border-gray-800 flex items-center justify-between">
                   <div>{logo || defaultLogo}</div>
-                  <button onClick={() => setIsMobileSidebarOpen(false)} className="p-2 rounded-md hover:bg-gray-100">
-                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <button onClick={() => setIsMobileSidebarOpen(false)} className="p-2 rounded-md hover:bg-gray-700">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
@@ -178,13 +200,17 @@ export const MainLayout = ({
           </div>
         </>
       )}
-      <main className="flex-1 overflow-y-auto w-full">
-        {/* Top bar */}
-      
-        <div className="p-4 sm:p-6 lg:p-8">
-          {children}
-        </div>
-      </main>
+      {/* Right side: Header + Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header on top */}
+        <Navigation />
+        {/* Content below header */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-4 sm:p-6 lg:p-8">
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 };

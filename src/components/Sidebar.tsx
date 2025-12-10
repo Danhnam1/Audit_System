@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import Logo from '../../public/icon/logo.png';
+import AA from '../../public/icon/A.png';
 
 export interface SidebarMenuItem {
   icon?: ReactNode;
@@ -41,6 +43,7 @@ export interface SidebarProps {
   };
   theme?: SidebarTheme;
   className?: string;
+  isCollapsed?: boolean;
 }
 
 const depthIndentClasses = ['pl-0', 'pl-4', 'pl-6', 'pl-8'];
@@ -50,34 +53,43 @@ const getIndentClass = (depth: number) => {
   return depthIndentClasses[index];
 };
 
-export const Sidebar = ({ logo: _logo, menuItems, teams, user: _user, theme, className = '' }: SidebarProps) => {
-  // Default theme (Aviation Blue - Primary colors)
+export const Sidebar = ({ logo: _logo, menuItems, teams, user: _user, theme, className = '', isCollapsed = false }: SidebarProps) => {
+  // Default theme (Dark Sidebar)
   const defaultTheme: SidebarTheme = {
-    activeBg: 'bg-primary-50',
-    activeText: 'text-primary-600',
-    inactiveText: 'text-gray-700',
-    hoverBg: 'hover:bg-gray-100',
-    avatarBg: 'bg-primary-100',
-    avatarText: 'text-primary-600',
-    badgeBg: 'bg-gray-100',
-    badgeText: 'text-gray-600',
+    activeBg: 'bg-[#f2f9ff]',           // Màu nền khi active
+    activeText: 'text-[#008cff]',            // Màu chữ khi active
+    inactiveText: 'text-[5f5f5f]',       // Màu chữ khi không active (THAY ĐỔI TẠI ĐÂY)
+    hoverBg: 'hover:bg-[#f2f9ff]',      // Màu nền khi hover (THAY ĐỔI TẠI ĐÂY)
+    avatarBg: 'bg-gray-700',
+    avatarText: 'text-gray-300',
+    badgeBg: 'bg-gray-700',
+    badgeText: 'text-gray-300',
   };
 
   const currentTheme = { ...defaultTheme, ...theme };
 
   return (
-    <aside className={`w-[280px] h-screen bg-white border-r border-gray-200 flex flex-col ${className}`}>
-      
+    <aside className={`${isCollapsed ? 'w-[70px]' : 'w-[280px]'} h-screen bg-white border-r flex flex-col transition-all duration-300 ${className}`}>
+      <div className="w-auto h-20 overflow-hidden">
+    <img
+  src={isCollapsed ? AA : Logo}
+  alt="Logo"
+  className="w-full h-full object-contain"
+/>
+      </div>
+
 
       {/* Menu Items */}
-      <nav className="flex-1 overflow-y-auto py-4">
+      <nav className="flex-1 overflow-y-auto ">
         <div className="px-3 space-y-1">
           {menuItems.map((item, index) =>
             item.children && item.children.length > 0 ? (
               <div key={`group-${index}`} className="pt-4">
-                <div className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                  {item.label}
-                </div>
+                {!isCollapsed && (
+                  <div className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    {item.label}
+                  </div>
+                )}
                 <div className="space-y-1">
                   {item.children.map((child, childIndex) => (
                     <MenuLink
@@ -85,6 +97,7 @@ export const Sidebar = ({ logo: _logo, menuItems, teams, user: _user, theme, cla
                       item={child}
                       depth={1}
                       currentTheme={currentTheme}
+                      isCollapsed={isCollapsed}
                     />
                   ))}
                 </div>
@@ -95,6 +108,7 @@ export const Sidebar = ({ logo: _logo, menuItems, teams, user: _user, theme, cla
                 item={item}
                 depth={0}
                 currentTheme={currentTheme}
+                isCollapsed={isCollapsed}
               />
             )
           )}
@@ -150,9 +164,10 @@ interface MenuLinkProps {
   item: SidebarMenuItem;
   depth: number;
   currentTheme: SidebarTheme;
+  isCollapsed?: boolean;
 }
 
-const MenuLink = ({ item, depth, currentTheme }: MenuLinkProps) => {
+const MenuLink = ({ item, depth, currentTheme, isCollapsed = false }: MenuLinkProps) => {
   if (!item.path) return null;
 
   const indentClass = getIndentClass(depth);
@@ -160,8 +175,9 @@ const MenuLink = ({ item, depth, currentTheme }: MenuLinkProps) => {
   return (
     <NavLink
       to={item.path}
+      title={isCollapsed ? item.label : undefined}
       className={({ isActive }) =>
-        `flex items-center gap-3 ${indentClass} pr-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+        `flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} ${indentClass} pr-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
           isActive
             ? `${currentTheme.activeBg} ${currentTheme.activeText}`
             : `${currentTheme.inactiveText} ${currentTheme.hoverBg}`
@@ -169,11 +185,15 @@ const MenuLink = ({ item, depth, currentTheme }: MenuLinkProps) => {
       }
     >
       {item.icon && <span className="w-5 h-5 flex items-center justify-center">{item.icon}</span>}
-      <span className="flex-1">{item.label}</span>
-      {item.badge && (
-        <span className={`px-2 py-0.5 text-xs font-medium ${currentTheme.badgeBg} ${currentTheme.badgeText} rounded`}>
-          {item.badge}
-        </span>
+      {!isCollapsed && (
+        <>
+          <span className="flex-1">{item.label}</span>
+          {item.badge && (
+            <span className={`px-2 py-0.5 text-xs font-medium ${currentTheme.badgeBg} ${currentTheme.badgeText} rounded`}>
+              {item.badge}
+            </span>
+          )}
+        </>
       )}
     </NavLink>
   );

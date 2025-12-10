@@ -1,11 +1,32 @@
 import { useNavigate } from "react-router-dom";
+import { useState, useRef, useEffect } from "react";
 import useAuthStore from "../store/useAuthStore";
 import { NotificationBell } from "./NotificationBell";
+import { Sidebar } from "./Sidebar";
 
 export const Navigation = () => {
   const { token, user, logout } = useAuthStore();
   const navigate = useNavigate();
   const isAuthenticated = !!token;
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
+      }
+    };
+
+    if (isProfileOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isProfileOpen]);
 
   const handleLogout = async () => {
     await logout();
@@ -17,70 +38,45 @@ export const Navigation = () => {
   }
 
   return (
-    <nav className="bg-white shadow-md sticky top-0 z-50 border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav className="bg-white shadow-md sticky top-0 z-50 border-b border-gray-800">
+      <div className="max-w px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo/Brand Section */}
+
+
           <div className="flex items-center gap-3">
             {/* Mobile hamburger to toggle sidebar */}
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('ams:toggle-sidebar'))}
-              className="mr-1 md:hidden p-2 rounded-md hover:bg-gray-100"
+              className="mr-1 md:hidden p-3 rounded-full text-gray-800 transition-colors"
               aria-label="Toggle menu"
             >
-              <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-sky-600 to-sky-700 rounded-lg">
-              <svg
-                className="w-5 h-5 sm:w-6 sm:h-6 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
+            {/* Desktop hamburger to collapse sidebar */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('ams:toggle-sidebar-collapse'))}
+              className="mr-1 hidden md:block p-3 rounded-full transition-colors"
+              aria-label="Toggle sidebar collapse"
+            >
+              <svg className="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
-            </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold text-gray-900">
-                AMS System
-              </h1>
-              <p className="text-xs text-gray-500 hidden sm:block">
-                Audit Management System
-              </p>
+            </button>
+<div>
+  <h1 className="text-gray-800 font-bold text-xl">Hi,  {user?.fullName}</h1>
             </div>
           </div>
+       
 
           {/* User Info & Actions */}
           <div className="flex items-center gap-3 sm:gap-4">
-            {/* User Badge */}
-            <div className="flex items-center gap-2 bg-gradient-to-r from-sky-50 to-sky-100 px-3 sm:px-4 py-2 rounded-lg border border-sky-300">
-              <div className="w-8 h-8 bg-gradient-to-r from-sky-600 to-sky-700 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-semibold">
-                  {user?.fullName?.charAt(0)}
-                </span>
-              </div>
-              <div className="hidden md:block">
-                <p className="text-xs text-gray-500">Welcome,</p>
-                <p className="text-sm font-semibold text-gray-900">
-                  {user?.fullName}
-                </p>
-              </div>
-              <div className="md:hidden">
-                <p className="text-sm font-semibold text-gray-900">
-                  {user?.fullName?.split(" ")[0]}
-                </p>
-              </div>
-            </div>
+            
 
             {/* Role Badge */}
-            <div className="hidden sm:flex items-center gap-2 bg-sky-100 text-sky-700 px-3 py-2 rounded-lg">
+            <div className="hidden sm:flex items-center gap-2 text-gray-900 px-3 py-2 rounded-lg border border-gray-800">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
               </svg>
@@ -90,26 +86,67 @@ export const Navigation = () => {
             {/* Notification Bell */}
             <NotificationBell />
 
-            {/* Logout Button */}
-            <button
-              onClick={handleLogout}
-              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-3 sm:px-4 py-2 rounded-lg transition-all duration-200 text-sm font-medium shadow-md hover:shadow-lg flex items-center gap-2"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {/* Profile Dropdown */}
+            <div className="relative" ref={profileRef}>
+              <button
+                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                className="flex items-center gap-2 p-2 rounded-lg hover:bg-[#3d4349] transition-colors"
+                aria-label="User menu"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
-              <span className="hidden sm:inline">Logout</span>
-            </button>
+                <div className="w-9 h-9 bg-gradient-to-r from-sky-600 to-sky-700 rounded-full flex items-center justify-center border-2 border-gray-600">
+                  <span className="text-white text-sm font-semibold">
+                    {user?.fullName?.charAt(0)}
+                  </span>
+                </div>
+                <svg 
+                  className={`w-4 h-4 text-gray-400 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Dropdown Menu */}
+              {isProfileOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-[#2b3035] rounded-lg shadow-xl border border-gray-700 py-2 z-50">
+                  {/* User Info */}
+                  <div className="px-4 py-3 border-b border-gray-700">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gradient-to-r from-sky-600 to-sky-700 rounded-full flex items-center justify-center">
+                        <span className="text-white text-lg font-semibold">
+                          {user?.fullName?.charAt(0)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">{user?.fullName}</p>
+                        <p className="text-xs text-gray-400">{user?.email}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                
+
+                  {/* Logout */}
+                  <div className="border-t border-gray-700 pt-2">
+                    <button
+                      onClick={async () => {
+                        setIsProfileOpen(false);
+                        await logout();
+                        navigate('/login');
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-[#3d4349] transition-colors flex items-center gap-3"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

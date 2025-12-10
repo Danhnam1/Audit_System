@@ -177,11 +177,11 @@ const AdminDepartmentManagement = () => {
   return (
     <MainLayout user={layoutUser}>
       {/* Header */}
-      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
+      <div className="bg-[#0b112b] border-b border-primary-100 shadow-sm mb-6">
         <div className="px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-primary-600">Department Management</h1>
-            <p className="text-gray-600 text-sm mt-1">Manage organizational departments and structure</p>
+            <h1 className="text-2xl font-semibold text-white">Department Management</h1>
+            <p className="text-white text-sm mt-1">Manage organizational departments and structure</p>
           </div>
           <button 
             onClick={() => setShowCreateForm(!showCreateForm)}

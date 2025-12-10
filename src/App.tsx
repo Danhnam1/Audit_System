@@ -2,13 +2,12 @@ import { Suspense } from "react";
 import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "./contexts";
 import { SignalRProvider } from "./contexts/SignalRContext";
-import { Navigation } from "./components";
 import { AppRoutes } from "./routes/AppRoutes";
 import "./App.css";
 
 // Loading component
 const LoadingSpinner = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-100">
+  <div className="min-h-screen flex items-center justify-center bg-black">
     <div className="text-center">
       <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
       <p className="mt-4 text-gray-600">Loading...</p>
@@ -21,7 +20,6 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <SignalRProvider>
-          <Navigation />
           <Suspense fallback={<LoadingSpinner />}>
             <AppRoutes />
           </Suspense>
