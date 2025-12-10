@@ -1,7 +1,7 @@
 import { MainLayout, DepartmentIcon, UsersIcon } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect, useMemo } from 'react';
-import { StatCard, Pagination, Button } from '../../../components';
+import { Pagination, Button } from '../../../components';
 import { getDepartments, createDepartment, updateDepartment, deleteDepartment } from '../../../api/departments';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { toast } from 'react-toastify';
@@ -21,6 +21,10 @@ const AdminDepartmentManagement = () => {
   const itemsPerPage = 7;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deptToDelete, setDeptToDelete] = useState<any | null>(null);
+  
+  // Filter and search states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -169,36 +173,92 @@ const AdminDepartmentManagement = () => {
   }, [departments.length, totalPages, currentPage]);
 
   const paginatedDepartments = useMemo(() => {
+    // Filter departments based on search and filter
+    let filtered = departments;
+    
+    // Apply search filter
+    if (searchTerm.trim()) {
+      filtered = filtered.filter(dept => 
+        dept.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        dept.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        dept.ownerName.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Apply status filter (if needed in future)
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(dept => dept.status === filterStatus);
+    }
+    
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    return departments.slice(startIndex, endIndex);
-  }, [departments, currentPage]);
+    return filtered.slice(startIndex, endIndex);
+  }, [departments, currentPage, searchTerm, filterStatus]);
 
   return (
     <MainLayout user={layoutUser}>
       {/* Header */}
-      <div className="bg-[#0b112b] border-b border-primary-100 shadow-sm mb-6">
-        <div className="px-6 py-4 flex items-center justify-between">
+      
+      <div className="  mb-6 px-6">
+        <div className="rounded-xl border-b  shadow-sm  border-primary-100 bg-white px-6 py-8 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-white">Department Management</h1>
-            <p className="text-white text-sm mt-1">Manage organizational departments and structure</p>
+            <h1 className="text-2xl font-semibold text-black">Department Management</h1>
+        
           </div>
-          <button 
+          <div className="flex items-center gap-3">
+       
+           <button 
+             
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Import 
+            </button>
+               <button 
             onClick={() => setShowCreateForm(!showCreateForm)}
             className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
           >
             + Create Department
           </button>
+            </div>
         </div>
       </div>
 
       <div className="px-6 pb-6 space-y-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard title="Total Departments" value={stats.total.toString()} icon={<DepartmentIcon />} variant="primary" />
-          {/* <StatCard title="Active Departments" value={stats.active.toString()} icon={<DepartmentIcon />} variant="primary-light" /> */}
-          <StatCard title="Total Staff" value={stats.totalStaff.toString()} icon={<UsersIcon />} variant="primary-medium" />
-          {/* <StatCard title="Active Audits" value={stats.totalAudits.toString()} icon={<ChartBarIcon />} variant="primary-dark" /> */}
+        {/* Search and Filter Section */}
+        <div className="flex items-center justify-between gap-4">
+          {/* Stats Card - Compact Version */}
+      
+          
+          {/* Search Box */}
+          <div className="flex-1 max-w-md">
+            <div className="relative">
+              <svg 
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search departments..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
+              />
+            </div>
+          </div>
+              <div className="bg-white rounded-md px-4 p-2 shadow-sm border border-gray-200 gap-3 flex items-center ">
+          
+              <p className="text-xs text-gray-600 font-medium">Total Departments :</p>
+              <p className="text-base font-bold text-black">{stats.total}</p>
+          
+          </div>
+        
         </div>
 
         {loading && (
@@ -207,126 +267,181 @@ const AdminDepartmentManagement = () => {
           </div>
         )}
 
-        {/* Create Department Form */}
+        {/* Create Department Modal */}
         {showCreateForm && (
-          <form onSubmit={handleCreate} className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <h2 className="text-lg font-semibold text-primary-600 mb-4">Create New Department</h2>
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fadeIn">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300"
+              onClick={() => setShowCreateForm(false)}
+            />
             
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Department Name *</label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    type="text"
-                    placeholder="e.g., Aircraft Engineering"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    required
-                  />
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-hidden transform transition-all duration-300 scale-100 animate-slideUp">
+              <form onSubmit={handleCreate} className="flex flex-col max-h-[90vh]">
+                {/* Modal Header */}
+                <div className="flex-shrink-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-white">Create New Department</h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors duration-200"
+                  >
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Department Code *</label>
-                  <input
-                    value={form.code}
-                    onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    type="text"
-                    placeholder="e.g., AE"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    required
-                  />
+
+                {/* Modal Body */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Department Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        type="text"
+                        placeholder="Enter department name"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Department Code <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={form.code}
+                        onChange={(e) => setForm({ ...form, code: e.target.value })}
+                        type="text"
+                        placeholder="Enter code"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                    <textarea
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      rows={4}
+                      placeholder="Enter department description..."
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 resize-none"
+                    ></textarea>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  rows={3}
-                  placeholder="Department description and responsibilities..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                ></textarea>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <Button type="submit" disabled={creating} isLoading={creating} variant="primary" size="md">
-                  Create Department
-                </Button>
-                <Button 
-                  type="button"
-                  onClick={() => setShowCreateForm(false)}
-                  variant="secondary"
-                  size="md"
-                >
-                  Cancel
-                </Button>
-              </div>
+                {/* Modal Footer */}
+                <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
+                  <Button 
+                    type="button"
+                    onClick={() => setShowCreateForm(false)}
+                    variant="secondary"
+                    size="md"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={creating} isLoading={creating} variant="primary" size="md">
+                    Create Department
+                  </Button>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
         )}
 
+        {/* Edit Department Modal */}
         {editOpen && (
-          <form onSubmit={handleUpdate} className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <h2 className="text-lg font-semibold text-primary-600 mb-4">Edit Department</h2>
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => { setEditOpen(false); setEditingDept(null); }}
+            />
             
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Department Name *</label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    type="text"
-                    placeholder="Department name"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    required
-                  />
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-y-auto">
+              <form onSubmit={handleUpdate}>
+                {/* Modal Header */}
+                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-xl z-10">
+                  <h2 className="text-xl font-semibold text-gray-900">Edit Department</h2>
+                  <button
+                    type="button"
+                    onClick={() => { setEditOpen(false); setEditingDept(null); }}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Department Code *</label>
-                  <input
-                    value={form.code}
-                    onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    type="text"
-                    placeholder="Code"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    required
-                  />
+
+                {/* Modal Body */}
+                <div className="p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Department Name *</label>
+                      <input
+                        value={form.name}
+                        onChange={(e) => setForm({ ...form, name: e.target.value })}
+                        type="text"
+                        placeholder="Department name"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Department Code *</label>
+                      <input
+                        value={form.code}
+                        onChange={(e) => setForm({ ...form, code: e.target.value })}
+                        type="text"
+                        placeholder="Code"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      rows={3}
+                      placeholder="Description"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    ></textarea>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  rows={3}
-                  placeholder="Description"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                ></textarea>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <Button type="submit" disabled={updating} isLoading={updating} variant="primary" size="md">
-                  Save Changes
-                </Button>
-                <Button 
-                  type="button"
-                  onClick={() => { setEditOpen(false); setEditingDept(null); }}
-                  variant="secondary"
-                  size="md"
-                >
-                  Cancel
-                </Button>
-              </div>
+                {/* Modal Footer */}
+                <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3 rounded-b-xl">
+                  <Button 
+                    type="button"
+                    onClick={() => { setEditOpen(false); setEditingDept(null); }}
+                    variant="secondary"
+                    size="md"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={updating} isLoading={updating} variant="primary" size="md">
+                    Save Changes
+                  </Button>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
         )}
 
         {/* Departments Table */}
         <div className="bg-white rounded-xl shadow-md overflow-hidden font-noto">
-        <div className="bg-white p-4">
+          <div className="bg-white p-4">
       
           
           <div className="overflow-x-auto">
@@ -387,7 +502,7 @@ const AdminDepartmentManagement = () => {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => openEdit(dept)}
-                          className="p-1.5 text-gray-600 hover:text-primary-600 hover:bg-gray-100 rounded transition-colors"
+                          className="p-1.5 text-orange-400 hover:bg-gray-100 rounded transition-colors"
                           title="Edit"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -399,8 +514,8 @@ const AdminDepartmentManagement = () => {
                           disabled={deletingId === (dept.deptId ?? dept.id)}
                           className={`p-1.5 rounded transition-colors ${
                             deletingId === (dept.deptId ?? dept.id)
-                              ? 'text-gray-400 cursor-not-allowed'
-                              : 'text-gray-600 hover:text-red-600 hover:bg-gray-100'
+                              ? 'text-red-600 cursor-not-allowed'
+                              : 'text-red-600 hover:text-red-600 hover:bg-gray-100'
                           }`}
                           title="Delete"
                         >

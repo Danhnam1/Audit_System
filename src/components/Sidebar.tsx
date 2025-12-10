@@ -69,7 +69,7 @@ export const Sidebar = ({ logo: _logo, menuItems, teams, user: _user, theme, cla
   const currentTheme = { ...defaultTheme, ...theme };
 
   return (
-    <aside className={`${isCollapsed ? 'w-[70px]' : 'w-[280px]'} h-screen bg-white border-r flex flex-col transition-all duration-300 ${className}`}>
+    <aside className={`${isCollapsed ? 'w-[70px]' : 'w-[280px]'} h-screen bg-white border-r flex flex-col transition-all duration-300 shadow-md ${className}`}>
       <div className="w-auto h-20 overflow-hidden">
     <img
   src={isCollapsed ? AA : Logo}
@@ -80,7 +80,7 @@ export const Sidebar = ({ logo: _logo, menuItems, teams, user: _user, theme, cla
 
 
       {/* Menu Items */}
-      <nav className="flex-1 overflow-y-auto ">
+      <nav className="flex-1 overflow-y-auto  ">
         <div className="px-3 space-y-1">
           {menuItems.map((item, index) =>
             item.children && item.children.length > 0 ? (
