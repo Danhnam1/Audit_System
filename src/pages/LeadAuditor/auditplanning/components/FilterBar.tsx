@@ -26,15 +26,15 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   totalCount: _totalCount,
 }) => {
   return (
-    <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div className="bg-white p-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Department Filter */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
           <select
             value={filterDepartment}
             onChange={(e) => onFilterDepartmentChange(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           >
             <option value="">All Departments</option>
             {departments.map((dept) => (
@@ -51,7 +51,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <select
             value={sortDateOrder}
             onChange={(e) => onSortDateOrderChange(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           >
             <option value="">Default</option>
             <option value="desc">Newest to Oldest</option>
@@ -65,7 +65,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <select
             value={filterStatus}
             onChange={(e) => onFilterStatusChange(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           >
             <option value="">All Status</option>
             <option value="Draft">Draft</option>
@@ -77,15 +77,14 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
       </div>
 
-      {/* Clear Filters & Results Count */}
-      <div className="mt-3 flex items-center justify-between">
+      {/* Clear Filters */}
+      <div className="mt-4 pt-3 border-t border-gray-200">
         <button
           onClick={onClearFilters}
           className="text-sm text-primary-600 hover:text-primary-700 font-medium"
         >
           Clear all filters
         </button>
-        
       </div>
     </div>
   );

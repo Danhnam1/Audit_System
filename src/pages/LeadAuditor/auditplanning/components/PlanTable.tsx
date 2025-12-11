@@ -45,7 +45,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         header: 'No.',
         cellClassName: 'whitespace-nowrap',
         render: (_, index) => (
-          <span className="text-sm font-semibold text-primary-700">{startIndex + index + 1}</span>
+          <span className="text-sm text-gray-700">{startIndex + index + 1}</span>
         ),
       },
       {
@@ -53,7 +53,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         header: 'Title',
         render: (plan) => (
           <div className="max-w-[250px]">
-            <p className="text-sm font-semibold text-gray-900">{plan.title || 'Untitled'}</p>
+            <p className="text-ms font-bold text-black">{plan.title || 'Untitled'}</p>
           </div>
         ),
       },
@@ -62,7 +62,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         header: 'Type',
         cellClassName: 'whitespace-nowrap',
         render: (plan) => (
-          <span className={`px-2 py-0.5 text-xs rounded ${getBadgeVariant('primary-light')}`}>
+          <span className="text-ms text-[#5b6166]">
             {plan.type || 'General'}
           </span>
         ),
@@ -71,18 +71,18 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         key: 'startDate',
         header: 'Start Date',
         cellClassName: 'whitespace-nowrap',
-        render: (plan) => <p className="text-sm text-gray-900">{formatDate(plan.startDate)}</p>,
+        render: (plan) => <p className="text-ms text-[#5b6166]">{formatDate(plan.startDate)}</p>,
       },
       {
         key: 'endDate',
         header: 'End Date',
         cellClassName: 'whitespace-nowrap',
-        render: (plan) => <p className="text-sm text-gray-900">{formatDate(plan.endDate)}</p>,
+        render: (plan) => <p className="text-ms text-[#5b6166]">{formatDate(plan.endDate)}</p>,
       },
       {
         key: 'scope',
         header: 'Scope',
-        render: (plan) => <p className="text-sm font-medium text-gray-900">{plan.scope || 'N/A'}</p>,
+        render: (plan) => <p className="text-ms text-[#5b6166]">{plan.scope || 'N/A'}</p>,
       },
       {
         key: 'status',
@@ -102,13 +102,13 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         align: 'center',
         cellClassName: 'whitespace-nowrap text-center',
         render: (plan) => (
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-2">
             <button
               onClick={() => onViewDetails(plan.auditId)}
-              className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+              className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
               title="View Findings"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
               </svg>

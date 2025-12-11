@@ -1,5 +1,5 @@
 import { MainLayout, UsersIcon } from '../../../layouts';
-import  useAuthStore  from '../../../store/useAuthStore';
+import useAuthStore from '../../../store/useAuthStore';
 import { useState, useEffect, useRef } from 'react';
 import { StatCard, Pagination } from '../../../components';
 import authService from '../../../hooks/auth';
@@ -41,14 +41,14 @@ interface UIUser {
 }
 
 const AdminUserManagement = () => {
-  
+
   const { user } = useAuthStore();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [users, setUsers] = useState<UIUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
-  const [departments, setDepartments] = useState<Array<{deptId?: number | string; name?: string}>>([]);
+  const [departments, setDepartments] = useState<Array<{ deptId?: number | string; name?: string }>>([]);
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,14 +58,15 @@ const AdminUserManagement = () => {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+  const [searchTerm, setSearchTerm] = useState('');
+
   // Reset password modal state
   const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
   const [selectedUserForReset, setSelectedUserForReset] = useState<UIUser | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isResettingPassword, setIsResettingPassword] = useState(false);
-  
+
   const [formData, setFormData] = useState<CreateUserForm>({
     fullName: '',
     email: '',
@@ -101,10 +102,10 @@ const AdminUserManagement = () => {
         toast.error('Please enter the password.');
         return false;
       }
-     if (formData.password.length < 6 || !specialCharRegex.test(formData.password)) {
-  toast.error('Password must be at least 6 characters and contain at least one special character.');
-  return false;
-}
+      if (formData.password.length < 6 || !specialCharRegex.test(formData.password)) {
+        toast.error('Password must be at least 6 characters and contain at least one special character.');
+        return false;
+      }
     }
     if (!formData.role) {
       toast.error('Please select a role.');
@@ -119,7 +120,7 @@ const AdminUserManagement = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -131,7 +132,7 @@ const AdminUserManagement = () => {
       if (editingUserId) {
         const updatePayload = {
           fullName: formData.fullName,
-            roleName: formData.role,
+          roleName: formData.role,
           // Send null instead of 0 to indicate no department; backend typically treats null as absence
           deptId: formData.deptId ? Number(formData.deptId) : null,
           isActive: true,
@@ -166,12 +167,12 @@ const AdminUserManagement = () => {
       console.log('Response.message:', response?.message);
       console.log('Type of response:', typeof response);
       console.log('================================');
-      
+
       // If we reach here without error, registration was successful
       // The API call didn't throw, so it succeeded
       await fetchUsers()
       toast.success('User created successfully!');
-      
+
       // Reset form
       setFormData({
         fullName: '',
@@ -180,7 +181,7 @@ const AdminUserManagement = () => {
         role: '',
         deptId: null,
       });
-   
+
       setShowCreateForm(false);
     } catch (err: any) {
       console.error('Registration error:', err);
@@ -221,9 +222,9 @@ const AdminUserManagement = () => {
         console.warn('Failed to fetch departments', err)
       }
 
-  // Use centralized API helper which normalizes envelopes
-  const { getAdminUsers } = await import('../../../api/adminUsers');
-  const values: ApiUser[] = (await getAdminUsers()) as any;
+      // Use centralized API helper which normalizes envelopes
+      const { getAdminUsers } = await import('../../../api/adminUsers');
+      const values: ApiUser[] = (await getAdminUsers()) as any;
 
       const mapped: UIUser[] = (values || []).map(v => {
         const deptIdVal = v.deptId ?? null
@@ -319,7 +320,11 @@ const AdminUserManagement = () => {
   const filteredUsers = users.filter(u => {
     const roleMatch = filterRole === 'all' || u.role === filterRole;
     const statusMatch = filterStatus === 'all' || u.status === filterStatus;
-    return roleMatch && statusMatch;
+    const searchMatch = searchTerm === '' ||
+      u.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.role.toLowerCase().includes(searchTerm.toLowerCase());
+    return roleMatch && statusMatch && searchMatch;
   });
 
   // Pagination logic
@@ -348,13 +353,13 @@ const AdminUserManagement = () => {
       const validExtensions = ['.xlsx', '.xls', '.csv'];
       const fileName = file.name.toLowerCase();
       const isValid = validExtensions.some(ext => fileName.endsWith(ext));
-      
+
       if (!isValid) {
         toast.error('Please select a valid Excel or CSV file (.xlsx, .xls, .csv)');
         e.target.value = '';
         return;
       }
-      
+
       setImportFile(file);
     }
   };
@@ -370,14 +375,14 @@ const AdminUserManagement = () => {
     try {
       await bulkRegisterUsers(importFile);
       toast.success('Users imported successfully!');
-      
+
       // Reset and close modal
       setImportFile(null);
       setShowImportModal(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      
+
       // Refresh user list
       await fetchUsers();
     } catch (err: any) {
@@ -421,17 +426,17 @@ const AdminUserManagement = () => {
       toast.error('Please enter a new password');
       return;
     }
-    
+
     if (newPassword.length < 6) {
       toast.error('Password must be at least 6 characters');
       return;
     }
-    
+
     if (!specialCharRegex.test(newPassword)) {
       toast.error('Password must contain at least one special character');
       return;
     }
-    
+
     if (newPassword !== confirmPassword) {
       toast.error('Passwords do not match');
       return;
@@ -448,7 +453,7 @@ const AdminUserManagement = () => {
         email: selectedUserForReset.email,
         newPassword: newPassword
       });
-      
+
       toast.success(`Password reset successfully for ${selectedUserForReset.fullName}`);
       handleCloseResetPasswordModal();
     } catch (err: any) {
@@ -462,23 +467,22 @@ const AdminUserManagement = () => {
   return (
     <MainLayout user={layoutUser}>
       {/* Header */}
-      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
-        <div className="px-6 py-4 flex items-center justify-between">
+      <div className="mb-6 px-6">
+        <div className="rounded-xl border-b shadow-sm border-primary-100 bg-white px-6 py-8 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-primary-600">User Management</h1>
-            <p className="text-gray-600 text-sm mt-1">Manage system users and permissions</p>
+            <h1 className="text-2xl font-semibold text-black">User Management</h1>
           </div>
-          <div className="flex gap-3">
-            <button 
+          <div className="flex items-center gap-3">
+            <button
               onClick={() => setShowImportModal(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md flex items-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              Import Users
+              Import
             </button>
-            <button 
+            <button
               onClick={() => setShowCreateForm(!showCreateForm)}
               className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
             >
@@ -489,18 +493,72 @@ const AdminUserManagement = () => {
       </div>
 
       <div className="px-6 pb-6 space-y-6">
+        {/* Search and Filter Section */}
+        <div className="flex items-center justify-between gap-4">
+          {/* Search Box */}
+          <div className="flex-1 max-w-md flex items-center">
+            <div className="relative">
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm bg-white"
+              />
+            </div>
+             <div className="flex flex-wrap items-center justify-end gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mr-2"></label>
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="all">All Roles</option>
+                <option value="Admin">Admin</option>
+                <option value="LeadAuditor">Lead Auditor</option>
+                <option value="Auditor">Auditor</option>
+                <option value="AuditeeOwner">Auditee Owner</option>
+                <option value="CAPAOwner">CAPA Owner</option>
+                <option value="Director">Director</option>
+              </select>
+            </div>
+            {/* <div>
+              <label className="text-sm font-medium text-gray-700 mr-2">Status:</label>
+              <select 
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="all">All Status</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+                <option value="Suspended">Suspended</option>
+              </select>
+            </div> */}
+
+          </div>
+          </div>
+         
+          <div className="bg-white rounded-md px-4 p-2 shadow-sm border border-gray-200 gap-3 flex items-center">
+            <p className="text-xs text-gray-600 font-medium">Total Users :</p>
+            <p className="text-base font-bold text-black">{stats.total}</p>
+          </div>
+        </div>
+
         {loadingUsers && (
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg">
-            Loading user list...
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700 p-4 rounded">
+            Loading users…
           </div>
         )}
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard title="Total Users" value={stats.total.toString()} icon={<UsersIcon />} variant="primary" />
-          {/* <StatCard title="Active Users" value={stats.active.toString()} icon={<UsersIcon />} variant="primary-light" /> */}
-          {/* <StatCard title="Inactive Users" value={stats.inactive.toString()} icon={<UsersIcon />} variant="gray" />
-          <StatCard title="Unique Roles" value={stats.roles.toString()} icon={<SettingsIcon />} variant="primary-medium" /> */}
-        </div>
 
         {/* Create/Edit User Modal */}
         {showCreateForm && (
@@ -509,7 +567,7 @@ const AdminUserManagement = () => {
               className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300"
               onClick={handleCancel}
             />
-            
+
             <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-hidden transform transition-all duration-300 scale-100 animate-slideUp">
               <form onSubmit={handleSubmit} className="flex flex-col max-h-[90vh]">
                 <div className="flex-shrink-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex items-center justify-between">
@@ -559,7 +617,7 @@ const AdminUserManagement = () => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Role <span className="text-red-500">*</span>
                       </label>
-                      <select 
+                      <select
                         name="role"
                         value={formData.role}
                         onChange={handleInputChange}
@@ -577,7 +635,7 @@ const AdminUserManagement = () => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Department (Optional)</label>
-                      <select 
+                      <select
                         name="deptId"
                         value={formData.deptId || ''}
                         onChange={handleInputChange}
@@ -610,7 +668,7 @@ const AdminUserManagement = () => {
                 </div>
 
                 <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
-                  <button 
+                  <button
                     type="button"
                     onClick={handleCancel}
                     disabled={isSubmitting}
@@ -618,12 +676,11 @@ const AdminUserManagement = () => {
                   >
                     Cancel
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     disabled={isSubmitting}
-                    className={`bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
-                      isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
+                    className={`bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                   >
                     {isSubmitting ? (editingUserId ? 'Saving...' : 'Creating...') : (editingUserId ? 'Save Changes' : 'Create User')}
                   </button>
@@ -633,140 +690,106 @@ const AdminUserManagement = () => {
           </div>
         )}
 
-        {/* Filters */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mr-2">Role:</label>
-              <select 
-                value={filterRole}
-                onChange={(e) => setFilterRole(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              >
-                <option value="all">All Roles</option>
-                <option value="Admin">Admin</option>
-                <option value="LeadAuditor">Lead Auditor</option>
-                <option value="Auditor">Auditor</option>
-                <option value="AuditeeOwner">Auditee Owner</option>
-                <option value="CAPAOwner">CAPA Owner</option>
-                <option value="Director">Director</option>
-              </select>
-            </div>
-            {/* <div>
-              <label className="text-sm font-medium text-gray-700 mr-2">Status:</label>
-              <select 
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              >
-                <option value="all">All Status</option>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-                <option value="Suspended">Suspended</option>
-              </select>
-            </div> */}
-           
-          </div>
-        </div>
+    
 
         {/* Users Table */}
         <div className="bg-white rounded-xl shadow-md overflow-hidden font-noto">
           <div className="bg-white p-4">
-          
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">No.</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Role</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Department</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white">
-                {paginatedUsers.map((usr, idx) => {
-                  const rowNumber = startIndex + idx + 1;
-                  return (
-                  <tr key={usr.userId || idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className="text-sm text-gray-700">{rowNumber}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-semibold text-sm">
-                          {usr.fullName.split(' ').map(n => n[0]).join('')}
-                        </div>
-                        <span className="text-ms font-bold text-black">{usr.fullName}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-ms text-[#5b6166]">{usr.email}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-ms text-[#5b6166]">{usr.role}</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-ms font-noto text-[#5b6166]">{usr.department}</span>
-                    </td>
-                    
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEdit(usr)}
-                          className="p-1.5 text-orange-400 hover:bg-gray-100 rounded transition-colors"
-                          title="Edit"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleOpenResetPassword(usr)}
-                          className="p-1.5 text-yellow-600 hover:bg-gray-100 rounded transition-colors"
-                          title="Reset Password"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleDelete(usr.userId)}
-                          className="p-1.5 text-red-600 hover:bg-gray-100 rounded transition-colors"
-                          title="Delete"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                  );
-                })}
-                {paginatedUsers.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-sm text-gray-500 text-center">
-                      No users available.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
 
-          {/* Pagination Controls */}
-          {filteredUsers.length > 0 && (
-            <div className="px-6 py-4 border-t border-gray-200 flex justify-center">
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-              />
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">No.</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Name</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Role</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Department</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {paginatedUsers.map((usr, idx) => {
+                    const rowNumber = startIndex + idx + 1;
+                    return (
+                      <tr key={usr.userId || idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <span className="text-sm text-gray-700">{rowNumber}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-semibold text-sm">
+                              {usr.fullName.split(' ').map(n => n[0]).join('')}
+                            </div>
+                            <span className="text-ms font-bold text-black">{usr.fullName}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-ms text-[#5b6166]">{usr.email}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-ms text-[#5b6166]">{usr.role}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-ms font-noto text-[#5b6166]">{usr.department}</span>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleEdit(usr)}
+                              className="p-1.5 text-orange-400 hover:bg-gray-100 rounded transition-colors"
+                              title="Edit"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleOpenResetPassword(usr)}
+                              className="p-1.5 text-yellow-600 hover:bg-gray-100 rounded transition-colors"
+                              title="Reset Password"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleDelete(usr.userId)}
+                              className="p-1.5 text-red-600 hover:bg-gray-100 rounded transition-colors"
+                              title="Delete"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {paginatedUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-sm text-gray-500 text-center">
+                        No users available.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
+
+            {/* Pagination Controls */}
+            {filteredUsers.length > 0 && (
+              <div className="px-6 py-4 border-t border-gray-200 flex justify-center">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -785,7 +808,7 @@ const AdminUserManagement = () => {
                 </svg>
               </button>
             </div>
-            
+
             <div className="px-6 py-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -831,9 +854,8 @@ const AdminUserManagement = () => {
                 <button
                   onClick={handleBulkImport}
                   disabled={!importFile || isImporting}
-                  className={`flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
-                    !importFile || isImporting ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
+                  className={`flex-1 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${!importFile || isImporting ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                 >
                   {isImporting ? 'Importing...' : 'Import Users'}
                 </button>
@@ -866,7 +888,7 @@ const AdminUserManagement = () => {
                 </svg>
               </button>
             </div>
-            
+
             <div className="px-6 py-6 space-y-4">
               {/* User Info */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
@@ -929,9 +951,8 @@ const AdminUserManagement = () => {
                 <button
                   onClick={handleResetPassword}
                   disabled={isResettingPassword || !newPassword || !confirmPassword}
-                  className={`flex-1 bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
-                    isResettingPassword || !newPassword || !confirmPassword ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
+                  className={`flex-1 bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${isResettingPassword || !newPassword || !confirmPassword ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
                 >
                   {isResettingPassword ? 'Resetting...' : 'Reset Password'}
                 </button>

@@ -576,12 +576,11 @@ const LeadAuditorAuditPlanning = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
-        <div className="px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-primary-600">Audit Planning</h1>
-            <p className="text-gray-600 text-sm mt-1">View audit plans and their findings</p>
-          </div>
+      {/* Header */}
+      <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-6 animate-slideInLeft">
+        <div className="px-6 py-4">
+          <h1 className="text-2xl font-bold text-black">Audit Planning</h1>
+          <p className="text-[#5b6166] text-sm mt-1">View audit plans and their findings</p>
         </div>
       </div>
 
@@ -802,11 +801,7 @@ const LeadAuditorAuditPlanning = () => {
         )}
 
         {/* Plans Table with Filters */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-            <h2 className="text-lg font-semibold text-white">Existing Audit Plans</h2>
-          </div>
-
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-100">
           <FilterBar
             filterDepartment={filterState.filterDepartment}
             sortDateOrder={filterState.sortDateOrder}
