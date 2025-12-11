@@ -174,14 +174,6 @@ const ArchivedHistoryPage = () => {
     );
   });
 
-  const getTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      'Draft Report': 'bg-gray-100 text-gray-700 border-gray-200',
-      'Final Report': 'bg-primary-100 text-primary-700 border-primary-200',
-    };
-    return colors[type] || 'bg-gray-100 text-gray-700 border-gray-200';
-  };
-
   // Handle view details
   const handleViewDetails = async (auditId: string) => {
     setSelectedAuditId(auditId);
@@ -490,46 +482,44 @@ const ArchivedHistoryPage = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
+      <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-6 animate-slideInLeft">
         <div className="px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-primary-600">Archived History</h1>
-            <p className="text-gray-600 text-sm mt-1">View archived audit plans</p>
+            <h1 className="text-2xl font-bold text-black">Archived History</h1>
+            <p className="text-[#5b6166] text-sm mt-1">View archived audit plans</p>
           </div>
         </div>
       </div>
 
       <div className="px-6 pb-6 space-y-6">
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-            <h2 className="text-lg font-semibold text-white">Archived Audit Plans</h2>
-          </div>
-
-          <div className="px-6 py-4 space-y-4">
-            {/* Search bar */}
-            <div className="flex items-center gap-4">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by title, type, status, or creator..."
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              />
-              <div className="text-sm text-gray-500">
-                {filteredAudits.length} of {audits.length} archived audits
-              </div>
+        {/* Search Section */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4 animate-slideInRight animate-delay-100">
+          <div className="flex items-center gap-4">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by title, type, status, or creator..."
+              className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
+            />
+            <div className="text-sm text-[#5b6166] whitespace-nowrap">
+              {filteredAudits.length} of {audits.length} archived audits
             </div>
-
-            {error && (
-              <div className="px-4 py-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg">
-                {error}
-              </div>
-            )}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+          {error && (
+            <div className="px-4 py-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg mt-4">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Table Section */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200 font-noto">
+          <div className="bg-white p-4">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     #
@@ -553,77 +543,84 @@ const ArchivedHistoryPage = () => {
                     Actions
                   </th>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {loading && (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-4 text-sm text-gray-500 text-center">
-                      Loading archived audits...
-                    </td>
-                  </tr>
-                )}
-                {!loading && filteredAudits.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-6 text-sm text-gray-500 text-center">
-                      {audits.length === 0
-                        ? 'No archived audits found.'
-                        : 'No audits match your search criteria.'}
-                    </td>
-                  </tr>
-                )}
-                {!loading &&
-                  filteredAudits.map((audit, idx) => (
-                    <tr key={audit.auditId} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">{idx + 1}</td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm font-medium text-gray-900">{audit.title}</span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span
-                          className={`inline-block px-3 py-1 rounded-full text-xs font-semibold border ${getTypeColor(
-                            audit.type
-                          )}`}
-                        >
-                          {audit.type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span
-                          className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
-                            audit.status
-                          )}`}
-                        >
-                          {audit.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className="text-sm text-gray-600">{audit.createdDate || '—'}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className="text-sm text-gray-600">{audit.createdBy || '—'}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <button
-                          onClick={() => handleViewDetails(audit.auditId)}
-                          className="px-3 py-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
-                        >
-                          View Details
-                        </button>
+                </thead>
+                <tbody className="bg-white">
+                  {loading && (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-8 text-sm text-gray-500 text-center">
+                        Loading archived audits...
                       </td>
                     </tr>
-                  ))}
-              </tbody>
-            </table>
+                  )}
+                  {!loading && filteredAudits.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-8 text-sm text-gray-500 text-center">
+                        {audits.length === 0
+                          ? 'No archived audits found.'
+                          : 'No audits match your search criteria.'}
+                      </td>
+                    </tr>
+                  )}
+                  {!loading &&
+                    filteredAudits.map((audit, idx) => (
+                      <tr key={audit.auditId} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4">
+                          <span className="text-sm text-gray-700">{idx + 1}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-ms font-bold text-black">{audit.title}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-ms text-[#5b6166]">{audit.type}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                              audit.status
+                            )}`}
+                          >
+                            {audit.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-ms text-[#5b6166]">{audit.createdDate || '—'}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-ms text-[#5b6166]">{audit.createdBy || '—'}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={() => handleViewDetails(audit.auditId)}
+                            className="p-1.5 text-blue-600 hover:bg-gray-100 rounded transition-colors"
+                            title="View Details"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Detail Modal */}
       {showDetailModal && createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black bg-opacity-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 animate-fadeIn">
+          <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300" onClick={() => {
+            setShowDetailModal(false);
+            setSelectedAuditId('');
+            setAuditDetail(null);
+            setFindings([]);
+          }} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slideUp">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-primary flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-primary-600 to-primary-700 rounded-t-xl flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Audit Plan Details</h2>
               <button
                 onClick={() => {

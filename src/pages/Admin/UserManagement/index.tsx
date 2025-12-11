@@ -502,98 +502,114 @@ const AdminUserManagement = () => {
           <StatCard title="Unique Roles" value={stats.roles.toString()} icon={<SettingsIcon />} variant="primary-medium" /> */}
         </div>
 
-        {/* Create User Form */}
+        {/* Create/Edit User Modal */}
         {showCreateForm && (
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <h2 className="text-lg font-semibold text-primary-600 mb-4">{editingUserId ? 'Edit User' : 'Create New User'}</h2>
-
-            <form onSubmit={handleSubmit}>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
-                    <input
-                      type="text"
-                      name="fullName"
-                      value={formData.fullName}
-                      onChange={handleInputChange}
-                      placeholder="Enter full name"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="abc@gmail.com"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                    <select 
-                      name="role"
-                      value={formData.role}
-                      onChange={handleInputChange}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      required
-                    >
-                      <option value="">Select Role</option>
-                      <option value="Admin">Admin</option>
-                      <option value="LeadAuditor">Lead Auditor</option>
-                      <option value="Auditor">Auditor</option>
-                      <option value="AuditeeOwner">Auditee Owner</option>
-                      <option value="CAPAOwner">CAPA Owner</option>
-                      <option value="Director">Director</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Department (Optional)</label>
-                    <select 
-                      name="deptId"
-                      value={formData.deptId || ''}
-                      onChange={handleInputChange}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    >
-                      <option value="">No Department</option>
-                      {departments.map(d => (
-                        <option key={String(d.deptId)} value={String(d.deptId)}>{d.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {!editingUserId && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                      <input
-                        type="password"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleInputChange}
-                        placeholder="Enter password (min 8 characters)"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                        required
-                        minLength={6}
-                      />
-                    </div>
-                  )}
-                
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fadeIn">
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300"
+              onClick={handleCancel}
+            />
+            
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-hidden transform transition-all duration-300 scale-100 animate-slideUp">
+              <form onSubmit={handleSubmit} className="flex flex-col max-h-[90vh]">
+                <div className="flex-shrink-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-white">{editingUserId ? 'Edit User' : 'Create New User'}</h2>
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors duration-200"
+                  >
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
 
-                <div className="flex gap-3 pt-2">
-                <button 
-                    type="submit"
-                    disabled={isSubmitting}
-                    className={`bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
-                      isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    {isSubmitting ? (editingUserId ? 'Saving...' : 'Creating...') : (editingUserId ? 'Save Changes' : 'Create User')}
-                  </button>
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Full Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        name="fullName"
+                        value={formData.fullName}
+                        onChange={handleInputChange}
+                        placeholder="Enter full name"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Email <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        placeholder="abc@gmail.com"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Role <span className="text-red-500">*</span>
+                      </label>
+                      <select 
+                        name="role"
+                        value={formData.role}
+                        onChange={handleInputChange}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                        required
+                      >
+                        <option value="">Select Role</option>
+                        <option value="Admin">Admin</option>
+                        <option value="LeadAuditor">Lead Auditor</option>
+                        <option value="Auditor">Auditor</option>
+                        <option value="AuditeeOwner">Auditee Owner</option>
+                        <option value="CAPAOwner">CAPA Owner</option>
+                        <option value="Director">Director</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Department (Optional)</label>
+                      <select 
+                        name="deptId"
+                        value={formData.deptId || ''}
+                        onChange={handleInputChange}
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                      >
+                        <option value="">No Department</option>
+                        {departments.map(d => (
+                          <option key={String(d.deptId)} value={String(d.deptId)}>{d.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {!editingUserId && (
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Password <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="password"
+                          name="password"
+                          value={formData.password}
+                          onChange={handleInputChange}
+                          placeholder="Enter password (min 6 characters)"
+                          className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200"
+                          required
+                          minLength={6}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
                   <button 
                     type="button"
                     onClick={handleCancel}
@@ -602,9 +618,18 @@ const AdminUserManagement = () => {
                   >
                     Cancel
                   </button>
+                  <button 
+                    type="submit"
+                    disabled={isSubmitting}
+                    className={`bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
+                      isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    {isSubmitting ? (editingUserId ? 'Saving...' : 'Creating...') : (editingUserId ? 'Save Changes' : 'Create User')}
+                  </button>
                 </div>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
         )}
 
@@ -645,95 +670,95 @@ const AdminUserManagement = () => {
         </div>
 
         {/* Users Table */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-            <h2 className="text-lg font-semibold text-white">Users List</h2>
-          </div>
+        <div className="bg-white rounded-xl shadow-md overflow-hidden font-noto">
+          <div className="bg-white p-4">
           
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-100 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Role</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department</th>
-                  {/* <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th> */}
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">No.</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Name</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Email</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Department</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
-                {paginatedUsers.map((usr, idx) => (
-                  <tr key={usr.userId || idx} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-primary-600">{startIndex + idx + 1}</span>
+              <tbody className="bg-white">
+                {paginatedUsers.map((usr, idx) => {
+                  const rowNumber = startIndex + idx + 1;
+                  return (
+                  <tr key={usr.userId || idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-gray-700">{rowNumber}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-semibold text-sm mr-3">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-semibold text-sm">
                           {usr.fullName.split(' ').map(n => n[0]).join('')}
                         </div>
-                        <span className="text-sm font-medium text-gray-900">{usr.fullName}</span>
+                        <span className="text-ms font-bold text-black">{usr.fullName}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-gray-700">{usr.email}</span>
+                      <span className="text-ms text-[#5b6166]">{usr.email}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRoleColor(usr.role)}`}>
-                        {usr.role}
-                      </span>
+                      <span className="text-ms text-[#5b6166]">{usr.role}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-gray-700">{usr.department}</span>
+                      <span className="text-ms font-noto text-[#5b6166]">{usr.department}</span>
                     </td>
-                    {/* <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(usr.status)}`}>
-                        {usr.status}
-                      </span>
-                    </td> */}
                     
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <div className="flex items-center justify-center gap-3">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleEdit(usr)}
-                          className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                          className="p-1.5 text-orange-400 hover:bg-gray-100 rounded transition-colors"
                           title="Edit"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                         </button>
                         <button
                           onClick={() => handleOpenResetPassword(usr)}
-                          className="p-2 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors"
+                          className="p-1.5 text-yellow-600 hover:bg-gray-100 rounded transition-colors"
                           title="Reset Password"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                           </svg>
                         </button>
                         <button
                           onClick={() => handleDelete(usr.userId)}
-                          className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-1.5 text-red-600 hover:bg-gray-100 rounded transition-colors"
                           title="Delete"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
+                {paginatedUsers.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-sm text-gray-500 text-center">
+                      No users available.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
 
           {/* Pagination Controls */}
           {filteredUsers.length > 0 && (
-            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-center">
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-center">
               <Pagination
                 currentPage={currentPage}
                 totalPages={totalPages}
@@ -742,19 +767,20 @@ const AdminUserManagement = () => {
             </div>
           )}
         </div>
+        </div>
       </div>
 
       {/* Import Users Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-primary-600">Import Users from File</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] animate-fadeIn">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 animate-slideUp">
+            <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <h2 className="text-xl font-semibold text-white">Import Users from File</h2>
               <button
                 onClick={handleCloseImportModal}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors duration-200"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -826,16 +852,16 @@ const AdminUserManagement = () => {
 
       {/* Reset Password Modal */}
       {showResetPasswordModal && selectedUserForReset && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-primary-600">Reset Password</h2>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] animate-fadeIn">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 animate-slideUp">
+            <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <h2 className="text-xl font-semibold text-white">Reset Password</h2>
               <button
                 onClick={handleCloseResetPasswordModal}
                 disabled={isResettingPassword}
-                className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors duration-200 disabled:opacity-50"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>

@@ -172,7 +172,7 @@ const AuditorSchedule = () => {
       header: 'No.',
       cellClassName: 'whitespace-nowrap',
       render: (_, index) => (
-        <span className="text-sm font-semibold text-primary-700">{index + 1}</span>
+        <span className="text-sm text-gray-700">{index + 1}</span>
       ),
     },
     {
@@ -180,8 +180,8 @@ const AuditorSchedule = () => {
       header: 'Audit Plan',
       render: (row) => (
         <div className="max-w-[280px]">
-          <p className="text-sm font-semibold text-gray-900">{row.auditTitle}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{row.auditId}</p>
+          <p className="text-ms font-bold text-black">{row.auditTitle}</p>
+          <p className="text-xs text-[#5b6166] mt-0.5">{row.auditId}</p>
         </div>
       ),
     },
@@ -189,7 +189,7 @@ const AuditorSchedule = () => {
       key: 'milestoneName',
       header: 'Milestone',
       render: (row) => (
-        <span className="px-2 py-0.5 text-xs rounded bg-primary-100 text-primary-700">
+        <span className="text-ms text-[#5b6166]">
           {row.milestoneName}
         </span>
       ),
@@ -202,7 +202,7 @@ const AuditorSchedule = () => {
         const overdue = isOverdue(row.dueDate, row.status);
         return (
           <div>
-            <p className={`text-sm font-medium ${overdue ? 'text-red-600' : 'text-gray-900'}`}>
+            <p className={`text-ms font-medium ${overdue ? 'text-red-600' : 'text-[#5b6166]'}`}>
               {formatDate(row.dueDate)}
             </p>
             {overdue && (
@@ -232,8 +232,8 @@ const AuditorSchedule = () => {
       key: 'notes',
       header: 'Notes',
       render: (row) => (
-        <p className="text-sm text-gray-600 max-w-[300px] truncate" title={row.notes || ''}>
-          {row.notes || '-'}
+        <p className="text-ms text-[#5b6166] max-w-[300px] truncate" title={row.notes || ''}>
+          {row.notes || '—'}
         </p>
       ),
     },
@@ -241,72 +241,65 @@ const AuditorSchedule = () => {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
-        {/* Header consistent with Reports / Audit Planning */}
-        <div className="bg-white border-b border-primary-100 shadow-sm mb-2">
-          <div className="px-6 py-4">
-            <h1 className="text-2xl font-semibold text-primary-600">Audit Schedule</h1>
-            <p className="text-gray-600 text-sm mt-1">
-              View schedules and milestones for your assigned audit plans
-            </p>
+      {/* Header */}
+      <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-6 animate-slideInLeft">
+        <div className="px-6 py-4">
+          <h1 className="text-2xl font-bold text-black">Audit Schedule</h1>
+          <p className="text-[#5b6166] text-sm mt-1">
+            View schedules and milestones for your assigned audit plans
+          </p>
+        </div>
+      </div>
+
+      <div className="px-6 pb-6 space-y-6">
+        {/* Search bar */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4 animate-slideInRight animate-delay-100">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                placeholder="Search by audit title, ID, milestone, or notes..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full px-4 py-2.5 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
+              />
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+            </div>
+            {query && (
+              <button
+                onClick={() => setQuery('')}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="px-6 pb-6 space-y-4">
-          {/* Search bar */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  placeholder="Search by audit title, ID, milestone, or notes..."
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                <svg
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  />
-                </svg>
-              </div>
-              {query && (
-                <button
-                  onClick={() => setQuery('')}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Table card */}
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-              <h2 className="text-lg font-semibold text-white">
-                Schedules ({filteredSchedules.length})
-              </h2>
-            </div>
-            <div className="p-4">
-              <DataTable<ScheduleItem>
-                columns={columns}
-                data={filteredSchedules}
-                loading={loading}
-                loadingMessage="Loading schedules..."
-                emptyState="No schedules found for your assigned audit plans."
-                rowKey={(row) => row.scheduleId}
-                getRowClassName={() => 'transition-colors hover:bg-gray-50'}
-              />
-            </div>
+        {/* Table card */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200">
+          <div className="bg-white p-4">
+            <DataTable<ScheduleItem>
+              columns={columns}
+              data={filteredSchedules}
+              loading={loading}
+              loadingMessage="Loading schedules..."
+              emptyState="No schedules found for your assigned audit plans."
+              rowKey={(row) => row.scheduleId}
+              getRowClassName={() => 'border-b border-gray-100 transition-colors hover:bg-gray-50'}
+            />
           </div>
         </div>
       </div>

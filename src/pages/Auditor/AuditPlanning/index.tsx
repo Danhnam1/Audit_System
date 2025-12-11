@@ -1875,11 +1875,11 @@ const SQAStaffAuditPlanning = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
+      <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-6 animate-slideInLeft">
         <div className="px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-primary-600">Audit Planning</h1>
-            <p className="text-gray-600 text-sm mt-1">Create and manage audit plans</p>
+            <h1 className="text-2xl font-bold text-black">Audit Planning</h1>
+            <p className="text-[#5b6166] text-sm mt-1">Create and manage audit plans</p>
           </div>
           <button
             onClick={() => {
@@ -1907,7 +1907,7 @@ const SQAStaffAuditPlanning = () => {
                 formState.setShowForm(false);
               }
             }}
-            className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
+            className="bg-gradient-to-r from-primary-600 to-primary-700 hover:shadow-lg text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-md"
           >
             + Create New Plan
           </button>
@@ -2177,26 +2177,24 @@ const SQAStaffAuditPlanning = () => {
           </div>
         )}
 
-        {/* Plans Table with Filters */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-            <h2 className="text-lg font-semibold text-white">Existing Audit Plans</h2>
-          </div>
+        {/* Filter Section */}
+        <FilterBar
+          filterDepartment={filterState.filterDepartment}
+          sortDateOrder={filterState.sortDateOrder}
+          filterStatus={filterState.filterStatus}
+          departments={departments}
+          onFilterDepartmentChange={filterState.setFilterDepartment}
+          onSortDateOrderChange={filterState.setSortDateOrder}
+          onFilterStatusChange={filterState.setFilterStatus}
+          onClearFilters={filterState.clearFilters}
+          filteredCount={filterState.filteredPlans.length}
+          totalCount={visiblePlans.length}
+        />
 
-          <FilterBar
-            filterDepartment={filterState.filterDepartment}
-            sortDateOrder={filterState.sortDateOrder}
-            filterStatus={filterState.filterStatus}
-            departments={departments}
-            onFilterDepartmentChange={filterState.setFilterDepartment}
-            onSortDateOrderChange={filterState.setSortDateOrder}
-            onFilterStatusChange={filterState.setFilterStatus}
-            onClearFilters={filterState.clearFilters}
-            filteredCount={filterState.filteredPlans.length}
-            totalCount={visiblePlans.length}
-          />
-
-          <PlanTable
+        {/* Plans Table */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200">
+          <div className="bg-white p-4">
+            <PlanTable
             filteredPlans={filterState.filteredPlans.slice(
               (activePlansTab - 1) * pageSize,
               activePlansTab * pageSize
@@ -2219,7 +2217,7 @@ const SQAStaffAuditPlanning = () => {
             if (totalPages <= 1) return null;
             
             return (
-              <div className="px-6 py-4 border-t bg-white flex items-center justify-center gap-3">
+              <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-center gap-3">
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
                   <button
                     key={pageNum}
@@ -2236,6 +2234,7 @@ const SQAStaffAuditPlanning = () => {
               </div>
             );
           })()}
+          </div>
         </div>
 
         {/* Details Modal */}

@@ -67,7 +67,7 @@ export function DataTable<TData>({
     }
 
     return data.map((row, index) => {
-      const rowClassName = getRowClassName ? getRowClassName(row, index) : 'transition-colors hover:bg-gray-50';
+      const rowClassName = getRowClassName ? getRowClassName(row, index) : 'border-b border-gray-100 transition-colors hover:bg-gray-50';
       return (
         <tr key={rowKey ? rowKey(row, index) : index} className={rowClassName}>
           {columns.map((column) => {
@@ -91,12 +91,12 @@ export function DataTable<TData>({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead className="bg-gray-50 border-b border-gray-200">
+      <table className="w-full font-noto">
+        <thead className="bg-gray-100 border-b border-gray-200">
           <tr>
             {columns.map((column) => {
               const alignClass = column.align === 'center' ? 'text-center' : column.align === 'right' ? 'text-right' : 'text-left';
-              const headerClasses = ['px-6', 'py-3', alignClass, 'text-xs', 'font-semibold', 'text-gray-700', 'uppercase', 'tracking-wider'];
+              const headerClasses = ['px-6', 'py-4', alignClass, 'text-sm', 'font-bold', 'text-black', 'uppercase', 'tracking-wider'];
               if (column.headerClassName) {
                 headerClasses.push(column.headerClassName);
               }
@@ -108,7 +108,7 @@ export function DataTable<TData>({
             })}
           </tr>
         </thead>
-        <tbody className={`divide-y divide-gray-200 ${bodyClassName}`}>{renderBody()}</tbody>
+        <tbody className={`bg-white ${bodyClassName}`}>{renderBody()}</tbody>
       </table>
     </div>
   );

@@ -325,10 +325,8 @@ const AdminCriteriaManagement = () => {
         )}
 
         {/* Criteria Table */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200">
-          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-            <h2 className="text-lg font-semibold text-white">Criteria List</h2>
-          </div>
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200 font-noto">
+          <div className="bg-white p-4">
           
           {loading ? (
             <div className="px-6 py-8 text-center text-gray-500">Loading...</div>
@@ -336,51 +334,50 @@ const AdminCriteriaManagement = () => {
             <>
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="bg-gray-100 border-b border-gray-200">
                     <tr>
-                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Reference Code</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Description</th>
-                      
-                      <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">No.</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Name</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Reference Code</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Description</th>
+                      <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="bg-white">
                     {paginatedCriteria.map((criterion, idx) => {
                       const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
                       return (
-                        <tr key={criterion.criteriaId || criterion.$id || idx} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 text-center whitespace-nowrap">
-                            <span className="text-sm font-medium text-primary-600">{rowNumber}</span>
+                        <tr key={criterion.criteriaId || criterion.$id || idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <span className="text-sm text-gray-700">{rowNumber}</span>
                           </td>
                           <td className="px-6 py-4">
-                            <p className="text-sm font-semibold text-gray-900">{criterion.name}</p>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm text-gray-700">{criterion.referenceCode || '—'}</span>
+                            <p className="text-ms font-bold text-black">{criterion.name}</p>
                           </td>
                           <td className="px-6 py-4">
-                            <p className="text-sm text-gray-700 line-clamp-2">{criterion.description || '—'}</p>
+                            <span className="text-ms text-[#5b6166]">{criterion.referenceCode || '—'}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-ms text-[#5b6166] line-clamp-2">{criterion.description || '—'}</p>
                           </td>
                           
-                          <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <div className="flex items-center justify-center gap-3">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
                               <button
                                 onClick={() => openEdit(criterion)}
-                                className="p-2 text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
+                                className="p-1.5 text-orange-400 hover:bg-gray-100 rounded transition-colors"
                                 title="Edit"
                               >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
                               </button>
                               <button
                                 onClick={() => openDeleteModal(criterion)}
-                                className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                className="p-1.5 text-red-600 hover:bg-gray-100 rounded transition-colors"
                                 title="Delete"
                               >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                 </svg>
                               </button>
@@ -391,7 +388,7 @@ const AdminCriteriaManagement = () => {
                     })}
                     {paginatedCriteria.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                        <td colSpan={5} className="px-6 py-8 text-sm text-gray-500 text-center">
                           No criteria found
                         </td>
                       </tr>
@@ -412,23 +409,22 @@ const AdminCriteriaManagement = () => {
             </>
           )}
         </div>
+        </div>
       </div>
       </div>
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && criterionToDelete && createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
-          {/* Backdrop */}
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 animate-fadeIn">
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300"
             onClick={closeDeleteModal}
           />
           
-          {/* Modal */}
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto animate-slideUp">
             <div className="p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Delete Criteria
+                Confirm Delete
               </h3>
               <p className="text-sm text-gray-600 mb-6">
                 Are you sure to delete this criteria?
