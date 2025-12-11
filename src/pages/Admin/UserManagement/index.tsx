@@ -1,7 +1,7 @@
-import { MainLayout, UsersIcon } from '../../../layouts';
+import { MainLayout } from '../../../layouts';
 import useAuthStore from '../../../store/useAuthStore';
 import { useState, useEffect, useRef } from 'react';
-import { StatCard, Pagination } from '../../../components';
+import { Pagination } from '../../../components';
 import authService from '../../../hooks/auth';
 import { apiClient } from '../../../hooks/axios';
 import { getDepartments } from '../../../api/departments';
@@ -303,17 +303,7 @@ const AdminUserManagement = () => {
     }
   }
 
-  const getRoleColor = (role: string) => {
-    const colors: Record<string, string> = {
-      'Auditor': 'bg-primary-100 text-primary-700',
-      'Lead Auditor': 'bg-primary-200 text-primary-800',
-      'Auditee Owner': 'bg-teal-100 text-teal-700',
-      'CAPA Owner': 'bg-gray-100 text-gray-700',
-      'Director': 'bg-primary-300 text-primary-900',
-      'Admin': 'bg-primary-200 text-primary-800',
-    };
-    return colors[role] || 'bg-gray-100 text-gray-700';
-  };
+
 
   // Using imported getStatusColor from constants
 

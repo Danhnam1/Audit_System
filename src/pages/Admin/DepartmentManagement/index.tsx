@@ -1,4 +1,4 @@
-import { MainLayout, DepartmentIcon, UsersIcon } from '../../../layouts';
+import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect, useMemo } from 'react';
 import { Pagination, Button } from '../../../components';
@@ -24,7 +24,6 @@ const AdminDepartmentManagement = () => {
   
   // Filter and search states
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -173,7 +172,7 @@ const AdminDepartmentManagement = () => {
   }, [departments.length, totalPages, currentPage]);
 
   const paginatedDepartments = useMemo(() => {
-    // Filter departments based on search and filter
+    // Filter departments based on search
     let filtered = departments;
     
     // Apply search filter
@@ -185,15 +184,10 @@ const AdminDepartmentManagement = () => {
       );
     }
     
-    // Apply status filter (if needed in future)
-    if (filterStatus !== 'all') {
-      filtered = filtered.filter(dept => dept.status === filterStatus);
-    }
-    
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     return filtered.slice(startIndex, endIndex);
-  }, [departments, currentPage, searchTerm, filterStatus]);
+  }, [departments, currentPage, searchTerm]);
 
   return (
     <MainLayout user={layoutUser}>

@@ -103,8 +103,8 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex h-full w-full">
-      <div className="h-screen w-1/2 bg-black">
-        <div className="mx-auto flex h-full w-2/3 flex-col justify-center text-white xl:w-1/2">
+      <div className="h-screen w-1/2 bg-white">
+        <div className="mx-auto flex h-full w-2/3 flex-col justify-center text-black xl:w-1/2">
           <div>
             <p className="text-2xl">Login</p>
             <p>Please login to continue</p>
@@ -121,7 +121,7 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6 mt-10">
             {/* Email Input */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-white mb-2">
+              <label htmlFor="email" className="block text-sm font-medium text-black mb-2">
                 Email Address
               </label>
               <div className="relative">
@@ -154,7 +154,7 @@ export default function LoginPage() {
 
             {/* Password Input */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-white mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-black mb-2">
                 Password
               </label>
               <div className="relative">
@@ -195,7 +195,7 @@ export default function LoginPage() {
                   onChange={(e) => setRememberMe(e.target.checked)}
                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-white">
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-black">
                   Remember me
                 </label>
               </div>

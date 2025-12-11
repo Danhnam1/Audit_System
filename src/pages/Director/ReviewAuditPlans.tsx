@@ -12,7 +12,7 @@ import { PlanDetailsModal } from '../Auditor/AuditPlanning/components/PlanDetail
 import { getDepartmentName, getCriterionName } from '../../helpers/auditPlanHelpers';
 import { getChecklistTemplates } from '../../api/checklists';
 import { MainLayout } from '../../layouts';
-import { Button, StatCard } from '../../components';
+import {  StatCard } from '../../components';
 
 interface AuditPlan {
   id: string; // use string to preserve GUIDs
@@ -449,15 +449,13 @@ const ReviewAuditPlans = () => {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
-          <div className="px-6 py-4">
-            <h1 className="text-2xl font-semibold text-primary-600">Review Audit Plans</h1>
-            <p className="text-gray-600 text-sm mt-1">Review and approve audit plans forwarded by Lead Auditor</p>
-          </div>
+        <div className="animate-slideInLeft rounded-xl border-b shadow-md border-primary-100 bg-white px-6 py-8 mb-6">
+          <h1 className="text-2xl font-bold text-black">Review Audit Plans</h1>
+          <p className="text-[#5b6166] text-sm mt-1">Review and approve audit plans forwarded by Lead Auditor</p>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <div className="animate-slideInRight animate-delay-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
           <StatCard
             title="Total Plans"
             value={stats.total}
@@ -502,7 +500,7 @@ const ReviewAuditPlans = () => {
 
 
         {/* Status Tabs */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden mb-6">
+        <div className="animate-slideUp animate-delay-200 bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden mb-6">
           <div className="px-6 py-4 border-b border-primary-100">
             <div className="flex gap-2">
               <button
@@ -540,41 +538,41 @@ const ReviewAuditPlans = () => {
         </div>
 
         {/* Plans Table */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
-            <h2 className="text-lg font-semibold text-white">
+        <div className="animate-slideUp animate-delay-200 bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+          <div className="px-6 py-4 bg-white">
+            <h2 className="text-lg font-semibold text-black">
               {filter === 'Pending Review' ? 'Pending Review Plans' : filter === 'Approved' ? 'Approved Plans' : filter === 'Rejected' ? 'Rejected Plans' : 'All Audit Plans'}
             </h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+            <table className="w-full font-noto">
+              <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">No.</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Title</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Department</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Start Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">End Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Submitted By</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black">No.</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black">Title</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black">Department</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black">Start Date</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black">End Date</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black">Submitted By</th>
                   
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-4 text-center text-sm font-bold text-black">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="bg-white">
                 {filteredPlans.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                    <td colSpan={8} className="px-6 py-8 text-center text-[#5b6166]">
                       No audit plans found
                     </td>
                   </tr>
                 ) : (
                   filteredPlans.map((plan, index) => (
-                    <tr key={plan.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={plan.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-primary-600">{index + 1}</span>
+                        <span className="text-sm text-gray-700">{index + 1}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-sm font-semibold text-gray-900">{plan.title}</span>
+                        <span className="text-ms font-bold text-black">{plan.title}</span>
                       </td>
                       <td className="px-6 py-4  max-w-xs">
                         {(() => {
@@ -585,11 +583,11 @@ const ReviewAuditPlans = () => {
                             .filter(Boolean);
                           const MAX_VISIBLE = 3;
                           if (parts.length === 0) {
-                            return <span className="text-sm text-gray-500">—</span>;
+                            return <span className="text-ms text-[#5b6166]">—</span>;
                           }
                           if (parts.length <= MAX_VISIBLE) {
                             return (
-                              <span className="text-sm text-gray-700" title={raw}>
+                              <span className="text-ms text-[#5b6166]" title={raw}>
                                 {parts.join(' / ')}
                               </span>
                             );
@@ -603,40 +601,47 @@ const ReviewAuditPlans = () => {
                         })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-700">
+                        <span className="text-ms text-[#5b6166]">
                           {plan.startDate ? new Date(plan.startDate).toLocaleDateString() : 'N/A'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-700">
+                        <span className="text-ms text-[#5b6166]">
                           {plan.endDate ? new Date(plan.endDate).toLocaleDateString() : 'N/A'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-700">{plan.submittedBy}</span>
+                        <span className="text-ms text-[#5b6166]">{plan.submittedBy}</span>
                       </td>
                       
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
-                          <Button onClick={() => openDetails(plan)} size="sm" variant="secondary">
-                            View
-                          </Button>
+                          <button
+                            onClick={() => openDetails(plan)}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="View Details"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
                           {canApproveOrReject(plan.status) ? (
                             <>
                               <button
                                 onClick={() => openApproveModal(plan.planId)}
                                 disabled={processingIdStr === plan.planId}
-                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${
+                                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                                   processingIdStr === plan.planId
                                     ? 'bg-gray-300 cursor-not-allowed text-white'
-                                    : 'bg-primary-600 text-white hover:bg-primary-700'
+                                    : 'bg-green-600 text-white hover:bg-green-700'
                                 }`}
                               >
                                 {processingIdStr === plan.planId ? 'Approving...' : 'Approve'}
                               </button>
                               <button
                                 onClick={() => openRejectModal(plan.planId)}
-                                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md border border-red-300 text-red-700 bg-white hover:bg-red-50"
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors text-red-600 bg-white hover:bg-red-50 border border-red-300"
                               >
                                 Reject
                               </button>

@@ -464,12 +464,11 @@ const AuditorLeadReports = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
-        <div className="px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-primary-600">Lead Reports</h1>
-            <p className="text-gray-600 text-sm mt-1">View and approve audit reports (as Lead Auditor)</p>
-          </div>
+      {/* Header */}
+      <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-6 animate-slideInLeft">
+        <div className="px-6 py-4">
+          <h1 className="text-2xl font-bold text-black">Lead Reports</h1>
+          <p className="text-[#5b6166] text-sm mt-1">View and approve audit reports (as Lead Auditor)</p>
         </div>
       </div>
       <div className="px-6 pb-6 space-y-6">

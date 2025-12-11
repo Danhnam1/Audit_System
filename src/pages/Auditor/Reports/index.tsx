@@ -719,13 +719,6 @@ const SQAStaffReports = () => {
     return rows;
   }, [reportRows, reportFilters]);
 
-  const getTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      'Draft Report': 'bg-gray-100 text-gray-700 border-gray-200',
-      'Final Report': 'bg-primary-100 text-primary-700 border-primary-200',
-    };
-    return colors[type] || 'bg-gray-100 text-gray-700 border-gray-200';
-  };
 
   return (
     <MainLayout user={layoutUser}>

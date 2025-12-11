@@ -2,7 +2,6 @@ import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
 import useAuthStore from "../store/useAuthStore";
 import { NotificationBell } from "./NotificationBell";
-import { Sidebar } from "./Sidebar";
 
 export const Navigation = () => {
   const { token, user, logout } = useAuthStore();
@@ -28,17 +27,13 @@ export const Navigation = () => {
     };
   }, [isProfileOpen]);
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
 
   if (!isAuthenticated) {
     return null; // Don't show navigation when not logged in
   }
 
   return (
-    <nav className="bg-white shadow-md sticky top-0 z-50 border-b border-gray-800">
+    <nav className="bg-white shadow-sm sticky top-0 z-50 ">
       <div className="max-w px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo/Brand Section */}
@@ -88,7 +83,7 @@ export const Navigation = () => {
             <div className="relative" ref={profileRef}>
               <button
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
-                className="flex items-center gap-2 p-2 rounded-lg hover:bg-[#3d4349] transition-colors"
+                className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 aria-label="User menu"
               >
                 <div className="w-9 h-9 bg-gradient-to-r from-sky-600 to-sky-700 rounded-full flex items-center justify-center border-2 border-gray-600">
@@ -108,9 +103,9 @@ export const Navigation = () => {
 
               {/* Dropdown Menu */}
               {isProfileOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-[#2b3035] rounded-lg shadow-xl border border-gray-700 py-2 z-50">
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl borderpy-2 z-50">
                   {/* User Info */}
-                  <div className="px-4 py-3 border-b border-gray-700">
+                  <div className="px-4 py-3 border-b ">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 bg-gradient-to-r from-sky-600 to-sky-700 rounded-full flex items-center justify-center">
                         <span className="text-white text-lg font-semibold">
@@ -127,14 +122,14 @@ export const Navigation = () => {
                 
 
                   {/* Logout */}
-                  <div className="border-t border-gray-700 pt-2">
+                  <div className="border-t pt-2">
                     <button
                       onClick={async () => {
                         setIsProfileOpen(false);
                         await logout();
                         navigate('/login');
                       }}
-                      className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-[#3d4349] transition-colors flex items-center gap-3"
+                      className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-gray-100 transition-colors flex items-center gap-3"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
