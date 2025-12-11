@@ -12,7 +12,7 @@ import {
   getAuditPlanById,
   deleteAuditPlan,
   submitToLeadAuditor,
-  getAuditScopeDepartmentsByAuditId,
+  getAuditScopeDepartments,
   getAuditPlans
 } from '../../../api/audits';
 import { getAuditCriteria } from '../../../api/auditCriteria';
@@ -813,79 +813,81 @@ const SQAStaffAuditPlanning = () => {
           return;
         }
         
-        const auditsArray = auditsInPeriod;
+        console.log('[AuditPlanning] 📋 Found', auditsInPeriod.length, 'audits in period');
 
-        // Get all departments from these audits
+        // Get all audit scope departments in ONE API call
         const usedDeptIds = new Set<number>();
         
-        // Load departments from each audit in parallel
-        console.log('[AuditPlanning] 📦 Starting to load departments from', auditsArray.length, 'audits...');
-        const departmentPromises = auditsArray.map(async (audit: any) => {
-          try {
-            const auditId = audit.auditId || audit.id || audit.$id;
-            if (!auditId) {
-              console.warn('[AuditPlanning] ⚠️ Audit missing ID:', audit);
-              return [];
+        try {
+          console.log('[AuditPlanning] 📡 Calling getAuditScopeDepartments() once to get all audit-department mappings...');
+          const allScopeDepts = await getAuditScopeDepartments();
+          console.log('[AuditPlanning] 📡 All scope departments response (raw):', allScopeDepts);
+          
+          const scopeDeptList = unwrap(allScopeDepts);
+          console.log('[AuditPlanning] 📡 All scope departments (unwrapped):', scopeDeptList);
+          
+          const scopeDeptArray = Array.isArray(scopeDeptList) ? scopeDeptList : [];
+          console.log('[AuditPlanning] 📦 Total audit-department mappings in system:', scopeDeptArray.length);
+          
+          if (scopeDeptArray.length === 0) {
+            console.log('[AuditPlanning] ⚠️ No audit-department mappings found in system. All departments are available.');
+            setUsedDepartmentIds(new Set());
+            return;
+          }
+          
+          // Filter scope departments that belong to audits in period
+          const auditIdsInPeriod = new Set(
+            auditsInPeriod.map((audit: any) => String(audit.auditId || audit.id || audit.$id))
+          );
+          
+          console.log('[AuditPlanning] 🔍 Audit IDs in period:', Array.from(auditIdsInPeriod));
+          
+          scopeDeptArray.forEach((scopeDept: any) => {
+            console.log('[AuditPlanning] 🔍 Processing scope department:', scopeDept);
+            
+            const scopeAuditId = String(scopeDept.auditId || scopeDept.audit?.auditId || '');
+            
+            // Check if this scope department belongs to an audit in the period
+            if (!scopeAuditId) {
+              console.warn('[AuditPlanning] ⚠️ Scope department missing auditId:', scopeDept);
+              return;
+            }
+            
+            if (!auditIdsInPeriod.has(scopeAuditId)) {
+              console.log(`[AuditPlanning] ⏭️ Skipping scope dept - audit ${scopeAuditId} not in period`);
+              return; // Skip - not in period
             }
             
             // Skip if this is the audit being edited
-            if (formState.isEditMode && formState.editingAuditId === String(auditId)) {
-              console.log('[AuditPlanning] ⏭️ Skipping current audit being edited:', auditId);
-              return [];
+            if (formState.isEditMode && formState.editingAuditId === scopeAuditId) {
+              console.log('[AuditPlanning] ⏭️ Skipping department from current audit being edited:', scopeAuditId);
+              return;
             }
             
-            console.log(`[AuditPlanning] 📡 Loading departments for audit ${auditId}...`);
-            // Get departments for this audit
-            const auditDepts = await getAuditScopeDepartmentsByAuditId(String(auditId));
-            console.log(`[AuditPlanning] 📡 Departments response for audit ${auditId}:`, auditDepts);
-            
-            const deptList = unwrap(auditDepts);
-            const deptArray = Array.isArray(deptList) ? deptList : [];
-            
-            console.log(`[AuditPlanning] 📦 Audit "${audit.title || auditId}" has ${deptArray.length} departments:`, deptArray);
-            
-            const deptIds: number[] = [];
-            deptArray.forEach((dept: any) => {
-              // Try multiple ways to get deptId
-              const deptId = dept.deptId ?? dept.dept?.deptId ?? dept.id ?? dept.$id;
-              if (deptId) {
-                const deptIdNum = Number(deptId);
-                if (!isNaN(deptIdNum) && deptIdNum > 0) {
-                  deptIds.push(deptIdNum);
-                  const deptName = dept.name ?? dept.dept?.name ?? 'unknown';
-                  console.log(`[AuditPlanning] ✅ Found used department: ${deptName} (ID: ${deptIdNum})`);
-                } else {
-                  console.warn(`[AuditPlanning] ⚠️ Invalid deptId format:`, deptId, 'from dept:', dept);
-                }
+            // Extract deptId
+            const deptId = scopeDept.deptId ?? scopeDept.dept?.deptId ?? scopeDept.departmentId;
+            if (deptId) {
+              const deptIdNum = Number(deptId);
+              if (!isNaN(deptIdNum) && deptIdNum > 0) {
+                usedDeptIds.add(deptIdNum);
+                const deptName = scopeDept.dept?.name || scopeDept.deptName || 'unknown';
+                console.log(`[AuditPlanning] ✅ Found used department: ${deptName} (ID: ${deptIdNum}) from audit ${scopeAuditId}`);
               } else {
-                console.warn(`[AuditPlanning] ⚠️ Department missing ID:`, dept);
+                console.warn(`[AuditPlanning] ⚠️ Invalid deptId format:`, deptId, 'from scopeDept:', scopeDept);
               }
-            });
-            
-            console.log(`[AuditPlanning] ✅ Audit ${auditId} returned ${deptIds.length} department IDs:`, deptIds);
-            return deptIds;
-          } catch (err: any) {
-            console.error(`[AuditPlanning] ❌ Failed to load departments for audit ${audit.auditId || audit.id}:`, err);
-            console.error(`[AuditPlanning] Error stack:`, err?.stack);
-            return [];
-          }
-        });
-
-        // Wait for all promises to resolve
-        console.log('[AuditPlanning] ⏳ Waiting for all department promises to resolve...');
-        const allDeptIdArrays = await Promise.all(departmentPromises);
-        console.log('[AuditPlanning] ✅ All promises resolved. Results:', allDeptIdArrays);
-        
-        // Flatten and add to set
-        allDeptIdArrays.forEach((deptIds, index) => {
-          console.log(`[AuditPlanning] Processing deptIds from audit ${index}:`, deptIds);
-          deptIds.forEach(deptId => {
-            usedDeptIds.add(deptId);
+            } else {
+              console.warn(`[AuditPlanning] ⚠️ Scope department missing deptId:`, scopeDept);
+            }
           });
-        });
-
-        setUsedDepartmentIds(usedDeptIds);
-        console.log('[AuditPlanning] ✅✅✅ Final used departments SET:', Array.from(usedDeptIds), 'Total:', usedDeptIds.size);
+          
+          setUsedDepartmentIds(usedDeptIds);
+          console.log('[AuditPlanning] ✅✅✅ Final used departments SET:', Array.from(usedDeptIds), 'Total:', usedDeptIds.size);
+        } catch (err: any) {
+          console.error('[AuditPlanning] ❌ Failed to load audit scope departments:', err);
+          console.error('[AuditPlanning] ❌ Error details:', err?.response?.data || err?.message);
+          // On error, assume no departments are used (safer to show all than block user)
+          setUsedDepartmentIds(new Set());
+        }
       } catch (error: any) {
         console.error('[AuditPlanning] ❌❌❌ Failed to load used departments:', error);
         console.error('[AuditPlanning] Error type:', typeof error);
@@ -1936,245 +1938,297 @@ const SQAStaffAuditPlanning = () => {
           </div>
         )}
 
-        {formState.showForm && (
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-primary-600">
-                {formState.isEditMode ? 'Edit Audit Plan' : 'New Audit Plan'}
-              </h2>
-              {formState.isEditMode && (
-                <span className="px-3 py-1 bg-sky-100 text-sky-800 text-sm font-medium rounded-md">
-                  Editing Mode
-                </span>
-              )}
-            </div>
-
-            {/* Progress Stepper */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between">
-                {[1, 2, 3, 4, 5].map((step) => (
-                  <div key={step} className="flex items-center flex-1">
-                    <div className="flex flex-col items-center">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${formState.currentStep === step
-                          ? 'bg-primary-600 text-white'
-                          : formState.currentStep > step
-                            ? 'bg-primary-500 text-white'
-                            : 'bg-gray-200 text-gray-600'
-                        }`}>
-                        {formState.currentStep > step ? '✓' : step}
-                      </div>
-                      <span className={`text-xs mt-1 ${formState.currentStep === step ? 'text-primary-600 font-semibold' : 'text-gray-500'}`}>
-                        {step === 1 && 'Plan'}
-                        {step === 2 && 'Scope'}
-                        {step === 3 && 'Checklist'}
-                        {step === 4 && 'Team'}
-                        {step === 5 && 'Schedule'}
-                      </span>
-                    </div>
-                    {step < 5 && (
-                      <div className={`h-1 flex-1 mx-2 ${formState.currentStep > step ? 'bg-primary-500' : 'bg-gray-200'}`}></div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Step Components */}
-            <div className="space-y-4">
-              {formState.currentStep === 1 && (
-                <Step1BasicInfo
-                  title={formState.title}
-                  auditType={formState.auditType}
-                  goal={formState.goal}
-                  periodFrom={formState.periodFrom}
-                  periodTo={formState.periodTo}
-                  onTitleChange={formState.setTitle}
-                  onAuditTypeChange={formState.setAuditType}
-                  onGoalChange={formState.setGoal}
-                  onPeriodFromChange={(value: string) => {
-                    formState.setPeriodFrom(value);
-                    validatePlanPeriod(value, formState.periodTo, true);
-                  }}
-                  onPeriodToChange={(value: string) => {
-                    formState.setPeriodTo(value);
-                    validatePlanPeriod(formState.periodFrom, value, true);
-                  }}
-                />
-              )}
-
-              {formState.currentStep === 2 && (
-                <Step2Scope
-                  level={formState.level}
-                  selectedDeptIds={formState.selectedDeptIds}
-                  departments={availableDepartments}
-                  criteria={criteria}
-                  selectedCriteriaIds={formState.selectedCriteriaIds}
-                  onLevelChange={formState.setLevel}
-                  onSelectedDeptIdsChange={formState.setSelectedDeptIds}
-                  onCriteriaToggle={(id: string) => {
-                    const val = String(id);
-                    formState.setSelectedCriteriaIds((prev) =>
-                      prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
-                    );
-                  }}
-                />
-              )}
-
-              {formState.currentStep === 3 && (
-                <Step3Checklist
-                  checklistTemplates={checklistTemplates}
-                  selectedTemplateIds={formState.selectedTemplateIds}
-                  onSelectionChange={formState.setSelectedTemplateIds}
-                  level={formState.level}
-                  selectedDeptIds={formState.selectedDeptIds}
-                  departments={departments}
-                />
-              )}
-
-              {formState.currentStep === 4 && (
-                <Step4Team
-                  level={formState.level}
-                  selectedDeptIds={formState.selectedDeptIds}
-                  selectedAuditorIds={formState.selectedAuditorIds}
-                  auditorOptions={auditorOptions}
-                  ownerOptions={ownerOptions}
-                  departments={departments}
-                  onAuditorsChange={formState.setSelectedAuditorIds}
-                />
-              )}
-
-              {formState.currentStep === 5 && (
-                <Step5Schedule
-                  kickoffMeeting={formState.kickoffMeeting}
-                  fieldworkStart={formState.fieldworkStart}
-                  evidenceDue={formState.evidenceDue}
-                  draftReportDue={formState.draftReportDue}
-                  capaDue={formState.capaDue}
-                  onKickoffChange={formState.setKickoffMeeting}
-                  onFieldworkChange={formState.setFieldworkStart}
-                  onEvidenceChange={formState.setEvidenceDue}
-                  onDraftReportChange={formState.setDraftReportDue}
-                  onCapaChange={formState.setCapaDue}
-                  errors={scheduleErrors}
-                  periodFrom={formState.periodFrom}
-                  periodTo={formState.periodTo}
-                />
-              )}
-
-              {/* Navigation Buttons */}
-              <div className="flex justify-between gap-3 pt-6 border-t">
+        {formState.showForm && createPortal(
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black/50 transition-opacity"
+              onClick={() => {
+                if (hasFormData || formState.isEditMode) {
+                  if (window.confirm('Are you sure you want to cancel? All unsaved changes will be lost.')) {
+                    formState.resetForm();
+                  }
+                } else {
+                  formState.setShowForm(false);
+                  formState.setCurrentStep(1);
+                }
+              }}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-auto max-h-[90vh] flex flex-col overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-primary-600 to-primary-700">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-bold text-white">
+                    {formState.isEditMode ? 'Edit Audit Plan' : 'Create New Audit Plan'}
+                  </h2>
+                  {formState.isEditMode && (
+                    <span className="px-3 py-1 bg-white/20 text-white text-sm font-medium rounded-md">
+                      Edit Mode
+                    </span>
+                  )}
+                </div>
                 <button
                   onClick={() => {
-                    if (formState.currentStep > 1) {
-                      formState.setCurrentStep(formState.currentStep - 1);
-                    } else {
-                      // Step 1 - Cancel button
-                      if (hasFormData || formState.isEditMode) {
-                        if (window.confirm('Are you sure you want to cancel?')) {
-                          formState.resetForm();
-                        }
+                    if (hasFormData || formState.isEditMode) {
+                      if (window.confirm('Are you sure you want to cancel? All unsaved changes will be lost.')) {
+                        formState.resetForm();
+                      }
                     } else {
                       formState.setShowForm(false);
                       formState.setCurrentStep(1);
-                      }
                     }
                   }}
-                  className="border-2 border-gray-400 text-gray-700 hover:bg-gray-50 px-6 py-2.5 rounded-lg font-medium transition-all duration-150"
+                  className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
                 >
-                  {formState.currentStep === 1 ? 'Cancel' : '← Back'}
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
+              </div>
 
-                <div className="flex gap-3">
-                  {formState.currentStep < 5 && (
-                    <button
-                      onClick={() => {
-                        if (canContinue) {
-                          formState.setCurrentStep(formState.currentStep + 1);
-                        } else {
-                          // Show validation message based on current step
-                          let message = '';
-                          switch (formState.currentStep) {
-                            case 1:
-                              message = 'Please fill in the information: Title, Type, Period From, and Period To.';
-                              break;
-                            case 2:
-                              message = formState.level === 'department'
-                                ? 'Please select at least 1 department and 1 inspection criterion'
-                                : 'Please select at least 1 inspection criterion';
-                              break;
-                            case 3:
-                              if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
-                                // Get selected templates with their deptId
-                                const selectedTemplates = checklistTemplates.filter((tpl: any) =>
-                                  formState.selectedTemplateIds.includes(String(tpl.templateId || tpl.id || tpl.$id))
-                                );
-                                const selectedDeptIdsSet = new Set(formState.selectedDeptIds.map(id => String(id).trim()));
-                                const deptIdsWithTemplates = new Set<string>();
-                                selectedTemplates.forEach((tpl: any) => {
-                                  const tplDeptId = tpl.deptId;
-                                  if (tplDeptId != null && tplDeptId !== undefined) {
-                                    deptIdsWithTemplates.add(String(tplDeptId).trim());
+              {/* Progress Stepper */}
+              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                <div className="flex items-center justify-between">
+                  {[
+                    { num: 1, label: 'Basic Info' },
+                    { num: 2, label: 'Scope' },
+                    { num: 3, label: 'Checklist' },
+                    { num: 4, label: 'Team' },
+                    { num: 5, label: 'Schedule' }
+                  ].map((step, idx) => (
+                    <div key={step.num} className="flex items-center flex-1">
+                      <div className="flex flex-col items-center">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
+                          formState.currentStep === step.num
+                            ? 'bg-primary-600 text-white ring-4 ring-primary-100'
+                            : formState.currentStep > step.num
+                              ? 'bg-green-500 text-white'
+                              : 'bg-gray-200 text-gray-600'
+                        }`}>
+                          {formState.currentStep > step.num ? '✓' : step.num}
+                        </div>
+                        <span className={`text-xs mt-1 font-medium ${
+                          formState.currentStep === step.num 
+                            ? 'text-primary-600' 
+                            : formState.currentStep > step.num
+                              ? 'text-green-600'
+                              : 'text-gray-500'
+                        }`}>
+                          {step.label}
+                        </span>
+                      </div>
+                      {idx < 4 && (
+                        <div className={`h-1 flex-1 mx-2 rounded transition-all ${
+                          formState.currentStep > step.num ? 'bg-green-500' : 'bg-gray-200'
+                        }`}></div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Modal Content - Scrollable */}
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                {formState.currentStep === 1 && (
+                  <Step1BasicInfo
+                    title={formState.title}
+                    auditType={formState.auditType}
+                    goal={formState.goal}
+                    periodFrom={formState.periodFrom}
+                    periodTo={formState.periodTo}
+                    onTitleChange={formState.setTitle}
+                    onAuditTypeChange={formState.setAuditType}
+                    onGoalChange={formState.setGoal}
+                    onPeriodFromChange={(value: string) => {
+                      formState.setPeriodFrom(value);
+                      validatePlanPeriod(value, formState.periodTo, true);
+                    }}
+                    onPeriodToChange={(value: string) => {
+                      formState.setPeriodTo(value);
+                      validatePlanPeriod(formState.periodFrom, value, true);
+                    }}
+                  />
+                )}
+
+                {formState.currentStep === 2 && (
+                  <Step2Scope
+                    level={formState.level}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    departments={availableDepartments}
+                    criteria={criteria}
+                    selectedCriteriaIds={formState.selectedCriteriaIds}
+                    onLevelChange={formState.setLevel}
+                    onSelectedDeptIdsChange={formState.setSelectedDeptIds}
+                    onCriteriaToggle={(id: string) => {
+                      const val = String(id);
+                      formState.setSelectedCriteriaIds((prev) =>
+                        prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
+                      );
+                    }}
+                  />
+                )}
+
+                {formState.currentStep === 3 && (
+                  <Step3Checklist
+                    checklistTemplates={checklistTemplates}
+                    selectedTemplateIds={formState.selectedTemplateIds}
+                    onSelectionChange={formState.setSelectedTemplateIds}
+                    level={formState.level}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    departments={departments}
+                  />
+                )}
+
+                {formState.currentStep === 4 && (
+                  <Step4Team
+                    level={formState.level}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    selectedAuditorIds={formState.selectedAuditorIds}
+                    auditorOptions={auditorOptions}
+                    ownerOptions={ownerOptions}
+                    departments={departments}
+                    onAuditorsChange={formState.setSelectedAuditorIds}
+                  />
+                )}
+
+                {formState.currentStep === 5 && (
+                  <Step5Schedule
+                    kickoffMeeting={formState.kickoffMeeting}
+                    fieldworkStart={formState.fieldworkStart}
+                    evidenceDue={formState.evidenceDue}
+                    draftReportDue={formState.draftReportDue}
+                    capaDue={formState.capaDue}
+                    onKickoffChange={formState.setKickoffMeeting}
+                    onFieldworkChange={formState.setFieldworkStart}
+                    onEvidenceChange={formState.setEvidenceDue}
+                    onDraftReportChange={formState.setDraftReportDue}
+                    onCapaChange={formState.setCapaDue}
+                    errors={scheduleErrors}
+                    periodFrom={formState.periodFrom}
+                    periodTo={formState.periodTo}
+                  />
+                )}
+              </div>
+
+              {/* Modal Footer - Navigation Buttons */}
+              <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex-shrink-0 rounded-b-xl">
+                <div className="flex justify-between gap-3">
+                  <button
+                    onClick={() => {
+                      if (formState.currentStep > 1) {
+                        formState.setCurrentStep(formState.currentStep - 1);
+                      } else {
+                        // Step 1 - Cancel button
+                        if (hasFormData || formState.isEditMode) {
+                          if (window.confirm('Are you sure you want to cancel? All unsaved changes will be lost.')) {
+                            formState.resetForm();
+                          }
+                      } else {
+                        formState.setShowForm(false);
+                        formState.setCurrentStep(1);
+                        }
+                      }
+                    }}
+                    className="border-2 border-gray-400 text-gray-700 hover:bg-gray-100 px-6 py-2.5 rounded-lg font-medium transition-all duration-150"
+                  >
+                    {formState.currentStep === 1 ? 'Cancel' : '← Back'}
+                  </button>
+
+                  <div className="flex gap-3">
+                    {formState.currentStep < 5 && (
+                      <button
+                        onClick={() => {
+                          if (canContinue) {
+                            formState.setCurrentStep(formState.currentStep + 1);
+                          } else {
+                            // Show validation message based on current step
+                            let message = '';
+                            switch (formState.currentStep) {
+                              case 1:
+                                message = 'Please fill in the information: Title, Type, Period From, and Period To.';
+                                break;
+                              case 2:
+                                message = formState.level === 'department'
+                                  ? 'Please select at least 1 department and 1 inspection criterion'
+                                  : 'Please select at least 1 inspection criterion';
+                                break;
+                              case 3:
+                                if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
+                                  // Get selected templates with their deptId
+                                  const selectedTemplates = checklistTemplates.filter((tpl: any) =>
+                                    formState.selectedTemplateIds.includes(String(tpl.templateId || tpl.id || tpl.$id))
+                                  );
+                                  const selectedDeptIdsSet = new Set(formState.selectedDeptIds.map(id => String(id).trim()));
+                                  const deptIdsWithTemplates = new Set<string>();
+                                  selectedTemplates.forEach((tpl: any) => {
+                                    const tplDeptId = tpl.deptId;
+                                    if (tplDeptId != null && tplDeptId !== undefined) {
+                                      deptIdsWithTemplates.add(String(tplDeptId).trim());
+                                    }
+                                  });
+                                  const missingDepts = Array.from(selectedDeptIdsSet).filter(deptId => !deptIdsWithTemplates.has(deptId));
+                                  if (missingDepts.length > 0) {
+                                    const deptNames = missingDepts.map(deptId => {
+                                      const dept = departments.find(d => String(d.deptId) === deptId);
+                                      return dept?.name || deptId;
+                                    }).join(', ');
+                                    message = `Please select at least one template for each selected department. Missing templates for: ${deptNames}`;
+                                  } else {
+                                    message = 'Please select a Checklist Template.';
                                   }
-                                });
-                                const missingDepts = Array.from(selectedDeptIdsSet).filter(deptId => !deptIdsWithTemplates.has(deptId));
-                                if (missingDepts.length > 0) {
-                                  const deptNames = missingDepts.map(deptId => {
-                                    const dept = departments.find(d => String(d.deptId) === deptId);
-                                    return dept?.name || deptId;
-                                  }).join(', ');
-                                  message = `Please select at least one template for each selected department. Missing templates for: ${deptNames}`;
                                 } else {
                                   message = 'Please select a Checklist Template.';
                                 }
-                              } else {
-                                message = 'Please select a Checklist Template.';
-                              }
-                              break;
-                            case 4:
-                              message = 'Please select Lead Auditor.';
-                              break;
-                            default:
-                              message = 'Please fill in all information before continuing.';
-                          }
-                          toast.warning(message);
-                        }
-                      }}
-                      disabled={!canContinue}
-                      className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
-                        canContinue
-                          ? 'bg-primary-600 hover:bg-primary-700 text-white cursor-pointer'
-                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      }`}
-                    >
-                      Continue →
-                    </button>
-                  )}
-                  {formState.currentStep === 5 && (
-                    <>
-                      <button
-                        onClick={handleSubmitPlan}
-                        className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
-                      >
-                        {formState.isEditMode ? ' Update Plan' : ' Submit Plan'}
-                      </button>
-                      {formState.isEditMode && (
-                        <button
-                          onClick={() => {
-                            if (window.confirm('Are you sure you want to cancel?')) {
-                              formState.resetForm();
+                                break;
+                              case 4:
+                                message = 'Please select Lead Auditor.';
+                                break;
+                              default:
+                                message = 'Please fill in all information before continuing.';
                             }
-                          }}
-                          className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
+                            toast.warning(message);
+                          }
+                        }}
+                        disabled={!canContinue}
+                        className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
+                          canContinue
+                            ? 'bg-primary-600 hover:bg-primary-700 text-white cursor-pointer'
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        Continue →
+                      </button>
+                    )}
+                    {formState.currentStep === 5 && (
+                      <>
+                        <button
+                          onClick={handleSubmitPlan}
+                          className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
                         >
-                          Cancel
+                          {formState.isEditMode ? ' Update Plan' : ' Submit Plan'}
                         </button>
-                      )}
-                    </>
-                  )}
+                        {formState.isEditMode && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm('Are you sure you want to cancel? All unsaved changes will be lost.')) {
+                                formState.resetForm();
+                              }
+                            }}
+                            className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Filter Section */}
