@@ -83,9 +83,10 @@ Before you begin, ensure you have the following installed:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Danhnam1/Audit_System.git
+   git clone https://github.com/[YOUR-USERNAME]/Audit_System.git
    cd Audit_System
    ```
+   > Replace `[YOUR-USERNAME]` with the actual repository owner username or organization name.
 
 2. **Install dependencies:**
    ```bash
@@ -230,21 +231,26 @@ The application uses the following environment variables:
 ### Required Variables
 
 - `VITE_API_BASE_URL` - Base URL for API requests
-  - Default: `https://moca.mom/api`
-  - Example: `https://your-api-server.com/api`
+  - Default: `https://your-backend-server.com/api`
+  - Example: `https://api.example.com/api`
 
-- `VITE_API_PROXY_TARGET` - Proxy target for development server
-  - Default: `https://moca.mom`
-  - Example: `https://your-api-server.com`
+- `VITE_API_PROXY_TARGET` - Proxy target for development server (used during development)
+  - Default: `https://your-backend-server.com`
+  - Example: `https://api.example.com`
 
 ### Setting Environment Variables
 
 Create a `.env` file in the root directory:
 
 ```env
-VITE_API_BASE_URL=https://your-api-server.com/api
-VITE_API_PROXY_TARGET=https://your-api-server.com
+# API base URL - used for API requests in production
+VITE_API_BASE_URL=https://your-backend-server.com/api
+
+# Proxy target - used during development to proxy API requests
+VITE_API_PROXY_TARGET=https://your-backend-server.com
 ```
+
+> **Note:** Both variables should point to your backend server. The `VITE_API_BASE_URL` is used in the compiled application, while `VITE_API_PROXY_TARGET` is only used during development.
 
 **Note:** Environment variables must be prefixed with `VITE_` to be exposed to the client-side code.
 
