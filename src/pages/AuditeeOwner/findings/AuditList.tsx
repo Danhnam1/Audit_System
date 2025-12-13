@@ -66,7 +66,7 @@ const AuditeeOwnerAuditList = () => {
   const getUserDeptId = (): number | null => {
     const token = localStorage.getItem('auth-storage');
     if (!token) return null;
-    
+
     try {
       const authData = JSON.parse(token);
       const jwtToken = authData?.state?.token;
@@ -87,7 +87,7 @@ const AuditeeOwnerAuditList = () => {
     const loadAudits = async () => {
       setLoading(true);
       setError(null);
-      
+
       try {
         const deptId = getUserDeptId();
         if (!deptId) {
@@ -99,7 +99,7 @@ const AuditeeOwnerAuditList = () => {
         console.log('🔍 Fetching findings for department:', deptId);
         const findings = await getFindingsByDepartment(deptId);
         console.log('📦 Findings from API:', findings);
-        
+
         if (!findings || findings.length === 0) {
           console.log('⚠️ No findings found');
           setAudits([]);
@@ -135,65 +135,65 @@ const AuditeeOwnerAuditList = () => {
             console.log(`📋 Raw audit data for ${auditId}:`, auditData);
             console.log(`🔍 Available fields in audit data:`, Object.keys(auditData));
             console.log(`📊 Full audit data structure:`, JSON.stringify(auditData, null, 2));
-            
+
             // Try multiple possible field names for title
-            let auditTitle = auditData.title || 
-                            auditData.Title || 
-                            auditData.name || 
-                            auditData.Name ||
-                            auditData.auditTitle ||
-                            auditData.audit?.title ||
-                            auditData.audit?.Title ||
-                            auditData.audit?.name ||
-                            auditData.audit?.Name ||
-                            auditData.audit?.auditTitle ||
-                            '';
-            
+            let auditTitle = auditData.title ||
+              auditData.Title ||
+              auditData.name ||
+              auditData.Name ||
+              auditData.auditTitle ||
+              auditData.audit?.title ||
+              auditData.audit?.Title ||
+              auditData.audit?.name ||
+              auditData.audit?.Name ||
+              auditData.audit?.auditTitle ||
+              '';
+
             if (!auditTitle) {
               console.warn(`⚠️ No title found for audit ${auditId}. Available fields:`, Object.keys(auditData));
               auditTitle = `Audit ${auditId.substring(0, 8)}...`;
             } else {
               console.log(`✅ Found title for audit ${auditId}: "${auditTitle}"`);
             }
-            
-            const auditType = auditData.type || 
-                             auditData.Type || 
-                             auditData.auditType || 
-                             auditData.audit?.type || 
-                             auditData.audit?.Type || 
-                             auditData.audit?.auditType || '';
-            
-            const status = auditData.status || 
-                          auditData.Status || 
-                          auditData.auditStatus ||
-                          auditData.audit?.status ||
-                          auditData.audit?.Status ||
-                          'Unknown';
-            
-            const scope = auditData.scope || 
-                         auditData.Scope ||
-                         auditData.auditScope ||
-                         auditData.audit?.scope ||
-                         '';
-            
+
+            const auditType = auditData.type ||
+              auditData.Type ||
+              auditData.auditType ||
+              auditData.audit?.type ||
+              auditData.audit?.Type ||
+              auditData.audit?.auditType || '';
+
+            const status = auditData.status ||
+              auditData.Status ||
+              auditData.auditStatus ||
+              auditData.audit?.status ||
+              auditData.audit?.Status ||
+              'Unknown';
+
+            const scope = auditData.scope ||
+              auditData.Scope ||
+              auditData.auditScope ||
+              auditData.audit?.scope ||
+              '';
+
             const objective = auditData.objective ||
-                            auditData.Objective ||
-                            auditData.goal ||
-                            auditData.audit?.objective ||
-                            '';
-            
+              auditData.Objective ||
+              auditData.goal ||
+              auditData.audit?.objective ||
+              '';
+
             const createdAt = auditData.createdAt ||
-                            auditData.CreatedAt ||
-                            auditData.created ||
-                            auditData.audit?.createdAt ||
-                            '';
-            
+              auditData.CreatedAt ||
+              auditData.created ||
+              auditData.audit?.createdAt ||
+              '';
+
             const createdBy = auditData.createdBy ||
-                            auditData.CreatedBy ||
-                            auditData.createdByUser?.fullName ||
-                            auditData.audit?.createdBy ||
-                            '';
-            
+              auditData.CreatedBy ||
+              auditData.createdByUser?.fullName ||
+              auditData.audit?.createdBy ||
+              '';
+
             const auditCard: AuditCard = {
               auditId: auditId,
               auditTitle: auditTitle,
@@ -226,29 +226,29 @@ const AuditeeOwnerAuditList = () => {
 
         const auditResults = await Promise.all(auditPromises);
         const validAudits: AuditCard[] = auditResults.filter((audit): audit is AuditCard => audit !== null);
-        
+
         // Filter out audits with status "Archived" (case-insensitive)
         const nonArchivedAudits = validAudits.filter((audit) => {
           const status = audit.status || '';
           const statusLower = String(status).toLowerCase().trim();
-          
-          const isArchived = statusLower === 'archived' || 
-                           statusLower === 'archive' ||
-                           statusLower.includes('archived');
-          
+
+          const isArchived = statusLower === 'archived' ||
+            statusLower === 'archive' ||
+            statusLower.includes('archived');
+
           if (isArchived) {
             console.log(`🚫 Filtering out archived audit: ${audit.auditTitle} (status: "${status}")`);
           }
-          
+
           return !isArchived;
         });
-        
+
         console.log('🎯 Final audits to display (excluding archived):', {
           total: validAudits.length,
           nonArchived: nonArchivedAudits.length,
           audits: nonArchivedAudits
         });
-        
+
         setAudits(nonArchivedAudits);
       } catch (err: any) {
         console.error('❌ Error loading audits:', err);
@@ -270,10 +270,13 @@ const AuditeeOwnerAuditList = () => {
   return (
     <MainLayout user={layoutUser}>
       {/* Header */}
-      <div className="bg-gradient-to-r from-primary-500 to-primary-600 shadow-lg mb-6">
-        <div className="px-4 sm:px-6 py-4 sm:py-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Findings Management</h1>
-          <p className="text-primary-100 text-sm sm:text-base mt-2">Select an audit to view findings</p>
+      <div className="  mb-6 px-6">
+        <div className="rounded-xl border-b  shadow-sm  border-primary-100 bg-white px-6 py-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-black">Fingding management</h1>
+
+          </div>
+        
         </div>
       </div>
 
@@ -285,7 +288,7 @@ const AuditeeOwnerAuditList = () => {
             <p className="text-gray-600 font-medium">Loading audits...</p>
           </div>
         )}
-        
+
         {/* Error State */}
         {error && (
           <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 shadow-sm">
@@ -306,7 +309,7 @@ const AuditeeOwnerAuditList = () => {
             </div>
           </div>
         )}
-        
+
         {/* Available Audits - Table View */}
         {!loading && !error && (
           <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">

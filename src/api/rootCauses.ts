@@ -33,6 +33,50 @@ const toPascalCase = (obj: any): any => {
   }, {} as any);
 };
 
+// Get root cause by ID
+export const getRootCauseById = async (id: number): Promise<RootCause> => {
+  const res = await apiClient.get(`/RootCauses/${id}`);
+  return res.data;
+};
+
+// Get root cause by finding ID
+export const getRootCauseByFindingId = async (findingId: string): Promise<RootCause | null> => {
+  try {
+    const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+    console.log('Raw API response:', res);
+    console.log('Response data:', res.data);
+    
+    // API trả về array trong $values
+    let rootCauses: RootCause[] = [];
+    
+    // Kiểm tra cấu trúc response
+    if (res.data && res.data.$values) {
+      rootCauses = res.data.$values;
+      console.log('Found $values:', rootCauses);
+    } else if (Array.isArray(res.data)) {
+      rootCauses = res.data;
+      console.log('Direct array:', rootCauses);
+    } else {
+      console.log('Trying unwrap...');
+      rootCauses = unwrap<RootCause>(res);
+      console.log('Unwrapped root causes:', rootCauses);
+    }
+    
+    // Lấy root cause mới nhất (phần tử cuối cùng trong mảng)
+    if (rootCauses && rootCauses.length > 0) {
+      const latest = rootCauses[rootCauses.length - 1];
+      console.log('Latest root cause:', latest);
+      return latest;
+    }
+    
+    console.log('No root causes found');
+    return null;
+  } catch (err) {
+    console.error('Error getting root cause by finding ID:', err);
+    return null;
+  }
+};
+
 // Create new root cause
 export const createRootCause = async (dto: CreateRootCauseDto): Promise<RootCause> => {
   const pascalDto = toPascalCase(dto);
