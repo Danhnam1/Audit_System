@@ -6,8 +6,11 @@ import { getAuditScopeDepartmentsByAuditId, getAuditPlans } from '../../../api/a
 import { createAuditAssignment, getAuditAssignments } from '../../../api/auditAssignments';
 import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
+import { getUserById } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
+import { DataTable } from '../../../components/DataTable';
+import type { TableColumn } from '../../../components/DataTable';
 
 interface Department {
   deptId: number;
@@ -44,6 +47,8 @@ interface Audit {
   endDate: string;
   objective?: string;
   isPublished?: boolean;
+  createdAt?: string;
+  createdBy?: string;
 }
 
 export default function AuditAssignment() {
@@ -55,6 +60,7 @@ export default function AuditAssignment() {
   const [loadingAudits, setLoadingAudits] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [userNamesCache, setUserNamesCache] = useState<Record<string, string>>({});
   
   // Modal state
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -359,7 +365,7 @@ export default function AuditAssignment() {
         {/* Content */}
         <div className="px-4 sm:px-6 lg:px-8">
           {!selectedAuditId ? (
-            // Show audit cards
+            // Show audit table
             <>
               {loadingAudits ? (
                 <div className="flex items-center justify-center py-12">
@@ -376,31 +382,152 @@ export default function AuditAssignment() {
                 </div>
               ) : (
                 <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
-                  <div className="divide-y divide-gray-100">
-                    {audits.map((audit) => (
-                      <div
-                        key={audit.auditId}
-                        onClick={() => handleAuditSelect(audit.auditId)}
-                        className="px-6 py-5 hover:bg-primary-50 transition-all duration-200 cursor-pointer group border-l-4 border-transparent hover:border-primary-500"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4 flex-1">
-                            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary-100 group-hover:bg-primary-200 flex items-center justify-center transition-colors duration-200">
-                              <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                            </div>
-                            <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 transition-colors duration-200">
-                              {audit.title}
-                            </h3>
+                  <DataTable
+                    columns={[
+                      {
+                        key: 'no',
+                        header: 'No.',
+                        cellClassName: 'whitespace-nowrap',
+                        render: (_, index) => (
+                          <span className="text-sm text-gray-700">{index + 1}</span>
+                        ),
+                      },
+                      {
+                        key: 'title',
+                        header: 'Title',
+                        render: (audit) => (
+                          <div className="max-w-[200px]">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{audit.title || 'Untitled'}</p>
                           </div>
-                          <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600 transition-colors duration-200 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                        ),
+                      },
+                      {
+                        key: 'type',
+                        header: 'Type',
+                        cellClassName: 'whitespace-nowrap',
+                        render: (audit) => (
+                          <span className="text-sm text-gray-700">
+                            {audit.type || 'General'}
+                          </span>
+                        ),
+                      },
+                      {
+                        key: 'scope',
+                        header: 'Scope',
+                        cellClassName: 'whitespace-nowrap',
+                        render: (audit) => (
+                          <span className="text-sm text-gray-700">{audit.scope || 'N/A'}</span>
+                        ),
+                      },
+                      {
+                        key: 'period',
+                        header: 'Period',
+                        cellClassName: 'whitespace-nowrap',
+                        render: (audit) => {
+                          const formatDate = (dateStr: string) => {
+                            if (!dateStr) return 'N/A';
+                            try {
+                              return new Date(dateStr).toLocaleDateString();
+                            } catch {
+                              return dateStr;
+                            }
+                          };
+                          return (
+                            <div className="text-sm text-gray-600">
+                              {formatDate(audit.startDate)} - {formatDate(audit.endDate)}
+                            </div>
+                          );
+                        },
+                      },
+                      {
+                        key: 'status',
+                        header: 'Status',
+                        cellClassName: 'whitespace-nowrap',
+                        render: (audit) => {
+                          const getStatusColor = (status: string) => {
+                            const statusLower = status.toLowerCase();
+                            if (statusLower === 'inprogress') return 'bg-blue-100 text-blue-800';
+                            if (statusLower === 'draft') return 'bg-gray-100 text-gray-800';
+                            if (statusLower === 'approved') return 'bg-green-100 text-green-800';
+                            return 'bg-gray-100 text-gray-800';
+                          };
+                          return (
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(audit.status || 'Draft')}`}
+                            >
+                              {audit.status || 'Draft'}
+                            </span>
+                          );
+                        },
+                      },
+                      {
+                        key: 'createdAt',
+                        header: 'Created At',
+                        cellClassName: 'whitespace-nowrap',
+                        render: (audit) => {
+                          if (!audit.createdAt) return <span className="text-sm text-gray-500">N/A</span>;
+                          try {
+                            const date = new Date(audit.createdAt);
+                            const hours = date.getHours().toString().padStart(2, '0');
+                            const minutes = date.getMinutes().toString().padStart(2, '0');
+                            const day = date.getDate().toString().padStart(2, '0');
+                            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                            const year = date.getFullYear();
+                            return (
+                              <span className="text-sm text-gray-600">
+                                {hours}:{minutes} {day}/{month}/{year}
+                              </span>
+                            );
+                          } catch {
+                            return <span className="text-sm text-gray-500">{audit.createdAt}</span>;
+                          }
+                        },
+                      },
+                      {
+                        key: 'createdBy',
+                        header: 'Created By',
+                        cellClassName: 'whitespace-nowrap',
+                        render: (audit) => {
+                          if (!audit.createdBy) return <span className="text-sm text-gray-500">Unknown</span>;
+                          
+                          const creatorName = userNamesCache[audit.createdBy] || 'Loading...';
+                          
+                          // Fetch user name if not in cache
+                          if (!userNamesCache[audit.createdBy]) {
+                            getUserById(audit.createdBy)
+                              .then((response) => {
+                                const userData = response?.data?.$values?.[0] || response?.data;
+                                const fullName = userData?.fullName || userData?.username || 'Unknown';
+                                setUserNamesCache((prev) => ({ ...prev, [audit.createdBy!]: fullName }));
+                              })
+                              .catch(() => {
+                                setUserNamesCache((prev) => ({ ...prev, [audit.createdBy!]: 'Unknown' }));
+                              });
+                          }
+                          
+                          return (
+                            <span className="text-sm text-gray-600">{creatorName}</span>
+                          );
+                        },
+                      },
+                      {
+                        key: 'actions',
+                        header: 'Actions',
+                        align: 'center' as const,
+                        cellClassName: 'whitespace-nowrap text-center',
+                        render: (audit) => (
+                          <button
+                            onClick={() => handleAuditSelect(audit.auditId)}
+                            className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
+                          >
+                            Select
+                          </button>
+                        ),
+                      },
+                    ]}
+                    data={audits}
+                    emptyMessage="No audits found."
+                  />
                 </div>
               )}
             </>

@@ -936,7 +936,7 @@ const FindingsProgress = () => {
           <div className="fixed inset-0 z-50 overflow-y-auto">
             {/* Backdrop */}
             <div
-              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
               onClick={() => {
                 setShowActionsModal(false);
                 setSelectedFindingActions([]);
@@ -947,115 +947,212 @@ const FindingsProgress = () => {
             {/* Modal */}
             <div className="flex min-h-full items-center justify-center p-4">
               <div
-                className="relative bg-white rounded-xl shadow-xl w-full max-w-4xl mx-auto max-h-[90vh] overflow-hidden flex flex-col"
+                className="relative bg-white rounded-2xl shadow-2xl w-full max-w-6xl mx-auto max-h-[95vh] overflow-hidden flex flex-col animate-slideUp"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Header */}
-                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-900">Actions for Finding</h2>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {findings.find(f => f.findingId === selectedFindingId)?.title || 'Finding Details'}
-                    </p>
+                {/* Header with Gradient */}
+                <div className="sticky top-0 bg-gradient-to-r from-primary-600 to-primary-700 px-8 py-6 shadow-lg z-10">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                        <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h2 className="text-2xl font-bold text-white">Actions for Finding</h2>
+                        <p className="text-primary-100 mt-1 text-sm">
+                          {findings.find(f => f.findingId === selectedFindingId)?.title || 'Finding Details'}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowActionsModal(false);
+                        setSelectedFindingActions([]);
+                        setSelectedFindingId(null);
+                      }}
+                      className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      setShowActionsModal(false);
-                      setSelectedFindingActions([]);
-                      setSelectedFindingId(null);
-                    }}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
                 </div>
 
                 {/* Body */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white">
                   {loadingFindingActions ? (
-                    <div className="flex items-center justify-center py-12">
+                    <div className="flex items-center justify-center py-20">
                       <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
-                        <p className="text-gray-600">Loading actions...</p>
+                        <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-primary-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600 text-lg font-medium">Loading actions...</p>
                       </div>
                     </div>
                   ) : selectedFindingActions.length === 0 ? (
-                    <div className="text-center py-12">
-                      <p className="text-gray-500">No actions found for this finding</p>
+                    <div className="text-center py-20">
+                      <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-500 text-lg font-medium">No actions found</p>
+                      <p className="text-gray-400 text-sm mt-2">Actions will appear here once they are created</p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {selectedFindingActions.map((action) => (
-                        <div
-                          key={action.actionId}
-                          className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex-1">
-                              <h3 className="text-lg font-semibold text-gray-900 mb-2">{action.title}</h3>
-                              <p className="text-sm text-gray-600 mb-3">{action.description}</p>
-                            </div>
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              action.status === 'Approved' ? 'bg-green-100 text-green-700' :
-                              action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700' :
-                              action.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {action.status}
-                            </span>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">Progress</p>
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 bg-gray-200 rounded-full h-2">
-                                  <div
-                                    className="bg-primary-600 h-2 rounded-full transition-all"
-                                    style={{ width: `${action.progressPercent || 0}%` }}
-                                  ></div>
+                    <div className="p-8">
+                      <div className="mb-6 flex items-center justify-between">
+                        <p className="text-sm font-medium text-gray-600">
+                          Showing <span className="text-primary-600 font-semibold">{selectedFindingActions.length}</span> action{selectedFindingActions.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      <div className="space-y-6">
+                        {selectedFindingActions.map((action, index) => (
+                          <div
+                            key={action.actionId}
+                            className="border-2 border-gray-200 rounded-2xl bg-white hover:border-primary-300 hover:shadow-xl transition-all duration-300 overflow-hidden group"
+                          >
+                            {/* Action Header */}
+                            <div className="bg-gradient-to-r from-gray-50 to-white border-b-2 border-gray-200 px-6 py-4">
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-start gap-4 flex-1">
+                                  <div className="w-10 h-10 bg-primary-100 group-hover:bg-primary-200 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors">
+                                    <span className="text-primary-700 font-bold text-lg">#{index + 1}</span>
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3 className="text-xl font-bold text-gray-900 mb-2 group-hover:text-primary-700 transition-colors">
+                                      {action.title}
+                                    </h3>
+                                    <p className="text-sm text-gray-600 leading-relaxed">
+                                      {action.description || 'No description provided'}
+                                    </p>
+                                  </div>
                                 </div>
-                                <span className="text-sm text-gray-600 min-w-[3rem]">
-                                  {action.progressPercent || 0}%
-                                </span>
+                                <div className="flex items-center gap-3">
+                                  <span className={`px-4 py-2 rounded-full text-sm font-bold shadow-sm ${
+                                    action.status === 'Approved' ? 'bg-green-100 text-green-700 border-2 border-green-200' :
+                                    action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700 border-2 border-blue-200' :
+                                    action.status === 'Rejected' ? 'bg-red-100 text-red-700 border-2 border-red-200' :
+                                    action.status === 'Returned' ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-200' :
+                                    'bg-gray-100 text-gray-700 border-2 border-gray-200'
+                                  }`}>
+                                    {action.status}
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">Due Date</p>
-                              <p className="text-sm text-gray-900">{formatDate(action.dueDate)}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-1">Created</p>
-                              <p className="text-sm text-gray-900">{formatDate(action.createdAt)}</p>
+
+                            {/* Action Body */}
+                            <div className="p-6">
+                              {/* Progress Bar */}
+                              <div className="mb-6">
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                    </svg>
+                                    <span className="text-sm font-bold text-gray-700">Progress</span>
+                                  </div>
+                                  <span className="text-2xl font-bold text-primary-600">
+                                    {action.progressPercent || 0}%
+                                  </span>
+                                </div>
+                                <div className="relative">
+                                  <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner">
+                                    <div
+                                      className="bg-gradient-to-r from-primary-500 to-primary-600 h-4 rounded-full transition-all duration-500 relative overflow-hidden"
+                                      style={{ width: `${action.progressPercent || 0}%` }}
+                                    >
+                                      <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Info Grid */}
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl p-4 border border-blue-200">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center">
+                                      <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Due Date</p>
+                                      <p className="text-base font-bold text-blue-900">{formatDate(action.dueDate)}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl p-4 border border-purple-200">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
+                                      <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-semibold text-purple-600 uppercase tracking-wide">Created</p>
+                                      <p className="text-base font-bold text-purple-900">{formatDate(action.createdAt)}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="bg-gradient-to-br from-green-50 to-green-100/50 rounded-xl p-4 border border-green-200">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
+                                      <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-semibold text-green-600 uppercase tracking-wide">Status</p>
+                                      <p className="text-base font-bold text-green-900">{action.status || 'Pending'}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Review Feedback */}
+                              {action.reviewFeedback && (
+                                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-xl p-5 mb-4">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 bg-amber-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                                      <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                                      </svg>
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Review Feedback</p>
+                                      <p className="text-sm text-amber-900 leading-relaxed">{action.reviewFeedback}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Actions Footer */}
+                              {action.status?.toLowerCase() === 'reviewed' && (
+                                <div className="flex items-center justify-end pt-4 border-t-2 border-gray-200">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedActionId(action.actionId);
+                                      setShowActionDetailModal(true);
+                                      setSelectedActionForReview(action);
+                                      setShowActionsModal(false);
+                                    }}
+                                    className="px-6 py-3 text-sm font-bold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                    </svg>
+                                    Review Action
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
-
-                          {action.reviewFeedback && (
-                            <div className="mt-3 pt-3 border-t border-gray-200">
-                              <p className="text-xs text-gray-500 mb-1">Review Feedback</p>
-                              <p className="text-sm text-gray-900">{action.reviewFeedback}</p>
-                            </div>
-                          )}
-
-                          <div className="mt-4 flex items-center justify-end gap-2">
-                            {action.status?.toLowerCase() === 'reviewed' && (
-                              <button
-                                onClick={() => {
-                                  setSelectedActionId(action.actionId);
-                                  setShowActionDetailModal(true);
-                                  setSelectedActionForReview(action);
-                                  setShowActionsModal(false);
-                                }}
-                                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
-                              >
-                                Review
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
