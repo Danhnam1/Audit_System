@@ -11,6 +11,7 @@ import { getAdminUsers } from '../../../api/adminUsers';
 import { addTeamMember } from '../../../api/auditTeam';
 import { getDepartments } from '../../../api/departments';
 import { addAuditSchedule } from '../../../api/auditSchedule';
+import { uploadMultipleAuditDocuments } from '../../../api/auditDocuments';
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
 import { updateAuditPlan } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
@@ -57,6 +58,12 @@ const LeadAuditorAuditPlanning = () => {
   // UI: tabs for plans when more than pageSize
   const [activePlansTab, setActivePlansTab] = useState<number>(1);
   const pageSize = 7;
+
+  // Upload modal states
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadAuditId, setUploadAuditId] = useState<string | null>(null);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const visiblePlans = useMemo(() => {
     return existingPlans.filter((plan) => {
@@ -319,6 +326,40 @@ const LeadAuditorAuditPlanning = () => {
   }, []);
 
   // Handler: View findings for audit
+  const handleUpload = (auditId: string) => {
+    setUploadAuditId(auditId);
+    setUploadFiles([]);
+    setShowUploadModal(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setUploadFiles(Array.from(e.target.files));
+    }
+  };
+
+  const handleUploadSubmit = async () => {
+    if (!uploadAuditId || uploadFiles.length === 0) {
+      toast.warning('Please select at least one file to upload.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      await uploadMultipleAuditDocuments(uploadAuditId, uploadFiles);
+
+      toast.success(`Successfully uploaded ${uploadFiles.length} file(s)`);
+      setShowUploadModal(false);
+      setUploadFiles([]);
+      setUploadAuditId(null);
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to upload files. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleViewDetails = (auditId: string) => {
     navigate(`/lead-auditor/auditplanning/${auditId}`);
   };
@@ -843,6 +884,7 @@ const LeadAuditorAuditPlanning = () => {
             onViewDetails={handleViewDetails}
             onEditPlan={() => {}} // Not used for Lead Auditor
             onDeletePlan={() => {}} // Not used for Lead Auditor
+            onUpload={handleUpload}
             getStatusColor={getStatusColor}
             getBadgeVariant={getBadgeVariant}
             startIndex={(activePlansTab - 1) * pageSize}
@@ -874,6 +916,127 @@ const LeadAuditorAuditPlanning = () => {
             );
           })()}
         </div>
+
+        {/* Upload Modal */}
+        {showUploadModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black/50 transition-opacity"
+              onClick={() => {
+                if (!uploading) {
+                  setShowUploadModal(false);
+                  setUploadFiles([]);
+                  setUploadAuditId(null);
+                }
+              }}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Upload Documents
+                  </h3>
+                  <button
+                    onClick={() => {
+                      if (!uploading) {
+                        setShowUploadModal(false);
+                        setUploadFiles([]);
+                        setUploadAuditId(null);
+                      }
+                    }}
+                    disabled={uploading}
+                    className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Audit Info */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Audit Plan
+                    </label>
+                    <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                      {existingPlans.find(p => p.auditId === uploadAuditId)?.title || 'N/A'}
+                    </p>
+                  </div>
+
+                  {/* File Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Files
+                    </label>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={handleFileChange}
+                      disabled={uploading}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    {uploadFiles.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs text-gray-600 font-medium">Selected files ({uploadFiles.length}):</p>
+                        <ul className="text-xs text-gray-600 space-y-1 max-h-32 overflow-y-auto">
+                          {uploadFiles.map((file, idx) => (
+                            <li key={idx} className="flex items-center gap-2">
+                              <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              <span className="truncate">{file.name}</span>
+                              <span className="text-gray-400">({(file.size / 1024).toFixed(1)} KB)</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUploadModal(false);
+                      setUploadFiles([]);
+                      setUploadAuditId(null);
+                    }}
+                    disabled={uploading}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleUploadSubmit}
+                    disabled={uploadFiles.length === 0 || uploading}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {uploading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        Upload
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Findings Modal */}
       </div>

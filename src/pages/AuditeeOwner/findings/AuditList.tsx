@@ -4,15 +4,23 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getAuditPlanById } from '../../../api/audits';
+import { DataTable } from '../../../components/DataTable';
+import type { TableColumn } from '../../../components/DataTable';
 
 interface AuditCard {
   auditId: string;
   auditTitle: string;
   auditType: string;
+  scope?: string;
   status: string;
   findingCount: number;
   startDate?: string;
   endDate?: string;
+  createdAt?: string;
+  createdBy?: string;
+  objective?: string;
+  isPublished?: boolean;
+  rawData?: any; // Store raw data for debugging
 }
 
 const getStatusBadgeColor = (status: string) => {
@@ -125,6 +133,8 @@ const AuditeeOwnerAuditList = () => {
             console.log(`📥 Fetching audit info for ${auditId}...`);
             const auditData = await getAuditPlanById(auditId);
             console.log(`📋 Raw audit data for ${auditId}:`, auditData);
+            console.log(`🔍 Available fields in audit data:`, Object.keys(auditData));
+            console.log(`📊 Full audit data structure:`, JSON.stringify(auditData, null, 2));
             
             // Try multiple possible field names for title
             let auditTitle = auditData.title || 
@@ -160,14 +170,44 @@ const AuditeeOwnerAuditList = () => {
                           auditData.audit?.Status ||
                           'Unknown';
             
+            const scope = auditData.scope || 
+                         auditData.Scope ||
+                         auditData.auditScope ||
+                         auditData.audit?.scope ||
+                         '';
+            
+            const objective = auditData.objective ||
+                            auditData.Objective ||
+                            auditData.goal ||
+                            auditData.audit?.objective ||
+                            '';
+            
+            const createdAt = auditData.createdAt ||
+                            auditData.CreatedAt ||
+                            auditData.created ||
+                            auditData.audit?.createdAt ||
+                            '';
+            
+            const createdBy = auditData.createdBy ||
+                            auditData.CreatedBy ||
+                            auditData.createdByUser?.fullName ||
+                            auditData.audit?.createdBy ||
+                            '';
+            
             const auditCard: AuditCard = {
               auditId: auditId,
               auditTitle: auditTitle,
               auditType: auditType,
+              scope: scope,
               status: status,
               findingCount: auditFindings.length,
               startDate: auditData.startDate || auditData.audit?.startDate,
               endDate: auditData.endDate || auditData.audit?.endDate,
+              createdAt: createdAt,
+              createdBy: createdBy,
+              objective: objective,
+              isPublished: auditData.isPublished,
+              rawData: auditData,
             };
             console.log(`✅ Created card for audit ${auditId}:`, auditCard);
             return auditCard;
@@ -267,53 +307,137 @@ const AuditeeOwnerAuditList = () => {
           </div>
         )}
         
-        {/* Available Audits - Card List View */}
+        {/* Available Audits - Table View */}
         {!loading && !error && (
-          <div className="bg-white rounded-xl border border-primary-100 overflow-hidden">
-            {audits.length === 0 ? (
-              <div className="p-8 text-center">
-                <svg className="w-20 h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <p className="text-gray-500 font-semibold text-lg">No audits available</p>
-                <p className="text-sm text-gray-400 mt-2">Audits will appear here when findings are assigned to your department</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-200">
-                {audits.map((audit) => (
-                  <div
-                    key={audit.auditId}
-                    onClick={() => handleAuditClick(audit)}
-                    className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 mb-2">
-                          {audit.auditTitle}
-                        </h3>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(audit.auditType)}`}>
-                            {audit.auditType || 'N/A'}
-                          </span>
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(audit.status)}`}>
-                            {audit.status || 'Unknown'}
-                          </span>
-                          <span className="text-xs text-gray-500 flex items-center gap-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            {audit.findingCount} {audit.findingCount === 1 ? 'finding' : 'findings'}
-                          </span>
-                        </div>
-                      </div>
-                      <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600 flex-shrink-0 ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+            <DataTable
+              columns={[
+                {
+                  key: 'no',
+                  header: 'No.',
+                  cellClassName: 'whitespace-nowrap',
+                  render: (_, index) => (
+                    <span className="text-sm text-gray-700">{index + 1}</span>
+                  ),
+                },
+                {
+                  key: 'auditTitle',
+                  header: 'Audit Title',
+                  render: (audit: AuditCard) => (
+                    <div className="max-w-[250px]">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{audit.auditTitle}</p>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ),
+                },
+                {
+                  key: 'type',
+                  header: 'Type',
+                  cellClassName: 'whitespace-nowrap',
+                  render: (audit: AuditCard) => (
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(audit.auditType)}`}>
+                      {audit.auditType || 'N/A'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'scope',
+                  header: 'Scope',
+                  cellClassName: 'whitespace-nowrap',
+                  render: (audit: AuditCard) => (
+                    <span className="text-sm text-gray-700">{audit.scope || 'N/A'}</span>
+                  ),
+                },
+                {
+                  key: 'period',
+                  header: 'Period',
+                  cellClassName: 'whitespace-nowrap',
+                  render: (audit: AuditCard) => {
+                    const formatDate = (dateStr?: string) => {
+                      if (!dateStr) return 'N/A';
+                      try {
+                        return new Date(dateStr).toLocaleDateString();
+                      } catch {
+                        return dateStr;
+                      }
+                    };
+                    return (
+                      <div className="text-sm text-gray-600">
+                        {formatDate(audit.startDate)} - {formatDate(audit.endDate)}
+                      </div>
+                    );
+                  },
+                },
+                {
+                  key: 'status',
+                  header: 'Status',
+                  cellClassName: 'whitespace-nowrap',
+                  render: (audit: AuditCard) => (
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(audit.status)}`}>
+                      {audit.status || 'Unknown'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'findingCount',
+                  header: 'Findings',
+                  cellClassName: 'whitespace-nowrap text-center',
+                  align: 'center' as const,
+                  render: (audit: AuditCard) => (
+                    <div className="flex items-center justify-center gap-1">
+                      <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span className="text-sm font-semibold text-gray-900">{audit.findingCount}</span>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'createdAt',
+                  header: 'Created At',
+                  cellClassName: 'whitespace-nowrap',
+                  render: (audit: AuditCard) => {
+                    if (!audit.createdAt) return <span className="text-sm text-gray-500">N/A</span>;
+                    try {
+                      const date = new Date(audit.createdAt);
+                      const hours = date.getHours().toString().padStart(2, '0');
+                      const minutes = date.getMinutes().toString().padStart(2, '0');
+                      const day = date.getDate().toString().padStart(2, '0');
+                      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                      const year = date.getFullYear();
+                      return (
+                        <span className="text-sm text-gray-600">
+                          {hours}:{minutes} {day}/{month}/{year}
+                        </span>
+                      );
+                    } catch {
+                      return <span className="text-sm text-gray-500">{audit.createdAt}</span>;
+                    }
+                  },
+                },
+                {
+                  key: 'actions',
+                  header: 'Actions',
+                  align: 'center' as const,
+                  cellClassName: 'whitespace-nowrap text-center',
+                  render: (audit: AuditCard) => (
+                    <button
+                      onClick={() => handleAuditClick(audit)}
+                      className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors flex items-center gap-1 mx-auto"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      View
+                    </button>
+                  ),
+                },
+              ] as TableColumn<AuditCard>[]}
+              data={audits}
+              loading={false}
+              emptyMessage="No audits available. Audits will appear here when findings are assigned to your department."
+              rowKey={(audit) => audit.auditId}
+            />
           </div>
         )}
       </div>
