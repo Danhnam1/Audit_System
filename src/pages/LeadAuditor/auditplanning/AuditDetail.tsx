@@ -9,7 +9,9 @@ import {
   approveForwardDirector,
   rejectPlanContent,
   getAuditApprovals,
+  getSensitiveDepartments,
 } from '../../../api/audits';
+import { getAuditSchedules } from '../../../api/auditSchedule';
 
 
 
@@ -30,7 +32,7 @@ import FindingsTab from './components/FindingsTab';
 const AuditDetail = () => {
   const { auditId } = useParams<{ auditId: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'department' | 'auditteam' | 'criteria' | 'template' | 'findings'>('department');
+  const [activeTab, setActiveTab] = useState<'department' | 'auditteam' | 'criteria' | 'template' | 'findings' | 'schedule'>('department');
   const [auditDetails, setAuditDetails] = useState<any>(null);
   const [departments, setDepartments] = useState<any[]>([]);
   const [auditors, setAuditors] = useState<any[]>([]);
@@ -44,6 +46,9 @@ const AuditDetail = () => {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [loadingDepartments, setLoadingDepartments] = useState(false);
   const [loadingAuditors, setLoadingAuditors] = useState(false);
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [sensitiveAreasByDept, setSensitiveAreasByDept] = useState<Record<number, string[]>>({});
+  const [loadingSchedules, setLoadingSchedules] = useState(false);
 
   const [actionLoading, setActionLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -59,10 +64,12 @@ const AuditDetail = () => {
 
   useEffect(() => {
     if (auditId) {
-      loadAuditDetails();
+      loadAuditDetails(); // This already loads schedules internally
       loadDepartments();
       loadAuditors();
       loadCriteria();
+      // loadSchedules() removed - schedules are loaded in loadAuditDetails()
+      loadSensitiveAreas();
     }
   }, [auditId]);
 
@@ -87,6 +94,18 @@ const AuditDetail = () => {
     }
   }, [activeTab, auditDetails?.audit?.status, auditDetails?.status, auditId]);
 
+  // Schedules are now loaded in loadAuditDetails, so this useEffect is not needed
+  // But keep it for lazy loading if schedules tab is clicked before auditDetails is loaded
+  useEffect(() => {
+    if (activeTab === 'schedule' && auditId && schedules.length === 0 && !loadingSchedules && auditDetails) {
+      // Only load if auditDetails exists but schedules are empty
+      const schedulesFromDetails = auditDetails?.schedules;
+      if (!schedulesFromDetails || (!schedulesFromDetails.values && !schedulesFromDetails.$values && !Array.isArray(schedulesFromDetails))) {
+        loadSchedules();
+      }
+    }
+  }, [activeTab, auditId, schedules.length, loadingSchedules, auditDetails]);
+
   const loadAuditDetails = async () => {
     if (!auditId) return;
     
@@ -97,7 +116,53 @@ const AuditDetail = () => {
       console.log('[loadAuditDetails] Audit data:', data);
       console.log('[loadAuditDetails] TemplateId:', data?.templateId);
       console.log('[loadAuditDetails] Data keys:', data ? Object.keys(data) : 'null');
-      setAuditDetails(data);
+      
+      // Fetch schedules separately if not included in main response (same as Auditor)
+      let schedulesData = (data as any)?.schedules;
+      if (
+        !schedulesData ||
+        (!schedulesData.values && !schedulesData.$values && !Array.isArray(schedulesData))
+      ) {
+        try {
+          console.log('[loadAuditDetails] Fetching schedules from API for auditId:', auditId);
+          const schedulesResponse = await getAuditSchedules(auditId);
+          console.log('[loadAuditDetails] Schedules API response:', schedulesResponse);
+          const schedulesArray = unwrap(schedulesResponse);
+          console.log('[loadAuditDetails] Unwrapped schedules array:', schedulesArray);
+          schedulesData = { values: Array.isArray(schedulesArray) ? schedulesArray : [] };
+          console.log('[loadAuditDetails] Final schedulesData:', schedulesData);
+        } catch (scheduleErr: any) {
+          // Handle 404 gracefully - schedules might not exist yet
+          if (scheduleErr?.response?.status === 404) {
+            console.log('[loadAuditDetails] No schedules found (404) for auditId:', auditId);
+            schedulesData = { values: [] };
+          } else {
+            console.error('[loadAuditDetails] Failed to load schedules separately:', scheduleErr);
+            schedulesData = { values: [] };
+          }
+        }
+      } else {
+        console.log('[loadAuditDetails] Schedules found in main response:', schedulesData);
+      }
+      
+      // Merge schedules into data
+      const dataWithSchedules = {
+        ...data,
+        schedules: schedulesData,
+      };
+      
+      setAuditDetails(dataWithSchedules);
+      
+      // Extract schedules list for state (same format as Auditor)
+      const schedulesList = Array.isArray(schedulesData.values) 
+        ? schedulesData.values 
+        : Array.isArray(schedulesData.$values)
+        ? schedulesData.$values
+        : Array.isArray(schedulesData)
+        ? schedulesData
+        : [];
+      console.log('[loadAuditDetails] Setting schedules state with', schedulesList.length, 'items');
+      setSchedules(schedulesList);
       
       // Template will be loaded by useEffect when auditDetails is set
       if (data?.templateId) {
@@ -385,6 +450,109 @@ const AuditDetail = () => {
     }
   };
 
+  const loadSchedules = async () => {
+    if (!auditId) return;
+    
+    setLoadingSchedules(true);
+    try {
+      // First, try to get schedules from auditDetails if available
+      let schedulesData = auditDetails?.schedules;
+      
+      // If not found in auditDetails or invalid format, fetch separately
+      if (
+        !schedulesData ||
+        (!schedulesData.values && !schedulesData.$values && !Array.isArray(schedulesData))
+      ) {
+        try {
+          const schedulesResponse = await getAuditSchedules(auditId);
+          const schedulesArray = unwrap(schedulesResponse);
+          schedulesData = { values: schedulesArray };
+        } catch (scheduleErr: any) {
+          // Handle 404 gracefully - schedules might not exist yet
+          if (scheduleErr?.response?.status === 404) {
+            schedulesData = { values: [] };
+          } else {
+            throw scheduleErr;
+          }
+        }
+      }
+      
+      const schedulesList = Array.isArray(schedulesData.values) 
+        ? schedulesData.values 
+        : Array.isArray(schedulesData.$values)
+        ? schedulesData.$values
+        : Array.isArray(schedulesData)
+        ? schedulesData
+        : [];
+      
+      setSchedules(schedulesList);
+    } catch (err: any) {
+      console.error('Failed to load schedules', err);
+      // Only show error if it's not a 404 (schedules might not exist)
+      if (err?.response?.status !== 404) {
+        toast.error('Failed to load schedules: ' + (err?.message || 'Unknown error'));
+      }
+      setSchedules([]);
+    } finally {
+      setLoadingSchedules(false);
+    }
+  };
+
+  const loadSensitiveAreas = async () => {
+    if (!auditId) return;
+    
+    try {
+      const sensitiveDepts = await getSensitiveDepartments(auditId);
+      if (sensitiveDepts && sensitiveDepts.length > 0) {
+        const areasByDept: Record<number, string[]> = {};
+        
+        sensitiveDepts.forEach((sd: any) => {
+          const deptId = Number(sd.deptId);
+          let areasArray: string[] = [];
+
+          // Try 'Areas' first (C# convention - backend returns List<string> as Areas)
+          if (Array.isArray(sd.Areas)) {
+            areasArray = sd.Areas;
+          } else if (sd.Areas && typeof sd.Areas === 'string') {
+            try {
+              const parsed = JSON.parse(sd.Areas);
+              areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+            } catch {
+              areasArray = [sd.Areas];
+            }
+          } else if (sd.Areas && typeof sd.Areas === 'object' && sd.Areas.$values) {
+            areasArray = Array.isArray(sd.Areas.$values) ? sd.Areas.$values : [];
+          } else if (Array.isArray(sd.areas)) {
+            areasArray = sd.areas;
+          } else if (sd.areas && typeof sd.areas === 'string') {
+            try {
+              const parsed = JSON.parse(sd.areas);
+              areasArray = Array.isArray(parsed) ? parsed : [sd.areas];
+            } catch {
+              areasArray = [sd.areas];
+            }
+          } else if (sd.areas && typeof sd.areas === 'object' && sd.areas.$values) {
+            areasArray = Array.isArray(sd.areas.$values) ? sd.areas.$values : [];
+          }
+
+          // Store areas by deptId
+          if (deptId && areasArray.length > 0) {
+            areasByDept[deptId] = areasArray
+              .filter((area: string) => area && typeof area === 'string' && area.trim())
+              .map((a: string) => a.trim());
+          }
+        });
+
+        setSensitiveAreasByDept(areasByDept);
+      } else {
+        setSensitiveAreasByDept({});
+      }
+    } catch (err: any) {
+      console.error('Failed to load sensitive areas', err);
+      setSensitiveAreasByDept({});
+    }
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     try {
@@ -582,6 +750,16 @@ const AuditDetail = () => {
               >
                 Template
               </button>
+              <button
+                onClick={() => setActiveTab('schedule')}
+                className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  activeTab === 'schedule'
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Schedule
+              </button>
               {/* Only show Findings tab when audit status is Approved */}
               {((auditDetails?.audit?.status || auditDetails?.status) === 'Approved') && (
                 <button
@@ -605,6 +783,7 @@ const AuditDetail = () => {
                 departments={departments} 
                 loading={loadingDepartments}
                 onViewAuditDetail={() => setShowAuditDetailModal(true)}
+                sensitiveAreasByDept={sensitiveAreasByDept}
               />
             )}
             {activeTab === 'auditteam' && (
@@ -624,6 +803,82 @@ const AuditDetail = () => {
                 findings={findings} 
                 loading={loadingFindings}
               />
+            )}
+            {activeTab === 'schedule' && (
+              <div>
+                {loadingSchedules ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    <span className="ml-3 text-gray-600">Loading schedule...</span>
+                  </div>
+                ) : schedules.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No schedule found for this audit</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
+                      <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
+                        <h3 className="text-lg font-bold ">Schedule & Milestones</h3>
+                      </div>
+                      
+                      {/* Schedule List - Vertical Layout */}
+                      <div className="space-y-3">
+                        {(() => {
+                          // Sort schedules by dueDate ascending
+                          const scheduleValues = [...schedules].sort((a: any, b: any) => {
+                            const ta = a?.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                            const tb = b?.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                            return ta - tb;
+                          });
+
+                          return scheduleValues.map((schedule: any, idx: number) => {
+                            const hasDate = !!schedule.dueDate;
+                            const milestoneName = schedule.milestoneName || schedule.name || `Milestone ${idx + 1}`;
+                            
+                            return (
+                              <div
+                                key={schedule.scheduleId || schedule.id || idx}
+                                className="flex items-center gap-4 p-4 bg-white rounded-lg border border-gray-200 hover:border-primary-300 hover:shadow-sm transition-all"
+                              >
+                                {/* Marker dot */}
+                                <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${
+                                  hasDate 
+                                    ? 'bg-primary-600 border-white shadow-md' 
+                                    : 'bg-gray-300 border-gray-400'
+                                }`}></div>
+                                
+                                {/* Content */}
+                                <div className="flex-1 min-w-0">
+                                  <div className={`text-sm font-medium ${
+                                    hasDate ? 'text-gray-900' : 'text-gray-400'
+                                  }`}>
+                                    {milestoneName}
+                                  </div>
+                                  {hasDate && (
+                                    <div className="mt-1 text-xs text-gray-500">
+                                      {new Date(schedule.dueDate).toLocaleDateString('en-US', { 
+                                        year: 'numeric',
+                                        month: 'long', 
+                                        day: 'numeric' 
+                                      })}
+                                    </div>
+                                  )}
+                                  {!hasDate && (
+                                    <div className="mt-1 text-xs text-gray-400 italic">
+                                      Not set
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
             {activeTab === 'template' && (
               <div>

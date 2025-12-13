@@ -28,6 +28,7 @@ const SQAStaffAuditReview = lazy(() => import("../pages/Auditor/AuditReview"));
 // const SQAStaffReviewFindingDetail = lazy(() => import("../pages/Auditor/Requests/ReviewFindingDetail"));
 const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"));
 const SQAStaffSchedule = lazy(() => import("../pages/Auditor/Schedule"));
+const SQAStaffMyQR = lazy(() => import("../pages/Auditor/MyQR"));
 
 // Lead Auditor pages
 const LeadAuditorAuditAssignment = lazy(() => import("../pages/LeadAuditor/AuditAssignment"));
@@ -60,6 +61,7 @@ const DepartmentHeadReviewEvidence = lazy(() => import("../pages/AuditeeOwner/Re
 const DepartmentHeadEvidenceDetail = lazy(() => import("../pages/AuditeeOwner/EvidenceDetail"));
 const DepartmentHeadFindingsProgress = lazy(() => import("../pages/AuditeeOwner/findings/FindingsProgress"));
 const DepartmentHeadCAPAManagement = lazy(() => import("../pages/AuditeeOwner/CAPAManagement"));
+const AuditeeOwnerScanQR = lazy(() => import("../pages/AuditeeOwner/ScanQR"));
 
 // Director pages
 const DirectorReviewAuditPlans = lazy(() => import("../pages/Director/ReviewAuditPlans"));
@@ -286,6 +288,14 @@ export function AppRoutes() {
                 }
             />
             <Route
+                path="/auditor/my-qr"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <SQAStaffMyQR />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
                 path="/auditor/audit-assignment"
                 element={
                     <ProtectedRoute allowedRoles={["Auditor", "Lead Auditor"]}>
@@ -479,6 +489,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadCAPAManagement />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditee-owner/scan-qr"
+                element={
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
+                        <AuditeeOwnerScanQR />
                     </ProtectedRoute>
                 }
             />

@@ -14,6 +14,8 @@ import { toast } from 'react-toastify';
 import { getActionsByFinding, type Action } from '../../../api/actions';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById } from '../../../api/audits';
+import { getAccessGrants, verifyCode, type VerifyCodeRequest } from '../../../api/accessGrant';
+import useAuthStore, { useUserId } from '../../../store/useAuthStore';
 
 
 interface ChecklistItem {
@@ -46,15 +48,7 @@ const DepartmentChecklist = () => {
   const [showCompliantDetailsViewer, setShowCompliantDetailsViewer] = useState(false);
   const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null); // Compliant record ID from API response
   const [loadingCompliantId, setLoadingCompliantId] = useState(false); // Loading state for fetching compliant ID
-  const [compliantIdMap, setCompliantIdMap] = useState<Record<string, string | number>>(() => {
-    // Load compliantIdMap from sessionStorage on init (survives page reload, clears when tab closes)
-    try {
-      const stored = sessionStorage.getItem(`compliantIdMap_${auditId}`);
-      return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
-    }
-  }); // auditItemId -> compliant record id (persisted to sessionStorage)
+  const [compliantIdMap, setCompliantIdMap] = useState<Record<string, string | number>>({}); // auditItemId -> compliant record id (persisted to sessionStorage)
 
   // Audit info state
   const [auditType, setAuditType] = useState<string>('');
@@ -89,9 +83,82 @@ const DepartmentChecklist = () => {
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
 
+  // QR Scan & Verify Code state
+  const [qrScanned, setQrScanned] = useState<boolean>(false);
+  const [showQrScanModal, setShowQrScanModal] = useState(false);
+  const [showVerifyCodeModal, setShowVerifyCodeModal] = useState(false);
+  const [verifyCodeInput, setVerifyCodeInput] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [qrToken, setQrToken] = useState<string | null>(null);
+  const authStore = useAuthStore();
+  const userIdFromToken = useUserId();
+  const [scannerUserId, setScannerUserId] = useState<string | null>(null);
+
   // Get auditId and auditType from location state (passed from parent component)
   const auditId = (location.state as any)?.auditId || '';
   const auditTypeFromState = (location.state as any)?.auditType || '';
+
+  // Load scanner user ID (for verify code)
+  useEffect(() => {
+    if (userIdFromToken) {
+      setScannerUserId(userIdFromToken);
+    } else if (authStore.user?.email) {
+      // Fallback: try to get from authStore
+      const fallbackUserId = (authStore.user as any)?.userId || (authStore.user as any)?.id || (authStore.user as any)?.$id;
+      if (fallbackUserId) {
+        setScannerUserId(String(fallbackUserId));
+      }
+    }
+  }, [userIdFromToken, authStore.user?.email]);
+
+  // Check QR scan status on mount
+  useEffect(() => {
+    const checkQrScanStatus = async () => {
+      if (!deptId || !auditId || !scannerUserId) return;
+
+      try {
+        // Check sessionStorage first
+        const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
+        const verified = sessionStorage.getItem(sessionKey);
+        if (verified === 'true') {
+          setQrScanned(true);
+          return;
+        }
+
+        // Check if QR has been scanned by checking access grants
+        const grants = await getAccessGrants({
+          auditId: auditId,
+          deptId: parseInt(deptId, 10),
+          auditorId: scannerUserId,
+        });
+
+        if (grants && grants.length > 0) {
+          // QR has been issued, check if it's been scanned
+          // For now, we'll show verify code modal if grants exist
+          // In a real scenario, you might want to check scan status via API
+          const activeGrant = grants.find(g => g.status === 'Active');
+          if (activeGrant) {
+            setQrToken(activeGrant.qrToken);
+            setShowVerifyCodeModal(true);
+          } else {
+            // No active grant, show QR scan required message
+            setShowQrScanModal(true);
+          }
+        } else {
+          // No grants found, QR not scanned yet
+          setShowQrScanModal(true);
+        }
+      } catch (error) {
+        console.error('Error checking QR scan status:', error);
+        // On error, show QR scan modal
+        setShowQrScanModal(true);
+      }
+    };
+
+    if (deptId && auditId && scannerUserId) {
+      checkQrScanStatus();
+    }
+  }, [deptId, auditId, scannerUserId]);
 
   // Set audit type from state or load from API
   useEffect(() => {
@@ -423,6 +490,128 @@ const DepartmentChecklist = () => {
     }
   };
 
+  // Handle verify code
+  const handleVerifyCode = async () => {
+    if (!qrToken || !verifyCodeInput.trim() || !scannerUserId) {
+      toast.error('Please enter verify code');
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      const result = await verifyCode({
+        qrToken: qrToken,
+        scannerUserId: scannerUserId,
+        verifyCode: verifyCodeInput.trim(),
+      });
+
+      if (result.isValid) {
+        toast.success('Verify code is correct! Opening checklist...');
+        setQrScanned(true);
+        setShowVerifyCodeModal(false);
+        // Save to sessionStorage
+        if (deptId && auditId && scannerUserId) {
+          const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
+          sessionStorage.setItem(sessionKey, 'true');
+        }
+      } else {
+        toast.error(result.reason || 'Verify code is incorrect');
+      }
+    } catch (error: any) {
+      console.error('Failed to verify code:', error);
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to verify code');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+
+  // Don't render checklist if QR not scanned/verified
+  if (!qrScanned && (showQrScanModal || showVerifyCodeModal)) {
+    return (
+      <MainLayout user={layoutUser}>
+        {/* QR Scan Required Modal */}
+        {showQrScanModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black bg-opacity-50" />
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 bg-amber-100 rounded-full">
+                  <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 text-center mb-2">
+                  QR Code Required
+                </h3>
+                <p className="text-sm text-gray-600 text-center mb-6">
+                  Please have the department scan your QR code to access this checklist.
+                </p>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => navigate('/auditor/findings')}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                  >
+                    Go Back
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Verify Code Modal */}
+        {showVerifyCodeModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black bg-opacity-50" />
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 bg-blue-100 rounded-full">
+                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 text-center mb-2">
+                  Enter Verify Code
+                </h3>
+                <p className="text-sm text-gray-600 text-center mb-6">
+                  Please enter the verify code provided by the department to access this checklist.
+                </p>
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Verify Code
+                  </label>
+                  <input
+                    type="text"
+                    value={verifyCodeInput}
+                    onChange={(e) => setVerifyCodeInput(e.target.value)}
+                    placeholder="Enter 6-digit verify code"
+                    maxLength={6}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-center text-lg tracking-widest"
+                  />
+                </div>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => navigate('/auditor/findings')}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleVerifyCode}
+                    disabled={verifying || !verifyCodeInput.trim()}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {verifying ? 'Verifying...' : 'Verify'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout user={layoutUser}>

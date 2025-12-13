@@ -187,8 +187,35 @@ export const NotificationBell: React.FC = () => {
   }, [open]);
 
   // Handle real-time notifications from SignalR
+  // Use ref to track if we've already shown a notification to prevent duplicates
+  const shownNotificationIdsRef = useRef<Set<string>>(new Set());
+  const loadRef = useRef(load);
+  
+  // Keep loadRef updated
+  useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
+  
   useEffect(() => {
     const handleNewNotification = async (data: NotificationData) => {
+      // Create a unique ID for this notification to prevent duplicates
+      const notificationId = `${data.notificationId || data.title || ''}_${data.createdAt || Date.now()}`;
+      
+      // Check if we've already shown this notification
+      if (shownNotificationIdsRef.current.has(notificationId)) {
+        console.log('[NotificationBell] Duplicate notification ignored:', notificationId);
+        return;
+      }
+      
+      // Mark as shown
+      shownNotificationIdsRef.current.add(notificationId);
+      
+      // Clean up old IDs (keep only last 100 to prevent memory leak)
+      if (shownNotificationIdsRef.current.size > 100) {
+        const idsArray = Array.from(shownNotificationIdsRef.current);
+        shownNotificationIdsRef.current = new Set(idsArray.slice(-50));
+      }
+      
       console.log('[NotificationBell] Received notification from SignalR:', data);
       
       // Show toast notification immediately
@@ -200,7 +227,7 @@ export const NotificationBell: React.FC = () => {
       // Reload notifications from API to get the latest data
       // This ensures we have complete and up-to-date information from the server
       console.log('[NotificationBell] Reloading notifications from API...');
-      await load(true); // Silent reload (don't show loading spinner)
+      await loadRef.current(true); // Silent reload (don't show loading spinner)
     };
 
     // Register callback - this will also trigger any pending notification
@@ -212,7 +239,7 @@ export const NotificationBell: React.FC = () => {
       console.log('[NotificationBell] Unsubscribing from SignalR notifications');
       offNotification();
     };
-  }, [onNotification, offNotification, load]);
+  }, [onNotification, offNotification]); // Removed 'load' from dependencies to prevent re-subscription
 
   const handleMarkRead = async (id: string) => {
     // Save to localStorage immediately (works even without backend)

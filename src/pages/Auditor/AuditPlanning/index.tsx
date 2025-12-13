@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import type { AuditPlan, AuditPlanDetails } from '../../../types/auditPlan';
 import { getChecklistTemplates } from '../../../api/checklists';
 import { 
-  createAudit,
+  createAudit, 
   setSensitiveFlag,
   getSensitiveDepartments,
   addAuditScopeDepartment, 
@@ -2282,7 +2282,7 @@ const SQAStaffAuditPlanning = () => {
                 {formState.currentStep === 1 && (
                   <>
                     <DRLTemplateViewer drlFiles={drlTemplateFiles} />
-                    <Step1BasicInfo
+                  <Step1BasicInfo
                     title={formState.title}
                     auditType={formState.auditType}
                     goal={formState.goal}
@@ -2305,21 +2305,21 @@ const SQAStaffAuditPlanning = () => {
 
                 {formState.currentStep === 2 && (
                   <div className="space-y-4">
-                    <Step2Scope
-                      level={formState.level}
-                      selectedDeptIds={formState.selectedDeptIds}
-                      departments={availableDepartments}
-                      criteria={criteria}
-                      selectedCriteriaIds={formState.selectedCriteriaIds}
-                      onLevelChange={formState.setLevel}
-                      onSelectedDeptIdsChange={formState.setSelectedDeptIds}
-                      onCriteriaToggle={(id: string) => {
-                        const val = String(id);
-                        formState.setSelectedCriteriaIds((prev) =>
-                          prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
-                        );
-                      }}
-                    />
+                  <Step2Scope
+                    level={formState.level}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    departments={availableDepartments}
+                    criteria={criteria}
+                    selectedCriteriaIds={formState.selectedCriteriaIds}
+                    onLevelChange={formState.setLevel}
+                    onSelectedDeptIdsChange={formState.setSelectedDeptIds}
+                    onCriteriaToggle={(id: string) => {
+                      const val = String(id);
+                      formState.setSelectedCriteriaIds((prev) =>
+                        prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
+                      );
+                    }}
+                  />
                     <SensitiveAreaForm
                       sensitiveFlag={formState.sensitiveFlag}
                       sensitiveAreas={formState.sensitiveAreas}
@@ -2346,16 +2346,16 @@ const SQAStaffAuditPlanning = () => {
 
                 {formState.currentStep === 4 && (
                   <div className="space-y-3">
-                    <Step4Team
-                      level={formState.level}
-                      selectedDeptIds={formState.selectedDeptIds}
-                      selectedAuditorIds={formState.selectedAuditorIds}
+                  <Step4Team
+                    level={formState.level}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    selectedAuditorIds={formState.selectedAuditorIds}
                       sensitiveFlag={formState.sensitiveFlag}
-                      auditorOptions={auditorOptions}
-                      ownerOptions={ownerOptions}
-                      departments={departments}
-                      onAuditorsChange={formState.setSelectedAuditorIds}
-                    />
+                    auditorOptions={auditorOptions}
+                    ownerOptions={ownerOptions}
+                    departments={departments}
+                    onAuditorsChange={formState.setSelectedAuditorIds}
+                  />
                     <PermissionPreviewPanel sensitiveFlag={formState.sensitiveFlag} />
                   </div>
                 )}

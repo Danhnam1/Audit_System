@@ -2,18 +2,18 @@ import { useState, useEffect } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
-import { getAuditScopeDepartmentsByAuditId, getAuditPlans, getSensitiveDepartments } from '../../../api/audits';
+import { getAuditScopeDepartmentsByAuditId, getAuditPlans } from '../../../api/audits';
 import { createAuditAssignment, getAuditAssignments, bulkCreateAuditAssignments } from '../../../api/auditAssignments';
 import { getDepartmentById } from '../../../api/departments';
 
-import { issueAccessGrant } from '../../../api/accessGrant';
+import { issueAccessGrant, getAccessGrants } from '../../../api/accessGrant';
 
 import { getUserById } from '../../../api/adminUsers';
 
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import { DataTable } from '../../../components/DataTable';
-import type { TableColumn } from '../../../components/DataTable';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface Department {
   deptId: number;
@@ -81,6 +81,10 @@ export default function AuditAssignment() {
   const [departmentDetail, setDepartmentDetail] = useState<any>(null);
   const [loadingDepartmentDetail, setLoadingDepartmentDetail] = useState(false);
   const [selectedDepartmentForDetail, setSelectedDepartmentForDetail] = useState<Department | null>(null);
+  const [qrGrantsForDetail, setQrGrantsForDetail] = useState<Array<{ grantId: string; auditorId: string; qrUrl: string; verifyCode?: string; validFrom: string; validTo: string; status: string }>>([]);
+  const [loadingQrGrants, setLoadingQrGrants] = useState(false);
+  const [expandedAuditorIds, setExpandedAuditorIds] = useState<Set<string>>(new Set());
+  const [auditorNamesForDetail, setAuditorNamesForDetail] = useState<Record<string, string>>({});
   
   // QR Grant state
   const [showQrGrantModal, setShowQrGrantModal] = useState(false);
@@ -217,6 +221,11 @@ export default function AuditAssignment() {
     }
   };
 
+  // Generate a random 6-digit verify code
+  const generateVerifyCode = (): string => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  };
+
   const handleIssueQrGrants = async () => {
     if (!selectedAuditId || !selectedDepartment || selectedAuditorIds.length === 0) {
       toast.error('Missing information for QR grant');
@@ -227,6 +236,38 @@ export default function AuditAssignment() {
     if (!audit || !audit.startDate || !audit.endDate) {
       toast.error('Audit dates are required for QR grant');
       return;
+    }
+
+    // Validate dates - ensure we're working with UTC times
+    const now = new Date();
+    // Parse audit dates - if they're strings, they should be in ISO format
+    const auditStartDate = new Date(audit.startDate);
+    const auditEndDate = new Date(audit.endDate);
+    
+    // Validate parsed dates
+    if (isNaN(auditStartDate.getTime()) || isNaN(auditEndDate.getTime())) {
+      toast.error('Invalid audit dates. Please check the audit period.');
+      return;
+    }
+    
+    // Check if audit end date is in the past (compare UTC times)
+    const nowUtc = new Date(now.toISOString());
+    const auditEndDateUtc = new Date(auditEndDate.toISOString());
+    
+    if (auditEndDateUtc < nowUtc) {
+      toast.warning('Audit end date has passed. QR code will be extended for 30 days from now.');
+    }
+
+    // Set validFrom: use current time (UTC) if audit hasn't started, otherwise use audit start date
+    const auditStartDateUtc = new Date(auditStartDate.toISOString());
+    const validFrom = auditStartDateUtc > nowUtc ? auditStartDateUtc : nowUtc;
+    
+    // Set validTo: if audit has ended, extend by 30 days from now (UTC)
+    let validTo = auditEndDateUtc;
+    if (auditEndDateUtc < nowUtc) {
+      // If audit has ended, extend QR validity by 30 days from now (UTC)
+      validTo = new Date(nowUtc.getTime() + 30 * 24 * 60 * 60 * 1000);
+      toast.info('Audit has ended. QR code will be valid for 30 days from now.');
     }
 
     setIssuingQr(true);
@@ -241,15 +282,37 @@ export default function AuditAssignment() {
         const auditorName = auditor?.fullName || 'Unknown';
 
         try {
-          const qrGrant = await issueAccessGrant({
+          // Build request payload - VerifyCode is required by backend
+          // TEST MODE: Uncomment the lines below to test expired QR code
+          // const testValidFrom = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000); // 2 days ago
+          // const testValidTo = new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000); // 1 day ago
+          
+          const requestPayload: any = {
             auditId: selectedAuditId,
             auditorId: auditorId,
             deptId: selectedDepartment.deptId,
-            validFrom: new Date(audit.startDate).toISOString(),
-            validTo: new Date(audit.endDate).toISOString(),
-            verifyCode: undefined, // Optional
-            ttlMinutes: undefined, // Optional
+            validFrom: validFrom.toISOString(),
+            validTo: validTo.toISOString(),
+            // TEST MODE: Use test dates instead
+            // validFrom: testValidFrom.toISOString(),
+            // validTo: testValidTo.toISOString(),
+            verifyCode: generateVerifyCode(), // Required by backend - generate random 6-digit code
+            // ttlMinutes is optional, so we don't include it if undefined
+          };
+          
+          console.log('[AuditAssignment] Issuing QR grant for auditor:', auditorId, {
+            requestPayload,
+            auditStartDate: audit.startDate,
+            auditEndDate: audit.endDate,
+            validFrom: validFrom.toISOString(),
+            validTo: validTo.toISOString(),
+            now: now.toISOString(),
+            auditEndDateInPast: auditEndDate < now,
+            // TEST INFO: Check if QR will be expired immediately
+            willBeExpired: validTo < now,
           });
+          
+          const qrGrant = await issueAccessGrant(requestPayload);
 
           results.push({
             auditorId,
@@ -317,26 +380,15 @@ export default function AuditAssignment() {
         toast.success('Auditor assigned successfully!');
       }
       
-      // Check if this department has sensitive flag
-      try {
-        const sensitiveDepts = await getSensitiveDepartments(selectedAuditId);
-        const hasSensitiveFlag = sensitiveDepts.some((sd: any) => 
-          sd.deptId === selectedDepartment.deptId && sd.sensitiveFlag === true
-        );
-        
-        if (hasSensitiveFlag) {
-          // Get audit details for dates
-          const audit = audits.find(a => a.auditId === selectedAuditId);
-          if (audit && audit.startDate && audit.endDate) {
-            // Show QR grant modal
-            setShowQrGrantModal(true);
-            setQrGrantResults([]);
-            // Don't close assign modal yet, will close after QR grant
-            return;
-          }
-        }
-      } catch (sensitiveErr) {
-        console.warn('Failed to check sensitive flag:', sensitiveErr);
+      // Always issue QR codes after assignment (not just for sensitive areas)
+      // Get audit details for dates
+      const audit = audits.find(a => a.auditId === selectedAuditId);
+      if (audit && audit.startDate && audit.endDate) {
+        // Show QR grant modal to issue QR codes for all assigned auditors
+        setShowQrGrantModal(true);
+        setQrGrantResults([]);
+        // Don't close assign modal yet, will close after QR grant
+        return;
       }
       
       handleCloseModal();
@@ -412,9 +464,45 @@ export default function AuditAssignment() {
       } finally {
         setLoadingDepartmentDetail(false);
       }
+      
+      // Fetch QR grants for this assignment
+      setLoadingQrGrants(true);
+      try {
+        const grants = await getAccessGrants({
+          auditId: selectedAuditId || undefined,
+          deptId: dept.deptId,
+          auditorId: assignment.auditorId || undefined,
+        });
+        setQrGrantsForDetail(grants || []);
+        
+        // Fetch auditor names for the grants
+        const uniqueAuditorIds = [...new Set((grants || []).map(g => g.auditorId))];
+        Promise.all(
+          uniqueAuditorIds.map(async (auditorId) => {
+            try {
+              const user = await getUserById(auditorId);
+              return { auditorId, name: user?.fullName || 'Unknown' };
+            } catch {
+              return { auditorId, name: 'Unknown' };
+            }
+          })
+        ).then((results) => {
+          const namesMap: Record<string, string> = {};
+          results.forEach(({ auditorId, name }) => {
+            namesMap[auditorId] = name;
+          });
+          setAuditorNamesForDetail(namesMap);
+        });
+      } catch (err: any) {
+        console.error('Failed to load QR grants:', err);
+        setQrGrantsForDetail([]);
+      } finally {
+        setLoadingQrGrants(false);
+      }
     } else {
       setSelectedAssignment(null);
       setDepartmentDetail(null);
+      setQrGrantsForDetail([]);
     }
   };
 
@@ -423,6 +511,21 @@ export default function AuditAssignment() {
     setSelectedAssignment(null);
     setDepartmentDetail(null);
     setSelectedDepartmentForDetail(null);
+    setQrGrantsForDetail([]);
+    setExpandedAuditorIds(new Set());
+    setAuditorNamesForDetail({});
+  };
+
+  const toggleAuditorExpand = (auditorId: string) => {
+    setExpandedAuditorIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(auditorId)) {
+        next.delete(auditorId);
+      } else {
+        next.add(auditorId);
+      }
+      return next;
+    });
   };
 
   // Removed unused getAssignmentsForSelectedAudit function
@@ -592,9 +695,8 @@ export default function AuditAssignment() {
                           // Fetch user name if not in cache
                           if (!userNamesCache[audit.createdBy]) {
                             getUserById(audit.createdBy)
-                              .then((response) => {
-                                const userData = response?.data?.$values?.[0] || response?.data;
-                                const fullName = userData?.fullName || userData?.username || 'Unknown';
+                              .then((userData) => {
+                                const fullName = userData?.fullName || 'Unknown';
                                 setUserNamesCache((prev) => ({ ...prev, [audit.createdBy!]: fullName }));
                               })
                               .catch(() => {
@@ -623,7 +725,7 @@ export default function AuditAssignment() {
                       },
                     ]}
                     data={audits}
-                    emptyMessage="No audits found."
+                    emptyState="No audits found."
                   />
                 </div>
               )}
@@ -988,22 +1090,63 @@ export default function AuditAssignment() {
                   ) : null}
                 </div>
 
-                {/* Auditor Information - Only show if assigned */}
-                {selectedAssignment && (
-                  <div className="border-t border-gray-200 pt-4">
-                    <h4 className="text-base font-semibold text-gray-900 mb-3">Auditor Information</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Auditor Name
-                        </label>
-                        <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                          {selectedAssignment.auditorName || 'N/A'}
-                        </p>
-                      </div>
+                {/* Auditor Information - Show all assigned auditors */}
+                {(() => {
+                  // Get unique auditor IDs from QR grants (most accurate source)
+                  const assignedAuditorIds = new Set<string>();
+                  qrGrantsForDetail.forEach(grant => {
+                    if (grant.auditorId) {
+                      assignedAuditorIds.add(grant.auditorId);
+                    }
+                  });
+                  
+                  // Fallback: if no QR grants yet, use selectedAssignment
+                  if (assignedAuditorIds.size === 0 && selectedAssignment?.auditorId) {
+                    assignedAuditorIds.add(selectedAssignment.auditorId);
+                  }
+
+                  const assignedAuditors = Array.from(assignedAuditorIds).map(auditorId => ({
+                    auditorId,
+                    name: auditorNamesForDetail[auditorId] || 'Loading...'
+                  }));
+
+                  if (assignedAuditors.length === 0 && !selectedAssignment) {
+                    return null;
+                  }
+
+                  return (
+                    <div className="border-t border-gray-200 pt-4">
+                      <h4 className="text-base font-semibold text-gray-900 mb-3">
+                        Auditor Information {assignedAuditors.length > 1 && `(${assignedAuditors.length})`}
+                      </h4>
+                      {assignedAuditors.length > 0 ? (
+                        <div className="space-y-2">
+                          {assignedAuditors.map((auditor) => (
+                            <div key={auditor.auditorId} className="bg-gray-50 rounded-lg px-3 py-2">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                                  <span className="text-xs font-semibold text-primary-700">
+                                    {auditor.name.charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900">{auditor.name}</p>
+                                  <p className="text-xs text-gray-600">ID: {auditor.auditorId.substring(0, 8)}...</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : selectedAssignment?.auditorName ? (
+                        <div className="bg-gray-50 rounded-lg px-3 py-2">
+                          <p className="text-sm font-medium text-gray-900">
+                            {selectedAssignment.auditorName}
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Status and Dates - Only show if assigned */}
                 {selectedAssignment && (
@@ -1055,6 +1198,157 @@ export default function AuditAssignment() {
                     </div>
                   </div>
                 )}
+
+                {/* QR Codes - Only show if assigned and QR grants exist */}
+                {selectedAssignment && (() => {
+                  // Group QR grants by auditorId
+                  const grantsByAuditor = qrGrantsForDetail.reduce((acc, grant) => {
+                    const auditorId = grant.auditorId;
+                    if (!acc[auditorId]) {
+                      acc[auditorId] = [];
+                    }
+                    acc[auditorId].push(grant);
+                    return acc;
+                  }, {} as Record<string, typeof qrGrantsForDetail>);
+
+                  const auditorIds = Object.keys(grantsByAuditor);
+
+                  return (
+                    <div className="border-t border-gray-200 pt-4">
+                      <h4 className="text-base font-semibold text-gray-900 mb-3">QR Codes</h4>
+                      {loadingQrGrants ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                          Loading QR codes...
+                        </div>
+                      ) : auditorIds.length > 0 ? (
+                        <div className="space-y-2">
+                          {auditorIds.map((auditorId) => {
+                            const grants = grantsByAuditor[auditorId];
+                            const auditorName = auditorNamesForDetail[auditorId] || 'Loading...';
+                            const isExpanded = expandedAuditorIds.has(auditorId);
+                            
+                            return (
+                              <div key={auditorId} className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                                {/* Auditor Header - Clickable */}
+                                <button
+                                  onClick={() => toggleAuditorExpand(auditorId)}
+                                  className="w-full flex items-center justify-between p-4 hover:bg-gray-100 transition-colors"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
+                                      <span className="text-sm font-semibold text-primary-700">
+                                        {auditorName.charAt(0).toUpperCase()}
+                                      </span>
+                                    </div>
+                                    <div className="text-left">
+                                      <p className="text-sm font-medium text-gray-900">{auditorName}</p>
+                                      <p className="text-xs text-gray-600">{grants.length} QR code(s)</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {grants.some(g => g.status === 'Active') && (
+                                      <span className="px-2 py-1 text-xs font-medium rounded bg-green-100 text-green-800">
+                                        Active
+                                      </span>
+                                    )}
+                                    <svg
+                                      className={`w-5 h-5 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                  </div>
+                                </button>
+                                
+                                {/* QR Codes Content - Collapsible */}
+                                {isExpanded && (
+                                  <div className="px-4 pb-4 space-y-3 border-t border-gray-200 pt-3">
+                                    {grants.map((grant) => (
+                                      <div key={grant.grantId} className="bg-white rounded-lg p-4 border border-gray-200">
+                                        <div className="flex items-center gap-2 mb-3">
+                                          <span className={`px-2 py-1 text-xs font-medium rounded ${
+                                            grant.status === 'Active' 
+                                              ? 'bg-green-100 text-green-800' 
+                                              : grant.status === 'Expired'
+                                              ? 'bg-red-100 text-red-800'
+                                              : 'bg-gray-100 text-gray-800'
+                                          }`}>
+                                            {grant.status}
+                                          </span>
+                                          <span className="text-xs text-gray-600">
+                                            Valid: {new Date(grant.validFrom).toLocaleDateString()} - {new Date(grant.validTo).toLocaleDateString()}
+                                          </span>
+                                        </div>
+                                        
+                                        {/* QR Code Display */}
+                                        <div className="flex justify-center mb-3">
+                                          <div className="bg-white p-3 rounded-lg border-2 border-gray-200">
+                                            <QRCodeSVG
+                                              value={grant.qrUrl}
+                                              size={150}
+                                              level="M"
+                                              includeMargin={true}
+                                            />
+                                          </div>
+                                        </div>
+                                        
+                                        {/* QR URL and Verify Code */}
+                                        <div className="space-y-2">
+                                          <div className="flex items-center gap-2">
+                                            <p className="text-xs text-gray-600 break-all flex-1 truncate">{grant.qrUrl}</p>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                navigator.clipboard.writeText(grant.qrUrl);
+                                                toast.info('QR URL copied to clipboard!');
+                                              }}
+                                              className="text-primary-600 hover:text-primary-700 flex-shrink-0"
+                                              title="Copy URL"
+                                            >
+                                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                              </svg>
+                                            </button>
+                                          </div>
+                                          {grant.verifyCode && (
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs font-medium text-gray-700">Verify Code:</span>
+                                              <span className="text-xs font-mono text-gray-900 bg-white px-2 py-1 rounded border border-gray-300">{grant.verifyCode}</span>
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  navigator.clipboard.writeText(grant.verifyCode!);
+                                                  toast.info('Verify code copied to clipboard!');
+                                                }}
+                                                className="text-primary-600 hover:text-primary-700"
+                                                title="Copy Verify Code"
+                                              >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                </svg>
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                          <p className="text-sm text-yellow-800">No QR codes have been issued for this assignment yet.</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Show message if not assigned */}
                 {!selectedAssignment && selectedDepartmentForDetail && (
@@ -1150,21 +1444,60 @@ export default function AuditAssignment() {
                 {/* Audit Info */}
                 {(() => {
                   const audit = audits.find(a => a.auditId === selectedAuditId);
-                  return audit ? (
-                    <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Audit Title</label>
-                        <p className="text-sm text-gray-900">{audit.title}</p>
+                  if (!audit) return null;
+                  
+                  const now = new Date();
+                  const auditEndDate = audit.endDate ? new Date(audit.endDate) : null;
+                  const auditHasEnded = auditEndDate && auditEndDate < now;
+                  
+                  return (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Audit Title</label>
+                          <p className="text-sm text-gray-900">{audit.title}</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Audit Period</label>
+                          <p className="text-sm text-gray-900">
+                            {audit.startDate ? new Date(audit.startDate).toLocaleDateString() : 'N/A'} - {' '}
+                            {audit.endDate ? new Date(audit.endDate).toLocaleDateString() : 'N/A'}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Valid Period</label>
-                        <p className="text-sm text-gray-900">
-                          {audit.startDate ? new Date(audit.startDate).toLocaleDateString() : 'N/A'} - {' '}
-                          {audit.endDate ? new Date(audit.endDate).toLocaleDateString() : 'N/A'}
-                        </p>
+                      
+                      {/* QR Code Validity Info */}
+                      <div className={`rounded-lg p-4 ${auditHasEnded ? 'bg-amber-50 border border-amber-200' : 'bg-blue-50 border border-blue-200'}`}>
+                        <div className="flex items-start gap-2">
+                          {auditHasEnded ? (
+                            <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                          <div className="flex-1">
+                            <p className={`text-xs font-semibold ${auditHasEnded ? 'text-amber-900' : 'text-blue-900'}`}>
+                              QR Code Validity Period
+                            </p>
+                            <p className={`text-xs mt-1 ${auditHasEnded ? 'text-amber-800' : 'text-blue-800'}`}>
+                              {auditHasEnded ? (
+                                <>
+                                  Audit has ended. QR codes will be valid for <strong>30 days from now</strong> to allow access for follow-up activities.
+                                </>
+                              ) : (
+                                <>
+                                  QR codes will be valid from <strong>{audit.startDate ? new Date(audit.startDate).toLocaleDateString() : 'audit start'}</strong> until <strong>{audit.endDate ? new Date(audit.endDate).toLocaleDateString() : 'audit end'}</strong>.
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  ) : null;
+                  );
                 })()}
 
                 {/* Selected Auditors */}
@@ -1235,16 +1568,34 @@ export default function AuditAssignment() {
                             <div className="flex-1">
                               <p className="text-sm font-medium text-gray-900">{result.auditorName}</p>
                               {result.success && result.qrUrl ? (
-                                <div className="mt-2">
-                                  <p className="text-xs text-gray-600 mb-1">QR Code URL:</p>
-                                  <a
-                                    href={result.qrUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-primary-600 hover:text-primary-700 underline break-all"
-                                  >
-                                    {result.qrUrl}
-                                  </a>
+                                <div className="mt-3 space-y-2">
+                                  {/* QR Code Display */}
+                                  <div className="flex justify-center">
+                                    <div className="bg-white p-3 rounded-lg border-2 border-gray-200">
+                                      <QRCodeSVG
+                                        value={result.qrUrl}
+                                        size={120}
+                                        level="M"
+                                        includeMargin={true}
+                                      />
+                                    </div>
+                                  </div>
+                                  {/* QR URL with copy button */}
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-xs text-gray-600 break-all flex-1 truncate">{result.qrUrl}</p>
+                                    <button
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(result.qrUrl!);
+                                        toast.info('QR URL copied to clipboard!');
+                                      }}
+                                      className="text-primary-600 hover:text-primary-700 flex-shrink-0"
+                                      title="Copy URL"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                      </svg>
+                                    </button>
+                                  </div>
                                 </div>
                               ) : result.error ? (
                                 <p className="text-xs text-red-600 mt-1">Error: {result.error}</p>

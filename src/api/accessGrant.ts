@@ -1,5 +1,18 @@
 import { apiClient } from '../hooks/axios';
 
+// Helper to convert to PascalCase for .NET API
+const toPascalCase = (obj: any): any => {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(toPascalCase);
+  if (typeof obj !== 'object') return obj;
+  
+  return Object.keys(obj).reduce((acc, key) => {
+    const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
+    acc[pascalKey] = toPascalCase(obj[key]);
+    return acc;
+  }, {} as any);
+};
+
 export interface IssueAccessGrantRequest {
   auditId: string;
   auditorId: string;
@@ -51,7 +64,9 @@ export interface VerifyCodeResponse {
 
 // Issue QR/permission for auditor
 export const issueAccessGrant = async (request: IssueAccessGrantRequest): Promise<AccessGrant> => {
-  const res: any = await apiClient.post('/AccessGrant/issue', request);
+  // Convert to PascalCase for .NET API
+  const pascalRequest = toPascalCase(request);
+  const res: any = await apiClient.post('/AccessGrant/issue', pascalRequest);
   return res?.data || res;
 };
 
@@ -96,13 +111,17 @@ export const verifyQrToken = async (qrToken: string): Promise<ScanAccessGrantRes
 
 // Scan QR token (POST endpoint)
 export const scanAccessGrant = async (request: ScanAccessGrantRequest): Promise<ScanAccessGrantResponse> => {
-  const res: any = await apiClient.post('/AccessGrant/scan', request);
+  // Convert to PascalCase for .NET API
+  const pascalRequest = toPascalCase(request);
+  const res: any = await apiClient.post('/AccessGrant/scan', pascalRequest);
   return res?.data || res;
 };
 
 // Verify code (POST endpoint)
 export const verifyCode = async (request: VerifyCodeRequest): Promise<VerifyCodeResponse> => {
-  const res: any = await apiClient.post('/AccessGrant/verify-code', request);
+  // Convert to PascalCase for .NET API
+  const pascalRequest = toPascalCase(request);
+  const res: any = await apiClient.post('/AccessGrant/verify-code', pascalRequest);
   return res?.data || res;
 };
 

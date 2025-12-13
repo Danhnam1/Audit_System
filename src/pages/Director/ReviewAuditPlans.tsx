@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
-import { approvePlan, getAuditPlanById, rejectPlanContent } from '../../api/audits';
+import { approvePlan, getAuditPlanById, rejectPlanContent, getSensitiveDepartments } from '../../api/audits';
 import { normalizePlanDetails, unwrap } from '../../utils/normalize';
 import { getDepartments } from '../../api/departments';
 import { getAuditCriteria } from '../../api/auditCriteria';
@@ -11,6 +11,7 @@ import { getStatusColor, getBadgeVariant } from '../../constants';
 import { PlanDetailsModal } from '../Auditor/AuditPlanning/components/PlanDetailsModal';
 import { getDepartmentName, getCriterionName } from '../../helpers/auditPlanHelpers';
 import { getChecklistTemplates } from '../../api/checklists';
+import { getAuditSchedules } from '../../api/auditSchedule';
 import { MainLayout } from '../../layouts';
 import {  StatCard } from '../../components';
 
@@ -410,8 +411,99 @@ const ReviewAuditPlans = () => {
     try {
       const raw = await getAuditPlanById(String(plan.planId));
       const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
-      const normalized = normalizePlanDetails(raw, { departments, criteriaList, users: allUsers });
-      setSelectedDetails(normalized);
+      
+      // Fetch schedules separately if not included in main response
+      let schedulesData = raw?.schedules;
+      if (
+        !schedulesData ||
+        (!schedulesData.values && !schedulesData.$values && !Array.isArray(schedulesData))
+      ) {
+        try {
+          const schedulesResponse = await getAuditSchedules(String(plan.planId));
+          const schedulesArray = unwrap(schedulesResponse);
+          schedulesData = { values: schedulesArray };
+        } catch (scheduleErr) {
+          schedulesData = { values: [] };
+        }
+      }
+
+      // Merge schedules into raw
+      const detailsWithSchedules = {
+        ...raw,
+        schedules: schedulesData,
+      };
+
+      // Load sensitive areas
+      let sensitiveFlag = false;
+      let sensitiveAreas: string[] = [];
+      let sensitiveAreasByDept: Record<number, string[]> = {};
+      
+      try {
+        const sensitiveDepts = await getSensitiveDepartments(String(plan.planId));
+        
+        if (sensitiveDepts && sensitiveDepts.length > 0) {
+          sensitiveFlag = sensitiveDepts.some((sd: any) => sd.sensitiveFlag === true);
+          
+          const allAreas = new Set<string>();
+          
+          sensitiveDepts.forEach((sd: any) => {
+            const deptId = Number(sd.deptId);
+            let areasArray: string[] = [];
+            
+            // Try 'Areas' first (C# convention - backend returns List<string> as Areas)
+            if (Array.isArray(sd.Areas)) {
+              areasArray = sd.Areas;
+            } else if (sd.Areas && typeof sd.Areas === 'string') {
+              try {
+                const parsed = JSON.parse(sd.Areas);
+                areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+              } catch {
+                areasArray = [sd.Areas];
+              }
+            } else if (sd.Areas && typeof sd.Areas === 'object' && sd.Areas.$values) {
+              areasArray = Array.isArray(sd.Areas.$values) ? sd.Areas.$values : [];
+            } else if (Array.isArray(sd.areas)) {
+              areasArray = sd.areas;
+            } else if (sd.areas && typeof sd.areas === 'string') {
+              try {
+                const parsed = JSON.parse(sd.areas);
+                areasArray = Array.isArray(parsed) ? parsed : [sd.areas];
+              } catch {
+                areasArray = [sd.areas];
+              }
+            } else if (sd.areas && typeof sd.areas === 'object' && sd.areas.$values) {
+              areasArray = Array.isArray(sd.areas.$values) ? sd.areas.$values : [];
+            }
+            
+            // Store areas by deptId
+            if (deptId && areasArray.length > 0) {
+              sensitiveAreasByDept[deptId] = areasArray.filter((area: string) => area && typeof area === 'string' && area.trim()).map((a: string) => a.trim());
+            }
+            
+            areasArray.forEach((area: string) => {
+              if (area && typeof area === 'string' && area.trim()) {
+                allAreas.add(area.trim());
+              }
+            });
+          });
+          
+          sensitiveAreas = Array.from(allAreas);
+        }
+      } catch (sensitiveErr) {
+        console.warn('Failed to load sensitive areas', sensitiveErr);
+      }
+
+      const normalized = normalizePlanDetails(detailsWithSchedules, { departments, criteriaList, users: allUsers });
+      
+      // Add sensitive areas data
+      const detailsWithSensitive = {
+        ...normalized,
+        sensitiveFlag,
+        sensitiveAreas,
+        sensitiveAreasByDept,
+      };
+      
+      setSelectedDetails(detailsWithSensitive);
     } catch (err) {
       console.warn('Failed to load full details, using mapped summary', err);
       // Fallback: basic shape from list
@@ -424,6 +516,9 @@ const ReviewAuditPlans = () => {
         schedules: { values: [] },
         createdByUser: { fullName: plan.submittedBy, email: '', roleName: 'Unknown' },
         status: plan.status,
+        sensitiveFlag: false,
+        sensitiveAreas: [],
+        sensitiveAreasByDept: {},
       });
     }
   };

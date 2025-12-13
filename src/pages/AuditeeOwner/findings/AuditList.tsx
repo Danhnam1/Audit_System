@@ -435,7 +435,7 @@ const AuditeeOwnerAuditList = () => {
               ] as TableColumn<AuditCard>[]}
               data={audits}
               loading={false}
-              emptyMessage="No audits available. Audits will appear here when findings are assigned to your department."
+              emptyState="No audits available. Audits will appear here when findings are assigned to your department."
               rowKey={(audit) => audit.auditId}
             />
           </div>

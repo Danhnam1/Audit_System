@@ -5,7 +5,7 @@ import AuditReviewList from './components/AuditReviewList';
 import { FilterBar } from './components/FilterBar';
 // PlanReviewPanel previously provided inline actions; we removed inline panel to avoid duplicate UI with modal
 // import PlanReviewPanel from './components/PlanReviewPanel';
-import { getAuditPlanById, approveForwardDirector, rejectPlanContent } from '../../../api/audits';
+import { getAuditPlanById, approveForwardDirector, rejectPlanContent, getSensitiveDepartments } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
 import { getChecklistTemplates } from '../../../api/checklists';
@@ -15,6 +15,7 @@ import { getDepartments } from '../../../api/departments';
 import { getDepartmentName } from '../../../helpers/auditPlanHelpers';
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { getAdminUsers } from '../../../api/adminUsers';
+import { getAuditSchedules } from '../../../api/auditSchedule';
 import { toast } from 'react-toastify';
 
 const SQAHeadAuditReview = () => {
@@ -344,14 +345,106 @@ const SQAHeadAuditReview = () => {
   const handleSelectPlan = async (auditId: string) => {
     setLoading(true);
     try {
-      const details = await getAuditPlanById(auditId);
-      const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
-      const normalized = normalizePlanDetails(details, { departments: departments || [], criteriaList: criteriaList || [], users: allUsers });
+      // Fetch plan details, schedules, and sensitive areas in parallel
+      const [details, schedulesResponse, sensitiveDeptsResponse] = await Promise.allSettled([
+        getAuditPlanById(auditId),
+        getAuditSchedules(auditId),
+        getSensitiveDepartments(auditId),
+      ]);
 
-      setSelectedPlanFull(normalized);
+      // Extract successful responses
+      const detailsData = details.status === 'fulfilled' ? details.value : null;
+      const schedulesData = schedulesResponse.status === 'fulfilled' 
+        ? { values: unwrap(schedulesResponse.value) || [] }
+        : { values: [] };
+      const sensitiveDepts = sensitiveDeptsResponse.status === 'fulfilled' 
+        ? sensitiveDeptsResponse.value 
+        : [];
+
+      // Process sensitive areas
+      let sensitiveFlag = false;
+      let sensitiveAreas: string[] = [];
+      let sensitiveAreasByDept: Record<number, string[]> = {};
+
+      if (sensitiveDepts && sensitiveDepts.length > 0) {
+        sensitiveFlag = sensitiveDepts.some((sd: any) => sd.sensitiveFlag === true);
+        const allAreas = new Set<string>();
+
+        sensitiveDepts.forEach((sd: any) => {
+          const deptId = Number(sd.deptId);
+          let areasArray: string[] = [];
+
+          // Try 'Areas' first (C# convention - backend returns List<string> as Areas)
+          if (Array.isArray(sd.Areas)) {
+            areasArray = sd.Areas;
+          } else if (sd.Areas && typeof sd.Areas === 'string') {
+            try {
+              const parsed = JSON.parse(sd.Areas);
+              areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+            } catch {
+              areasArray = [sd.Areas];
+            }
+          } else if (sd.Areas && typeof sd.Areas === 'object' && sd.Areas.$values) {
+            areasArray = Array.isArray(sd.Areas.$values) ? sd.Areas.$values : [];
+          } else if (Array.isArray(sd.areas)) {
+            areasArray = sd.areas;
+          } else if (sd.areas && typeof sd.areas === 'string') {
+            try {
+              const parsed = JSON.parse(sd.areas);
+              areasArray = Array.isArray(parsed) ? parsed : [sd.areas];
+            } catch {
+              areasArray = [sd.areas];
+            }
+          } else if (sd.areas && typeof sd.areas === 'object' && sd.areas.$values) {
+            areasArray = Array.isArray(sd.areas.$values) ? sd.areas.$values : [];
+          }
+
+          // Store areas by deptId
+          if (deptId && areasArray.length > 0) {
+            sensitiveAreasByDept[deptId] = areasArray
+              .filter((area: string) => area && typeof area === 'string' && area.trim())
+              .map((a: string) => a.trim());
+          }
+
+          areasArray.forEach((area: string) => {
+            if (area && typeof area === 'string' && area.trim()) {
+              allAreas.add(area.trim());
+            }
+          });
+        });
+
+        sensitiveAreas = Array.from(allAreas);
+      }
+
+      if (!detailsData) {
+        throw new Error('Failed to load plan details');
+      }
+
+      // Merge schedules into details if not already present
+      const detailsWithSchedules = {
+        ...detailsData,
+        schedules: detailsData.schedules || schedulesData,
+      };
+
+      const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
+      const normalized = normalizePlanDetails(detailsWithSchedules, { 
+        departments: departments || [], 
+        criteriaList: criteriaList || [], 
+        users: allUsers 
+      });
+
+      // Add sensitive areas data to normalized details
+      const normalizedWithSensitive = {
+        ...normalized,
+        sensitiveFlag,
+        sensitiveAreas,
+        sensitiveAreasByDept,
+      };
+
+      setSelectedPlanFull(normalizedWithSensitive);
 
       // update plans list with department name derived from normalized details
-    const deptNames = ((normalized.scopeDepartments?.values || []) as any).map((d: any) => d.deptName || d.name).filter(Boolean);
+      const deptNames = ((normalized.scopeDepartments?.values || []) as any).map((d: any) => d.deptName || d.name).filter(Boolean);
       setPendingPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
       setApprovedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
       setRejectedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));

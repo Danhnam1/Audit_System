@@ -21,7 +21,7 @@ export const deleteAuditSchedule = async (scheduleId: string | number): Promise<
 };
 
 export const getAuditSchedules = async (auditId: string | number): Promise<any> => {
-  return apiClient.get(`/AuditSchedule/by-audit/${auditId}`) as any;
+  return apiClient.get(`/AuditSchedule/audit/${auditId}`) as any;
 };
 
 export const getAuditScheduleByAudit = async (auditId: string | number): Promise<any> => {

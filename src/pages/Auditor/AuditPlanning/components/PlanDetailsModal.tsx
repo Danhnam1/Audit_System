@@ -657,109 +657,67 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Schedule & Milestones Section */}
-          {selectedPlanDetails.schedules?.values?.length > 0 && selectedPlanDetails.startDate && selectedPlanDetails.endDate && (
+          {selectedPlanDetails.schedules?.values?.length > 0 && (
             <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
               <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
-                <h3 className="text-lg font-bold text-primary-700">Schedule & Milestones</h3>
+                <h3 className="text-lg font-bold">Schedule & Milestones</h3>
               </div>
               
-              {/* Timeline/Seekbar */}
-              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-                <div className="relative px-2">
-                  {(() => {
-                    // Sort schedules by dueDate ascending so that milestones appear in correct time order
-                    const rawValues = Array.isArray(selectedPlanDetails.schedules?.values)
-                      ? selectedPlanDetails.schedules.values
-                      : [];
-                    const scheduleValues = [...rawValues].sort((a: any, b: any) => {
-                      const ta = a?.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
-                      const tb = b?.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
-                      return ta - tb;
-                    });
+              {/* Schedule List - Vertical Layout */}
+              <div className="space-y-3">
+                {(() => {
+                  // Sort schedules by dueDate ascending
+                  const rawValues = Array.isArray(selectedPlanDetails.schedules?.values)
+                    ? selectedPlanDetails.schedules.values
+                    : [];
+                  const scheduleValues = [...rawValues].sort((a: any, b: any) => {
+                    const ta = a?.dueDate ? new Date(a.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                    const tb = b?.dueDate ? new Date(b.dueDate).getTime() : Number.POSITIVE_INFINITY;
+                    return ta - tb;
+                  });
 
-                    const filledCount = scheduleValues.filter((s: any) => s.dueDate).length;
-                    const totalSchedules = scheduleValues.length;
-
+                  return scheduleValues.map((schedule: any, idx: number) => {
+                    const hasDate = !!schedule.dueDate;
+                    const milestoneName = schedule.milestoneName || schedule.name || `Milestone ${idx + 1}`;
+                    
                     return (
-                      <>
-                  {/* Background track */}
-                  <div className="h-2 bg-gray-200 rounded-full relative overflow-hidden">
-                    {/* Progress bar - sky color, full when all milestones are filled */}
-                    {filledCount > 0 && (
-                      <div 
-                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-sky-400 to-sky-600 rounded-full transition-all duration-300"
-                        style={{ 
-                          width: filledCount === totalSchedules
-                            ? '100%'
-                            : `${(filledCount / Math.max(totalSchedules, 1)) * 100}%` 
-                        }}
-                      />
-                    )}
-                  </div>
-                  
-                  {/* Milestone markers - evenly spaced */}
-                  <div className="relative mt-3 min-h-[90px] pb-2 overflow-visible">
-                    {scheduleValues.map((schedule: any, idx: number) => {
-                      const total = scheduleValues.length;
-                      // Adjust position to avoid edge overflow: first at 0%, last at 100%, others evenly spaced
-                      let position: number;
-                      if (total === 1) {
-                        position = 50;
-                      } else if (idx === 0) {
-                        position = 0;
-                      } else if (idx === total - 1) {
-                        position = 100;
-                      } else {
-                        position = (idx / (total - 1)) * 100;
-                      }
-                      const hasDate = !!schedule.dueDate;
-                      const milestoneName = schedule.milestoneName || schedule.name || `Milestone ${idx + 1}`;
-                      
-                      return (
-                        <div
-                          key={idx}
-                          className="absolute transform pointer-events-none"
-                          style={{ 
-                            left: idx === 0 ? '0%' : idx === totalSchedules - 1 ? '100%' : `${position}%`,
-                            transform: idx === 0 ? 'translateX(0)' : idx === totalSchedules - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
-                            minWidth: '100px',
-                            maxWidth: '120px',
-                            zIndex: 10 + idx
-                          }}
-                        >
-                          <div className="flex flex-col items-center">
-                            {/* Marker dot */}
-                            <div className={`w-4 h-4 rounded-full border-2 shadow-md relative z-10 ${
-                              hasDate 
-                                ? 'bg-sky-500 border-white' 
-                                : 'bg-gray-300 border-gray-400'
-                            }`}></div>
-                            {/* Label */}
-                            <div className={`mt-2 text-xs font-medium text-center break-words max-w-[100px] px-1 leading-tight ${
-                              hasDate ? 'text-gray-700' : 'text-gray-400'
-                            }`}>
-                              {milestoneName}
-                            </div>
-                            {/* Date */}
-                            {hasDate && (
-                              <div className="mt-1 text-[10px] text-gray-500 whitespace-nowrap">
-                                {new Date(schedule.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                              </div>
-                            )}
-                            {!hasDate && (
-                              <div className="mt-1 text-[10px] text-gray-400 italic whitespace-nowrap">
-                                Not set
-                              </div>
-                            )}
+                      <div
+                        key={schedule.scheduleId || schedule.id || idx}
+                        className="flex items-center gap-4 p-4 bg-white rounded-lg border border-gray-200 hover:border-primary-300 hover:shadow-sm transition-all"
+                      >
+                        {/* Marker dot */}
+                        <div className={`w-3 h-3 rounded-full border-2 flex-shrink-0 ${
+                          hasDate 
+                            ? 'bg-primary-600 border-white shadow-md' 
+                            : 'bg-gray-300 border-gray-400'
+                        }`}></div>
+                        
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-sm font-medium ${
+                            hasDate ? 'text-gray-900' : 'text-gray-400'
+                          }`}>
+                            {milestoneName}
                           </div>
+                          {hasDate && (
+                            <div className="mt-1 text-xs text-gray-500">
+                              {new Date(schedule.dueDate).toLocaleDateString('en-US', { 
+                                year: 'numeric',
+                                month: 'long', 
+                                day: 'numeric' 
+                              })}
+                            </div>
+                          )}
+                          {!hasDate && (
+                            <div className="mt-1 text-xs text-gray-400 italic">
+                              Not set
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                      </>
+                      </div>
                     );
-                  })()}
-                </div>
+                  });
+                })()}
               </div>
             </div>
           )}

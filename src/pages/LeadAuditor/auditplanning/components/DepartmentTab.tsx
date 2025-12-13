@@ -13,18 +13,43 @@ interface DepartmentTabProps {
   departments: Department[];
   loading: boolean;
   onViewAuditDetail: () => void;
+  sensitiveAreasByDept?: Record<number, string[]>;
 }
 
-const DepartmentTab: React.FC<DepartmentTabProps> = ({ departments, loading, onViewAuditDetail }) => {
+const DepartmentTab: React.FC<DepartmentTabProps> = ({ departments, loading, onViewAuditDetail, sensitiveAreasByDept = {} }) => {
   const departmentColumns: TableColumn<Department>[] = useMemo(() => [
     {
       key: 'name',
       header: 'Department Name',
-      render: (dept) => (
-        <div className="max-w-[300px]">
-          <p className="text-sm font-semibold text-gray-900">{dept.name || 'N/A'}</p>
-        </div>
-      ),
+      render: (dept) => {
+        const deptId = Number(dept.deptId);
+        const deptSensitiveAreas = deptId ? (sensitiveAreasByDept[deptId] || []) : [];
+        const hasSensitiveAreas = deptSensitiveAreas.length > 0;
+        
+        return (
+          <div className="max-w-[300px]">
+            <p className="text-sm font-semibold text-gray-900">{dept.name || 'N/A'}</p>
+            {hasSensitiveAreas && (
+              <div className="mt-2">
+                <div className="flex items-center gap-1.5 mb-1">
+                  
+                  {/* <span className="text-xs font-semibold text-amber-700">Sensitive Areas:</span> */}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {deptSensitiveAreas.map((area: string, areaIdx: number) => (
+                    <span
+                      key={areaIdx}
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200"
+                    >
+                      {area}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'code',
@@ -46,7 +71,7 @@ const DepartmentTab: React.FC<DepartmentTabProps> = ({ departments, loading, onV
       ),
     },
    
-  ], [onViewAuditDetail]);
+  ], [onViewAuditDetail, sensitiveAreasByDept]);
 
   return (
     <>
