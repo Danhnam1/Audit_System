@@ -32,6 +32,8 @@ import { Step2Scope } from './components/PlanForm/Step2Scope';
 import { Step3Checklist } from './components/PlanForm/Step3Checklist';
 import { Step4Team } from './components/PlanForm/Step4Team';
 import { Step5Schedule } from './components/PlanForm/Step5Schedule';
+import { SensitiveAreaForm } from './components/PlanForm/SensitiveAreaForm';
+import { PermissionPreviewPanel } from './components/PlanForm/PermissionPreviewPanel';
 
 const LEAD_AUDITOR_VISIBLE_STATUSES = ['draft', 'pendingreview', 'pendingdirectorapproval', 'approved', 'rejected'];
 
@@ -647,21 +649,33 @@ const LeadAuditorAuditPlanning = () => {
               )}
 
               {formState.currentStep === 2 && (
-                <Step2Scope
-                  level={formState.level}
-                  selectedDeptIds={formState.selectedDeptIds}
-                  departments={departments}
-                  criteria={criteria}
-                  selectedCriteriaIds={formState.selectedCriteriaIds}
-                  onLevelChange={formState.setLevel}
-                  onSelectedDeptIdsChange={formState.setSelectedDeptIds}
-                  onCriteriaToggle={(id: string) => {
-                    const val = String(id);
-                    formState.setSelectedCriteriaIds((prev) =>
-                      prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
-                    );
-                  }}
-                />
+                <div className="space-y-4">
+                  <Step2Scope
+                    level={formState.level}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    departments={departments}
+                    criteria={criteria}
+                    selectedCriteriaIds={formState.selectedCriteriaIds}
+                    onLevelChange={formState.setLevel}
+                    onSelectedDeptIdsChange={formState.setSelectedDeptIds}
+                    onCriteriaToggle={(id: string) => {
+                      const val = String(id);
+                      formState.setSelectedCriteriaIds((prev) =>
+                        prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
+                      );
+                    }}
+                  />
+                  <SensitiveAreaForm
+                    sensitiveFlag={formState.sensitiveFlag}
+                    sensitiveAreas={formState.sensitiveAreas}
+                    sensitiveNotes={formState.sensitiveNotes}
+                    onFlagChange={formState.setSensitiveFlag}
+                    onAreasChange={formState.setSensitiveAreas}
+                    onNotesChange={formState.setSensitiveNotes}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    departments={departments}
+                  />
+                </div>
               )}
 
               {formState.currentStep === 3 && (
@@ -673,22 +687,26 @@ const LeadAuditorAuditPlanning = () => {
               )}
 
               {formState.currentStep === 4 && (
-                <Step4Team
-                  level={formState.level}
-                  selectedDeptIds={formState.selectedDeptIds}
-                  selectedLeadId={formState.selectedLeadId}
-                  selectedAuditorIds={formState.selectedAuditorIds}
-                  auditorOptions={auditorOptions}
-                  ownerOptions={ownerOptions}
-                  departments={departments}
-                  onLeadChange={(leadId: string) => {
-                    formState.setSelectedLeadId(leadId);
-                    if (leadId && formState.selectedAuditorIds.includes(leadId)) {
-                      formState.setSelectedAuditorIds(formState.selectedAuditorIds.filter(id => id !== leadId));
-                    }
-                  }}
-                  onAuditorsChange={formState.setSelectedAuditorIds}
-                />
+                <div className="space-y-3">
+                  <Step4Team
+                    level={formState.level}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    selectedLeadId={formState.selectedLeadId}
+                    selectedAuditorIds={formState.selectedAuditorIds}
+                    sensitiveFlag={formState.sensitiveFlag}
+                    auditorOptions={auditorOptions}
+                    ownerOptions={ownerOptions}
+                    departments={departments}
+                    onLeadChange={(leadId: string) => {
+                      formState.setSelectedLeadId(leadId);
+                      if (leadId && formState.selectedAuditorIds.includes(leadId)) {
+                        formState.setSelectedAuditorIds(formState.selectedAuditorIds.filter(id => id !== leadId));
+                      }
+                    }}
+                    onAuditorsChange={formState.setSelectedAuditorIds}
+                  />
+                  <PermissionPreviewPanel sensitiveFlag={formState.sensitiveFlag} />
+                </div>
               )}
 
               {formState.currentStep === 5 && (

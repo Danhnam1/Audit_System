@@ -21,6 +21,13 @@ export interface CreateAuditAssignmentDto {
   status: string;
 }
 
+export interface BulkCreateAuditAssignmentDto {
+  auditId: string;
+  deptId: number;
+  auditorIds: string[]; // Array of auditor IDs
+  notes?: string;
+}
+
 // Helper to convert to PascalCase for .NET API
 const toPascalCase = (obj: any): any => {
   if (obj === null || obj === undefined) return obj;
@@ -167,4 +174,27 @@ export const getMyAssignments = async (): Promise<any> => {
     console.error('Error in getMyAssignments:', error);
     throw error;
   }
+};
+
+// Bulk create audit assignments (assign multiple auditors at once)
+export const bulkCreateAuditAssignments = async (dto: BulkCreateAuditAssignmentDto): Promise<AuditAssignment[]> => {
+  const res: any = await apiClient.post('/AuditAssignment/bulk', dto);
+  
+  // Handle $values structure
+  if (res?.$values && Array.isArray(res.$values)) {
+    return res.$values;
+  }
+  if (Array.isArray(res)) {
+    return res;
+  }
+  if (res?.data) {
+    const data = res.data;
+    if (data?.$values && Array.isArray(data.$values)) {
+      return data.$values;
+    }
+    if (Array.isArray(data)) {
+      return data;
+    }
+  }
+  return [];
 };

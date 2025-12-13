@@ -143,18 +143,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
   // Debug: Log selectedPlanDetails to check data
   React.useEffect(() => {
-    if (showModal && selectedPlanDetails) {
-      console.log('🔍 PlanDetailsModal - selectedPlanDetails:', {
-        title: selectedPlanDetails.title,
-        type: selectedPlanDetails.type,
-        startDate: selectedPlanDetails.startDate,
-        endDate: selectedPlanDetails.endDate,
-        scope: selectedPlanDetails.scope,
-        status: selectedPlanDetails.status,
-        objective: selectedPlanDetails.objective,
-        fullObject: selectedPlanDetails,
-      });
-    }
+    // Modal opened with plan details
   }, [showModal, selectedPlanDetails]);
 
   // Build a list of audit team members to render. If Auditee Owners are not present
@@ -513,20 +502,53 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {selectedPlanDetails.scopeDepartments.values.map((dept: any, idx: number) => {
                   const deptName = dept.deptName || getDepartmentName(dept.deptId);
+                  const deptId = Number(dept.deptId);
                   const deptHead = ownerOptions.find(
                     (owner: any) => String(owner.deptId) === String(dept.deptId)
                   );
+                  
+                  // Get sensitive areas for this department
+                  const sensitiveAreasByDept = (selectedPlanDetails as any).sensitiveAreasByDept || {};
+                  const deptSensitiveAreas = deptId ? (sensitiveAreasByDept[deptId] || []) : [];
+                  const hasSensitiveAreas = deptSensitiveAreas.length > 0;
 
                   return (
                     <div
                       key={idx}
-                      className="bg-white rounded-lg p-5 border-2 border-gray-200 hover:border-primary-300 hover:shadow-lg transition-all duration-300 group"
+                      className={`bg-white rounded-lg p-5 border-2 transition-all duration-300 group ${
+                        hasSensitiveAreas 
+                          ? 'border-amber-300 hover:border-amber-400 hover:shadow-lg' 
+                          : 'border-gray-200 hover:border-primary-300 hover:shadow-lg'
+                      }`}
                     >
                       <div className="text-center mb-3">
                         <p className="text-sm font-bold text-gray-900 leading-tight">{deptName}</p>
                       </div>
+                      
+                      {/* Sensitive Areas for this department */}
+                      {hasSensitiveAreas && (
+                        <div className="mb-3 pt-3 border-t border-gray-100">
+                          <div className="flex items-center justify-center gap-2 mb-2">
+                            <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                            </svg>
+                            
+                          </div>
+                          <div className="flex flex-wrap justify-center gap-1.5">
+                            {deptSensitiveAreas.map((area: string, areaIdx: number) => (
+                              <span
+                                key={areaIdx}
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200"
+                              >
+                                {area}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
                       {deptHead && (
-                        <div className="pt-3 border-t border-gray-100">
+                        <div className={`pt-3 ${hasSensitiveAreas ? 'border-t border-gray-100' : ''}`}>
                           <div className="flex items-center justify-center gap-2 flex-wrap">
                             <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />

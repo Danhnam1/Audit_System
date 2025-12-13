@@ -111,6 +111,10 @@ export const normalizePlanDetails = (raw: any, { departments, criteriaList, user
               roleName: raw.createdBy.roleName || raw.createdBy.role || ''
             }
           : undefined),
+    // Preserve sensitive areas and flag if they exist in raw data
+    sensitiveFlag: raw?.sensitiveFlag !== undefined ? Boolean(raw.sensitiveFlag) : undefined,
+    sensitiveAreas: raw?.sensitiveAreas && Array.isArray(raw.sensitiveAreas) ? raw.sensitiveAreas : 
+                    (raw?.sensitiveAreas && typeof raw.sensitiveAreas === 'string' ? [raw.sensitiveAreas] : undefined),
   };
 
   return details;

@@ -5,7 +5,9 @@ import { createPortal } from 'react-dom';
 import type { AuditPlan, AuditPlanDetails } from '../../../types/auditPlan';
 import { getChecklistTemplates } from '../../../api/checklists';
 import { 
-  createAudit, 
+  createAudit,
+  setSensitiveFlag,
+  getSensitiveDepartments,
   addAuditScopeDepartment, 
   getAuditApprovals, 
   completeUpdateAuditPlan,
@@ -26,7 +28,7 @@ import { getPlansWithDepartments } from '../../../services/auditPlanning.service
 import { getAuditChecklistTemplateMapsByAudit, syncAuditChecklistTemplateMaps } from '../../../api/auditChecklistTemplateMaps';
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
 import { useUserId } from '../../../store/useAuthStore';
-import { hasAuditPlanCreationPermission } from '../../../api/auditPlanAssignment';
+import { hasAuditPlanCreationPermission, getAuditPlanAssignmentsByAuditor } from '../../../api/auditPlanAssignment';
 import { 
   validateBeforeCreateAudit, 
   validateBeforeAddDepartment,
@@ -54,6 +56,9 @@ import { Step2Scope } from './components/PlanForm/Step2Scope';
 import { Step3Checklist } from './components/PlanForm/Step3Checklist';
 import { Step4Team } from './components/PlanForm/Step4Team';
 import { Step5Schedule } from './components/PlanForm/Step5Schedule';
+import { SensitiveAreaForm } from './components/PlanForm/SensitiveAreaForm';
+import { PermissionPreviewPanel } from './components/PlanForm/PermissionPreviewPanel';
+import { DRLTemplateViewer } from './components/PlanForm/DRLTemplateViewer';
 
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
@@ -66,6 +71,13 @@ const SQAStaffAuditPlanning = () => {
   const [hasPlanPermission, setHasPlanPermission] = useState<boolean | null>(null);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [isCheckingPermission, setIsCheckingPermission] = useState(true);
+  
+  // DRL template from assignment
+  const [drlTemplateFiles, setDrlTemplateFiles] = useState<Array<{
+    fileName: string;
+    fileUrl?: string;
+    fileId?: string;
+  }>>([]);
 
   // Data fetching states
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
@@ -1005,6 +1017,33 @@ const SQAStaffAuditPlanning = () => {
         const hasPermission = await hasAuditPlanCreationPermission(currentUserId);
         console.log('[AuditPlanning] Permission result:', hasPermission);
         setHasPlanPermission(hasPermission);
+        
+        // If has permission, load DRL template files from assignment
+        if (hasPermission && currentUserId) {
+          try {
+            const assignments = await getAuditPlanAssignmentsByAuditor(currentUserId);
+            // Get the most recent active assignment
+            const activeAssignment = assignments.find(a => 
+              (a.status || '').toLowerCase() === 'active'
+            ) || assignments[0];
+            
+            if (activeAssignment) {
+              // Extract files from assignment
+              const files = activeAssignment.files || activeAssignment.attachments || [];
+              const drlFiles = files
+                .filter((f: any) => f.fileName || f.fileUrl || f.fileId)
+                .map((f: any) => ({
+                  fileName: f.fileName || 'DRL Template',
+                  fileUrl: f.fileUrl,
+                  fileId: f.fileId || f.attachmentId,
+                }));
+              setDrlTemplateFiles(drlFiles);
+              console.log('[AuditPlanning] Loaded DRL template files:', drlFiles);
+            }
+          } catch (error) {
+            console.error('[AuditPlanning] Failed to load DRL template files:', error);
+          }
+        }
       } catch (error) {
         console.error('[AuditPlanning] Failed to check plan creation permission', error);
         setHasPlanPermission(false);
@@ -1134,15 +1173,106 @@ const SQAStaffAuditPlanning = () => {
           }
         }
 
+        // Check rawDetails for sensitive areas BEFORE normalization
+        // (sensitive areas were saved during plan creation via setSensitiveFlag API)
+        let sensitiveFlag = false;
+        let sensitiveAreas: string[] = [];
+        let sensitiveAreasByDept: Record<number, string[]> = {}; // Map deptId -> areas[]
+        
+        // First, try to get from rawDetails (before normalization)
+        const rawDetailsAny = rawDetails as any;
+        
+        // Always try to fetch from API first (since sensitive areas are stored in AuditScopeDepartment table)
+        // Only use rawDetails if API fails or returns empty
+        let foundInRawDetails = false;
+        if (rawDetailsAny.sensitiveAreas && Array.isArray(rawDetailsAny.sensitiveAreas) && rawDetailsAny.sensitiveAreas.length > 0) {
+          sensitiveAreas = rawDetailsAny.sensitiveAreas;
+          sensitiveFlag = true;
+          foundInRawDetails = true;
+        } else if (rawDetailsAny.sensitiveFlag !== undefined && rawDetailsAny.sensitiveFlag === true) {
+          sensitiveFlag = Boolean(rawDetailsAny.sensitiveFlag);
+          if (rawDetailsAny.sensitiveAreas) {
+            sensitiveAreas = Array.isArray(rawDetailsAny.sensitiveAreas) 
+              ? rawDetailsAny.sensitiveAreas 
+              : (typeof rawDetailsAny.sensitiveAreas === 'string' ? [rawDetailsAny.sensitiveAreas] : []);
+            foundInRawDetails = sensitiveAreas.length > 0;
+          }
+        }
+        
+        // If not found in rawDetails, always fetch from API
+        if (!foundInRawDetails) {
+          // If not in rawDetails, try to get from API (areas were saved via setSensitiveFlag)
+          try {
+            const sensitiveDepts = await getSensitiveDepartments(auditId);
+            
+            if (sensitiveDepts && sensitiveDepts.length > 0) {
+              sensitiveFlag = sensitiveDepts.some((sd: any) => sd.sensitiveFlag === true);
+              
+              const allAreas = new Set<string>();
+              
+              sensitiveDepts.forEach((sd: any) => {
+                const deptId = Number(sd.deptId);
+                let areasArray: string[] = [];
+                
+                // Try 'Areas' first (C# convention - backend returns List<string> as Areas)
+                if (Array.isArray(sd.Areas)) {
+                  areasArray = sd.Areas;
+                } else if (sd.Areas && typeof sd.Areas === 'string') {
+                  try {
+                    const parsed = JSON.parse(sd.Areas);
+                    areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+                  } catch {
+                    areasArray = [sd.Areas];
+                  }
+                } else if (sd.Areas && typeof sd.Areas === 'object' && sd.Areas.$values) {
+                  areasArray = Array.isArray(sd.Areas.$values) ? sd.Areas.$values : [];
+                } else if (Array.isArray(sd.areas)) {
+                  areasArray = sd.areas;
+                } else if (sd.areas && typeof sd.areas === 'string') {
+                  try {
+                    const parsed = JSON.parse(sd.areas);
+                    areasArray = Array.isArray(parsed) ? parsed : [sd.areas];
+                  } catch {
+                    areasArray = [sd.areas];
+                  }
+                } else if (sd.areas && typeof sd.areas === 'object' && sd.areas.$values) {
+                  areasArray = Array.isArray(sd.areas.$values) ? sd.areas.$values : [];
+                }
+                
+                // Store areas by deptId
+                if (deptId && areasArray.length > 0) {
+                  sensitiveAreasByDept[deptId] = areasArray.filter((area: string) => area && typeof area === 'string' && area.trim()).map((a: string) => a.trim());
+                }
+                
+                areasArray.forEach((area: string) => {
+                  if (area && typeof area === 'string' && area.trim()) {
+                    allAreas.add(area.trim());
+                  }
+                });
+              });
+              
+              sensitiveAreas = Array.from(allAreas);
+            }
+          } catch (sensitiveErr: any) {
+            console.error('Failed to load sensitive flag data:', sensitiveErr);
+          }
+        }
+
         const normalizedDetails = normalizePlanDetails(detailsWithSchedules, {
           departments: deptList,
           criteriaList: criteria,
           users: [...auditorOptions, ...ownerOptions],
         });
 
+        // sensitiveAreasByDept was already built in the API response processing above (if API was called)
+        // If not found, it will be an empty object (initialized at the start of the function)
+
         const detailsWithRejection = {
           ...normalizedDetails,
           latestRejectionComment,
+          sensitiveFlag,
+          sensitiveAreas,
+          sensitiveAreasByDept,
         };
 
         setSelectedPlanDetails(detailsWithRejection);
@@ -1236,6 +1366,78 @@ const SQAStaffAuditPlanning = () => {
           }
         }
 
+        // Get sensitive areas from plan data (from what was selected during plan creation)
+        let sensitiveFlag = false;
+        let sensitiveAreas: string[] = [];
+        let sensitiveAreasByDept: Record<number, string[]> = {}; // Map deptId -> areas[]
+        
+        // Check if sensitive areas are stored in planFromTable
+        const planFromTableAny = planFromTable as any;
+        if (planFromTableAny.sensitiveAreas && Array.isArray(planFromTableAny.sensitiveAreas) && planFromTableAny.sensitiveAreas.length > 0) {
+          sensitiveAreas = planFromTableAny.sensitiveAreas;
+          sensitiveFlag = true;
+        } else if (planFromTableAny.sensitiveFlag !== undefined) {
+          sensitiveFlag = Boolean(planFromTableAny.sensitiveFlag);
+          if (planFromTableAny.sensitiveAreas) {
+            sensitiveAreas = Array.isArray(planFromTableAny.sensitiveAreas) 
+              ? planFromTableAny.sensitiveAreas 
+              : (typeof planFromTableAny.sensitiveAreas === 'string' ? [planFromTableAny.sensitiveAreas] : []);
+          }
+        } else {
+          // Fallback: Try to fetch from API if not in plan data
+          try {
+            const sensitiveDepts = await getSensitiveDepartments(auditId);
+            if (sensitiveDepts && sensitiveDepts.length > 0) {
+              sensitiveFlag = sensitiveDepts.some((sd: any) => sd.sensitiveFlag === true);
+              
+              const allAreas = new Set<string>();
+              sensitiveDepts.forEach((sd: any) => {
+                const deptId = Number(sd.deptId);
+                let areasArray: string[] = [];
+                
+                if (Array.isArray(sd.Areas)) {
+                  areasArray = sd.Areas;
+                } else if (sd.Areas && typeof sd.Areas === 'string') {
+                  try {
+                    const parsed = JSON.parse(sd.Areas);
+                    areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+                  } catch {
+                    areasArray = [sd.Areas];
+                  }
+                } else if (sd.Areas && typeof sd.Areas === 'object' && sd.Areas.$values) {
+                  areasArray = Array.isArray(sd.Areas.$values) ? sd.Areas.$values : [];
+                } else if (Array.isArray(sd.areas)) {
+                  areasArray = sd.areas;
+                } else if (sd.areas && typeof sd.areas === 'string') {
+                  try {
+                    const parsed = JSON.parse(sd.areas);
+                    areasArray = Array.isArray(parsed) ? parsed : [sd.areas];
+                  } catch {
+                    areasArray = [sd.areas];
+                  }
+                } else if (sd.areas && typeof sd.areas === 'object' && sd.areas.$values) {
+                  areasArray = Array.isArray(sd.areas.$values) ? sd.areas.$values : [];
+                }
+                
+                // Store areas by deptId
+                if (deptId && areasArray.length > 0) {
+                  sensitiveAreasByDept[deptId] = areasArray.filter((area: string) => area && typeof area === 'string' && area.trim()).map((a: string) => a.trim());
+                }
+                
+                areasArray.forEach((area: string) => {
+                  if (area && typeof area === 'string' && area.trim()) {
+                    allAreas.add(area.trim());
+                  }
+                });
+              });
+              
+              sensitiveAreas = Array.from(allAreas);
+            }
+          } catch (sensitiveErr) {
+            console.warn('Failed to load sensitive flag data in fallback:', sensitiveErr);
+          }
+        }
+
         const basicDetails = {
           ...planFromTable,
           scopeDepartments: { values: [] },
@@ -1248,6 +1450,9 @@ const SQAStaffAuditPlanning = () => {
             roleName: 'N/A',
           },
           latestRejectionComment,
+          sensitiveFlag,
+          sensitiveAreas,
+          sensitiveAreasByDept,
         };
 
         alert(
@@ -1260,7 +1465,7 @@ const SQAStaffAuditPlanning = () => {
         return;
       }
     } catch (error) {
-      console.error('❌ Failed to fetch plan details', error);
+      console.error('Failed to fetch plan details', error);
       alert('⚠️ Cannot load full plan details\n\n' +
         'The backend API endpoint GET /api/AuditPlan/{id} is returning 500 Internal Server Error.\n\n' +
         'Error: ' + (error as any)?.message);
@@ -1412,7 +1617,7 @@ const SQAStaffAuditPlanning = () => {
       closeDeleteModal();
       toast.success('Audit plan deleted successfully.');
     } catch (error: any) {
-      console.error('❌ Failed to delete plan', error);
+      console.error('Failed to delete plan', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Unknown error';
       toast.error('Delete failed: ' + errorMessage);
     }
@@ -1429,7 +1634,7 @@ const SQAStaffAuditPlanning = () => {
       await hydrateTemplateSelection(auditId, detailsWithId?.templateId);
 
     } catch (error) {
-      console.error('❌ Failed to load plan for editing', error);
+      console.error('Failed to load plan for editing', error);
       alert('⚠️ Cannot load plan for editing\n\nError: ' + (error as any)?.message);
     }
   };
@@ -1449,7 +1654,7 @@ const SQAStaffAuditPlanning = () => {
 
       toast.success('Submit successfully.');
     } catch (err: any) {
-      console.error('❌ Failed to submit to Lead Auditor', err);
+      console.error('Failed to submit to Lead Auditor', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to submit to Lead Auditor: ' + errorMessage);
     }
@@ -1582,26 +1787,16 @@ const SQAStaffAuditPlanning = () => {
     try {
       let auditId: string;
 
-      console.log('🔍 Submit Plan - isEditMode:', formState.isEditMode, 'editingAuditId:', formState.editingAuditId);
-      console.log('🔍 FormState object:', { 
-        isEditMode: formState.isEditMode, 
-        editingAuditId: formState.editingAuditId,
-        showForm: formState.showForm 
-      });
-
       // Check if we're in edit mode but editingAuditId is missing
       if (formState.isEditMode && !formState.editingAuditId) {
-        console.error('⚠️ WARNING: isEditMode is true but editingAuditId is empty!');
-        console.error('⚠️ This should not happen. Check loadPlanForEdit function.');
+        console.error('WARNING: isEditMode is true but editingAuditId is empty!');
         toast.error('Cannot update: Missing audit ID. Please try editing again.');
         return;
       }
 
       if (formState.isEditMode && formState.editingAuditId) {
         // Use complete-update API for edit mode
-        console.log('✏️ EDIT MODE DETECTED - Will use complete-update API');
         auditId = formState.editingAuditId;
-        console.log('✏️ Using auditId for update:', auditId);
 
         // Prepare complete update payload using service
         const completeUpdatePayload = prepareCompleteUpdatePayload({
@@ -1614,18 +1809,14 @@ const SQAStaffAuditPlanning = () => {
           user,
         });
 
-        console.log('🔄 Calling complete-update API for audit:', auditId);
-        console.log('📦 Payload:', JSON.stringify(completeUpdatePayload, null, 2));
         try {
-          const result = await completeUpdateAuditPlan(auditId, completeUpdatePayload);
-          console.log('✅ Complete-update API called successfully', result);
+          await completeUpdateAuditPlan(auditId, completeUpdatePayload);
         } catch (apiError) {
-          console.error('❌ Complete-update API failed:', apiError);
+          console.error('Complete-update API failed:', apiError);
           throw apiError; // Re-throw to be caught by outer try-catch
         }
       } else {
         // Create new audit (keep existing logic)
-        console.log('➕ CREATE MODE - Will use createAudit API');
         
         // Business Rule Validation: Validate trước khi tạo audit
         const startDate = formState.periodFrom;
@@ -1691,7 +1882,7 @@ const SQAStaffAuditPlanning = () => {
             templateIds: formState.selectedTemplateIds,
           });
         } catch (templateMapErr) {
-          console.error('❌ Failed to sync checklist templates', templateMapErr);
+          console.error('Failed to sync checklist templates', templateMapErr);
           toast.error('Failed to save checklist template mappings. Please retry from Step 3.');
         }
 
@@ -1736,12 +1927,69 @@ const SQAStaffAuditPlanning = () => {
             
             const failedDepts = deptResults.filter((r) => r.status === 'rejected');
             if (failedDepts.length > 0) {
-              console.error('❌ Some departments failed to attach:', failedDepts);
+              console.error('Some departments failed to attach:', failedDepts);
               toast.warning(`${failedDepts.length} department(s) failed to attach. Please check the errors above.`);
+            }
+            
+            // Set sensitive flags for departments if enabled
+            if (formState.sensitiveFlag && formState.sensitiveAreas.length > 0) {
+              try {
+                // Use the response from addAuditScopeDepartment instead of calling API again
+                // Response contains ViewAuditScopeDepartment with AuditScopeId
+                const successfulDepts = deptResults
+                  .filter((r) => r.status === 'fulfilled')
+                  .map((r) => (r as PromiseFulfilledResult<any>).value)
+                  .filter(Boolean);
+                
+                // Filter to only selected departments that have sensitive flag
+                const deptIdsToFlag = formState.level === 'academy' 
+                  ? departments.map(d => Number(d.deptId))
+                  : formState.selectedDeptIds.map(id => Number(id));
+                
+                const sensitivePromises = successfulDepts
+                  .filter((sd: any) => {
+                    const sdDeptId = Number(sd.deptId || sd.$deptId);
+                    return deptIdsToFlag.includes(sdDeptId);
+                  })
+                  .map((sd: any) => {
+                    // ViewAuditScopeDepartment has AuditScopeId field
+                    const scopeDeptId = sd.auditScopeId || sd.AuditScopeId || sd.scopeDeptId || sd.$scopeDeptId || sd.id || sd.auditScopeDepartmentId;
+                    if (!scopeDeptId) {
+                      return null;
+                    }
+                    
+                    // Convert to string (GUID format expected by backend)
+                    const scopeDeptIdStr = String(scopeDeptId);
+                    
+                    return setSensitiveFlag(scopeDeptIdStr, {
+                      sensitiveFlag: true,
+                      areas: formState.sensitiveAreas,
+                      notes: formState.sensitiveNotes || '',
+                    });
+                  })
+                  .filter(Boolean);
+                
+                if (sensitivePromises.length > 0) {
+                  const results = await Promise.allSettled(sensitivePromises);
+                  const successful = results.filter(r => r.status === 'fulfilled').length;
+                  const failed = results.filter(r => r.status === 'rejected').length;
+                  
+                  if (failed > 0) {
+                    toast.warning(`${failed} sensitive flag(s) could not be saved.`);
+                  } else if (successful > 0) {
+                    toast.success(`Sensitive flags saved successfully for ${successful} department(s).`);
+                  }
+                } else {
+                  toast.warning('Could not find scope departments to set sensitive flags. Please try editing the plan to set them manually.');
+                }
+              } catch (sensitiveErr: any) {
+                console.error('Failed to set sensitive flags:', sensitiveErr);
+                toast.warning('Plan created but sensitive flags could not be saved. Please update manually.');
+              }
             }
             }
           } catch (scopeErr) {
-            console.error('❌ Attach departments to audit failed', scopeErr);
+            console.error('Attach departments to audit failed', scopeErr);
         }
 
         // Attach criteria
@@ -1751,7 +1999,7 @@ const SQAStaffAuditPlanning = () => {
               formState.selectedCriteriaIds.map((cid) => addCriterionToAudit(String(newAuditId), String(cid)))
             );
           } catch (critErr) {
-            console.error('❌ Attach criteria to audit failed', critErr);
+            console.error('Attach criteria to audit failed', critErr);
           }
         }
 
@@ -1789,7 +2037,7 @@ const SQAStaffAuditPlanning = () => {
             await Promise.allSettled(calls);
           }
         } catch (teamErr) {
-          console.error('❌ Attach team failed', teamErr);
+          console.error('Attach team failed', teamErr);
         }
 
         // Post schedules
@@ -1815,7 +2063,7 @@ const SQAStaffAuditPlanning = () => {
             await Promise.allSettled(schedulePromises);
           }
         } catch (scheduleErr) {
-          console.error('❌ Failed to post schedules', scheduleErr);
+          console.error('Failed to post schedules', scheduleErr);
         }
       }
 
@@ -1824,7 +2072,7 @@ const SQAStaffAuditPlanning = () => {
         const merged = await getPlansWithDepartments();
         setExistingPlans(merged);
       } catch (refreshErr) {
-        console.error('❌ Failed to refresh plans list', refreshErr);
+        console.error('Failed to refresh plans list', refreshErr);
       }
 
       // Refresh audit teams (needed for visiblePlans calculation)
@@ -1832,7 +2080,7 @@ const SQAStaffAuditPlanning = () => {
         const teams = await getAuditTeam();
         setAuditTeams(Array.isArray(teams) ? teams : []);
       } catch (teamErr) {
-        console.error('❌ Failed to refresh audit teams', teamErr);
+        console.error('Failed to refresh audit teams', teamErr);
       }
 
       // Refresh users (needed for visiblePlans calculation)
@@ -1845,7 +2093,7 @@ const SQAStaffAuditPlanning = () => {
         setAuditorOptions(auditors);
         setOwnerOptions(owners);
       } catch (userErr) {
-        console.error('❌ Failed to refresh users', userErr);
+        console.error('Failed to refresh users', userErr);
       }
 
       // Save edit mode state before resetting form
@@ -2032,7 +2280,9 @@ const SQAStaffAuditPlanning = () => {
               {/* Modal Content - Scrollable */}
               <div className="flex-1 overflow-y-auto px-6 py-4">
                 {formState.currentStep === 1 && (
-                  <Step1BasicInfo
+                  <>
+                    <DRLTemplateViewer drlFiles={drlTemplateFiles} />
+                    <Step1BasicInfo
                     title={formState.title}
                     auditType={formState.auditType}
                     goal={formState.goal}
@@ -2050,24 +2300,37 @@ const SQAStaffAuditPlanning = () => {
                       validatePlanPeriod(formState.periodFrom, value, true);
                     }}
                   />
+                  </>
                 )}
 
                 {formState.currentStep === 2 && (
-                  <Step2Scope
-                    level={formState.level}
-                    selectedDeptIds={formState.selectedDeptIds}
-                    departments={availableDepartments}
-                    criteria={criteria}
-                    selectedCriteriaIds={formState.selectedCriteriaIds}
-                    onLevelChange={formState.setLevel}
-                    onSelectedDeptIdsChange={formState.setSelectedDeptIds}
-                    onCriteriaToggle={(id: string) => {
-                      const val = String(id);
-                      formState.setSelectedCriteriaIds((prev) =>
-                        prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
-                      );
-                    }}
-                  />
+                  <div className="space-y-4">
+                    <Step2Scope
+                      level={formState.level}
+                      selectedDeptIds={formState.selectedDeptIds}
+                      departments={availableDepartments}
+                      criteria={criteria}
+                      selectedCriteriaIds={formState.selectedCriteriaIds}
+                      onLevelChange={formState.setLevel}
+                      onSelectedDeptIdsChange={formState.setSelectedDeptIds}
+                      onCriteriaToggle={(id: string) => {
+                        const val = String(id);
+                        formState.setSelectedCriteriaIds((prev) =>
+                          prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
+                        );
+                      }}
+                    />
+                    <SensitiveAreaForm
+                      sensitiveFlag={formState.sensitiveFlag}
+                      sensitiveAreas={formState.sensitiveAreas}
+                      sensitiveNotes={formState.sensitiveNotes}
+                      onFlagChange={formState.setSensitiveFlag}
+                      onAreasChange={formState.setSensitiveAreas}
+                      onNotesChange={formState.setSensitiveNotes}
+                      selectedDeptIds={formState.selectedDeptIds}
+                      departments={departments}
+                    />
+                  </div>
                 )}
 
                 {formState.currentStep === 3 && (
@@ -2082,15 +2345,19 @@ const SQAStaffAuditPlanning = () => {
                 )}
 
                 {formState.currentStep === 4 && (
-                  <Step4Team
-                    level={formState.level}
-                    selectedDeptIds={formState.selectedDeptIds}
-                    selectedAuditorIds={formState.selectedAuditorIds}
-                    auditorOptions={auditorOptions}
-                    ownerOptions={ownerOptions}
-                    departments={departments}
-                    onAuditorsChange={formState.setSelectedAuditorIds}
-                  />
+                  <div className="space-y-3">
+                    <Step4Team
+                      level={formState.level}
+                      selectedDeptIds={formState.selectedDeptIds}
+                      selectedAuditorIds={formState.selectedAuditorIds}
+                      sensitiveFlag={formState.sensitiveFlag}
+                      auditorOptions={auditorOptions}
+                      ownerOptions={ownerOptions}
+                      departments={departments}
+                      onAuditorsChange={formState.setSelectedAuditorIds}
+                    />
+                    <PermissionPreviewPanel sensitiveFlag={formState.sensitiveFlag} />
+                  </div>
                 )}
 
                 {formState.currentStep === 5 && (
@@ -2183,7 +2450,7 @@ const SQAStaffAuditPlanning = () => {
                                 }
                                 break;
                               case 4:
-                                message = 'Please select Lead Auditor.';
+                                message = 'Please select at least 2 auditors.';
                                 break;
                               default:
                                 message = 'Please fill in all information before continuing.';

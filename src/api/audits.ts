@@ -22,6 +22,58 @@ export const getAuditScopeDepartmentsByAuditId = async (auditId: string): Promis
   return apiClient.get(`/AuditScopeDepartment/departments/${auditId}`) as any;
 };
 
+// Sensitive flag APIs
+export interface SensitiveFlagDto {
+  sensitiveFlag: boolean;
+  areas?: string[];
+  notes?: string;
+}
+
+export interface SensitiveScopeDepartment {
+  scopeDeptId: number;
+  auditId: string;
+  deptId: number;
+  sensitiveFlag: boolean;
+  areas?: string[];
+  notes?: string;
+}
+
+// Set sensitive flag for a scope department
+export const setSensitiveFlag = async (
+  scopeDeptId: string | number, // Accept both string (GUID) and number for flexibility
+  dto: SensitiveFlagDto
+): Promise<SensitiveScopeDepartment> => {
+  // Convert to string (GUID format expected by backend)
+  const scopeDeptIdStr = String(scopeDeptId);
+  console.log('🔍 [setSensitiveFlag] Calling API with scopeDeptId:', scopeDeptIdStr, 'dto:', dto);
+  const res: any = await apiClient.post(`/AuditScopeDepartment/${scopeDeptIdStr}/sensitive`, dto);
+  console.log('✅ [setSensitiveFlag] API response:', res?.data || res);
+  return res?.data || res;
+};
+
+// Get sensitive departments for an audit
+export const getSensitiveDepartments = async (auditId: string): Promise<SensitiveScopeDepartment[]> => {
+  const res: any = await apiClient.get(`/AuditScopeDepartment/${auditId}/sensitive`);
+  
+  // Handle $values structure
+  if (res?.$values && Array.isArray(res.$values)) {
+    return res.$values;
+  }
+  if (Array.isArray(res)) {
+    return res;
+  }
+  if (res?.data) {
+    const data = res.data;
+    if (data?.$values && Array.isArray(data.$values)) {
+      return data.$values;
+    }
+    if (Array.isArray(data)) {
+      return data;
+    }
+  }
+  return [];
+};
+
 // Delete audit scope department by ID
 export const deleteAuditScopeDepartment = async (id: string | number): Promise<any> => {
   return apiClient.delete(`/AuditScopeDepartment/${id}`) as any;

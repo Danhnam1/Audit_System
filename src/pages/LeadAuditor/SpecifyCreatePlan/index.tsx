@@ -28,6 +28,9 @@ const SpecifyCreatePlan = () => {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
+  // DRL files state - Map<auditorId, {file: File, fileName: string}>
+  const [drlFiles, setDrlFiles] = useState<Map<string, { file: File; fileName: string }>>(new Map());
+  
   // Period management state
   const [periodStartDate, setPeriodStartDate] = useState<string>('');
   const [periodEndDate, setPeriodEndDate] = useState<string>('');
@@ -399,12 +402,25 @@ const SpecifyCreatePlan = () => {
         return;
       }
 
-      const result = await createAuditPlanAssignment({
+      // Get DRL file for selected auditor (before clearing selection)
+      const drlFileInfo = selectedAuditorId ? drlFiles.get(selectedAuditorId) : null;
+      const auditorIdToClear = selectedAuditorId; // Store for cleanup
+      
+      // Create assignment with files if DRL file is provided
+      const assignmentPayload: any = {
         auditorId: auditorIdForApi, // UUID string
         assignBy: assignByForApi, // UUID string
         assignedDate,
         remarks: remarksValue, // Ensure it's a non-empty string
-      });
+      };
+      
+      // Add files if DRL is provided
+      if (drlFileInfo?.file) {
+        (assignmentPayload as any).files = [drlFileInfo.file];
+        console.log('[SpecifyCreatePlan] Creating assignment with DRL file:', drlFileInfo.fileName);
+      }
+
+      const result = await createAuditPlanAssignment(assignmentPayload);
 
       console.log('[SpecifyCreatePlan] API response:', result);
 
@@ -433,25 +449,38 @@ const SpecifyCreatePlan = () => {
         const updatedAssignments = await getAuditPlanAssignments();
         setAssignments(updatedAssignments || []);
       }
-      
+
       setSelectedAuditorId(null);
       setRemarks(''); // Reset remarks after successful assignment
 
       // Send notification to the assigned auditor
       try {
+        const notificationMessage = drlFileInfo
+          ? `You have been granted permission to create audit plans. DRL template "${drlFileInfo.fileName}" has been attached.`
+          : `You have been granted permission to create audit plans.`;
+        
         await createNotification({
           userId: auditorIdForApi,
           title: 'Plan Creation Permission Assigned',
-          message: `You have been granted permission to create audit plans.`,
+          message: notificationMessage,
           remarks: remarks.trim() || 'Assigned permission to create audit plans', // Use remarks from form or default message
           entityType: 'AuditPlanAssignment',
           entityId: result?.assignmentId || '',
           category: 'AuditTeam',
         });
-        console.log('[SpecifyCreatePlan] Notification sent to auditor');
+        console.log('[SpecifyCreatePlan] Notification sent to auditor', drlFileInfo ? 'with DRL file info' : '');
       } catch (notifError) {
         // Don't fail the whole operation if notification fails
         console.error('[SpecifyCreatePlan] Failed to send notification:', notifError);
+      }
+
+      // Remove DRL file for assigned auditor after successful assignment
+      if (auditorIdToClear) {
+        setDrlFiles((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(auditorIdToClear);
+          return newMap;
+        });
       }
 
       toast.success('Successfully assigned plan creation permission');
@@ -783,6 +812,18 @@ const SpecifyCreatePlan = () => {
                   onSelectionChange={(id) => {
                     console.log('[SpecifyCreatePlan] onSelectionChange called with:', id);
                     setSelectedAuditorId(id);
+                  }}
+                  drlFiles={drlFiles}
+                  onDrlFileChange={(auditorId, file) => {
+                    setDrlFiles((prev) => {
+                      const newMap = new Map(prev);
+                      if (file) {
+                        newMap.set(auditorId, { file, fileName: file.name });
+                      } else {
+                        newMap.delete(auditorId);
+                      }
+                      return newMap;
+                    });
                   }}
                 />
 

@@ -13,17 +13,23 @@ export const useAuditPlanForm = () => {
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [editingAuditId, setEditingAuditId] = useState<string | null>(null);
 
-  // Step 1: Basic Information
+  // Step 1: Basic Information + DRL upload
   const [title, setTitle] = useState<string>('');
   const [goal, setGoal] = useState<string>('');
   const [periodFrom, setPeriodFrom] = useState<string>('');
   const [periodTo, setPeriodTo] = useState<string>('');
   const [auditType, setAuditType] = useState<string>('Internal');
+  const [drlFile, setDrlFile] = useState<File | null>(null);
+  const [drlFileName, setDrlFileName] = useState<string>('');
 
   // Step 2: Scope
   const [level, setLevel] = useState<string>('academy');
   const [selectedDeptIds, setSelectedDeptIds] = useState<string[]>([]);
   const [selectedCriteriaIds, setSelectedCriteriaIds] = useState<string[]>([]);
+  const [sensitiveFlag, setSensitiveFlag] = useState<boolean>(false);
+  const [sensitiveAreas, setSensitiveAreas] = useState<string[]>([]);
+  const [sensitiveNotes, setSensitiveNotes] = useState<string>('');
+  const [sensitiveDeptIds, setSensitiveDeptIds] = useState<string[]>([]);
 
   // Step 3: Checklist (multi-select)
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
@@ -32,6 +38,8 @@ export const useAuditPlanForm = () => {
   const [selectedLeadId, setSelectedLeadId] = useState<string>('');
   const [selectedAuditorIds, setSelectedAuditorIds] = useState<string[]>([]);
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>('');
+  const [planCreatorId, setPlanCreatorId] = useState<string>('');
+  const [sendDrlToCreator, setSendDrlToCreator] = useState<boolean>(false);
 
   // Step 5: Schedule
   const [kickoffMeeting, setKickoffMeeting] = useState<string>('');
@@ -47,13 +55,21 @@ export const useAuditPlanForm = () => {
     setGoal('');
     setPeriodFrom('');
     setPeriodTo('');
+    setDrlFile(null);
+    setDrlFileName('');
     setLevel('academy');
     setSelectedDeptIds([]);
     setSelectedTemplateIds([]);
     setSelectedCriteriaIds([]);
+    setSensitiveFlag(false);
+    setSensitiveAreas([]);
+    setSensitiveNotes('');
+    setSensitiveDeptIds([]);
     setSelectedLeadId('');
     setSelectedAuditorIds([]);
     setSelectedOwnerId('');
+    setPlanCreatorId('');
+    setSendDrlToCreator(false);
     setKickoffMeeting('');
     setFieldworkStart('');
     setEvidenceDue('');
@@ -72,13 +88,21 @@ export const useAuditPlanForm = () => {
     setGoal('');
     setPeriodFrom('');
     setPeriodTo('');
+    setDrlFile(null);
+    setDrlFileName('');
     setLevel('academy');
     setSelectedDeptIds([]);
     setSelectedTemplateIds([]);
     setSelectedCriteriaIds([]);
+    setSensitiveFlag(false);
+    setSensitiveAreas([]);
+    setSensitiveNotes('');
+    setSensitiveDeptIds([]);
     setSelectedLeadId('');
     setSelectedAuditorIds([]);
     setSelectedOwnerId('');
+    setPlanCreatorId('');
+    setSendDrlToCreator(false);
     setKickoffMeeting('');
     setFieldworkStart('');
     setEvidenceDue('');
@@ -112,6 +136,8 @@ export const useAuditPlanForm = () => {
     const endDate = details.endDate || details.audit?.endDate;
     setPeriodFrom(startDate ? (startDate.split('T')[0] || startDate) : '');
     setPeriodTo(endDate ? (endDate.split('T')[0] || endDate) : '');
+    setDrlFileName(details.drlFileName || '');
+    setDrlFile(null);
     
     // Step 2: Scope
     const scope = details.scope || details.audit?.scope;
@@ -235,6 +261,10 @@ export const useAuditPlanForm = () => {
     setPeriodTo,
     auditType,
     setAuditType,
+    drlFile,
+    setDrlFile,
+    drlFileName,
+    setDrlFileName,
     
     // Step 2
     level,
@@ -243,6 +273,14 @@ export const useAuditPlanForm = () => {
     setSelectedDeptIds,
     selectedCriteriaIds,
     setSelectedCriteriaIds,
+    sensitiveFlag,
+    setSensitiveFlag,
+    sensitiveAreas,
+    setSensitiveAreas,
+    sensitiveNotes,
+    setSensitiveNotes,
+    sensitiveDeptIds,
+    setSensitiveDeptIds,
     
     // Step 3
     selectedTemplateIds,
@@ -255,6 +293,10 @@ export const useAuditPlanForm = () => {
     setSelectedAuditorIds,
     selectedOwnerId,
     setSelectedOwnerId,
+    planCreatorId,
+    setPlanCreatorId,
+    sendDrlToCreator,
+    setSendDrlToCreator,
     
     // Step 5
     kickoffMeeting,

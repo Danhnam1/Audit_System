@@ -8,6 +8,18 @@ export interface AuditPlanAssignment {
   assignedDate: string;
   remarks?: string;
   status?: string; // e.g. 'Active', 'Inactive'
+  files?: Array<{
+    fileName?: string;
+    fileUrl?: string;
+    fileId?: string;
+    attachmentId?: string;
+  }>;
+  attachments?: Array<{
+    fileName?: string;
+    fileUrl?: string;
+    fileId?: string;
+    attachmentId?: string;
+  }>;
 }
 
 export interface CreateAuditPlanAssignmentDto {
@@ -89,41 +101,82 @@ export const getAuditPlanAssignmentsByAuditor = async (auditorId: number | strin
   }
 };
 
+// Create new audit plan assignment (with optional file upload)
+export interface CreateAuditPlanAssignmentWithFilesDto extends CreateAuditPlanAssignmentDto {
+  files?: File[]; // Optional array of files (DRL templates)
+}
+
 // Create new audit plan assignment
-export const createAuditPlanAssignment = async (dto: CreateAuditPlanAssignmentDto): Promise<AuditPlanAssignment> => {
-  // Backend expects direct object (NOT wrapped in dto) with camelCase:
-  // {
-  //   "auditorId": "guid-string",
-  //   "assignBy": "guid-string",
-  //   "assignedDate": "ISO-date-string",
-  //   "remarks": "string" (required)
-  // }
+export const createAuditPlanAssignment = async (
+  dto: CreateAuditPlanAssignmentDto | CreateAuditPlanAssignmentWithFilesDto
+): Promise<AuditPlanAssignment> => {
+  // Check if files are provided (multipart/form-data)
+  const hasFiles = 'files' in dto && dto.files && dto.files.length > 0;
   
-  // Ensure remarks is always provided and not empty (required field)
-  const remarksValue = dto.remarks?.trim() || '';
-  if (!remarksValue) {
-    throw new Error('Remarks field is required and cannot be empty');
-  }
-  
-  // Send directly in camelCase (NOT wrapped in dto, NOT PascalCase)
-  const payload = {
-    auditorId: String(dto.auditorId), // GUID string
-    assignBy: String(dto.assignBy),   // GUID string
-    assignedDate: String(dto.assignedDate), // ISO date string
-    remarks: String(remarksValue) // Required field
-  };
-  
-  console.log('[createAuditPlanAssignment] Original dto:', dto);
-  console.log('[createAuditPlanAssignment] Final payload (camelCase, direct):', JSON.stringify(payload, null, 2));
-  
-  try {
-    const res: any = await apiClient.post('/AuditPlanAssignment', payload);
-    return res?.data || res;
-  } catch (error: any) {
-    console.error('[createAuditPlanAssignment] API Error:', error);
-    console.error('[createAuditPlanAssignment] Error response:', error?.response?.data);
-    console.error('[createAuditPlanAssignment] Payload that was sent:', JSON.stringify(payload, null, 2));
-    throw error;
+  if (hasFiles) {
+    // Use multipart/form-data for file upload
+    const formData = new FormData();
+    formData.append('auditorId', String(dto.auditorId));
+    formData.append('assignBy', String(dto.assignBy));
+    formData.append('assignedDate', String(dto.assignedDate));
+    formData.append('remarks', String(dto.remarks || ''));
+    
+    // Append files
+    const files = (dto as CreateAuditPlanAssignmentWithFilesDto).files || [];
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+    
+    console.log('[createAuditPlanAssignment] Uploading with files:', files.map(f => f.name));
+    
+    try {
+      const res: any = await apiClient.post('/AuditPlanAssignment', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return res?.data || res;
+    } catch (error: any) {
+      console.error('[createAuditPlanAssignment] API Error (with files):', error);
+      console.error('[createAuditPlanAssignment] Error response:', error?.response?.data);
+      throw error;
+    }
+  } else {
+    // Use JSON for regular assignment (no files)
+    // Backend expects direct object (NOT wrapped in dto) with camelCase:
+    // {
+    //   "auditorId": "guid-string",
+    //   "assignBy": "guid-string",
+    //   "assignedDate": "ISO-date-string",
+    //   "remarks": "string" (required)
+    // }
+    
+    // Ensure remarks is always provided and not empty (required field)
+    const remarksValue = dto.remarks?.trim() || '';
+    if (!remarksValue) {
+      throw new Error('Remarks field is required and cannot be empty');
+    }
+    
+    // Send directly in camelCase (NOT wrapped in dto, NOT PascalCase)
+    const payload = {
+      auditorId: String(dto.auditorId), // GUID string
+      assignBy: String(dto.assignBy),   // GUID string
+      assignedDate: String(dto.assignedDate), // ISO date string
+      remarks: String(remarksValue) // Required field
+    };
+    
+    console.log('[createAuditPlanAssignment] Original dto:', dto);
+    console.log('[createAuditPlanAssignment] Final payload (camelCase, direct):', JSON.stringify(payload, null, 2));
+    
+    try {
+      const res: any = await apiClient.post('/AuditPlanAssignment', payload);
+      return res?.data || res;
+    } catch (error: any) {
+      console.error('[createAuditPlanAssignment] API Error:', error);
+      console.error('[createAuditPlanAssignment] Error response:', error?.response?.data);
+      console.error('[createAuditPlanAssignment] Payload that was sent:', JSON.stringify(payload, null, 2));
+      throw error;
+    }
   }
 };
 

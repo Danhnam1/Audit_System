@@ -12,6 +12,7 @@ interface Step4TeamProps {
   departments: Array<{ deptId: number | string; name: string }>;
   onLeadChange: (value: string) => void;
   onAuditorsChange: (value: string[]) => void;
+  sensitiveFlag?: boolean;
 }
 
 export const Step4Team: React.FC<Step4TeamProps> = ({
@@ -24,6 +25,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
   departments,
   onLeadChange,
   onAuditorsChange,
+  sensitiveFlag = false,
 }) => {
   const { user } = useAuth();
   
@@ -122,12 +124,15 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                   options={options}
                   value={valueWithCurrent}
                   onChange={(next) => {
+                    const filtered = next.filter(
+                      (id) => String(id) !== String(selectedLeadId)
+                    );
                     if (!currentUserId) {
-                      onAuditorsChange(next);
+                      onAuditorsChange(filtered);
                       return;
                     }
                     // Filter out current user from next array (in case someone tries to remove it)
-                    const withoutCurrent = next.filter(id => String(id) !== String(currentUserId));
+                    const withoutCurrent = filtered.filter(id => String(id) !== String(currentUserId));
                     // Always add current user back at the beginning
                     const withCurrent = [currentUserId, ...withoutCurrent];
                     onAuditorsChange(withCurrent);
@@ -213,6 +218,19 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                 </div>
               )}
             </>
+          )}
+        </div>
+
+        {/* Permission preview */}
+        <div>
+          {sensitiveFlag ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              Sensitive flag is ON. After Director approval and Kickoff Minutes upload, permissions/QR must be issued for assigned auditors.
+            </div>
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              No sensitive flag. Auditors are assigned normally.
+            </div>
           )}
         </div>
 

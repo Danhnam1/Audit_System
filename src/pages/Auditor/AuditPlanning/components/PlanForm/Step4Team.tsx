@@ -10,40 +10,58 @@ interface Step4TeamProps {
   ownerOptions: any[];
   departments: Array<{ deptId: number | string; name: string }>;
   onAuditorsChange: (value: string[]) => void;
+  sensitiveFlag?: boolean;
 }
 
 export const Step4Team: React.FC<Step4TeamProps> = ({
-  level,
-  selectedDeptIds,
-  selectedAuditorIds,
-  auditorOptions,
-  ownerOptions,
-  departments,
+  level = 'academy',
+  selectedDeptIds = [],
+  selectedAuditorIds = [],
+  auditorOptions = [],
+  ownerOptions = [],
+  departments = [],
   onAuditorsChange,
+  sensitiveFlag = false,
 }) => {
   const { user } = useAuth();
   
+  // Safety checks: ensure arrays are always arrays
+  const safeAuditorOptions = Array.isArray(auditorOptions) ? auditorOptions : [];
+  const safeOwnerOptions = Array.isArray(ownerOptions) ? ownerOptions : [];
+  const safeDepartments = Array.isArray(departments) ? departments : [];
+  const safeSelectedDeptIds = Array.isArray(selectedDeptIds) ? selectedDeptIds : [];
+  const safeSelectedAuditorIds = Array.isArray(selectedAuditorIds) ? selectedAuditorIds : [];
+  
   // Find current user's userId from auditorOptions by matching email
   const currentUserId = useMemo(() => {
-    if (!user?.email || !auditorOptions || auditorOptions.length === 0) return null;
-    const found = auditorOptions.find((u: any) => {
-      const uEmail = String(u?.email || '').toLowerCase().trim();
-      const userEmail = String(user.email).toLowerCase().trim();
-      return uEmail === userEmail;
-    });
-    return found?.userId ? String(found.userId) : null;
-  }, [user?.email, auditorOptions]);
+    if (!user?.email || !safeAuditorOptions || safeAuditorOptions.length === 0) return null;
+    try {
+      const found = safeAuditorOptions.find((u: any) => {
+        const uEmail = String(u?.email || '').toLowerCase().trim();
+        const userEmail = String(user.email).toLowerCase().trim();
+        return uEmail === userEmail;
+      });
+      return found?.userId ? String(found.userId) : null;
+    } catch (error) {
+      console.error('[Step4Team] Error finding current user:', error);
+      return null;
+    }
+  }, [user?.email, safeAuditorOptions]);
 
   // Ensure current user is always in auditors and always disabled
   useEffect(() => {
-    if (!currentUserId) return;
-    // Always ensure current user is in the list
-    const normalizedCurrentUserId = String(currentUserId).trim();
-    const hasCurrentUser = selectedAuditorIds.some(id => String(id).trim() === normalizedCurrentUserId);
-    if (!hasCurrentUser) {
-      onAuditorsChange([currentUserId, ...selectedAuditorIds]);
+    if (!currentUserId || !onAuditorsChange) return;
+    try {
+      // Always ensure current user is in the list
+      const normalizedCurrentUserId = String(currentUserId).trim();
+      const hasCurrentUser = safeSelectedAuditorIds.some(id => String(id).trim() === normalizedCurrentUserId);
+      if (!hasCurrentUser) {
+        onAuditorsChange([currentUserId, ...safeSelectedAuditorIds]);
+      }
+    } catch (error) {
+      console.error('[Step4Team] Error in useEffect:', error);
     }
-  }, [currentUserId, selectedAuditorIds, onAuditorsChange]);
+  }, [currentUserId, safeSelectedAuditorIds, onAuditorsChange]);
   return (
     <div>
       <h3 className="text-md font-semibold text-gray-700 mb-4">Step 4/5: Team & Responsibilities</h3>
@@ -54,66 +72,92 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
             Auditors *
           </label>
           {(() => {
-            // Ensure current user is always at the top of the list and always disabled
-            const filteredOptions = auditorOptions;
-            const currentUserOption = auditorOptions.find((u: any) => String(u.userId) === currentUserId);
-            const optionsRaw = [
-              currentUserOption
-                ? {
-                    value: String(currentUserOption.userId),
-                    label: `${currentUserOption.fullName} (${currentUserOption.email})`,
-                    disabled: true,
-                  }
-                : undefined,
-              ...filteredOptions
-                .filter((u: any) => String(u.userId) !== currentUserId)
-                .map((u: any) => ({
-                  value: String(u.userId),
-                  label: `${u.fullName} (${u.email})`,
-                  disabled: false,
-                })),
-            ];
-            const options = optionsRaw.filter((opt) => !!opt) as {
-              value: string;
-              label: string;
-              disabled: boolean;
-            }[];
-
-            // Ensure the value always contains the current user (always at the top of the list)
-            const valueWithCurrent = currentUserId
-              ? Array.from(new Set([currentUserId, ...selectedAuditorIds.filter(id => String(id) !== String(currentUserId))]))
-              : selectedAuditorIds;
-
-            // Calculate the actual number of auditors
-            const actualAuditorCount = valueWithCurrent.length;
-
-            return (
-              <>
-                <MultiSelect
-                  options={options}
-                  value={valueWithCurrent}
-                  onChange={(next) => {
-                    if (!currentUserId) {
-                      onAuditorsChange(next);
-                      return;
+            try {
+              // Ensure current user is always at the top of the list and always disabled
+              const currentUserOption = safeAuditorOptions.find((u: any) => String(u?.userId || '') === String(currentUserId || ''));
+              const optionsRaw = [
+                currentUserOption
+                  ? {
+                      value: String(currentUserOption.userId),
+                      label: `${currentUserOption.fullName || 'Unknown'} (${currentUserOption.email || 'N/A'})`,
+                      disabled: true,
                     }
-                    // Filter out current user from next array (in case someone tries to remove it)
-                    const withoutCurrent = next.filter(id => String(id) !== String(currentUserId));
-                    // Always add current user back at the beginning
-                    const withCurrent = [currentUserId, ...withoutCurrent];
-                    onAuditorsChange(withCurrent);
-                  }}
-                  placeholder="Select auditor(s)"
-                />
-                {actualAuditorCount < 2 && (
-                  <p className="mt-1 text-xs text-red-600">
-                     At least 2 auditors are required.
-                  </p>
-                )}
-              </>
-            );
+                  : undefined,
+                ...safeAuditorOptions
+                  .filter((u: any) => String(u?.userId || '') !== String(currentUserId || ''))
+                  .map((u: any) => ({
+                    value: String(u?.userId || ''),
+                    label: `${u?.fullName || 'Unknown'} (${u?.email || 'N/A'})`,
+                    disabled: false,
+                  })),
+              ];
+              const options = optionsRaw.filter((opt) => !!opt) as {
+                value: string;
+                label: string;
+                disabled: boolean;
+              }[];
+
+              // Ensure the value always contains the current user (always at the top of the list)
+              const valueWithCurrent = currentUserId
+                ? Array.from(new Set([currentUserId, ...safeSelectedAuditorIds.filter(id => String(id) !== String(currentUserId))]))
+                : safeSelectedAuditorIds;
+
+              // Calculate the actual number of auditors
+              const actualAuditorCount = valueWithCurrent.length;
+
+              return (
+                <>
+                  <MultiSelect
+                    options={options}
+                    value={valueWithCurrent}
+                    onChange={(next) => {
+                      if (!onAuditorsChange) return;
+                      if (!currentUserId) {
+                        onAuditorsChange(next);
+                        return;
+                      }
+                      try {
+                        // Filter out current user from next array (in case someone tries to remove it)
+                        const withoutCurrent = next.filter(id => String(id) !== String(currentUserId));
+                        // Always add current user back at the beginning
+                        const withCurrent = [currentUserId, ...withoutCurrent];
+                        onAuditorsChange(withCurrent);
+                      } catch (error) {
+                        console.error('[Step4Team] Error in onChange:', error);
+                      }
+                    }}
+                    placeholder="Select auditor(s)"
+                  />
+                  {actualAuditorCount < 2 && (
+                    <p className="mt-1 text-xs text-red-600">
+                       At least 2 auditors are required.
+                    </p>
+                  )}
+                </>
+              );
+            } catch (error) {
+              console.error('[Step4Team] Error rendering auditors section:', error);
+              return (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700">Error loading auditors. Please refresh the page.</p>
+                </div>
+              );
+            }
           })()}
           
+        </div>
+
+        {/* Permission preview */}
+        <div>
+          {sensitiveFlag ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              Sensitive flag is ON. After Director approval and Kickoff Minutes upload, permissions/QR must be issued for assigned auditors.
+            </div>
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              No sensitive flag. Auditors are assigned normally.
+            </div>
+          )}
         </div>
 
         {/* Auditee Owners */}
@@ -123,12 +167,12 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
           </label>
           {level === 'academy' ? (
             <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg px-3 py-2 text-sm">
-              All Auditee Owners will be auto-assigned for Academy scope ({ownerOptions?.length || 0}{' '}
+              All Auditee Owners will be auto-assigned for Academy scope ({safeOwnerOptions?.length || 0}{' '}
               owners).
             </div>
           ) : (
             <>
-              {selectedDeptIds.length === 0 ? (
+              {safeSelectedDeptIds.length === 0 ? (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                   <p className="text-sm text-gray-500">
                     Please select departments in Step 2 to view Department Heads.
@@ -137,9 +181,10 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
               ) : (
                 <div className="space-y-2">
                   {(() => {
-                    const filtered = ownerOptions.filter((owner: any) =>
-                      selectedDeptIds.includes(String(owner.deptId ?? ''))
-                    );
+                    try {
+                      const filtered = safeOwnerOptions.filter((owner: any) =>
+                        safeSelectedDeptIds.includes(String(owner?.deptId ?? ''))
+                      );
 
                     if (filtered.length === 0) {
                       return (
@@ -151,10 +196,10 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                       );
                     }
 
-                    return filtered.map((owner: any) => {
-                      const deptInfo = departments.find(
-                        (d: any) => String(d.deptId) === String(owner.deptId)
-                      );
+                      return filtered.map((owner: any) => {
+                        const deptInfo = safeDepartments.find(
+                          (d: any) => String(d?.deptId || '') === String(owner?.deptId || '')
+                        );
 
                       return (
                         <div
@@ -180,6 +225,14 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                         </div>
                       );
                     });
+                    } catch (error) {
+                      console.error('[Step4Team] Error rendering owners:', error);
+                      return (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                          <p className="text-sm text-red-700">Error loading owners. Please refresh the page.</p>
+                        </div>
+                      );
+                    }
                   })()}
                 </div>
               )}
