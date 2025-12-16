@@ -9,7 +9,7 @@ import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers'
 import { markFindingAsReceived } from '../../../api/findings';
 import apiClient from '../../../api/client';
 import { Pagination } from '../../../components';
-import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
+import AuditeeActionReviewModal from './AuditeeActionReviewModal';
 import { toast } from 'react-toastify';
 import { getStatusColor } from '../../../constants';
 
@@ -51,6 +51,12 @@ const FindingsProgress = () => {
   const [returnedActionsMap, setReturnedActionsMap] = useState<Record<string, Action>>({}); // findingId -> returned action
   const [rejectedActionsMap, setRejectedActionsMap] = useState<Record<string, Action>>({}); // findingId -> rejected action
   const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasApproved: boolean; hasPending: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }>>({}); // findingId -> root cause status
+  
+  // New states for root cause assignment
+  const [findingRootCauses, setFindingRootCauses] = useState<any[]>([]); // Root causes of selected finding
+  const [loadingRootCauses, setLoadingRootCauses] = useState(false);
+  const [staffRootCauseMap, setStaffRootCauseMap] = useState<Record<string, number[]>>({}); // staffId -> [rootCauseIds]
+  const [rootCauseAssignError, setRootCauseAssignError] = useState('');
 
     // Helper function to get status badge color
   const getStatusBadgeColor = (status: string) => {
@@ -131,15 +137,34 @@ const FindingsProgress = () => {
               rejectedMap[finding.findingId] = rejectedAction;
             }
             
-            // Get the first action's assignedTo
-            const assignedTo = actions[0]?.assignedTo;
-            if (assignedTo && assignedTo.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+            // Get all unique assignedTo users
+            const uniqueAssignedUsers = new Set<string>();
+            actions.forEach(action => {
+              if (action.assignedTo && action.assignedTo.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+                uniqueAssignedUsers.add(action.assignedTo);
+              }
+            });
+            
+            // Fetch all user names
+            const userNames: string[] = [];
+            for (const userId of Array.from(uniqueAssignedUsers)) {
               try {
-                const user = await getUserById(assignedTo);
-                usersMap[finding.findingId] = user.fullName || user.email || assignedTo;
+                const user = await getUserById(userId);
+                userNames.push(user.fullName || user.email || userId);
               } catch (err) {
-                console.warn(`Failed to fetch user info for ${assignedTo}`, err);
-                usersMap[finding.findingId] = assignedTo;
+                console.warn(`Failed to fetch user info for ${userId}`, err);
+                userNames.push(userId);
+              }
+            }
+            
+            // Store as comma-separated names or count if more than 2
+            if (userNames.length > 0) {
+              if (userNames.length === 1) {
+                usersMap[finding.findingId] = userNames[0];
+              } else if (userNames.length === 2) {
+                usersMap[finding.findingId] = userNames.join(', ');
+              } else {
+                usersMap[finding.findingId] = `${userNames[0]} +${userNames.length - 1} others`;
               }
             }
           }
@@ -244,6 +269,12 @@ const FindingsProgress = () => {
   const handleToggleStaff = (userId: string) => {
     setSelectedStaff(prev => {
       if (prev.includes(userId)) {
+        // When unchecking staff, remove their root cause assignments
+        setStaffRootCauseMap(prevMap => {
+          const newMap = { ...prevMap };
+          delete newMap[userId];
+          return newMap;
+        });
         return prev.filter(id => id !== userId);
       } else {
         return [...prev, userId];
@@ -251,6 +282,40 @@ const FindingsProgress = () => {
     });
     // Clear error when user makes a selection
     if (selectedStaffError) setSelectedStaffError('');
+  };
+
+  // Toggle root cause assignment for a staff member
+  const handleToggleRootCause = (staffId: string, rootCauseId: number) => {
+    setStaffRootCauseMap(prev => {
+      const current = prev[staffId] || [];
+      const newAssignments = current.includes(rootCauseId)
+        ? current.filter(id => id !== rootCauseId)
+        : [...current, rootCauseId];
+      
+      return {
+        ...prev,
+        [staffId]: newAssignments
+      };
+    });
+    if (rootCauseAssignError) setRootCauseAssignError('');
+  };
+
+  // Load root causes for the selected finding
+  const loadFindingRootCauses = async (findingId: string) => {
+    setLoadingRootCauses(true);
+    try {
+      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+      const rootCauses = res.data.$values || [];
+      // Only show approved root causes
+      const approvedRootCauses = rootCauses.filter((rc: any) => rc.status?.toLowerCase() === 'approved');
+      setFindingRootCauses(approvedRootCauses);
+      console.log('📝 Loaded root causes for assignment:', approvedRootCauses);
+    } catch (err) {
+      console.error('Error loading root causes:', err);
+      setFindingRootCauses([]);
+    } finally {
+      setLoadingRootCauses(false);
+    }
   };
 
   // Load staff members for assignment (only CAPAOwner role)
@@ -336,6 +401,24 @@ const FindingsProgress = () => {
       return;
     }
 
+    // Validate that all root causes are assigned if there are any
+    if (findingRootCauses.length > 0) {
+      const allRootCauseIds = findingRootCauses.map(rc => rc.rootCauseId);
+      const assignedRootCauseIds = new Set(
+        Object.values(staffRootCauseMap).flat()
+      );
+      
+      const unassignedRootCauses = allRootCauseIds.filter(
+        id => !assignedRootCauseIds.has(id)
+      );
+      
+      if (unassignedRootCauses.length > 0) {
+        setRootCauseAssignError(`Please assign all ${findingRootCauses.length} root causes to staff members`);
+        setShowAssignConfirmModal(false);
+        return;
+      }
+    }
+
     setShowAssignConfirmModal(false);
     setSubmittingAssign(true);
 
@@ -343,19 +426,34 @@ const FindingsProgress = () => {
       // First, mark finding as received
       await markFindingAsReceived(selectedFindingForAssign.findingId);
       
-      // Then, create actions for each selected staff member
-      const actionPromises = selectedStaff.map(staffId => 
-        createAction({
+      // Then, create actions for each selected staff member with their assigned root causes
+      const actionPromises = selectedStaff.map(staffId => {
+        const assignedRootCauseIds = staffRootCauseMap[staffId] || [];
+        
+        // Build description with assigned root causes
+        let actionDescription = selectedFindingForAssign.description || '';
+        if (assignedRootCauseIds.length > 0) {
+          const assignedRootCauses = findingRootCauses.filter(rc => 
+            assignedRootCauseIds.includes(rc.rootCauseId)
+          );
+          actionDescription += '\n\n📋 Assigned Root Causes:\n' + 
+            assignedRootCauses.map((rc, index) => 
+              `${index + 1}. ${rc.name} (${rc.category})`
+            ).join('\n');
+        }
+        
+        return createAction({
           findingId: selectedFindingForAssign.findingId,
           title: selectedFindingForAssign.title,
-          description: selectedFindingForAssign.description || '',
+          description: actionDescription,
           assignedTo: staffId,
           assignedDeptId: selectedFindingForAssign.deptId || 0,
           progressPercent: 0,
           dueDate: new Date(dueDate).toISOString(),
           reviewFeedback: '',
-        })
-      );
+          rootCauseId: assignedRootCauseIds.length > 0 ? assignedRootCauseIds[0] : undefined, // First root cause as primary
+        });
+      });
       
       // Wait for all actions to be created
       await Promise.all(actionPromises);
@@ -367,10 +465,14 @@ const FindingsProgress = () => {
       setDueDateError('');
       setSelectedFindingForAssign(null);
       setShowAssignModal(false);
+      setStaffRootCauseMap({});
+      setFindingRootCauses([]);
+      setRootCauseAssignError('');
       
       // Show success toast
       const staffCount = selectedStaff.length;
-      toast.success(`Finding assigned successfully to ${staffCount} staff member${staffCount > 1 ? 's' : ''}`);
+      const rootCauseCount = findingRootCauses.length;
+      toast.success(`Finding assigned successfully to ${staffCount} staff member${staffCount > 1 ? 's' : ''} with ${rootCauseCount} root cause${rootCauseCount > 1 ? 's' : ''}`);
       
       // Reload findings and assigned users
       const deptId = getUserDeptId();
@@ -398,6 +500,9 @@ const FindingsProgress = () => {
     setSelectedStaffError('');
     setDueDateError('');
     setSelectedFindingForAssign(null);
+    setStaffRootCauseMap({});
+    setFindingRootCauses([]);
+    setRootCauseAssignError('');
     setShowAssignModal(false);
   };
 
@@ -635,14 +740,9 @@ const FindingsProgress = () => {
                                 >
                                   Rejected
                                 </button>
-                              ) : finding.status?.toLowerCase() === 'received' ? (
-                                <button
-                                  disabled
-                                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
-                                  title="Already Assigned"
-                                >
-                                  Assigned
-                                </button>
+                              ) : finding.status?.toLowerCase() === 'received' || finding.status?.toLowerCase() === 'closed' ? (
+                                // Don't show any button when already assigned or closed
+                                null
                               ) : (() => {
                                 const rcStatus = rootCauseStatusMap[finding.findingId];
                                 const allApproved = rcStatus?.allApproved || false;
@@ -690,6 +790,10 @@ const FindingsProgress = () => {
                                         setSelectedFindingForAssign(finding);
                                         setShowAssignModal(true);
                                         loadStaffMembers(finding.deptId);
+                                        loadFindingRootCauses(finding.findingId);
+                                        // Reset root cause assignments
+                                        setStaffRootCauseMap({});
+                                        setRootCauseAssignError('');
                                       }}
                                       className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
                                       title="All root causes approved - ready to assign"
@@ -891,31 +995,85 @@ const FindingsProgress = () => {
                         <span className="text-sm text-gray-500">Loading CAPA owners...</span>
                       </div>
                     ) : (
-                      <div className={`border rounded-lg p-3 max-h-48 overflow-y-auto ${
+                      <div className={`border rounded-lg p-3 max-h-96 overflow-y-auto ${
                         selectedStaffError ? 'border-red-300' : 'border-gray-300'
                       }`}>
                         {staffMembers.length === 0 ? (
                           <p className="text-sm text-gray-500 text-center py-2">No CAPA Owners found in this department</p>
                         ) : (
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                             {staffMembers.map((staff) => (
-                              <label
-                                key={staff.userId}
-                                className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedStaff.includes(staff.userId)}
-                                  onChange={() => handleToggleStaff(staff.userId)}
-                                  className="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium text-gray-900">{staff.fullName}</p>
-                                  {staff.email && (
-                                    <p className="text-xs text-gray-500 truncate">{staff.email}</p>
-                                  )}
-                                </div>
-                              </label>
+                              <div key={staff.userId} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                                <label className="flex items-start gap-3 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedStaff.includes(staff.userId)}
+                                    onChange={() => handleToggleStaff(staff.userId)}
+                                    className="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-gray-900">{staff.fullName}</p>
+                                    {staff.email && (
+                                      <p className="text-xs text-gray-500 truncate">{staff.email}</p>
+                                    )}
+                                    
+                                    {/* Root Cause Assignment - Show only if staff is selected and root causes exist */}
+                                    {selectedStaff.includes(staff.userId) && findingRootCauses.length > 0 && (
+                                      <div className="mt-3 pl-2 space-y-2">
+                                        <p className="text-xs font-semibold text-primary-700 mb-1">
+                                          Assign Root Causes:
+                                        </p>
+                                        {loadingRootCauses ? (
+                                          <div className="flex items-center gap-2">
+                                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-600"></div>
+                                            <span className="text-xs text-gray-500">Loading root causes...</span>
+                                          </div>
+                                        ) : (
+                                          <div className="space-y-1.5">
+                                            {findingRootCauses.map((rc, index) => {
+                                              const isAssignedToThisStaff = staffRootCauseMap[staff.userId]?.includes(rc.rootCauseId);
+                                              const isAssignedToOther = Object.entries(staffRootCauseMap).some(
+                                                ([sid, rcIds]) => sid !== staff.userId && rcIds.includes(rc.rootCauseId)
+                                              );
+                                              
+                                              return (
+                                                <label
+                                                  key={rc.rootCauseId}
+                                                  className={`flex items-start gap-2 p-2 rounded cursor-pointer transition-colors ${
+                                                    isAssignedToOther ? 'bg-gray-200 opacity-60' : 'bg-white hover:bg-gray-100'
+                                                  }`}
+                                                >
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={isAssignedToThisStaff}
+                                                    disabled={isAssignedToOther}
+                                                    onChange={() => handleToggleRootCause(staff.userId, rc.rootCauseId)}
+                                                    className="mt-0.5 h-3.5 w-3.5 text-primary-600 focus:ring-primary-500 border-gray-300 rounded disabled:opacity-50"
+                                                  />
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-medium text-gray-900">
+                                                      #{index + 1}: {rc.name}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500">
+                                                      {rc.category}
+                                                      {isAssignedToOther && <span className="ml-1 text-amber-600">(assigned to other)</span>}
+                                                    </p>
+                                                  </div>
+                                                </label>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                        {staffRootCauseMap[staff.userId]?.length > 0 && (
+                                          <p className="text-xs text-primary-600 mt-2">
+                                            ✓ {staffRootCauseMap[staff.userId].length} root cause{staffRootCauseMap[staff.userId].length > 1 ? 's' : ''} assigned
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </label>
+                              </div>
                             ))}
                           </div>
                         )}
@@ -931,6 +1089,23 @@ const FindingsProgress = () => {
                     )}
                   </div>
 
+                  {/* Root Cause Assignment Summary */}
+                  {findingRootCauses.length > 0 && selectedStaff.length > 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p className="text-xs font-semibold text-blue-700">Root Cause Assignment</p>
+                      </div>
+                      <p className="text-xs text-blue-600">
+                        {Object.values(staffRootCauseMap).flat().length} of {findingRootCauses.length} root causes assigned
+                      </p>
+                      {rootCauseAssignError && (
+                        <p className="mt-2 text-xs text-red-600 font-medium">⚠️ {rootCauseAssignError}</p>
+                      )}
+                    </div>
+                  )}
                 
                 </div>
 
@@ -999,7 +1174,7 @@ const FindingsProgress = () => {
 
         {/* Action Detail Modal */}
         {selectedActionId && (
-          <ActionDetailModal
+          <AuditeeActionReviewModal
             isOpen={showActionDetailModal}
             onClose={() => {
               setShowActionDetailModal(false);
@@ -1009,56 +1184,26 @@ const FindingsProgress = () => {
             }}
             actionId={selectedActionId}
             findingId={selectedActionFindingId || undefined}
-            showReviewButtons={!!selectedActionForReview}
-            onApprove={async (feedback) => {
-              if (selectedActionForReview) {
-                setProcessingReview(true);
-                try {
-                  await approveActionWithFeedback(selectedActionForReview.actionId, feedback || '');
-                  setShowActionDetailModal(false);
-                  setSelectedActionId(null);
-                  setSelectedActionForReview(null);
-                  // Reload findings
-                  const deptId = getUserDeptId();
-                  if (deptId) {
-                    const data = await getFindingsByDepartment(deptId);
-                    setFindings(data);
-                    await loadAssignedUsers(data);
-                    await loadRootCauseStatus(data);
-                  }
-                } catch (err: any) {
-                  console.error('Error approving action:', err);
-                  // Don't show alert, just log error
-                } finally {
-                  setProcessingReview(false);
-                }
+            onDataReload={async () => {
+              // Reload findings
+              const deptId = getUserDeptId();
+              if (deptId) {
+                console.log('🔄 Reloading findings...');
+                const data = await getFindingsByDepartment(deptId);
+                setFindings(data);
+                await loadAssignedUsers(data);
+                await loadRootCauseStatus(data);
+                console.log('✅ Findings reloaded');
+              }
+              
+              // Reload actions sidebar if open
+              if (selectedFindingId && showActionsModal) {
+                console.log('🔄 Reloading actions for finding:', selectedFindingId);
+                const actions = await getActionsByFinding(selectedFindingId);
+                setSelectedFindingActions(Array.isArray(actions) ? actions : []);
+                console.log('✅ Actions reloaded');
               }
             }}
-            onReject={async (feedback) => {
-              if (selectedActionForReview) {
-                setProcessingReview(true);
-                try {
-                  await rejectAction(selectedActionForReview.actionId, feedback || '');
-                  setShowActionDetailModal(false);
-                  setSelectedActionId(null);
-                  setSelectedActionForReview(null);
-                  // Reload findings
-                  const deptId = getUserDeptId();
-                  if (deptId) {
-                    const data = await getFindingsByDepartment(deptId);
-                    setFindings(data);
-                    await loadAssignedUsers(data);
-                    await loadRootCauseStatus(data);
-                  }
-                } catch (err: any) {
-                  console.error('Error rejecting action:', err);
-                  // Don't show alert, just log error
-                } finally {
-                  setProcessingReview(false);
-                }
-              }
-            }}
-            isProcessing={processingReview}
           />
         )}
 

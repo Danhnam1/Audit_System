@@ -12,7 +12,7 @@ import CompliantDetailsViewer from './CompliantDetailsViewer';
 import FindingDetailModal from './FindingDetailModal';
 import { toast } from 'react-toastify';
 import { getActionsByFinding, type Action } from '../../../api/actions';
-import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
+import AuditorActionReviewModal from './AuditorActionReviewModal';
 import { getAuditPlanById } from '../../../api/audits';
 import { getAccessGrants, verifyCode, type VerifyCodeRequest } from '../../../api/accessGrant';
 import useAuthStore, { useUserId } from '../../../store/useAuthStore';
@@ -1251,85 +1251,35 @@ const DepartmentChecklist = () => {
       />
 
       {/* Action Detail Modal */}
-      {selectedActionId && (() => {
-        const action = findingActions.find(a => a.actionId === selectedActionId);
-        const isVerified = action?.status?.toLowerCase() === 'verified';
-
-        return (
-          <ActionDetailModal
-            isOpen={showActionDetailModal}
-            findingId={selectedActionFindingId || undefined}
-            onClose={() => {
-              setShowActionDetailModal(false);
-              setSelectedActionFindingId(null);
-              setSelectedActionId(null);
-            }}
-            actionId={selectedActionId}
-            showReviewButtons={isVerified}
-            onApprove={async (_feedback: string) => {
-              if (!action) return;
-              setProcessingActionId(action.actionId);
-              try {
-                await approveFindingAction(action.actionId);
-                toast.success('Action approved successfully');
-                // Reload actions
-                if (selectedFindingForActions) {
-                  const actions = await getActionsByFinding(selectedFindingForActions.findingId);
-                  setFindingActions(Array.isArray(actions) ? actions : []);
-                  // Update actions map
-                  setFindingActionsMap(prev => ({
-                    ...prev,
-                    [selectedFindingForActions.findingId]: actions || []
-                  }));
-                  // Reload verified count
-                  await loadMyFindings();
-                }
-                setShowActionDetailModal(false);
-                setSelectedActionId(null);
-                setSelectedActionFindingId(null);
-              } catch (err: any) {
-                console.error('Error approving action:', err);
-                toast.error(err?.message || 'Failed to approve action');
-              } finally {
-                setProcessingActionId(null);
-              }
-            }}
-            onReject={async (feedback: string) => {
-              if (!action) return;
-              if (!feedback.trim()) {
-                toast.error('Please enter feedback when rejecting an action');
-                return;
-              }
-              setProcessingActionId(action.actionId);
-              try {
-                await returnFindingAction(action.actionId, feedback.trim());
-                toast.success('Action rejected successfully');
-                // Reload actions
-                if (selectedFindingForActions) {
-                  const actions = await getActionsByFinding(selectedFindingForActions.findingId);
-                  setFindingActions(Array.isArray(actions) ? actions : []);
-                  // Update actions map
-                  setFindingActionsMap(prev => ({
-                    ...prev,
-                    [selectedFindingForActions.findingId]: actions || []
-                  }));
-                  // Reload verified count
-                  await loadMyFindings();
-                }
-                setShowActionDetailModal(false);
-                setSelectedActionId(null);
-                setSelectedActionFindingId(null);
-              } catch (err: any) {
-                console.error('Error rejecting action:', err);
-                toast.error(err?.message || 'Failed to reject action');
-              } finally {
-                setProcessingActionId(null);
-              }
-            }}
-            isProcessing={processingActionId === selectedActionId}
-          />
-        );
-      })()}
+      {selectedActionId && (
+        <AuditorActionReviewModal
+          isOpen={showActionDetailModal}
+          onClose={() => {
+            setShowActionDetailModal(false);
+            setSelectedActionFindingId(null);
+            setSelectedActionId(null);
+          }}
+          actionId={selectedActionId}
+          findingId={selectedActionFindingId || undefined}
+          onDataReload={async () => {
+            // Reload findings
+            await reloadFindings();
+            
+            // Reload actions
+            if (selectedFindingForActions) {
+              const actions = await getActionsByFinding(selectedFindingForActions.findingId);
+              setFindingActions(Array.isArray(actions) ? actions : []);
+              // Update actions map
+              setFindingActionsMap(prev => ({
+                ...prev,
+                [selectedFindingForActions.findingId]: actions || []
+              }));
+              // Reload verified count
+              await loadMyFindings();
+            }
+          }}
+        />
+      )}
 
       {/* Add Checklist Item Modal */}
       {showAddItemModal && (
