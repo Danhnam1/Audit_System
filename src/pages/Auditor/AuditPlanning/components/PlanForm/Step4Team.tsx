@@ -104,13 +104,28 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
 
               // Calculate the actual number of auditors
               const actualAuditorCount = valueWithCurrent.length;
+              
+              // Debug: Log options and values
+              console.log('[Step4Team] Auditor options:', options);
+              console.log('[Step4Team] Selected auditor IDs:', valueWithCurrent);
+              console.log('[Step4Team] Safe auditor options:', safeAuditorOptions);
 
               return (
                 <>
-                  <MultiSelect
-                    options={options}
-                    value={valueWithCurrent}
-                    onChange={(next) => {
+                  {options.length === 0 ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <p className="text-sm text-yellow-700">
+                        ⚠️ No auditor options available. Please ensure auditors are loaded.
+                      </p>
+                      <p className="text-xs text-yellow-600 mt-1">
+                        Selected IDs: {valueWithCurrent.join(', ')}
+                      </p>
+                    </div>
+                  ) : (
+                    <MultiSelect
+                      options={options}
+                      value={valueWithCurrent}
+                      onChange={(next) => {
                       if (!onAuditorsChange) return;
                       if (!currentUserId) {
                         onAuditorsChange(next);
@@ -128,6 +143,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                     }}
                     placeholder="Select auditor(s)"
                   />
+                  )}
                   {actualAuditorCount < 2 && (
                     <p className="mt-1 text-xs text-red-600">
                        At least 2 auditors are required.

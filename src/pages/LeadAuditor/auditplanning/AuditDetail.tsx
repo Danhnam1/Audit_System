@@ -17,7 +17,7 @@ import { getAuditSchedules } from '../../../api/auditSchedule';
 
 import { getUserById } from '../../../api/adminUsers';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
-import { getCriteriaForAudit } from '../../../api/auditCriteriaMap';
+import { getCriteriaForAudit, getCriteriaForAuditByDepartment } from '../../../api/auditCriteriaMap';
 import { getAuditCriterionById } from '../../../api/auditCriteria';
 import { getChecklistTemplateById, type ChecklistTemplateDto } from '../../../api/checklists';
 import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
@@ -49,6 +49,8 @@ const AuditDetail = () => {
   const [schedules, setSchedules] = useState<any[]>([]);
   const [sensitiveAreasByDept, setSensitiveAreasByDept] = useState<Record<number, string[]>>({});
   const [loadingSchedules, setLoadingSchedules] = useState(false);
+  // Map: deptId -> criteria array for that department
+  const [criteriaByDept, setCriteriaByDept] = useState<Map<number, any[]>>(new Map());
 
   const [actionLoading, setActionLoading] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -72,6 +74,89 @@ const AuditDetail = () => {
       loadSensitiveAreas();
     }
   }, [auditId]);
+
+  // Load criteria by department when departments are loaded
+  useEffect(() => {
+    const loadCriteriaByDepartment = async () => {
+      if (!auditId || departments.length === 0) {
+        setCriteriaByDept(new Map());
+        return;
+      }
+
+      const criteriaMap = new Map<number, any[]>();
+
+      await Promise.all(
+        departments.map(async (dept: any) => {
+          const deptId = Number(dept.deptId ?? dept.departmentId ?? dept.id ?? dept.$id ?? 0);
+          if (!deptId || isNaN(deptId)) return;
+
+          try {
+            const deptCriteria = await getCriteriaForAuditByDepartment(auditId, deptId);
+            console.log(`[AuditDetail] Criteria for dept ${deptId}:`, deptCriteria);
+            
+            // API already unwraps, so deptCriteria is already the unwrapped value
+            let criteriaArray: any[] = [];
+            if (Array.isArray(deptCriteria)) {
+              criteriaArray = deptCriteria;
+            } else {
+              // If it's not an array, try to unwrap again (in case API response format changed)
+              const unwrapped = unwrap(deptCriteria);
+              if (Array.isArray(unwrapped)) {
+                criteriaArray = unwrapped;
+              } else {
+                console.warn(`[AuditDetail] Criteria for department ${deptId} is not an array:`, deptCriteria);
+                criteriaArray = [];
+              }
+            }
+            
+            if (criteriaArray.length > 0) {
+              // Fetch detailed information for each criterion
+              const criteriaDetails = await Promise.allSettled(
+                criteriaArray.map(async (item: any) => {
+                  try {
+                    const criteriaId = item.criteriaId || item.id || item;
+                    const response = await getAuditCriterionById(criteriaId);
+                    const detail = response || {};
+                    return {
+                      criteriaId: detail.criteriaId || criteriaId,
+                      name: detail.name || 'N/A',
+                      description: detail.description || 'No description',
+                      referenceCode: detail.referenceCode || 'N/A',
+                      status: item.status || detail.status || 'Active',
+                    };
+                  } catch (err: any) {
+                    console.error(`[AuditDetail] Failed to load criterion detail:`, err);
+                    return {
+                      criteriaId: item.criteriaId || item.id || item,
+                      name: item.name || 'N/A',
+                      description: item.description || 'No description',
+                      referenceCode: item.referenceCode || 'N/A',
+                      status: item.status || 'Active',
+                    };
+                  }
+                })
+              );
+              const validCriteria = criteriaDetails
+                .filter((result) => result.status === 'fulfilled')
+                .map((result) => (result as PromiseFulfilledResult<any>).value);
+              console.log(`[AuditDetail] Valid criteria for dept ${deptId}:`, validCriteria.length);
+              criteriaMap.set(deptId, validCriteria);
+            } else {
+              console.log(`[AuditDetail] No criteria found for department ${deptId}`);
+              criteriaMap.set(deptId, []);
+            }
+          } catch (error) {
+            console.error(`[AuditDetail] Failed to load criteria for department ${deptId}:`, error);
+            criteriaMap.set(deptId, []);
+          }
+        })
+      );
+
+      setCriteriaByDept(criteriaMap);
+    };
+
+    loadCriteriaByDepartment();
+  }, [auditId, departments]);
 
   // Load templates when audit details are loaded
   useEffect(() => {
@@ -1016,6 +1101,96 @@ const AuditDetail = () => {
                     </div>
                   )}
                 </div>
+
+                  {/* Departments & Standards (combined view, similar to Auditor modal) */}
+                  {departments.length > 0 && (
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mt-6">
+                      <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-200">
+                        <h4 className="text-lg font-semibold text-primary-700">Departments & Standards</h4>
+                      </div>
+                      <div className="space-y-4">
+                        {departments.map((dept: any, idx: number) => {
+                          const deptId =
+                            Number(dept.deptId ?? dept.departmentId ?? dept.id ?? dept.$id ?? 0);
+                          const deptName =
+                            dept.deptName || dept.departmentName || dept.name || `Department ${idx + 1}`;
+                          const deptSensitiveAreas =
+                            (sensitiveAreasByDept[deptId] as string[] | undefined) || [];
+                          const hasSensitiveAreas = deptSensitiveAreas.length > 0;
+
+                          // Get criteria specific to this department
+                          const deptCriteria = criteriaByDept.get(deptId) || [];
+
+                          return (
+                            <div
+                              key={`${deptId}-${idx}`}
+                              className={`bg-gray-50 rounded-lg p-5 border-2 transition-all duration-300 ${
+                                hasSensitiveAreas
+                                  ? 'border-amber-300 hover:border-amber-400 hover:shadow-lg'
+                                  : 'border-gray-200 hover:border-primary-300 hover:shadow-lg'
+                              }`}
+                            >
+                              {/* Department header */}
+                              <div className="mb-3 pb-2 border-b border-gray-200">
+                                <div className="flex items-center justify-between">
+                                  <h5 className="text-base font-bold text-gray-900">{deptName}</h5>
+                                </div>
+
+                                {/* Sensitive Areas */}
+                                {hasSensitiveAreas && (
+                                  <div className="mt-3 flex flex-wrap gap-1.5">
+                                    {deptSensitiveAreas.map((area: string, areaIdx: number) => (
+                                      <span
+                                        key={areaIdx}
+                                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200"
+                                      >
+                                        🔒 {area}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Standards list */}
+                              <div>
+                                <h6 className="text-sm font-semibold text-gray-700 mb-2">Standards</h6>
+                                {deptCriteria.length > 0 ? (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    {deptCriteria.map((criterion: any, critIdx: number) => {
+                                      const displayName =
+                                        criterion.name ||
+                                        criterion.criterionName ||
+                                        criterion.referenceCode ||
+                                        `Criterion ${critIdx + 1}`;
+                                      return (
+                                        <div
+                                          key={`${deptId}-criterion-${critIdx}`}
+                                          className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-50 transition-colors"
+                                        >
+                                          <div className="bg-primary-600 rounded-full p-1">
+                                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                              <path
+                                                fillRule="evenodd"
+                                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                clipRule="evenodd"
+                                              />
+                                            </svg>
+                                          </div>
+                                          <span className="text-sm text-black font-normal">{displayName}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-gray-500 italic">No standards assigned.</p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
               </div>
             </div>
 

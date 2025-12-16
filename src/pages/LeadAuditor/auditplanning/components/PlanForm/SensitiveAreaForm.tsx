@@ -33,15 +33,23 @@ export const SensitiveAreaForm: React.FC<SensitiveAreaFormProps> = ({
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   // Load sensitive areas for each selected department (from API)
+  // For academy level: load all departments' sensitive areas
   useEffect(() => {
     const loadSuggestions = async () => {
-      if (selectedDeptIds.length === 0) {
+      // Determine which departments to load
+      // If selectedDeptIds is empty but departments exist, it means academy level - load all
+      const deptIdsToLoad = selectedDeptIds.length > 0 
+        ? selectedDeptIds 
+        : departments.map(d => String(d.deptId));
+      
+      if (deptIdsToLoad.length === 0) {
         setDepartmentAreas([]);
         return;
       }
+      
       setLoadingSuggestions(true);
       try {
-        const areasPromises = selectedDeptIds.map(async (deptId) => {
+        const areasPromises = deptIdsToLoad.map(async (deptId) => {
           const dept = departments.find((d) => String(d.deptId) === String(deptId));
           const deptName = dept?.name || deptId;
           
@@ -77,11 +85,18 @@ export const SensitiveAreaForm: React.FC<SensitiveAreaFormProps> = ({
   }, [selectedDeptIds, departments]);
 
   // Auto-fill default notes when departments change (from API)
+  // For academy level: use all departments
   useEffect(() => {
     const loadDefaultNotes = async () => {
-      if (selectedDeptIds.length > 0 && !sensitiveNotes) {
+      // Determine which departments to use
+      // If selectedDeptIds is empty but departments exist, it means academy level - use all
+      const deptIdsToUse = selectedDeptIds.length > 0 
+        ? selectedDeptIds 
+        : departments.map(d => String(d.deptId));
+      
+      if (deptIdsToUse.length > 0 && !sensitiveNotes) {
         try {
-          const defaultNotes = await getDefaultNotesByDepartments(selectedDeptIds);
+          const defaultNotes = await getDefaultNotesByDepartments(deptIdsToUse);
           if (defaultNotes) {
             onNotesChange(defaultNotes);
           }
@@ -91,7 +106,7 @@ export const SensitiveAreaForm: React.FC<SensitiveAreaFormProps> = ({
       }
     };
     loadDefaultNotes();
-  }, [selectedDeptIds, sensitiveNotes, onNotesChange]);
+  }, [selectedDeptIds, departments, sensitiveNotes, onNotesChange]);
 
   // Format: "area name - department name"
   const formatAreaName = (area: string, deptName: string) => {
@@ -185,7 +200,7 @@ export const SensitiveAreaForm: React.FC<SensitiveAreaFormProps> = ({
                 </div>
               ))}
             </div>
-          ) : selectedDeptIds.length > 0 ? (
+          ) : (selectedDeptIds.length > 0 || departments.length > 0) ? (
             <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
@@ -194,7 +209,9 @@ export const SensitiveAreaForm: React.FC<SensitiveAreaFormProps> = ({
                 <div>
                   <p className="text-sm font-medium text-gray-900">No Sensitive Areas Configured</p>
                   <p className="text-xs text-gray-600 mt-0.5">
-                    No sensitive areas configured for selected departments. Contact Admin to configure master data.
+                    {selectedDeptIds.length > 0 
+                      ? 'No sensitive areas configured for selected departments. Contact Admin to configure master data.'
+                      : 'No sensitive areas configured for any departments. Contact Admin to configure master data.'}
                   </p>
                 </div>
               </div>

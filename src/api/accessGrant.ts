@@ -46,9 +46,12 @@ export interface ScanAccessGrantResponse {
   isValid: boolean;
   auditId?: string;
   auditorId?: string;
-  deptId?: number;
+  deptId?: number | null;
+  validFrom?: string;
   expiresAt?: string;
   reason?: string | null;
+  verifyCode?: string; // Verify code for Auditor to enter
+  avatarUrl?: string; // Avatar image URL
 }
 
 export interface VerifyCodeRequest {

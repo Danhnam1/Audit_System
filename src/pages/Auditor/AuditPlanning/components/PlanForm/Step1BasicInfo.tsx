@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { getAuditsByPeriod } from '../../../../../api/audits';
+import { unwrap } from '../../../../../utils/normalize';
 
 interface Step1BasicInfoProps {
   title: string;
@@ -11,6 +13,7 @@ interface Step1BasicInfoProps {
   onGoalChange: (value: string) => void;
   onPeriodFromChange: (value: string) => void;
   onPeriodToChange: (value: string) => void;
+  editingAuditId?: string | null;
 }
 
 export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
@@ -24,7 +27,98 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
   onGoalChange,
   onPeriodFromChange,
   onPeriodToChange,
+  editingAuditId,
 }) => {
+  const [hasTimeConflict, setHasTimeConflict] = useState(false);
+  const [conflictingAuditsCount, setConflictingAuditsCount] = useState(0);
+
+  useEffect(() => {
+    const checkTimeConflict = async () => {
+      if (!periodFrom || !periodTo) {
+        setHasTimeConflict(false);
+        setConflictingAuditsCount(0);
+        return;
+      }
+
+      try {
+        console.log('[Step1BasicInfo] Checking time conflict for period:', periodFrom, 'to', periodTo);
+        const auditsInPeriod = await getAuditsByPeriod(periodFrom, periodTo);
+        console.log('[Step1BasicInfo] Raw audits response:', auditsInPeriod);
+        
+        // Unwrap response to handle different formats ($values, values, data, or direct array)
+        const auditsArray = unwrap(auditsInPeriod);
+        console.log('[Step1BasicInfo] Processed audits array:', auditsArray.length, 'audits');
+        
+        // Filter out inactive and deleted audits
+        const activeAudits = auditsArray.filter((a: any) => {
+          const status = String(a.status || '').toLowerCase().replace(/\s+/g, '');
+          const isActive = status !== 'inactive' && status !== 'deleted';
+          if (!isActive) {
+            console.log('[Step1BasicInfo] Filtered out inactive/deleted audit:', a.auditId || a.id, 'status:', status);
+          }
+          return isActive;
+        });
+        
+        console.log('[Step1BasicInfo] Active audits after filtering:', activeAudits.length);
+        
+        // Filter out current audit if editing
+        const otherAudits = editingAuditId
+          ? activeAudits.filter((a: any) => {
+              const auditId = String(a.auditId || a.id);
+              const isNotCurrent = auditId !== String(editingAuditId);
+              if (!isNotCurrent) {
+                console.log('[Step1BasicInfo] Filtered out current audit being edited:', auditId);
+              }
+              return isNotCurrent;
+            })
+          : activeAudits;
+
+        // Check for actual time overlap (not just same period)
+        const newStart = new Date(periodFrom);
+        const newEnd = new Date(periodTo);
+        
+        const overlappingAudits = otherAudits.filter((a: any) => {
+          const auditStart = new Date(a.startDate || a.periodFrom || a.startDate);
+          const auditEnd = new Date(a.endDate || a.periodTo || a.endDate);
+          
+          // Check if dates are valid
+          if (isNaN(auditStart.getTime()) || isNaN(auditEnd.getTime())) {
+            return false;
+          }
+          
+          // Check overlap: newStart <= auditEnd && newEnd >= auditStart
+          const overlaps = auditStart <= newEnd && auditEnd >= newStart;
+          return overlaps;
+        });
+
+        console.log('[Step1BasicInfo] Other audits (excluding current):', otherAudits.length);
+        console.log('[Step1BasicInfo] Overlapping audits:', overlappingAudits.length);
+        console.log('[Step1BasicInfo] Overlapping audits details:', overlappingAudits.map((a: any) => ({
+          id: a.auditId || a.id,
+          title: a.title,
+          status: a.status,
+          startDate: a.startDate || a.periodFrom,
+          endDate: a.endDate || a.periodTo
+        })));
+
+        if (overlappingAudits.length > 0) {
+          console.log('[Step1BasicInfo] Time conflict detected! Setting warning...');
+          setHasTimeConflict(true);
+          setConflictingAuditsCount(overlappingAudits.length);
+        } else {
+          console.log('[Step1BasicInfo] No time conflict');
+          setHasTimeConflict(false);
+          setConflictingAuditsCount(0);
+        }
+      } catch (error) {
+        console.error('[Step1BasicInfo] Error checking time conflict:', error);
+        setHasTimeConflict(false);
+        setConflictingAuditsCount(0);
+      }
+    };
+
+    checkTimeConflict();
+  }, [periodFrom, periodTo, editingAuditId]);
   // Calculate min/max dates for Period fields
   // - Period From: today → today + 6 months (~180 days)
   // - Period To:   at least the day after Period From (and not in the past)
@@ -113,6 +207,14 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
             />
           </div>
         </div>
+
+        {hasTimeConflict && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+            <p className="text-sm text-yellow-800">
+              ⚠️ <strong>Warning:</strong> There are {conflictingAuditsCount} audit plans running simultaneously.
+            </p>
+          </div>
+        )}
         
         {/* <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>

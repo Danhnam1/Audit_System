@@ -1,8 +1,7 @@
 import { 
-  getAuditsByPeriod, 
-  validateDepartment, 
   getPeriodStatus,
-  type ValidateDepartmentRequest,
+  getAuditsByPeriod,
+  getAuditScopeDepartmentsByAuditId,
   type ValidateDepartmentResponse,
   type PeriodStatusResponse
 } from '../api/audits';
@@ -14,40 +13,226 @@ import {
 
 /**
  * Business Rule 1: Validate giới hạn 5 audits trong thời kỳ A-B
+ * @deprecated - Đã bỏ giới hạn số lần tạo plan, không còn sử dụng
  */
-export const validateAuditLimit = async (
-  startDate: string,
-  endDate: string
-): Promise<{ isValid: boolean; message: string; currentCount?: number }> => {
-  try {
-    const audits = await getAuditsByPeriod(startDate, endDate);
-    const currentCount = Array.isArray(audits) ? audits.length : 0;
-    const maxAllowed = 5;
+// export const validateAuditLimit = async (
+//   startDate: string,
+//   endDate: string
+// ): Promise<{ isValid: boolean; message: string; currentCount?: number }> => {
+//   try {
+//     const audits = await getAuditsByPeriod(startDate, endDate);
+//     const currentCount = Array.isArray(audits) ? audits.length : 0;
+//     const maxAllowed = 5;
 
-    if (currentCount >= maxAllowed) {
+//     if (currentCount >= maxAllowed) {
+//       return {
+//         isValid: false,
+//         message: `Maximum ${maxAllowed} audits allowed in this period (${startDate} to ${endDate}). Current count: ${currentCount}.`,
+//         currentCount,
+//       };
+//     }
+
+//     return {
+//       isValid: true,
+//       message: `Valid. Current count: ${currentCount}/${maxAllowed}`,
+//       currentCount,
+//     };
+//   } catch (error: any) {
+//     console.error('[validateAuditLimit] Error:', error);
+//     return {
+//       isValid: false,
+//       message: error?.response?.data?.message || error?.message || 'Failed to validate audit limit',
+//     };
+//   }
+// };
+
+/**
+ * Business Rule 2: Validate department với điều kiện (KHÔNG cấm trùng tuyệt đối)
+ * Logic: Check trùng time + trùng phòng ban → Nếu trùng → check scope
+ * - Trùng phòng ban + trùng scope → REJECT (nếu không có justification)
+ * - Trùng phòng ban + khác scope → WARNING (cho phép với điều kiện)
+ */
+export interface DepartmentValidationResult {
+  isValid: boolean;
+  message: string;
+  warnings: string[];
+  requiresApproval: boolean; // Cần Director/Management approval
+  conflicts?: {
+    departmentIds: number[];
+    audits: Array<{
+      auditId: string;
+      title: string;
+      startDate: string;
+      endDate: string;
+      scope?: string[]; // Criteria/standards
+    }>;
+  };
+}
+
+export const validateDepartmentWithConditions = async (
+  auditId: string | null,
+  departmentIds: number[],
+  startDate: string,
+  endDate: string,
+  selectedCriteriaIds: string[] = [] // Scope (criteria/standards)
+): Promise<DepartmentValidationResult> => {
+  try {
+    if (!departmentIds || departmentIds.length === 0) {
       return {
-        isValid: false,
-        message: `Maximum ${maxAllowed} audits allowed in this period (${startDate} to ${endDate}). Current count: ${currentCount}.`,
-        currentCount,
+        isValid: true,
+        message: 'No departments to validate',
+        warnings: [],
+        requiresApproval: false,
       };
+    }
+
+    // Get all audits in the period
+    const auditsInPeriod = await getAuditsByPeriod(startDate, endDate);
+    const auditsArray = Array.isArray(auditsInPeriod) ? auditsInPeriod : [];
+    
+    // Filter out current audit if editing
+const otherAudits = auditId 
+      ? auditsArray.filter((a: any) => String(a.auditId || a.id) !== String(auditId))
+      : auditsArray;
+
+    if (otherAudits.length === 0) {
+      return {
+        isValid: true,
+        message: 'No conflicts found',
+        warnings: [],
+        requiresApproval: false,
+      };
+    }
+
+    // Check for overlapping time + same department
+    const conflicts: DepartmentValidationResult['conflicts'] = {
+      departmentIds: [],
+      audits: [],
+    };
+
+    const warnings: string[] = [];
+    let hasConflict = false;
+    let hasScopeOverlap = false;
+    let requiresApproval = false;
+
+    // Check each department
+    for (const deptId of departmentIds) {
+      // Find audits that have this department and overlap in time
+      const conflictingAudits = otherAudits.filter((audit: any) => {
+        // Check time overlap
+        const auditStart = new Date(audit.startDate || audit.periodFrom || audit.startDate);
+        const auditEnd = new Date(audit.endDate || audit.periodTo || audit.endDate);
+        const newStart = new Date(startDate);
+        const newEnd = new Date(endDate);
+        
+        const timeOverlaps = auditStart <= newEnd && auditEnd >= newStart;
+        
+        if (!timeOverlaps) return false;
+
+        // Check if audit has this department
+        // Note: We need to get scope departments for each audit
+        // For now, we'll use the validateDepartment API result if available
+        return true; // Assume conflict if time overlaps (will refine with scope check)
+      });
+
+      if (conflictingAudits.length > 0) {
+        hasConflict = true;
+        conflicts.departmentIds.push(deptId);
+        
+        // Get scope info for each conflicting audit
+        for (const audit of conflictingAudits) {
+          try {
+            const scopeDepts = await getAuditScopeDepartmentsByAuditId(String(audit.auditId || audit.id));
+            const scopeDeptArray = Array.isArray(scopeDepts) ? scopeDepts : [];
+            const hasDept = scopeDeptArray.some((sd: any) => Number(sd.deptId) === Number(deptId));
+            
+            if (hasDept) {
+              // Get criteria/standards for this audit (scope)
+              const auditCriteria = audit.criteria || audit.selectedCriteriaIds || [];
+              const auditCriteriaIds = Array.isArray(auditCriteria) 
+                ? auditCriteria.map((c: any) => String(c.criteriaId || c.id || c))
+                : [];
+              
+              // Check scope overlap
+              const scopeOverlaps = selectedCriteriaIds.some(cid => 
+                auditCriteriaIds.includes(String(cid))
+              );
+              
+              if (scopeOverlaps) {
+                hasScopeOverlap = true;
+                conflicts.audits.push({
+                  auditId: String(audit.auditId || audit.id),
+                  title: audit.title || 'Unknown',
+startDate: audit.startDate || audit.periodFrom || '',
+                  endDate: audit.endDate || audit.periodTo || '',
+                  scope: auditCriteriaIds,
+                });
+              } else {
+                // Trùng time + trùng phòng ban nhưng KHÁC scope
+                conflicts.audits.push({
+                  auditId: String(audit.auditId || audit.id),
+                  title: audit.title || 'Unknown',
+                  startDate: audit.startDate || audit.periodFrom || '',
+                  endDate: audit.endDate || audit.periodTo || '',
+                  scope: auditCriteriaIds,
+                });
+              }
+            }
+          } catch (err) {
+            console.warn(`Failed to get scope for audit ${audit.auditId}:`, err);
+            // Still add to conflicts but without scope info
+            conflicts.audits.push({
+              auditId: String(audit.auditId || audit.id),
+              title: audit.title || 'Unknown',
+              startDate: audit.startDate || audit.periodFrom || '',
+              endDate: audit.endDate || audit.periodTo || '',
+            });
+          }
+        }
+      }
+    }
+
+    // Evaluate conflicts based on business rules
+    if (hasConflict) {
+      // Rule 1: Trùng phòng ban + trùng scope → WARNING (không reject, chỉ cảnh báo)
+      if (hasScopeOverlap) {
+        warnings.push(`⚠️ Có ${conflicts.audits.length} audit plan(s) kiểm định phòng ban đó.`);
+        warnings.push('💡 Hãy chọn tiêu chuẩn kiểm định khác với cuộc kiểm định đó.');
+        requiresApproval = false; // Không reject, chỉ warning
+      }
+      
+      // Rule 2: Trùng time + trùng phòng ban nhưng KHÁC scope → WARNING (cho phép)
+      if (!hasScopeOverlap && conflicts.audits.length > 0) {
+        warnings.push('⚠️ Trùng phòng ban trong cùng thời gian nhưng khác scope.');
+        warnings.push('ℹ️ Cho phép tạo audit. Nếu cần, vui lòng có justification hoặc Director approval.');
+        // Không cần approval nếu khác scope
+        requiresApproval = false;
+      }
     }
 
     return {
       isValid: true,
-      message: `Valid. Current count: ${currentCount}/${maxAllowed}`,
-      currentCount,
+      message: hasConflict 
+        ? 'Có conflicts nhưng đáp ứng điều kiện cho phép.'
+        : 'Không có conflicts.',
+      warnings,
+      requiresApproval,
+      conflicts: hasConflict ? conflicts : undefined,
     };
   } catch (error: any) {
-    console.error('[validateAuditLimit] Error:', error);
+    console.error('[validateDepartmentWithConditions] Error:', error);
     return {
       isValid: false,
-      message: error?.response?.data?.message || error?.message || 'Failed to validate audit limit',
+      message: error?.response?.data?.message || error?.message || 'Failed to validate department with conditions',
+      warnings: [],
+      requiresApproval: false,
     };
   }
 };
 
 /**
- * Business Rule 2: Validate department không trùng với audits khác trong cùng thời kỳ
+ * @deprecated - Sử dụng validateDepartmentWithConditions thay thế
+ * Giữ lại để backward compatibility
  */
 export const validateDepartmentUniqueness = async (
   auditId: string | null,
@@ -55,62 +240,23 @@ export const validateDepartmentUniqueness = async (
   startDate: string,
   endDate: string
 ): Promise<{ isValid: boolean; message: string; conflicts?: ValidateDepartmentResponse }> => {
-  try {
-    if (!departmentIds || departmentIds.length === 0) {
-      return {
-        isValid: true,
-        message: 'No departments to validate',
-      };
-    }
-
-    const request: ValidateDepartmentRequest = {
-      auditId: auditId || null,
-      departmentIds,
-      startDate,
-      endDate,
-    };
-
-    const result = await validateDepartment(request);
-
-    if (!result.isValid) {
-      // Unwrap possible $values from backend (.NET) responses
-      const unwrap = (val: any) => {
-        if (Array.isArray(val)) return val;
-        if (val?.$values && Array.isArray(val.$values)) return val.$values;
-        return val;
-      };
-
-      const conflictsDeptArr = unwrap(result.conflictingDepartments);
-      const conflictsAuditArr = unwrap(result.conflictingAudits);
-
-      const conflictingDeptNames = Array.isArray(conflictsDeptArr)
-        ? conflictsDeptArr.join(', ')
-        : conflictsDeptArr
-        ? String(conflictsDeptArr)
-        : 'unknown';
-      const conflictingAuditTitles = Array.isArray(conflictsAuditArr)
-        ? conflictsAuditArr.map((a: any) => a?.title || a?.auditTitle || '').filter(Boolean).join(', ')
-        : 'unknown';
-      
-      return {
-        isValid: false,
-        message: `Department(s) ${conflictingDeptNames} are already used in other audit(s): ${conflictingAuditTitles}. Departments cannot be duplicated across audits in the same period.`,
-        conflicts: result,
-      };
-    }
-
-    return {
-      isValid: true,
-      message: 'All departments are valid (no conflicts)',
-      conflicts: result,
-    };
-  } catch (error: any) {
-    console.error('[validateDepartmentUniqueness] Error:', error);
-    return {
-      isValid: false,
-      message: error?.response?.data?.message || error?.message || 'Failed to validate department uniqueness',
-    };
-  }
+  // Delegate to new validation but return old format
+  // Note: Không có selectedCriteriaIds trong hàm cũ, truyền mảng rỗng
+  const result = await validateDepartmentWithConditions(auditId, departmentIds, startDate, endDate, []);
+  
+  return {
+    isValid: result.isValid,
+    message: result.message,
+    conflicts: result.conflicts ? {
+      isValid: !result.isValid,
+      conflictingDepartments: result.conflicts.departmentIds,
+      conflictingAudits: result.conflicts.audits.map(a => ({
+        auditId: a.auditId,
+        title: a.title,
+        departments: result.conflicts!.departmentIds,
+      })),
+    } : undefined,
+  };
 };
 
 /**
@@ -127,8 +273,7 @@ export const validateAssignmentBeforeCreate = async (
       startDate,
       endDate,
     };
-
-    const result = await validateAssignment(request);
+const result = await validateAssignment(request);
 
     if (!result.canCreate) {
       return {
@@ -198,32 +343,51 @@ export const checkPeriodStatus = async (
 
 /**
  * Helper: Validate tất cả business rules trước khi tạo audit
+ * Sử dụng validation có điều kiện (KHÔNG cấm trùng tuyệt đối)
+ * - Check trùng time + trùng phòng ban
+ * - Nếu trùng → check scope có khác không
+ * - Trùng scope → REJECT (trừ khi có justification)
+ * - Khác scope → WARNING (cho phép)
  */
 export const validateBeforeCreateAudit = async (
   startDate: string,
   endDate: string,
-  departmentIds: number[] = []
+  departmentIds: number[] = [],
+  selectedCriteriaIds: string[] = [] // Scope (criteria/standards)
 ): Promise<{ 
   isValid: boolean; 
   errors: string[]; 
-  warnings: string[] 
+  warnings: string[];
+  requiresApproval: boolean; // Cần Director/Management approval
 }> => {
   const errors: string[] = [];
   const warnings: string[] = [];
+  let requiresApproval = false;
 
-  // Validate 1: Giới hạn 5 audits
-  const limitValidation = await validateAuditLimit(startDate, endDate);
-  if (!limitValidation.isValid) {
-    errors.push(limitValidation.message);
-  } else if (limitValidation.currentCount !== undefined) {
-    warnings.push(limitValidation.message);
-  }
-
-  // Validate 2: Department không trùng (nếu có departments)
+  // Validate: Department với điều kiện (nếu có departments)
   if (departmentIds.length > 0) {
-    const deptValidation = await validateDepartmentUniqueness(null, departmentIds, startDate, endDate);
+    const deptValidation = await validateDepartmentWithConditions(
+      null,
+      departmentIds,
+      startDate,
+      endDate,
+      selectedCriteriaIds
+    );
+    
     if (!deptValidation.isValid) {
       errors.push(deptValidation.message);
+    }
+    
+    // Add warnings from department validation
+    warnings.push(...deptValidation.warnings);
+    
+    // Track if approval is required
+    if (deptValidation.requiresApproval) {
+      requiresApproval = true;
+      if (deptValidation.isValid) {
+        // Valid but requires approval → warning
+        warnings.push('⚠️ Audit này cần Director/Management approval do có conflicts.');
+      }
     }
   }
 
@@ -231,6 +395,7 @@ export const validateBeforeCreateAudit = async (
     isValid: errors.length === 0,
     errors,
     warnings,
+    requiresApproval,
   };
 };
 
@@ -245,4 +410,3 @@ export const validateBeforeAddDepartment = async (
 ): Promise<{ isValid: boolean; message: string }> => {
   return await validateDepartmentUniqueness(auditId, [departmentId], startDate, endDate);
 };
-

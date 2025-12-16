@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts';
 import useAuthStore, { useUserId } from '../../store/useAuthStore';
 import { getAdminUsers } from '../../api/adminUsers';
 import { scanAccessGrant, verifyCode, type ScanAccessGrantResponse } from '../../api/accessGrant';
+import { getDepartmentById } from '../../api/departments';
 import { toast } from 'react-toastify';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +19,7 @@ export default function ScanQR() {
   const [qrToken, setQrToken] = useState<string>('');
   const [manualInput, setManualInput] = useState(false);
   const [scanResult, setScanResult] = useState<ScanAccessGrantResponse | null>(null);
+  const [scannedDept, setScannedDept] = useState<{ deptId: number; name: string; isSensitive: boolean } | null>(null);
   const [verifyCodeInput, setVerifyCodeInput] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [scanningError, setScanningError] = useState<string | null>(null);
@@ -138,6 +140,39 @@ export default function ScanQR() {
 
       if (result.isValid) {
         setScanResult(result);
+        // Fetch department info to know if sensitive
+        if (result.deptId) {
+          try {
+            const dept = await getDepartmentById(Number(result.deptId));
+            const isSensitive =
+              !!(dept as any)?.hasSensitiveAreas ||
+              (Array.isArray((dept as any)?.sensitiveAreas) && (dept as any).sensitiveAreas.length > 0);
+            setScannedDept({
+              deptId: dept?.deptId || Number(result.deptId),
+              name: dept?.name || 'Department',
+              isSensitive,
+            });
+            if (!isSensitive && result.auditId) {
+              // Non-sensitive: bypass verify, go straight to checklist
+              toast.info('This department is not sensitive. Opening checklist.');
+              navigate(`/auditor/findings/department/${result.deptId}`, {
+                state: {
+                  auditId: result.auditId,
+                  department: {
+                    deptId: dept?.deptId || result.deptId,
+                    name: dept?.name || 'Department',
+                    code: dept?.code || '',
+                    description: dept?.description || '',
+                  },
+                  auditType: '',
+                },
+              });
+              return;
+            }
+          } catch (e) {
+            console.warn('Failed to load department info for sensitivity check', e);
+          }
+        }
         toast.success('QR code scanned successfully!');
       } else {
         // Handle different error reasons
@@ -182,6 +217,8 @@ export default function ScanQR() {
         auditorId: errorData?.auditorId || null,
         deptId: errorData?.deptId || null,
         expiresAt: errorData?.expiresAt || null,
+        verifyCode: errorData?.verifyCode || undefined,
+        avatarUrl: errorData?.avatarUrl || undefined,
       });
     }
   };
@@ -205,6 +242,37 @@ export default function ScanQR() {
 
       if (result.isValid) {
         setScanResult(result);
+        if (result.deptId) {
+          try {
+            const dept = await getDepartmentById(Number(result.deptId));
+            const isSensitive =
+              !!(dept as any)?.hasSensitiveAreas ||
+              (Array.isArray((dept as any)?.sensitiveAreas) && (dept as any).sensitiveAreas.length > 0);
+            setScannedDept({
+              deptId: dept?.deptId || Number(result.deptId),
+              name: dept?.name || 'Department',
+              isSensitive,
+            });
+            if (!isSensitive && result.auditId) {
+              toast.info('This department is not sensitive. Opening checklist.');
+              navigate(`/auditor/findings/department/${result.deptId}`, {
+                state: {
+                  auditId: result.auditId,
+                  department: {
+                    deptId: dept?.deptId || result.deptId,
+                    name: dept?.name || 'Department',
+                    code: dept?.code || '',
+                    description: dept?.description || '',
+                  },
+                  auditType: '',
+                },
+              });
+              return;
+            }
+          } catch (e) {
+            console.warn('Failed to load department info for sensitivity check', e);
+          }
+        }
         toast.success('QR code scanned successfully!');
       } else {
         // Handle different error reasons
@@ -249,6 +317,8 @@ export default function ScanQR() {
         auditorId: errorData?.auditorId || null,
         deptId: errorData?.deptId || null,
         expiresAt: errorData?.expiresAt || null,
+        verifyCode: errorData?.verifyCode || undefined,
+        avatarUrl: errorData?.avatarUrl || undefined,
       });
     }
   };
@@ -256,6 +326,21 @@ export default function ScanQR() {
   const handleVerifyCode = async () => {
     if (!qrToken || !verifyCodeInput.trim()) {
       toast.error('Please enter verify code');
+      return;
+    }
+
+    // If department is non-sensitive, skip verify and open checklist
+    if (scannedDept && !scannedDept.isSensitive && scanResult?.auditId && scanResult?.deptId) {
+      navigate(`/auditor/findings/department/${scanResult.deptId}`, {
+        state: {
+          auditId: scanResult.auditId,
+          department: {
+            deptId: scannedDept.deptId,
+            name: scannedDept.name,
+          },
+          auditType: '',
+        },
+      });
       return;
     }
 
@@ -274,9 +359,28 @@ export default function ScanQR() {
 
       if (result.isValid) {
         toast.success('Verify code is correct! Opening checklist...');
-        // Navigate to checklist page
+
+        // If we have auditId and deptId, route to auditor checklist view
         if (scanResult?.auditId && scanResult?.deptId) {
-          // Navigate to checklist page - adjust route as needed
+          try {
+            const dept = await getDepartmentById(Number(scanResult.deptId));
+            navigate(`/auditor/findings/department/${scanResult.deptId}`, {
+              state: {
+                auditId: scanResult.auditId,
+                department: {
+                  deptId: dept?.deptId || scanResult.deptId,
+                  name: dept?.name || 'Department',
+                  code: dept?.code || '',
+                  description: dept?.description || '',
+                },
+                auditType: '',
+              },
+            });
+          } catch {
+            // Fallback: go to findings list by audit
+            navigate(`/auditee-owner/findings/audit/${scanResult.auditId}`);
+          }
+        } else if (scanResult?.auditId) {
           navigate(`/auditee-owner/findings/audit/${scanResult.auditId}`);
         } else {
           toast.info('QR code verified successfully!');
@@ -443,6 +547,22 @@ export default function ScanQR() {
                         <p className="text-sm font-semibold text-green-900">QR Code is Valid</p>
                       </div>
 
+                      {/* Avatar Image */}
+                      {scanResult.avatarUrl && (
+                        <div className="flex justify-center">
+                          <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-green-300 shadow-lg">
+                            <img
+                              src={scanResult.avatarUrl}
+                              alt="Auditor Avatar"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                         {scanResult.auditId && (
                           <div>
@@ -472,32 +592,73 @@ export default function ScanQR() {
                         )}
                       </div>
 
-                      {/* Verify Code Input */}
-                      <div className="mt-4 pt-4 border-t border-green-200">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Verify Code (if required)
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={verifyCodeInput}
-                            onChange={(e) => setVerifyCodeInput(e.target.value)}
-                            placeholder="Enter 6-digit verify code"
-                            maxLength={6}
-                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                          />
-                          <button
-                            onClick={handleVerifyCode}
-                            disabled={verifying || !verifyCodeInput.trim()}
-                            className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {verifying ? 'Verifying...' : 'Verify'}
-                          </button>
+                      {/* Verify Code Display (for Auditor) */}
+                      {scanResult.verifyCode && (
+                        <div className="mt-4 pt-4 border-t border-green-200">
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                              <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              </svg>
+                              <label className="block text-sm font-semibold text-blue-900">
+                                Verify Code for Auditor
+                              </label>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 bg-white rounded-lg px-4 py-3 border-2 border-blue-300">
+                                <p className="text-2xl font-mono font-bold text-blue-900 text-center">
+                                  {scanResult.verifyCode}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(scanResult.verifyCode!);
+                                  toast.success('Verify code copied to clipboard!');
+                                }}
+                                className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+                                title="Copy verify code"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                Copy
+                              </button>
+                            </div>
+                            <p className="text-xs text-blue-700 mt-3">
+                              📋 Please provide this verify code to the Auditor. The Auditor will use this code to access the checklist.
+                            </p>
+                          </div>
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">
-                          Enter the verify code provided by the auditor to access the checklist
-                        </p>
-                      </div>
+                      )}
+
+                      {/* Verify Code Input (for non-sensitive departments - legacy support) */}
+                      {!scanResult.verifyCode && scannedDept?.isSensitive && (
+                        <div className="mt-4 pt-4 border-t border-green-200">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Verify Code (if required)
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={verifyCodeInput}
+                              onChange={(e) => setVerifyCodeInput(e.target.value)}
+                              placeholder="Enter 6-digit verify code"
+                              maxLength={6}
+                              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                            />
+                            <button
+                              onClick={handleVerifyCode}
+                              disabled={verifying || !verifyCodeInput.trim()}
+                              className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {verifying ? 'Verifying...' : 'Verify'}
+                            </button>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Enter the verify code provided by the auditor to access the checklist
+                          </p>
+                        </div>
+                      )}
 
                       {/* Direct Access Button (if verify code not required) */}
                       {!verifyCodeInput && (
@@ -513,14 +674,21 @@ export default function ScanQR() {
                         </button>
                       )}
                     </div>
-                  ) : (
+                  ) : (() => {
+                    const reasonLower = (scanResult.reason || '').toLowerCase();
+                    const isExpired = reasonLower.includes('expired');
+                    const isNotYetValid = reasonLower.includes('notyetvalid') || reasonLower.includes('not yet');
+
+                    return (
                     <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                       <div className="flex items-center gap-2">
                         <svg className="w-6 h-6 text-red-600" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                         </svg>
                         <p className="text-sm font-semibold text-red-900">
-                          {scanResult.reason?.toLowerCase().includes('expired') 
+                            {isNotYetValid
+                              ? 'QR Code Not Active Yet'
+                              : isExpired
                             ? 'QR Code Has Expired' 
                             : 'QR Code is Invalid'}
                         </p>
@@ -529,17 +697,31 @@ export default function ScanQR() {
                         <div className="mt-3 space-y-2">
                           <p className="text-sm text-red-800 font-medium">Reason:</p>
                           <p className="text-sm text-red-700">
-                            {scanResult.reason.toLowerCase().includes('expired')
+                              {isNotYetValid
+                                ? 'This QR code is not active yet. Please try again after the start time.'
+                                : isExpired
                               ? 'This QR code has expired. Please contact the auditor to request a new QR code.'
                               : scanResult.reason}
                           </p>
                           
-                          {/* Display expiration info if available */}
+                            {/* Display validity window if available */}
+                            {(scanResult.validFrom || scanResult.expiresAt) && (
+                              <div className="mt-3 p-3 bg-white rounded-lg border border-red-200 space-y-1">
+                                <p className="text-xs text-gray-700 font-medium">Validity Window:</p>
+                                {scanResult.validFrom && (
+                                  <p className="text-xs text-gray-600">
+                                    Starts: <strong>{new Date(scanResult.validFrom).toLocaleString('en-US', {
+                                      year: 'numeric',
+                                      month: 'long',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}</strong>
+                                  </p>
+                                )}
                           {scanResult.expiresAt && (
-                            <div className="mt-3 p-3 bg-white rounded-lg border border-red-200">
-                              <p className="text-xs text-gray-700 font-medium mb-1">Expiration Details:</p>
                               <p className="text-xs text-gray-600">
-                                This QR code expired on: <strong>{new Date(scanResult.expiresAt).toLocaleString('en-US', { 
+                                    Expires: <strong>{new Date(scanResult.expiresAt).toLocaleString('en-US', { 
                                   year: 'numeric', 
                                   month: 'long', 
                                   day: 'numeric',
@@ -547,10 +729,11 @@ export default function ScanQR() {
                                   minute: '2-digit'
                                 })}</strong>
                               </p>
+                                )}
                             </div>
                           )}
                           
-                          {scanResult.reason.toLowerCase().includes('expired') && (
+                            {isExpired && (
                             <div className="mt-3 p-3 bg-white rounded-lg border border-red-200">
                               <p className="text-xs text-gray-600">
                                 <strong>Note:</strong> QR codes are valid for the duration of the audit period (from audit start date to audit end date). If you need to access the checklist after the audit period has ended, please ask the Lead Auditor to issue a new QR code.
@@ -560,7 +743,8 @@ export default function ScanQR() {
                         </div>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
 
                   <button
                     onClick={handleReset}

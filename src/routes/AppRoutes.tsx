@@ -49,7 +49,7 @@ const DepartmentStaffFindingsProgress = lazy(() => import("../pages/CAPAOwner/Fi
 const DepartmentStaffCheckDeadlines = lazy(() => import("../pages/CAPAOwner/CheckDeadlines"));
 
 // Auditee Owner pages (formerly Department Head)
-const DepartmentHeadWelcome = lazy(() => import("../pages/AuditeeOwner/Welcome"));
+// Removed DepartmentHeadWelcome (file deleted)
 const DepartmentHeadAuditPlans = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlans"));
 const DepartmentHeadAuditPlanDetail = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlanDetail"));
 const DepartmentHeadAuditPlanConfirm = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlanConfirm"));
@@ -62,6 +62,7 @@ const DepartmentHeadEvidenceDetail = lazy(() => import("../pages/AuditeeOwner/Ev
 const DepartmentHeadFindingsProgress = lazy(() => import("../pages/AuditeeOwner/findings/FindingsProgress"));
 const DepartmentHeadCAPAManagement = lazy(() => import("../pages/AuditeeOwner/CAPAManagement"));
 const AuditeeOwnerScanQR = lazy(() => import("../pages/AuditeeOwner/ScanQR"));
+const AuditeeOwnerAuditChecklist = lazy(() => import("../pages/AuditeeOwner/checklist/AuditChecklist"));
 
 // Director pages
 const DirectorReviewAuditPlans = lazy(() => import("../pages/Director/ReviewAuditPlans"));
@@ -396,14 +397,7 @@ export function AppRoutes() {
         
 
             {/* Protected routes - Auditee Owner */}
-            <Route
-                path={ROUTES.AUDITEE_OWNER}
-                element={
-                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
-                        <DepartmentHeadWelcome />
-                    </ProtectedRoute>
-                }
-            />
+            {/* Removed AuditeeOwner welcome route (component deleted) */}
             <Route
                 path="/auditee-owner/audit-plans"
                 element={
@@ -481,6 +475,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <DepartmentHeadFindingsProgress />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditee-owner/checklist/audit/:auditId/dept/:deptId"
+                element={
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
+                        <AuditeeOwnerAuditChecklist />
                     </ProtectedRoute>
                 }
             />

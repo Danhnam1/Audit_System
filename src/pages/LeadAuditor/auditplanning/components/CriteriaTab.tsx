@@ -12,9 +12,10 @@ interface Criteria {
 interface CriteriaTabProps {
   criteria: Criteria[];
   loading: boolean;
+  departments?: any[];
 }
 
-const CriteriaTab: React.FC<CriteriaTabProps> = ({ criteria, loading }) => {
+const CriteriaTab: React.FC<CriteriaTabProps> = ({ criteria, loading, departments = [] }) => {
   const getStatusColor = (status?: string) => {
     const statusLower = status?.toLowerCase() || '';
     if (statusLower === 'active') {
@@ -101,6 +102,50 @@ const CriteriaTab: React.FC<CriteriaTabProps> = ({ criteria, loading }) => {
             rowKey={(criterion, index) => criterion.criteriaId || index}
             getRowClassName={() => 'transition-colors hover:bg-gray-50'}
           />
+
+          {/* Departments & Standards (shared view) */}
+          {departments.length > 0 && criteria.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm mt-8">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-bold text-primary-700">Departments & Standards</h3>
+              </div>
+              <div className="p-6 space-y-4">
+                {departments.map((dept: any, idx: number) => {
+                  const deptName = dept.deptName || dept.name || `Department ${idx + 1}`;
+                  return (
+                    <div
+                      key={`${dept.deptId || dept.id || idx}`}
+                      className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:border-primary-300 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-base font-bold text-gray-900">{deptName}</h4>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {criteria.map((crit: any, cIdx: number) => {
+                          const displayName =
+                            crit.name ||
+                            crit.criterionName ||
+                            crit.referenceCode ||
+                            `Criterion ${cIdx + 1}`;
+                          return (
+                            <div
+                              key={`${dept.deptId || dept.id || idx}-crit-${cIdx}`}
+                              className="flex items-center gap-2 bg-white rounded-md px-3 py-2 border border-gray-200"
+                            >
+                              <div className="bg-primary-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-semibold">
+                                ✓
+                              </div>
+                              <span className="text-sm text-gray-800">{displayName}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>

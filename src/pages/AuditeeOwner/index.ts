@@ -1,4 +1,3 @@
-export { default as DepartmentHeadWelcome } from './Welcome';
 export { default as AuditPlans } from './auditplan/AuditPlans';
 export { default as AuditPlanDetail } from './auditplan/AuditPlanDetail';
 export { default as AuditPlanConfirm } from './auditplan/AuditPlanConfirm';

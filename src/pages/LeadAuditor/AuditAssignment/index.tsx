@@ -19,6 +19,8 @@ interface Department {
   deptId: number;
   name: string;
   auditIds: string[];
+  sensitiveFlag?: boolean;
+  sensitiveAreas?: string[];
 }
 
 interface Auditor {
@@ -144,11 +146,34 @@ export default function AuditAssignment() {
           const deptList = unwrap<Department>(deptData);
           const deptArray = Array.isArray(deptList) ? deptList : [];
           
-          // Map departments with auditIds
-          const mappedDepartments: Department[] = deptArray.map((dept: Department) => ({
-            ...dept,
-            auditIds: [selectedAuditId],
-          }));
+          // Map departments with auditIds + sensitive info (best-effort)
+          const mappedDepartments: Department[] = deptArray.map((dept: any) => {
+            // Normalize sensitive flags/areas from various possible backend field names
+            const sensitiveAreas =
+              Array.isArray(dept?.sensitiveAreas)
+                ? dept.sensitiveAreas
+                : Array.isArray(dept?.areas)
+                ? dept.areas
+                : Array.isArray(dept?.SensitiveAreas)
+                ? dept.SensitiveAreas
+                : undefined;
+
+            const sensitiveFlag =
+              !!dept?.sensitiveFlag ||
+              !!dept?.isSensitive ||
+              !!dept?.sensitive ||
+              !!dept?.sensitiveArea ||
+              !!dept?.hasSensitiveAreas ||
+              !!dept?.HasSensitiveAreas ||
+              (!!sensitiveAreas && sensitiveAreas.length > 0);
+
+            return {
+              ...dept,
+              auditIds: [selectedAuditId],
+              sensitiveFlag,
+              sensitiveAreas,
+            } as Department;
+          });
 
           setDepartments(mappedDepartments);
         } catch (apiErr: any) {
@@ -380,17 +405,26 @@ export default function AuditAssignment() {
         toast.success('Auditor assigned successfully!');
       }
       
-      // Always issue QR codes after assignment (not just for sensitive areas)
+      // Only issue QR codes when department is sensitive
+      const isSensitiveDept = !!(
+        selectedDepartment.sensitiveFlag ||
+        selectedDepartment.hasSensitiveAreas ||
+        (selectedDepartment.sensitiveAreas && selectedDepartment.sensitiveAreas.length > 0)
+      );
+
+      if (isSensitiveDept) {
       // Get audit details for dates
       const audit = audits.find(a => a.auditId === selectedAuditId);
       if (audit && audit.startDate && audit.endDate) {
-        // Show QR grant modal to issue QR codes for all assigned auditors
+          // Show QR grant modal to issue QR codes for assigned auditors (mandatory for sensitive)
         setShowQrGrantModal(true);
         setQrGrantResults([]);
         // Don't close assign modal yet, will close after QR grant
         return;
+        }
       }
       
+      // Non-sensitive or missing audit dates -> just close
       handleCloseModal();
       
       // Refresh assignments and departments
@@ -417,6 +451,8 @@ export default function AuditAssignment() {
 
   // Check if department is assigned
   const isDepartmentAssigned = (deptId: number): boolean => {
+    if (!selectedAuditId) return false;
+
     const normalizedStatus = (status: string) => status.toLowerCase().trim();
     const isAssignedStatus = (status: string) => {
       const normalized = normalizedStatus(status);
@@ -425,7 +461,10 @@ export default function AuditAssignment() {
     };
     
     return assignments.some(
-      (assignment) => assignment.deptId === deptId && isAssignedStatus(assignment.status)
+      (assignment) =>
+        assignment.deptId === deptId &&
+        String(assignment.auditId || '').trim() === String(selectedAuditId).trim() &&
+        isAssignedStatus(assignment.status)
     );
   };
 
@@ -446,8 +485,11 @@ export default function AuditAssignment() {
     setSelectedDepartmentForDetail(dept);
     setIsDetailModalOpen(true);
     
-    // Find assignment for this department
+    // Find assignment for this department (first match) and full list for names
     const assignment = assignments.find(
+      (a) => a.deptId === dept.deptId && a.auditId === selectedAuditId
+    );
+    const deptAssignments = assignments.filter(
       (a) => a.deptId === dept.deptId && a.auditId === selectedAuditId
     );
     
@@ -475,10 +517,14 @@ export default function AuditAssignment() {
         });
         setQrGrantsForDetail(grants || []);
         
-        // Fetch auditor names for the grants
-        const uniqueAuditorIds = [...new Set((grants || []).map(g => g.auditorId))];
+        // Fetch auditor names for the grants and assignments (combine to avoid missing names)
+        const uniqueAuditorIds = new Set<string>();
+        (grants || []).forEach(g => g.auditorId && uniqueAuditorIds.add(g.auditorId));
+        deptAssignments.forEach(a => a.auditorId && uniqueAuditorIds.add(a.auditorId));
+
+        if (uniqueAuditorIds.size > 0) {
         Promise.all(
-          uniqueAuditorIds.map(async (auditorId) => {
+            Array.from(uniqueAuditorIds).map(async (auditorId) => {
             try {
               const user = await getUserById(auditorId);
               return { auditorId, name: user?.fullName || 'Unknown' };
@@ -493,6 +539,9 @@ export default function AuditAssignment() {
           });
           setAuditorNamesForDetail(namesMap);
         });
+        } else {
+          setAuditorNamesForDetail({});
+        }
       } catch (err: any) {
         console.error('Failed to load QR grants:', err);
         setQrGrantsForDetail([]);
@@ -754,10 +803,18 @@ export default function AuditAssignment() {
                       </div>
                       <div className="divide-y divide-gray-200">
                         {departments.map((dept) => {
-                          const departmentAssignment = assignments.find(
+                          const deptAssignments = assignments.filter(
                             (a) => a.deptId === dept.deptId && a.auditId === selectedAuditId
                           );
-                          const isAssigned = isDepartmentAssigned(dept.deptId);
+                          const isAssigned = deptAssignments.length > 0 || isDepartmentAssigned(dept.deptId);
+                          // Deduplicate by auditorId
+                          const auditorNames = Array.from(
+                            new Map(
+                              deptAssignments
+                                .filter((a) => a.auditorId)
+                                .map((a) => [String(a.auditorId), a.auditorName || 'N/A'])
+                            ).values()
+                          );
                           
                           return (
                             <div
@@ -768,9 +825,9 @@ export default function AuditAssignment() {
                               <div className="flex items-center justify-between">
                                 <div className="flex-1">
                                   <h3 className="text-base font-medium text-gray-900">{dept.name}</h3>
-                                  {isAssigned && departmentAssignment && (
+                                  {isAssigned && auditorNames.length > 0 && (
                                     <p className="text-sm text-gray-600 mt-1">
-                                      Auditor: {departmentAssignment.auditorName || 'N/A'}
+                                      Auditor{auditorNames.length > 1 ? 's' : ''}: {auditorNames.join(', ')}
                                     </p>
                                   )}
                                 </div>
@@ -1393,7 +1450,8 @@ export default function AuditAssignment() {
           <div
             className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
             onClick={() => {
-              if (!issuingQr) {
+              // Không cho đóng khi chưa phát QR (bắt buộc)
+              if (!issuingQr && qrGrantResults.length > 0) {
                 handleCloseQrGrantModal();
               }
             }}
@@ -1413,8 +1471,9 @@ export default function AuditAssignment() {
                 </div>
                 <button
                   onClick={handleCloseQrGrantModal}
-                  disabled={issuingQr}
-                  className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                  disabled={issuingQr || qrGrantResults.length === 0}
+                  className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={qrGrantResults.length === 0 ? 'Please issue QR codes before closing' : 'Close'}
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1623,10 +1682,10 @@ export default function AuditAssignment() {
                 <button
                   type="button"
                   onClick={handleCloseQrGrantModal}
-                  disabled={issuingQr}
+                  disabled={issuingQr || qrGrantResults.length === 0}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {qrGrantResults.length > 0 ? 'Close' : 'Skip'}
+                  Close
                 </button>
                 {qrGrantResults.length === 0 && (
                   <button

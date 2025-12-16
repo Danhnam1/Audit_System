@@ -181,28 +181,72 @@ export const useAuditPlanForm = () => {
     }
     
     // Step 4: Team
-    if (details.auditTeams?.values?.length > 0) {
+    console.log('[loadPlanForEdit] Loading audit teams:', details.auditTeams);
+    
+    // Try multiple ways to get audit teams
+    const auditTeamsData = details.auditTeams?.values || 
+                           details.auditTeams || 
+                           (Array.isArray(details.auditTeams) ? details.auditTeams : []);
+    
+    console.log('[loadPlanForEdit] Extracted audit teams data:', auditTeamsData);
+    
+    if (auditTeamsData && auditTeamsData.length > 0) {
       const auditors: string[] = [];
       let leadId = '';
       let ownerId = '';
       
-      details.auditTeams.values.forEach((member: any) => {
-        const userId = member.userId || member.id;
-        const role = member.roleInTeam || member.role;
-        const isLead = member.isLead || false;
+      auditTeamsData.forEach((member: any) => {
+        console.log('[loadPlanForEdit] Processing team member:', member);
         
-        if (role === 'Auditor') {
-          auditors.push(String(userId));
-          if (isLead) leadId = String(userId);
-        } else if (role === 'AuditeeOwner') {
-          ownerId = String(userId);
+        // Try multiple field names for userId
+        const userId = member.userId || 
+                      member.id || 
+                      member.$id || 
+                      member.user?.userId || 
+                      member.user?.id ||
+                      member.user?.$id;
+        
+        // Try multiple field names for role
+        const role = member.roleInTeam || 
+                    member.role || 
+                    member.roleName ||
+                    member.user?.role ||
+                    '';
+        
+        const isLead = member.isLead || member.isLeadAuditor || false;
+        
+        console.log('[loadPlanForEdit] Extracted:', { userId, role, isLead });
+        
+        // Normalize role comparison (case-insensitive)
+        const normalizedRole = String(role || '').toLowerCase().trim();
+        
+        if (normalizedRole === 'auditor' || normalizedRole === '') {
+          // If role is empty or 'auditor', treat as auditor
+          if (userId) {
+            auditors.push(String(userId));
+            console.log('[loadPlanForEdit] Added auditor:', userId);
+            if (isLead) {
+              leadId = String(userId);
+              console.log('[loadPlanForEdit] Set as lead:', userId);
+            }
+          }
+        } else if (normalizedRole === 'auditeeowner' || normalizedRole === 'auditee owner') {
+          if (userId) {
+            ownerId = String(userId);
+            console.log('[loadPlanForEdit] Set as owner:', userId);
+          }
         }
       });
+      
+      console.log('[loadPlanForEdit] Final auditors:', auditors);
+      console.log('[loadPlanForEdit] Final leadId:', leadId);
+      console.log('[loadPlanForEdit] Final ownerId:', ownerId);
       
       setSelectedAuditorIds(auditors);
       setSelectedLeadId(leadId);
       setSelectedOwnerId(ownerId);
     } else {
+      console.log('[loadPlanForEdit] No audit teams found, clearing team data');
       setSelectedAuditorIds([]);
       setSelectedLeadId('');
       setSelectedOwnerId('');

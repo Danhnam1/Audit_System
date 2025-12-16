@@ -168,6 +168,69 @@ const AuditPlanDetail = () => {
             </ul>
           </div>
 
+        {/* Departments & Standards (aligned with Auditor/Lead Auditor) */}
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-gray-800 mb-3">Departments & Standards</h3>
+          <div className="space-y-4">
+            {(plan as any).departments?.length ? (
+              (plan as any).departments.map((dept: any, idx: number) => {
+                const deptName = dept.name || dept.deptName || `Department ${idx + 1}`;
+                const standards = dept.standards || dept.criteria || [];
+                return (
+                  <div
+                    key={idx}
+                    className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:border-primary-300 transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-base font-bold text-gray-900">{deptName}</h4>
+                    </div>
+                    <div>
+                      <h5 className="text-sm font-semibold text-gray-700 mb-2">Standards</h5>
+                      {Array.isArray(standards) && standards.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {standards.map((std: any, sIdx: number) => {
+                            const label =
+                              std.name ||
+                              std.title ||
+                              std.referenceCode ||
+                              std.code ||
+                              `Standard ${sIdx + 1}`;
+                            return (
+                              <div
+                                key={sIdx}
+                                className="flex items-center gap-2 bg-white rounded-md px-3 py-2 border border-gray-200"
+                              >
+                                <div className="bg-primary-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-semibold">
+                                  ✓
+                                </div>
+                                <span className="text-sm text-gray-800">{label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 italic">No standards available.</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-base font-bold text-gray-900">
+                    {plan.department || 'Department'}
+                  </h4>
+                </div>
+                <div>
+                  <h5 className="text-sm font-semibold text-gray-700 mb-2">Standards</h5>
+                  <p className="text-sm text-gray-500 italic">No standards available.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
           {/* Resources */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-3">Resources Required</h3>

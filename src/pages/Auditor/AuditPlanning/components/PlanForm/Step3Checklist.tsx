@@ -1,4 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { getAuditChecklistTemplateMapsByAudit } from '../../../../../api/auditChecklistTemplateMaps';
+import { getAuditsByPeriod, getAuditScopeDepartmentsByAuditId } from '../../../../../api/audits';
+import { unwrap } from '../../../../../utils/normalize';
 
 interface Step3ChecklistProps {
   checklistTemplates: any[];
@@ -7,6 +10,9 @@ interface Step3ChecklistProps {
   level?: string;
   selectedDeptIds?: string[];
   departments?: Array<{ deptId: number | string; name: string }>;
+  periodFrom?: string;
+  periodTo?: string;
+  editingAuditId?: string | null;
 }
 
 export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
@@ -16,8 +22,108 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
   level = 'academy',
   selectedDeptIds = [],
   departments = [],
+  periodFrom,
+  periodTo,
+  editingAuditId,
 }) => {
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
+  const [usedTemplateIds, setUsedTemplateIds] = useState<Set<string>>(new Set());
+
+  // Load used templates for selected departments (không filter theo thời gian, chỉ filter theo department)
+  useEffect(() => {
+    const loadUsedTemplates = async () => {
+      if (level !== 'department' || selectedDeptIds.length === 0) {
+        setUsedTemplateIds(new Set());
+        return;
+      }
+
+      try {
+        console.log('[Step3Checklist] Loading used templates for departments:', selectedDeptIds);
+        
+        // Lấy audits trong period để check (cần period để có audits, nhưng không filter template theo thời gian)
+        // Nếu không có period, không thể check được
+        if (!periodFrom || !periodTo) {
+          console.log('[Step3Checklist] No period provided, skipping template filter');
+          setUsedTemplateIds(new Set());
+          return;
+        }
+
+        const auditsInPeriod = await getAuditsByPeriod(periodFrom, periodTo);
+        console.log('[Step3Checklist] Raw audits response:', auditsInPeriod);
+        
+        // Unwrap response to handle different formats
+        let auditsToCheck = unwrap(auditsInPeriod);
+        console.log('[Step3Checklist] Processed audits array:', auditsToCheck.length, 'audits');
+        
+        // Filter out inactive and deleted audits
+        auditsToCheck = auditsToCheck.filter((a: any) => {
+          const status = String(a.status || '').toLowerCase().replace(/\s+/g, '');
+          const isActive = status !== 'inactive' && status !== 'deleted';
+          if (!isActive) {
+            console.log('[Step3Checklist] Filtered out inactive/deleted audit:', a.auditId || a.id, 'status:', status);
+          }
+          return isActive;
+        });
+        
+        console.log('[Step3Checklist] Active audits:', auditsToCheck.length);
+        
+        // Filter out current audit if editing
+        if (editingAuditId) {
+          auditsToCheck = auditsToCheck.filter((a: any) => 
+            String(a.auditId || a.id) !== String(editingAuditId)
+          );
+          console.log('[Step3Checklist] Audits after excluding current:', auditsToCheck.length);
+        }
+
+        const usedTemplateSet = new Set<string>();
+
+        // Với mỗi audit, check xem có trùng department không
+        // Lưu ý: Chỉ filter những template đã được chọn của phòng đó, không quan tâm thời gian
+        for (const audit of auditsToCheck) {
+          try {
+            const auditId = String(audit.auditId || audit.id);
+            const scopeDepts = await getAuditScopeDepartmentsByAuditId(auditId);
+            
+            // Unwrap scope departments response
+            const scopeDeptArray = unwrap(scopeDepts);
+            console.log(`[Step3Checklist] Audit ${auditId} has ${scopeDeptArray.length} scope departments`);
+            
+            // Check xem audit này có department nào trùng với selectedDeptIds không
+            const hasMatchingDept = scopeDeptArray.some((sd: any) => 
+              selectedDeptIds.includes(String(sd.deptId))
+            );
+
+            if (hasMatchingDept) {
+              console.log(`[Step3Checklist] Audit ${auditId} has matching department, getting templates...`);
+              
+              // Lấy checklist templates đã được dùng trong audit này
+              const templateMaps = await getAuditChecklistTemplateMapsByAudit(auditId);
+              
+              // Unwrap template maps response
+              const mapsArray = unwrap(templateMaps);
+              console.log(`[Step3Checklist] Audit ${auditId} has ${mapsArray.length} template maps`);
+              
+              mapsArray.forEach((map: any) => {
+                const templateId = String(map.templateId || map.id || map);
+                usedTemplateSet.add(templateId);
+                console.log(`[Step3Checklist] Added used template: ${templateId}`);
+              });
+            }
+          } catch (err) {
+            console.warn(`[Step3Checklist] Failed to get templates for audit ${audit.auditId}:`, err);
+          }
+        }
+
+        console.log('[Step3Checklist] Total used template IDs:', usedTemplateSet.size, Array.from(usedTemplateSet));
+        setUsedTemplateIds(usedTemplateSet);
+      } catch (error) {
+        console.error('[Step3Checklist] Error loading used templates:', error);
+        setUsedTemplateIds(new Set());
+      }
+    };
+
+    loadUsedTemplates();
+  }, [level, selectedDeptIds, periodFrom, periodTo, editingAuditId]);
 
   // Check which departments are missing templates
   const missingTemplateDepts = useMemo(() => {
@@ -46,69 +152,71 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
     });
   }, [level, selectedDeptIds, selectedTemplateIds, checklistTemplates, departments]);
 
-  // Filter templates based on selected departments
+  // Filter templates based on selected departments AND exclude used templates
   const filteredTemplates = useMemo(() => {
+    let templates = checklistTemplates;
+
+    // First filter by department
     if (level === 'academy') {
       // For academy level, show all templates
-      return checklistTemplates;
-    }
-
-    // For department level, filter by deptId
-    if (selectedDeptIds.length === 0) {
+      templates = checklistTemplates;
+    } else if (selectedDeptIds.length === 0) {
       // If no departments selected, show only templates without deptId (general templates)
-      return checklistTemplates.filter((template: any) => 
+      templates = checklistTemplates.filter((template: any) => 
         template.deptId == null || template.deptId === undefined
       );
+    } else {
+      // Normalize selected department IDs to strings for consistent comparison
+      const selectedDeptIdsSet = new Set(selectedDeptIds.map(id => String(id).trim()));
+
+      // When departments are selected, ONLY show templates that belong to those departments
+      templates = checklistTemplates.filter((template: any) => {
+        const templateDeptId = template.deptId;
+        
+        // If template has no deptId (general template), exclude it when specific departments are selected
+        if (templateDeptId == null || templateDeptId === undefined) {
+          return false;
+        }
+        
+        // Normalize template's deptId to string for comparison
+        const templateDeptIdStr = String(templateDeptId).trim();
+        
+        // Try to match with selectedDeptIdsSet
+        let matches = selectedDeptIdsSet.has(templateDeptIdStr);
+        
+        // Also try number comparison if string comparison fails
+        if (!matches) {
+          const templateDeptIdNum = Number(templateDeptId);
+          if (!isNaN(templateDeptIdNum)) {
+            matches = Array.from(selectedDeptIdsSet).some(selectedId => {
+              const selectedNum = Number(selectedId);
+              return !isNaN(selectedNum) && selectedNum === templateDeptIdNum;
+            });
+          }
+        }
+        
+        return matches;
+      });
     }
 
-    // Normalize selected department IDs to strings for consistent comparison
-    const selectedDeptIdsSet = new Set(selectedDeptIds.map(id => String(id).trim()));
-
-    // Debug logging
-    console.log('[Step3Checklist] Filtering templates:', {
-      level,
-      selectedDeptIds,
-      selectedDeptIdsSet: Array.from(selectedDeptIdsSet),
-      totalTemplates: checklistTemplates.length,
-    });
-
-    // When departments are selected, ONLY show templates that belong to those departments
-    // Do NOT show general templates (deptId = null) when specific departments are selected
-    const filtered = checklistTemplates.filter((template: any) => {
-      const templateDeptId = template.deptId;
-      
-      // If template has no deptId (general template), exclude it when specific departments are selected
-      if (templateDeptId == null || templateDeptId === undefined) {
-        console.log(`[Step3Checklist] Excluding general template: ${template.title || template.name} (deptId: null) - specific departments selected`);
-        return false;
-      }
-      
-      // Normalize template's deptId to string for comparison
-      const templateDeptIdStr = String(templateDeptId).trim();
-      
-      // Try to match with selectedDeptIdsSet
-      let matches = selectedDeptIdsSet.has(templateDeptIdStr);
-      
-      // Also try number comparison if string comparison fails
-      if (!matches) {
-        const templateDeptIdNum = Number(templateDeptId);
-        if (!isNaN(templateDeptIdNum)) {
-          matches = Array.from(selectedDeptIdsSet).some(selectedId => {
-            const selectedNum = Number(selectedId);
-            return !isNaN(selectedNum) && selectedNum === templateDeptIdNum;
-          });
+    // Then filter out used templates (chỉ filter những template chưa được chọn của phòng đó)
+    if (level === 'department' && selectedDeptIds.length > 0 && usedTemplateIds.size > 0) {
+      const beforeFilter = templates.length;
+      templates = templates.filter((template: any) => {
+        const templateId = String(template.templateId || template.id || template.$id);
+        const isUsed = usedTemplateIds.has(templateId);
+        if (isUsed) {
+          console.log(`[Step3Checklist] Filtering out used template: ${templateId} (${template.title || template.name || templateId})`);
         }
-      }
-      
-      console.log(`[Step3Checklist] Template: ${template.title || template.name}, deptId: ${templateDeptId} (${typeof templateDeptId}), normalized: ${templateDeptIdStr}, matches: ${matches}`);
-      
-      // Only include if template's deptId matches one of the selected departments
-      return matches;
-    });
+        return !isUsed;
+      });
+      console.log(`[Step3Checklist] Filtered templates: ${templates.length} out of ${beforeFilter}`);
+    } else {
+      console.log('[Step3Checklist] Not filtering templates - level:', level, 'selectedDeptIds:', selectedDeptIds.length, 'usedTemplateIds:', usedTemplateIds.size);
+    }
 
-    console.log('[Step3Checklist] Filtered templates count:', filtered.length);
-    return filtered;
-  }, [checklistTemplates, level, selectedDeptIds]);
+    return templates;
+  }, [checklistTemplates, level, selectedDeptIds, usedTemplateIds]);
 
   const handleTemplateClick = (templateId: string) => {
     const normalizedId = String(templateId);
@@ -142,6 +250,11 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
               ? `You must select at least one template for each selected department (${selectedDeptIds.length} department(s) selected). The first selection will be treated as the primary template for summary info.`
               : 'You can select multiple templates. The first selection will be treated as the primary template for summary info.'}
           </p>
+          {level === 'department' && selectedDeptIds.length > 0 && usedTemplateIds.size > 0 && (
+            <p className="text-xs text-gray-500 mb-2">
+              Chỉ hiển thị những checklist template chưa được chọn của phòng này.
+            </p>
+          )}
           {missingTemplateDepts.length > 0 && (
             <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm font-semibold text-yellow-800 mb-1">⚠️ Missing Templates</p>

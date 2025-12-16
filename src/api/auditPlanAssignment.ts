@@ -8,6 +8,7 @@ export interface AuditPlanAssignment {
   assignedDate: string;
   remarks?: string;
   status?: string; // e.g. 'Active', 'Inactive'
+  filePaths?: string; // JSON string array of file URLs from Firebase Storage
   files?: Array<{
     fileName?: string;
     fileUrl?: string;

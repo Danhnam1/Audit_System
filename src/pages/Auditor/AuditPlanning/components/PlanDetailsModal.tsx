@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
+import { getCriteriaForAuditByDepartment } from '../../../../api/auditCriteriaMap';
+import { unwrap } from '../../../../utils/normalize';
 
 // Badge variant type matching the constants definition
 type BadgeVariant = 'primary-light' | 'primary-medium' | 'primary-dark' | 'primary-solid' | 'gray-light' | 'gray-medium';
@@ -140,10 +142,78 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showRejectionReasonModal, setShowRejectionReasonModal] = useState(false);
   const [reviewComments, setReviewComments] = useState(''); // Review comments for actions
+  
+  // Map: deptId -> criteria array for that department
+  const [criteriaByDept, setCriteriaByDept] = useState<Map<number, any[]>>(new Map());
 
   // Debug: Log selectedPlanDetails to check data
   React.useEffect(() => {
     // Modal opened with plan details
+  }, [showModal, selectedPlanDetails]);
+
+  // Fetch criteria for each department when modal opens
+  useEffect(() => {
+    const loadCriteriaByDepartment = async () => {
+      if (!showModal || !selectedPlanDetails) {
+        setCriteriaByDept(new Map());
+        return;
+      }
+
+      const auditId = selectedPlanDetails.auditId || selectedPlanDetails.id;
+      if (!auditId) {
+        setCriteriaByDept(new Map());
+        return;
+      }
+
+      const scopeDepartments = selectedPlanDetails.scopeDepartments?.values || [];
+      if (scopeDepartments.length === 0) {
+        setCriteriaByDept(new Map());
+        return;
+      }
+
+      const criteriaMap = new Map<number, any[]>();
+
+      // Fetch criteria for each department
+      await Promise.all(
+        scopeDepartments.map(async (dept: any) => {
+          const deptId = Number(dept.deptId);
+          if (!deptId || isNaN(deptId)) return;
+
+          try {
+            console.log(`[PlanDetailsModal] Fetching criteria for auditId: ${auditId}, deptId: ${deptId}`);
+            const deptCriteria = await getCriteriaForAuditByDepartment(String(auditId), deptId);
+            console.log(`[PlanDetailsModal] Raw criteria response for dept ${deptId}:`, deptCriteria);
+            
+            // API already unwraps, so deptCriteria is already the unwrapped value
+            let criteriaArray: any[] = [];
+            if (Array.isArray(deptCriteria)) {
+              criteriaArray = deptCriteria;
+              console.log(`[PlanDetailsModal] Criteria array for dept ${deptId}:`, criteriaArray.length, 'items');
+            } else {
+              // If it's not an array, try to unwrap again (in case API response format changed)
+              const unwrapped = unwrap(deptCriteria);
+              if (Array.isArray(unwrapped)) {
+                criteriaArray = unwrapped;
+                console.log(`[PlanDetailsModal] Unwrapped criteria array for dept ${deptId}:`, criteriaArray.length, 'items');
+              } else {
+                console.warn(`[PlanDetailsModal] Criteria for department ${deptId} is not an array:`, deptCriteria);
+                criteriaArray = [];
+              }
+            }
+            
+            criteriaMap.set(deptId, criteriaArray);
+            console.log(`[PlanDetailsModal] Set criteria for dept ${deptId}:`, criteriaArray.length, 'items');
+          } catch (error) {
+            console.error(`[PlanDetailsModal] Failed to load criteria for department ${deptId}:`, error);
+            criteriaMap.set(deptId, []);
+          }
+        })
+      );
+
+      setCriteriaByDept(criteriaMap);
+    };
+
+    loadCriteriaByDepartment();
   }, [showModal, selectedPlanDetails]);
 
   // Build a list of audit team members to render. If Auditee Owners are not present
@@ -492,14 +562,15 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
             </div>
           )}
 
-          {/* Scope Departments Section */}
-          {!hideSections.includes('scopeDepartments') && selectedPlanDetails.scopeDepartments?.values?.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-200">
+          {/* Scope Departments & Standards Section - Combined */}
+          {!hideSections.includes('scopeDepartments') && selectedPlanDetails.scopeDepartments?.values?.length > 0 && (() => {
+            return (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                <div className="flex items-center gap-2 mb-6 pb-4 border-b border-gray-200">
+                  <h3 className="text-lg font-bold text-primary-700">Departments & Standards</h3>
+                </div>
                 
-                <h3 className="text-lg font-bold text-primary-700">Scope Departments</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-4">
                 {selectedPlanDetails.scopeDepartments.values.map((dept: any, idx: number) => {
                   const deptName = dept.deptName || getDepartmentName(dept.deptId);
                   const deptId = Number(dept.deptId);
@@ -512,96 +583,86 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   const deptSensitiveAreas = deptId ? (sensitiveAreasByDept[deptId] || []) : [];
                   const hasSensitiveAreas = deptSensitiveAreas.length > 0;
 
+                  // Get criteria specific to this department
+                  const deptCriteria = criteriaByDept.get(deptId) || [];
+
                   return (
                     <div
                       key={idx}
-                      className={`bg-white rounded-lg p-5 border-2 transition-all duration-300 group ${
+                      className={`bg-gray-50 rounded-lg p-5 border-2 transition-all duration-300 ${
                         hasSensitiveAreas 
                           ? 'border-amber-300 hover:border-amber-400 hover:shadow-lg' 
                           : 'border-gray-200 hover:border-primary-300 hover:shadow-lg'
                       }`}
                     >
-                      <div className="text-center mb-3">
-                        <p className="text-sm font-bold text-gray-900 leading-tight">{deptName}</p>
-                      </div>
-                      
-                      {/* Sensitive Areas for this department */}
-                      {hasSensitiveAreas && (
-                        <div className="mb-3 pt-3 border-t border-gray-100">
-                          <div className="flex items-center justify-center gap-2 mb-2">
-                            <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                            </svg>
-                            
-                          </div>
-                          <div className="flex flex-wrap justify-center gap-1.5">
+                      {/* Department Header */}
+                      <div className="mb-4 pb-3 border-b border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-base font-bold text-gray-900">{deptName}</h4>
+                          {deptHead && (
+                            <div className="flex items-center gap-2 text-xs text-gray-600">
+                              <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                              <span className="font-semibold">Head:</span>
+                              <span>{deptHead.fullName}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Sensitive Areas */}
+                        {hasSensitiveAreas && (
+                          <div className="mt-3 flex flex-wrap gap-1.5">
                             {deptSensitiveAreas.map((area: string, areaIdx: number) => (
                               <span
                                 key={areaIdx}
                                 className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200"
                               >
-                                {area}
+                                🔒 {area}
                               </span>
                             ))}
                           </div>
-                        </div>
-                      )}
-                      
-                      {deptHead && (
-                        <div className={`pt-3 ${hasSensitiveAreas ? 'border-t border-gray-100' : ''}`}>
-                          <div className="flex items-center justify-center gap-2 flex-wrap">
-                            <svg className="w-4 h-4 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                            <span className="text-xs font-bold text-gray-600">Department Head:</span>
-                            <span className="text-sm font-semibold text-gray-900">{deptHead.fullName}</span>
-                          </div>
-                          {deptHead.email && (
-                            <div className="mt-1 text-center">
-                              <span className="text-xs text-gray-600">{deptHead.email}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Audit Criteria Section */}
-          {!hideSections.includes('auditCriteria') && selectedPlanDetails.criteria?.values?.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-              <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
-               
-                <h3 className="text-lg font-bold text-primary-700">Audit Criteria</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {selectedPlanDetails.criteria.values.map((criterion: any, idx: number) => {
-                  const displayName =
-                    criterion.name ||
-                    criterion.criterionName ||
-                    getCriterionName(
-                      criterion.criteriaId || criterion.criterionId || criterion.auditCriteriaMapId
-                    );
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-100 transition-colors"
-                    >
-                      <div className="bg-primary-600 rounded-full p-1">
-                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
+                        )}
                       </div>
-                      <span className="text-sm text-black font-normal">{displayName}</span>
+                      
+                      {/* Standards for this department */}
+                      <div>
+                        <h5 className="text-sm font-semibold text-gray-700 mb-3">Standards:</h5>
+                        {deptCriteria.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {deptCriteria.map((criterion: any, critIdx: number) => {
+                              const displayName =
+                                criterion.name ||
+                                criterion.criterionName ||
+                                getCriterionName(
+                                  criterion.criteriaId || criterion.criterionId || criterion.auditCriteriaMapId || criterion.id
+                                );
+                              return (
+                                <div
+                                  key={critIdx}
+                                  className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200 hover:bg-gray-50 transition-colors"
+                                >
+                                  <div className="bg-primary-600 rounded-full p-1">
+                                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    </svg>
+                                  </div>
+                                  <span className="text-sm text-black font-normal">{displayName}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500 italic">No standards assigned</p>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Audit Team Section */}
           {!hideSections.includes('auditTeam') && combinedAuditTeam.length > 0 && (

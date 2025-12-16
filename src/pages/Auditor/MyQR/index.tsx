@@ -3,6 +3,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getAccessGrants } from '../../../api/accessGrant';
 import { getAuditPlans } from '../../../api/audits';
+import { getDepartmentById } from '../../../api/departments';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import useAuthStore from '../../../store/useAuthStore';
@@ -36,6 +37,7 @@ export default function MyQR() {
   const [loading, setLoading] = useState(true);
   const [grants, setGrants] = useState<AccessGrant[]>([]);
   const [audits, setAudits] = useState<Record<string, Audit>>({});
+  const [departments, setDepartments] = useState<Record<string, string>>({});
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
   const [filteredGrants, setFilteredGrants] = useState<AccessGrant[]>([]);
   const [myUserId, setMyUserId] = useState<string | null>(null);
@@ -65,11 +67,15 @@ export default function MyQR() {
         String(u.email || '').toLowerCase() === String(authStore.user?.email || '').toLowerCase()
       );
       if (me) {
-        const userId = String(me.userId || me.$id || me.id || '');
+        const userId = String(me.userId || me.$id || '');
         setMyUserId(userId);
+      }
+      else {
+        toast.error('Cannot resolve current user ID. Please relogin.');
       }
     } catch (error) {
       console.error('Failed to load user ID:', error);
+      toast.error('Failed to load user information. Please try again.');
     }
   };
 
@@ -80,7 +86,11 @@ export default function MyQR() {
     try {
       // Load access grants for current user (auditor)
       const allGrants = await getAccessGrants({ auditorId: myUserId });
-      setGrants(allGrants || []);
+      // Defensive: even if API ignores auditorId, filter client-side by myUserId
+      const mineOnly = (allGrants || []).filter(
+        (g: AccessGrant) => String(g.auditorId || '').trim() === String(myUserId).trim()
+      );
+      setGrants(mineOnly);
 
       // Load audits to get titles
       const auditsData = await getAuditPlans();
@@ -93,8 +103,28 @@ export default function MyQR() {
       });
       setAudits(auditsMap);
 
+      // Load departments names for grants
+      const uniqueDeptIds = [...new Set(mineOnly.map(g => g.deptId).filter(Boolean))];
+      const deptEntries: Array<[string, string]> = [];
+      await Promise.all(
+        uniqueDeptIds.map(async (deptId) => {
+          try {
+            const dept = await getDepartmentById(Number(deptId) || deptId);
+            const name = (dept as any)?.name || (dept as any)?.deptName || `Dept ${deptId}`;
+            deptEntries.push([String(deptId), name]);
+          } catch (e) {
+            console.warn('Failed to load department', deptId, e);
+          }
+        })
+      );
+      const deptMap: Record<string, string> = {};
+      deptEntries.forEach(([id, name]) => {
+        deptMap[id] = name;
+      });
+      setDepartments(deptMap);
+
       // Get unique audit IDs from grants
-      const auditIds = [...new Set(allGrants.map(g => g.auditId))];
+      const auditIds = [...new Set(mineOnly.map(g => g.auditId))];
       if (auditIds.length > 0 && !selectedAuditId) {
         setSelectedAuditId(auditIds[0]);
       }
@@ -110,6 +140,11 @@ export default function MyQR() {
 
   const getAuditTitle = (auditId: string): string => {
     return audits[auditId]?.title || `Audit ${auditId.substring(0, 8)}...`;
+  };
+
+  const getDeptName = (deptId: number): string => {
+    const key = String(deptId);
+    return departments[key] || `Dept ${deptId}`;
   };
 
   const formatDate = (dateStr: string): string => {
@@ -186,7 +221,6 @@ export default function MyQR() {
               {/* QR Codes Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredGrants.map((grant) => {
-                  const audit = audits[grant.auditId];
                   return (
                     <div
                       key={grant.grantId}
@@ -218,6 +252,15 @@ export default function MyQR() {
                           </label>
                           <p className="text-sm font-semibold text-gray-900">
                             {getAuditTitle(grant.auditId)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">
+                            Department
+                          </label>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {getDeptName(grant.deptId)}
                           </p>
                         </div>
 
