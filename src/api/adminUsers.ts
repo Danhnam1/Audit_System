@@ -53,4 +53,28 @@ export const bulkRegisterUsers = async (file: File): Promise<any> => {
   return response
 }
 
-export default { getAdminUsers, getAdminUsersByDepartment, getUserById, bulkRegisterUsers }
+// Update user profile (FullName and avatarFile only)
+export const updateUserProfile = async (
+  userId: string,
+  fullName: string,
+  avatarFile?: File
+): Promise<any> => {
+  const formData = new FormData()
+  formData.append('FullName', fullName)
+  
+  if (avatarFile) {
+    formData.append('avatarFile', avatarFile)
+  }
+  
+  // Note: Backend requires all fields, but we only send what user can update
+  // Backend should preserve other fields (roleName, deptId, isActive, status)
+  const response = await apiClient.put(`/admin/AdminUsers/${userId}`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  } as any)
+  
+  return response
+}
+
+export default { getAdminUsers, getAdminUsersByDepartment, getUserById, bulkRegisterUsers, updateUserProfile }

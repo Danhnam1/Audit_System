@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { MainLayout } from '../../layouts';
 import { useAuth } from '../../contexts';
 import useAuthStore, { useUserId } from '../../store/useAuthStore';
-import { getAdminUsers } from '../../api/adminUsers';
+import { getAdminUsers, getUserById } from '../../api/adminUsers';
 import { scanAccessGrant, verifyCode, type ScanAccessGrantResponse } from '../../api/accessGrant';
 import { getDepartmentById } from '../../api/departments';
+import { getAuditPlanById } from '../../api/audits';
 import { toast } from 'react-toastify';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +21,8 @@ export default function ScanQR() {
   const [manualInput, setManualInput] = useState(false);
   const [scanResult, setScanResult] = useState<ScanAccessGrantResponse | null>(null);
   const [scannedDept, setScannedDept] = useState<{ deptId: number; name: string; isSensitive: boolean } | null>(null);
+  const [auditTitle, setAuditTitle] = useState<string>('');
+  const [auditorName, setAuditorName] = useState<string>('');
   const [verifyCodeInput, setVerifyCodeInput] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [scanningError, setScanningError] = useState<string | null>(null);
@@ -140,39 +143,76 @@ export default function ScanQR() {
 
       if (result.isValid) {
         setScanResult(result);
+        
+        // Fetch names for display
+        const fetchPromises: Promise<void>[] = [];
+        
+        // Fetch audit title
+        if (result.auditId) {
+          fetchPromises.push(
+            getAuditPlanById(result.auditId)
+              .then((audit: any) => {
+                // Try multiple possible field paths for title
+                const title = audit?.title || 
+                             audit?.audit?.title || 
+                             audit?.name ||
+                             audit?.audit?.name ||
+                             'N/A';
+                setAuditTitle(title);
+                console.log('[ScanQR] Loaded audit title:', title, 'from audit data:', audit);
+              })
+              .catch((e) => {
+                console.warn('Failed to load audit info', e);
+                setAuditTitle('N/A');
+              })
+          );
+        }
+        
+        // Fetch auditor name
+        if (result.auditorId) {
+          fetchPromises.push(
+            getUserById(result.auditorId)
+              .then((auditor: any) => {
+                setAuditorName(auditor?.fullName || 'N/A');
+                if (auditor?.avatarUrl) {
+                  setScanResult((prev) =>
+                    prev ? { ...prev, avatarUrl: prev.avatarUrl || auditor.avatarUrl } : prev
+                  );
+                }
+              })
+              .catch((e) => {
+                console.warn('Failed to load auditor info', e);
+                setAuditorName('N/A');
+              })
+          );
+        }
+        
         // Fetch department info to know if sensitive
         if (result.deptId) {
-          try {
-            const dept = await getDepartmentById(Number(result.deptId));
-            const isSensitive =
-              !!(dept as any)?.hasSensitiveAreas ||
-              (Array.isArray((dept as any)?.sensitiveAreas) && (dept as any).sensitiveAreas.length > 0);
-            setScannedDept({
-              deptId: dept?.deptId || Number(result.deptId),
-              name: dept?.name || 'Department',
-              isSensitive,
-            });
-            if (!isSensitive && result.auditId) {
-              // Non-sensitive: bypass verify, go straight to checklist
-              toast.info('This department is not sensitive. Opening checklist.');
-              navigate(`/auditor/findings/department/${result.deptId}`, {
-                state: {
-                  auditId: result.auditId,
-                  department: {
-                    deptId: dept?.deptId || result.deptId,
-                    name: dept?.name || 'Department',
-                    code: dept?.code || '',
-                    description: dept?.description || '',
-                  },
-                  auditType: '',
-                },
-              });
-              return;
-            }
-          } catch (e) {
-            console.warn('Failed to load department info for sensitivity check', e);
-          }
+          fetchPromises.push(
+            getDepartmentById(Number(result.deptId))
+              .then((dept: any) => {
+                const isSensitive =
+                  !!(dept as any)?.hasSensitiveAreas ||
+                  (Array.isArray((dept as any)?.sensitiveAreas) && (dept as any).sensitiveAreas.length > 0);
+                setScannedDept({
+                  deptId: dept?.deptId || Number(result.deptId),
+                  name: dept?.name || 'Department',
+                  isSensitive,
+                });
+              })
+              .catch((e) => {
+                console.warn('Failed to load department info for sensitivity check', e);
+                setScannedDept({
+                  deptId: Number(result.deptId),
+                  name: 'Department',
+                  isSensitive: false,
+                });
+              })
+          );
         }
+        
+        await Promise.allSettled(fetchPromises);
         toast.success('QR code scanned successfully!');
       } else {
         // Handle different error reasons
@@ -242,37 +282,76 @@ export default function ScanQR() {
 
       if (result.isValid) {
         setScanResult(result);
-        if (result.deptId) {
-          try {
-            const dept = await getDepartmentById(Number(result.deptId));
-            const isSensitive =
-              !!(dept as any)?.hasSensitiveAreas ||
-              (Array.isArray((dept as any)?.sensitiveAreas) && (dept as any).sensitiveAreas.length > 0);
-            setScannedDept({
-              deptId: dept?.deptId || Number(result.deptId),
-              name: dept?.name || 'Department',
-              isSensitive,
-            });
-            if (!isSensitive && result.auditId) {
-              toast.info('This department is not sensitive. Opening checklist.');
-              navigate(`/auditor/findings/department/${result.deptId}`, {
-                state: {
-                  auditId: result.auditId,
-                  department: {
-                    deptId: dept?.deptId || result.deptId,
-                    name: dept?.name || 'Department',
-                    code: dept?.code || '',
-                    description: dept?.description || '',
-                  },
-                  auditType: '',
-                },
-              });
-              return;
-            }
-          } catch (e) {
-            console.warn('Failed to load department info for sensitivity check', e);
-          }
+        
+        // Fetch names for display
+        const fetchPromises: Promise<void>[] = [];
+        
+        // Fetch audit title
+        if (result.auditId) {
+          fetchPromises.push(
+            getAuditPlanById(result.auditId)
+              .then((audit: any) => {
+                // Try multiple possible field paths for title
+                const title = audit?.title || 
+                             audit?.audit?.title || 
+                             audit?.name ||
+                             audit?.audit?.name ||
+                             'N/A';
+                setAuditTitle(title);
+                console.log('[ScanQR] Loaded audit title:', title, 'from audit data:', audit);
+              })
+              .catch((e) => {
+                console.warn('Failed to load audit info', e);
+                setAuditTitle('N/A');
+              })
+          );
         }
+        
+        // Fetch auditor name
+        if (result.auditorId) {
+          fetchPromises.push(
+            getUserById(result.auditorId)
+              .then((auditor: any) => {
+                setAuditorName(auditor?.fullName || 'N/A');
+                if (auditor?.avatarUrl) {
+                  setScanResult((prev) =>
+                    prev ? { ...prev, avatarUrl: prev.avatarUrl || auditor.avatarUrl } : prev
+                  );
+                }
+              })
+              .catch((e) => {
+                console.warn('Failed to load auditor info', e);
+                setAuditorName('N/A');
+              })
+          );
+        }
+        
+        // Fetch department info to know if sensitive
+        if (result.deptId) {
+          fetchPromises.push(
+            getDepartmentById(Number(result.deptId))
+              .then((dept: any) => {
+                const isSensitive =
+                  !!(dept as any)?.hasSensitiveAreas ||
+                  (Array.isArray((dept as any)?.sensitiveAreas) && (dept as any).sensitiveAreas.length > 0);
+                setScannedDept({
+                  deptId: dept?.deptId || Number(result.deptId),
+                  name: dept?.name || 'Department',
+                  isSensitive,
+                });
+              })
+              .catch((e) => {
+                console.warn('Failed to load department info for sensitivity check', e);
+                setScannedDept({
+                  deptId: Number(result.deptId),
+                  name: 'Department',
+                  isSensitive: false,
+                });
+              })
+          );
+        }
+        
+        await Promise.allSettled(fetchPromises);
         toast.success('QR code scanned successfully!');
       } else {
         // Handle different error reasons
@@ -402,6 +481,9 @@ export default function ScanQR() {
     setScanResult(null);
     setScanningError(null);
     setManualInput(false);
+    setAuditTitle('');
+    setAuditorName('');
+    setScannedDept(null);
     if (scanning) {
       stopScanning();
     }
@@ -566,20 +648,20 @@ export default function ScanQR() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                         {scanResult.auditId && (
                           <div>
-                            <span className="font-medium text-gray-700">Audit ID:</span>
-                            <p className="text-gray-900 mt-1">{scanResult.auditId}</p>
+                            <span className="font-medium text-gray-700">Audit:</span>
+                            <p className="text-gray-900 mt-1">{auditTitle || 'Loading...'}</p>
                           </div>
                         )}
                         {scanResult.auditorId && (
                           <div>
-                            <span className="font-medium text-gray-700">Auditor ID:</span>
-                            <p className="text-gray-900 mt-1">{scanResult.auditorId}</p>
+                            <span className="font-medium text-gray-700">Auditor:</span>
+                            <p className="text-gray-900 mt-1">{auditorName || 'Loading...'}</p>
                           </div>
                         )}
                         {scanResult.deptId && (
                           <div>
-                            <span className="font-medium text-gray-700">Department ID:</span>
-                            <p className="text-gray-900 mt-1">{scanResult.deptId}</p>
+                            <span className="font-medium text-gray-700">Department:</span>
+                            <p className="text-gray-900 mt-1">{scannedDept?.name || 'Loading...'}</p>
                           </div>
                         )}
                         {scanResult.expiresAt && (
@@ -594,38 +676,30 @@ export default function ScanQR() {
 
                       {/* Verify Code Display (for Auditor) */}
                       {scanResult.verifyCode && (
-                        <div className="mt-4 pt-4 border-t border-green-200">
-                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <div className="flex items-center gap-2 mb-2">
-                              <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                              </svg>
-                              <label className="block text-sm font-semibold text-blue-900">
-                                Verify Code for Auditor
-                              </label>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div className="flex-1 bg-white rounded-lg px-4 py-3 border-2 border-blue-300">
-                                <p className="text-2xl font-mono font-bold text-blue-900 text-center">
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="space-y-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                              Verify Code
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 bg-gray-50 rounded-lg px-4 py-3 border border-gray-300">
+                                <p className="text-2xl font-mono font-semibold text-gray-900 text-center">
                                   {scanResult.verifyCode}
                                 </p>
                               </div>
                               <button
                                 onClick={() => {
                                   navigator.clipboard.writeText(scanResult.verifyCode!);
-                                  toast.success('Verify code copied to clipboard!');
+                                  toast.success('Verify code copied!');
                                 }}
-                                className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center gap-2"
+                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium"
                                 title="Copy verify code"
                               >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
                                 Copy
                               </button>
                             </div>
-                            <p className="text-xs text-blue-700 mt-3">
-                              📋 Please provide this verify code to the Auditor. The Auditor will use this code to access the checklist.
+                            <p className="text-xs text-gray-500">
+                              Provide this code to the Auditor to access the checklist.
                             </p>
                           </div>
                         </div>

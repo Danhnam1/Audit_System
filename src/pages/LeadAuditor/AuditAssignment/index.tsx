@@ -1430,44 +1430,7 @@ export default function AuditAssignment() {
                                           </div>
                                         </div>
                                         
-                                        {/* QR URL and Verify Code */}
-                                        <div className="space-y-2">
-                                          <div className="flex items-center gap-2">
-                                            <p className="text-xs text-gray-600 break-all flex-1 truncate">{grant.qrUrl}</p>
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                navigator.clipboard.writeText(grant.qrUrl);
-                                                toast.info('QR URL copied to clipboard!');
-                                              }}
-                                              className="text-primary-600 hover:text-primary-700 flex-shrink-0"
-                                              title="Copy URL"
-                                            >
-                                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                              </svg>
-                                            </button>
-                                          </div>
-                                          {grant.verifyCode && (
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs font-medium text-gray-700">Verify Code:</span>
-                                              <span className="text-xs font-mono text-gray-900 bg-white px-2 py-1 rounded border border-gray-300">{grant.verifyCode}</span>
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  navigator.clipboard.writeText(grant.verifyCode!);
-                                                  toast.info('Verify code copied to clipboard!');
-                                                }}
-                                                className="text-primary-600 hover:text-primary-700"
-                                                title="Copy Verify Code"
-                                              >
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                </svg>
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
+                                        {/* QR URL and Verify Code removed - not needed for Lead Auditor */}
                                       </div>
                                     ))}
                                   </div>
@@ -1749,22 +1712,7 @@ export default function AuditAssignment() {
                                       />
                                     </div>
                                   </div>
-                                  {/* QR URL with copy button */}
-                                  <div className="flex items-center gap-2">
-                                    <p className="text-xs text-gray-600 break-all flex-1 truncate">{result.qrUrl}</p>
-                                    <button
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(result.qrUrl!);
-                                        toast.info('QR URL copied to clipboard!');
-                                      }}
-                                      className="text-primary-600 hover:text-primary-700 flex-shrink-0"
-                                      title="Copy URL"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                      </svg>
-                                    </button>
-                                  </div>
+                                  {/* QR URL removed - not needed */}
                                 </div>
                               ) : result.error ? (
                                 <p className="text-xs text-red-600 mt-1">Error: {result.error}</p>

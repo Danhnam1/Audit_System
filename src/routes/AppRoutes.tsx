@@ -73,6 +73,7 @@ const DirectorSummaryReport = lazy(() => import("../pages/Director/SummaryReport
 
 // Shared pages
 const ArchivedHistory = lazy(() => import("../pages/Shared/ArchivedHistory"));
+const Profile = lazy(() => import("../pages/Profile"));
 
 
 // AppRoutes component - contains only route definitions
@@ -606,6 +607,16 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <ArchivedHistory />
+                    </ProtectedRoute>
+                }
+            />
+
+            {/* Profile - accessible to all authenticated users */}
+            <Route
+                path="/profile"
+                element={
+                    <ProtectedRoute>
+                        <Profile />
                     </ProtectedRoute>
                 }
             />
