@@ -16,6 +16,8 @@ import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById } from '../../../api/audits';
 import { getAccessGrants, verifyCode, type VerifyCodeRequest } from '../../../api/accessGrant';
 import useAuthStore, { useUserId } from '../../../store/useAuthStore';
+import apiClient from '../../../api/client';
+import { getStatusColor } from '../../../constants';
 
 
 interface ChecklistItem {
@@ -49,6 +51,7 @@ const DepartmentChecklist = () => {
   const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null); // Compliant record ID from API response
   const [loadingCompliantId, setLoadingCompliantId] = useState(false); // Loading state for fetching compliant ID
   const [compliantIdMap, setCompliantIdMap] = useState<Record<string, string | number>>({}); // auditItemId -> compliant record id (persisted to sessionStorage)
+  const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasPending: boolean; pendingCount: number }>>({}); // findingId -> root cause status
 
   // Audit info state
   const [auditType, setAuditType] = useState<string>('');
@@ -82,6 +85,7 @@ const DepartmentChecklist = () => {
   // Action detail modal state
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const [selectedActionFindingId, setSelectedActionFindingId] = useState<string | null>(null);
 
   // QR Scan & Verify Code state
   const [qrScanned, setQrScanned] = useState<boolean>(false);
@@ -253,6 +257,37 @@ const DepartmentChecklist = () => {
     };
     loadFindings();
   }, []);
+
+  // Load root cause status for findings (to show indicators for pending reviews)
+  useEffect(() => {
+    const loadRootCauseStatus = async () => {
+      if (Object.keys(findingsMap).length === 0) return;
+      
+      const statusMap: Record<string, { hasPending: boolean; pendingCount: number }> = {};
+      
+      await Promise.all(
+        Object.values(findingsMap).map(async (findingId) => {
+          try {
+            const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+            const rootCauses = res.data.$values || [];
+            const pendingCount = rootCauses.filter((rc: any) => rc.status?.toLowerCase() === 'pending').length;
+            
+            statusMap[findingId] = {
+              hasPending: pendingCount > 0,
+              pendingCount: pendingCount,
+            };
+          } catch (err) {
+            console.warn(`Failed to load root causes for finding ${findingId}`, err);
+            statusMap[findingId] = { hasPending: false, pendingCount: 0 };
+          }
+        })
+      );
+      
+      setRootCauseStatusMap(statusMap);
+    };
+    
+    loadRootCauseStatus();
+  }, [findingsMap]);
 
   // Handle view finding details
   const handleViewFinding = (item: ChecklistItem) => {
@@ -823,20 +858,22 @@ const DepartmentChecklist = () => {
                                 </button>
                               </div>
                             ) : isNonCompliant(item.status) ? (
-                              /* Eye icon for Non-compliant items (no badge) */
-                              <button
-                                className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 active:scale-95"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleViewFinding(item);
-                                }}
-                                title="View Finding Details"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              </button>
+                              /* Eye icon for Non-compliant items */
+                              <div className="flex items-center gap-2">
+                                <button
+                                  className="w-6 h-6 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 active:scale-95"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleViewFinding(item);
+                                  }}
+                                  title="View Finding Details"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                </button>
+                              </div>
                             ) : (
                               <>
                                 {/* Green Checkmark */}
@@ -924,6 +961,28 @@ const DepartmentChecklist = () => {
                                     {statusInfo.status}
                                   </span>
                                 ) : null;
+                              })()}
+                              {/* Root Cause Pending Review Badge */}
+                              {(() => {
+                                const rcStatus = rootCauseStatusMap[finding.findingId];
+                                if (rcStatus?.hasPending) {
+                                  return (
+                                    <div className="relative group">
+                                      <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200 whitespace-nowrap flex items-center gap-1">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                        <span>{rcStatus.pendingCount} RC</span>
+                                      </span>
+                                      <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                                        <p className="font-semibold">{rcStatus.pendingCount} Root Cause{rcStatus.pendingCount > 1 ? 's' : ''} need{rcStatus.pendingCount === 1 ? 's' : ''} review</p>
+                                        <p className="text-gray-300 mt-1">Click to view and review</p>
+                                        <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return null;
                               })()}
                             </div>
                             <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">
@@ -1058,7 +1117,9 @@ const DepartmentChecklist = () => {
                           <button
                             onClick={() => {
                               setSelectedActionId(action.actionId);
+                              setSelectedActionFindingId(action.findingId);
                               setShowActionDetailModal(true);
+                              console.log('Opening action modal - ActionId:', action.actionId, 'FindingId:', action.findingId);
                             }}
                             className="px-3 py-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors border border-primary-200"
                           >
@@ -1197,8 +1258,10 @@ const DepartmentChecklist = () => {
         return (
           <ActionDetailModal
             isOpen={showActionDetailModal}
+            findingId={selectedActionFindingId || undefined}
             onClose={() => {
               setShowActionDetailModal(false);
+              setSelectedActionFindingId(null);
               setSelectedActionId(null);
             }}
             actionId={selectedActionId}
@@ -1223,6 +1286,7 @@ const DepartmentChecklist = () => {
                 }
                 setShowActionDetailModal(false);
                 setSelectedActionId(null);
+                setSelectedActionFindingId(null);
               } catch (err: any) {
                 console.error('Error approving action:', err);
                 toast.error(err?.message || 'Failed to approve action');
@@ -1254,6 +1318,7 @@ const DepartmentChecklist = () => {
                 }
                 setShowActionDetailModal(false);
                 setSelectedActionId(null);
+                setSelectedActionFindingId(null);
               } catch (err: any) {
                 console.error('Error rejecting action:', err);
                 toast.error(err?.message || 'Failed to reject action');

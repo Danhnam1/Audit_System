@@ -7,6 +7,7 @@ import FindingDetailModal from '../../../pages/Auditor/FindingManagement/Finding
 import { createAction, getActionsByFinding, type Action, approveActionWithFeedback, rejectAction, rejectActionForResubmit } from '../../../api/actions';
 import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
+import apiClient from '../../../api/client';
 import { Pagination } from '../../../components';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { toast } from 'react-toastify';
@@ -28,7 +29,7 @@ const FindingsProgress = () => {
   const [selectedFindingForAssign, setSelectedFindingForAssign] = useState<Finding | null>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [staffMembers, setStaffMembers] = useState<Array<{ userId: string; fullName: string; email?: string }>>([]);
-  const [selectedStaff, setSelectedStaff] = useState('');
+  const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState('');
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [submittingAssign, setSubmittingAssign] = useState(false);
@@ -37,6 +38,7 @@ const FindingsProgress = () => {
   const [dueDateError, setDueDateError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const [selectedActionFindingId, setSelectedActionFindingId] = useState<string | null>(null);
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionForReview, setSelectedActionForReview] = useState<Action | null>(null);
   const [processingReview, setProcessingReview] = useState(false);
@@ -48,6 +50,7 @@ const FindingsProgress = () => {
   const [assignedUsersMap, setAssignedUsersMap] = useState<Record<string, string>>({}); // findingId -> assignedUserName
   const [returnedActionsMap, setReturnedActionsMap] = useState<Record<string, Action>>({}); // findingId -> returned action
   const [rejectedActionsMap, setRejectedActionsMap] = useState<Record<string, Action>>({}); // findingId -> rejected action
+  const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasApproved: boolean; hasPending: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }>>({}); // findingId -> root cause status
 
     // Helper function to get status badge color
   const getStatusBadgeColor = (status: string) => {
@@ -73,6 +76,35 @@ const FindingsProgress = () => {
       console.error('Error parsing token:', err);
     }
     return null;
+  };
+
+  // Load root cause status for findings
+  const loadRootCauseStatus = async (findingsData: Finding[]) => {
+    const statusMap: Record<string, { hasApproved: boolean; hasPending: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }> = {};
+    
+    await Promise.all(
+      findingsData.map(async (finding) => {
+        try {
+          const res = await apiClient.get(`/RootCauses/by-finding/${finding.findingId}`);
+          const rootCauses = res.data.$values || [];
+          const totalCount = rootCauses.length;
+          const approvedCount = rootCauses.filter((rc: any) => rc.status?.toLowerCase() === 'approved').length;
+          
+          statusMap[finding.findingId] = {
+            hasApproved: rootCauses.some((rc: any) => rc.status?.toLowerCase() === 'approved'),
+            hasPending: rootCauses.some((rc: any) => rc.status?.toLowerCase() === 'pending'),
+            hasRejected: rootCauses.some((rc: any) => rc.status?.toLowerCase() === 'rejected'),
+            allApproved: totalCount > 0 && approvedCount === totalCount,
+            totalCount: totalCount,
+          };
+        } catch (err) {
+          console.warn(`Failed to load root causes for finding ${finding.findingId}`, err);
+          statusMap[finding.findingId] = { hasApproved: false, hasPending: false, hasRejected: false, allApproved: false, totalCount: 0 };
+        }
+      })
+    );
+    
+    setRootCauseStatusMap(statusMap);
   };
 
   // Load assigned users and returned actions for findings
@@ -149,8 +181,9 @@ const FindingsProgress = () => {
         
         setFindings(filteredFindings);
         
-        // Load assigned users for findings
+        // Load assigned users and root cause status for findings
         await loadAssignedUsers(filteredFindings);
+        await loadRootCauseStatus(filteredFindings);
       } catch (err: any) {
         console.error('Error fetching findings:', err);
         setError(err?.message || 'Failed to load findings');
@@ -207,6 +240,19 @@ const FindingsProgress = () => {
   };
 
 
+  // Toggle staff selection
+  const handleToggleStaff = (userId: string) => {
+    setSelectedStaff(prev => {
+      if (prev.includes(userId)) {
+        return prev.filter(id => id !== userId);
+      } else {
+        return [...prev, userId];
+      }
+    });
+    // Clear error when user makes a selection
+    if (selectedStaffError) setSelectedStaffError('');
+  };
+
   // Load staff members for assignment (only CAPAOwner role)
   const loadStaffMembers = async (deptId?: number) => {
     if (!deptId) return;
@@ -240,8 +286,8 @@ const FindingsProgress = () => {
     // Validate fields
     let hasError = false;
 
-    if (!selectedStaff) {
-      setSelectedStaffError('Please select a staff member');
+    if (!selectedStaff || selectedStaff.length === 0) {
+      setSelectedStaffError('Please select at least one staff member');
       hasError = true;
     }
 
@@ -297,20 +343,25 @@ const FindingsProgress = () => {
       // First, mark finding as received
       await markFindingAsReceived(selectedFindingForAssign.findingId);
       
-      // Then, create action
-      await createAction({
-        findingId: selectedFindingForAssign.findingId,
-        title: selectedFindingForAssign.title,
-        description: selectedFindingForAssign.description || '',
-        assignedTo: selectedStaff,
-        assignedDeptId: selectedFindingForAssign.deptId || 0,
-        progressPercent: 0,
-        dueDate: new Date(dueDate).toISOString(),
-        reviewFeedback: '',
-      });
+      // Then, create actions for each selected staff member
+      const actionPromises = selectedStaff.map(staffId => 
+        createAction({
+          findingId: selectedFindingForAssign.findingId,
+          title: selectedFindingForAssign.title,
+          description: selectedFindingForAssign.description || '',
+          assignedTo: staffId,
+          assignedDeptId: selectedFindingForAssign.deptId || 0,
+          progressPercent: 0,
+          dueDate: new Date(dueDate).toISOString(),
+          reviewFeedback: '',
+        })
+      );
+      
+      // Wait for all actions to be created
+      await Promise.all(actionPromises);
 
       // Reset form and close modal
-      setSelectedStaff('');
+      setSelectedStaff([]);
       setDueDate('');
       setSelectedStaffError('');
       setDueDateError('');
@@ -318,7 +369,8 @@ const FindingsProgress = () => {
       setShowAssignModal(false);
       
       // Show success toast
-      toast.success('Finding assigned successfully');
+      const staffCount = selectedStaff.length;
+      toast.success(`Finding assigned successfully to ${staffCount} staff member${staffCount > 1 ? 's' : ''}`);
       
       // Reload findings and assigned users
       const deptId = getUserDeptId();
@@ -326,6 +378,7 @@ const FindingsProgress = () => {
         const data = await getFindingsByDepartment(deptId);
         setFindings(data);
         await loadAssignedUsers(data);
+        await loadRootCauseStatus(data);
       }
     } catch (err: any) {
       console.error('Error creating action:', err);
@@ -340,7 +393,7 @@ const FindingsProgress = () => {
 
   // Handle close assign modal
   const handleCloseAssignModal = () => {
-    setSelectedStaff('');
+    setSelectedStaff([]);
     setDueDate('');
     setSelectedStaffError('');
     setDueDateError('');
@@ -562,6 +615,7 @@ const FindingsProgress = () => {
                                         const data = await getFindingsByDepartment(deptId);
                                         setFindings(data);
                                         await loadAssignedUsers(data);
+                                        await loadRootCauseStatus(data);
                                       }
                                     } catch (err: any) {
                                       console.error('Error resubmitting action:', err);
@@ -589,19 +643,73 @@ const FindingsProgress = () => {
                                 >
                                   Assigned
                                 </button>
-                              ) : (
-                                <button
-                                  onClick={() => {
-                                    setSelectedFindingForAssign(finding);
-                                    setShowAssignModal(true);
-                                    loadStaffMembers(finding.deptId);
-                                  }}
-                                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
-                                  title="Assign Finding"
-                                >
-                                  Assign
-                                </button>
-                              )}
+                              ) : (() => {
+                                const rcStatus = rootCauseStatusMap[finding.findingId];
+                                const allApproved = rcStatus?.allApproved || false;
+                                const hasPendingRC = rcStatus?.hasPending || false;
+                                const hasRejectedRC = rcStatus?.hasRejected || false;
+                                const totalCount = rcStatus?.totalCount || 0;
+                                
+                                // Show appropriate button based on root cause status
+                                // Only allow assign when ALL root causes are approved
+                                if (totalCount === 0) {
+                                  return (
+                                    <button
+                                      disabled
+                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
+                                      title="Please add root cause first"
+                                    >
+                                      No Root Cause
+                                    </button>
+                                  );
+                                } else if (hasPendingRC) {
+                                  return (
+                                    <button
+                                      disabled
+                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-yellow-700 bg-yellow-100 rounded-lg cursor-not-allowed opacity-80"
+                                      title="Some root causes are pending review"
+                                    >
+                                      Pending Review
+                                    </button>
+                                  );
+                                } else if (hasRejectedRC) {
+                                  return (
+                                    <button
+                                      disabled
+                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-red-700 bg-red-100 rounded-lg cursor-not-allowed opacity-80"
+                                      title="Some root causes were rejected - please update"
+                                    >
+                                      RC Rejected
+                                    </button>
+                                  );
+                                } else if (allApproved) {
+                                  // All root causes approved - allow assign
+                                  return (
+                                    <button
+                                      onClick={() => {
+                                        setSelectedFindingForAssign(finding);
+                                        setShowAssignModal(true);
+                                        loadStaffMembers(finding.deptId);
+                                      }}
+                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
+                                      title="All root causes approved - ready to assign"
+                                    >
+                                      Assign
+                                    </button>
+                                  );
+                                } else {
+                                  // Fallback: not all approved
+                                  return (
+                                    <button
+                                      disabled
+                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
+                                      title="Not all root causes are approved yet"
+                                    >
+                                      Incomplete
+                                    </button>
+                                  );
+                                }
+                              })()}
                               {/* View Action button - show if finding has actions */}
                               {(() => {
                                 // Check if finding has any action (assigned, returned, or rejected)
@@ -623,7 +731,9 @@ const FindingsProgress = () => {
                                             // Get the first action (or most recent one)
                                             const firstAction = actionsList[0];
                                             setSelectedActionId(firstAction.actionId);
+                                            setSelectedActionFindingId(finding.findingId);
                                             setShowActionDetailModal(true);
+                                            console.log('Opening action modal - ActionId:', firstAction.actionId, 'FindingId:', finding.findingId);
                                             
                                             // Check if action is reviewed and can be reviewed
                                             if (firstAction.status?.toLowerCase() === 'reviewed') {
@@ -772,35 +882,52 @@ const FindingsProgress = () => {
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
                       Assign To (CAPA Owner) <span className="text-red-500">*</span>
                     </label>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Select one or more CAPA owners to assign this finding to
+                    </p>
                     {loadingStaff ? (
                       <div className="flex items-center gap-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
                         <span className="text-sm text-gray-500">Loading CAPA owners...</span>
                       </div>
                     ) : (
-                      <select
-                        value={selectedStaff}
-                        onChange={(e) => {
-                          setSelectedStaff(e.target.value);
-                          if (selectedStaffError) setSelectedStaffError('');
-                        }}
-                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                          selectedStaffError ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                      >
-                        <option value="">Select CAPA Owner</option>
-                        {staffMembers.map((staff) => (
-                          <option key={staff.userId} value={staff.userId}>
-                            {staff.fullName} {staff.email ? `(${staff.email})` : ''}
-                          </option>
-                        ))}
-                      </select>
+                      <div className={`border rounded-lg p-3 max-h-48 overflow-y-auto ${
+                        selectedStaffError ? 'border-red-300' : 'border-gray-300'
+                      }`}>
+                        {staffMembers.length === 0 ? (
+                          <p className="text-sm text-gray-500 text-center py-2">No CAPA Owners found in this department</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {staffMembers.map((staff) => (
+                              <label
+                                key={staff.userId}
+                                className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedStaff.includes(staff.userId)}
+                                  onChange={() => handleToggleStaff(staff.userId)}
+                                  className="mt-1 h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900">{staff.fullName}</p>
+                                  {staff.email && (
+                                    <p className="text-xs text-gray-500 truncate">{staff.email}</p>
+                                  )}
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {selectedStaff.length > 0 && (
+                      <p className="mt-2 text-xs text-primary-600">
+                        {selectedStaff.length} staff member{selectedStaff.length > 1 ? 's' : ''} selected
+                      </p>
                     )}
                     {selectedStaffError && (
                       <p className="mt-1 text-xs text-red-600">{selectedStaffError}</p>
-                    )}
-                    {staffMembers.length === 0 && !loadingStaff && !selectedStaffError && (
-                      <p className="mt-1 text-xs text-gray-500">No CAPA Owners found in this department</p>
                     )}
                   </div>
 
@@ -818,7 +945,7 @@ const FindingsProgress = () => {
                   </button>
                   <button
                     onClick={handleAssign}
-                    disabled={submittingAssign || !selectedStaff}
+                    disabled={submittingAssign || selectedStaff.length === 0}
                     className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submittingAssign ? 'Assigning...' : 'Assign'}
@@ -877,9 +1004,11 @@ const FindingsProgress = () => {
             onClose={() => {
               setShowActionDetailModal(false);
               setSelectedActionId(null);
+              setSelectedActionFindingId(null);
               setSelectedActionForReview(null);
             }}
             actionId={selectedActionId}
+            findingId={selectedActionFindingId || undefined}
             showReviewButtons={!!selectedActionForReview}
             onApprove={async (feedback) => {
               if (selectedActionForReview) {
@@ -895,6 +1024,7 @@ const FindingsProgress = () => {
                     const data = await getFindingsByDepartment(deptId);
                     setFindings(data);
                     await loadAssignedUsers(data);
+                    await loadRootCauseStatus(data);
                   }
                 } catch (err: any) {
                   console.error('Error approving action:', err);
@@ -918,6 +1048,7 @@ const FindingsProgress = () => {
                     const data = await getFindingsByDepartment(deptId);
                     setFindings(data);
                     await loadAssignedUsers(data);
+                    await loadRootCauseStatus(data);
                   }
                 } catch (err: any) {
                   console.error('Error rejecting action:', err);
@@ -1136,9 +1267,11 @@ const FindingsProgress = () => {
                                   <button
                                     onClick={() => {
                                       setSelectedActionId(action.actionId);
+                                      setSelectedActionFindingId(action.findingId);
                                       setShowActionDetailModal(true);
                                       setSelectedActionForReview(action);
                                       setShowActionsModal(false);
+                                      console.log('Opening action modal for review - ActionId:', action.actionId, 'FindingId:', action.findingId);
                                     }}
                                     className="px-6 py-3 text-sm font-bold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2"
                                   >

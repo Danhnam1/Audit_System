@@ -642,6 +642,7 @@ const ActionReview = () => {
       {showActionDetailModal && selectedActionId && (
         <ActionDetailModal
           isOpen={showActionDetailModal}
+          findingId={actions.find(a => a.actionId === selectedActionId)?.findingId}
           onClose={() => {
             setShowActionDetailModal(false);
             setSelectedActionId(null);

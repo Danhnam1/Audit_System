@@ -3,9 +3,10 @@ import { getFindingById, type Finding, updateFinding } from '../../../api/findin
 import { getAttachments, type Attachment } from '../../../api/attachments';
 import { getUserById } from '../../../api/adminUsers';
 import { getDepartmentById } from '../../../api/departments';
-import { createRootCause, type CreateRootCauseDto } from '../../../api/rootCauses';
+import { createRootCause, type CreateRootCauseDto, updateRootCause, approveRootCause, rejectRootCause } from '../../../api/rootCauses';
 import useAuthStore from '../../../store/useAuthStore';
 import apiClient from '../../../api/client';
+import { useAuth } from '../../../contexts';
 
 interface FindingDetailModalProps {
   isOpen: boolean;
@@ -29,11 +30,31 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const [rootCauses, setRootCauses] = useState<any[]>([]);
   const [rootCauseName, setRootCauseName] = useState<string>('');
   const [rootCauseDescription, setRootCauseDescription] = useState<string>('');
+  const [rootCauseCategory, setRootCauseCategory] = useState<string>('Finding');
   const [isEditingRootCause, setIsEditingRootCause] = useState(false);
   const [isSavingRootCause, setIsSavingRootCause] = useState(false);
+  const [editingRootCauseId, setEditingRootCauseId] = useState<number | null>(null);
+  const [reviewingRootCauseId, setReviewingRootCauseId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>('');
+  const [editingReasonReject, setEditingReasonReject] = useState<string>('');
+  const [isProcessingReview, setIsProcessingReview] = useState(false);
+  
+  // Toast notification state
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   
   const { role } = useAuthStore();
+  const { user } = useAuth();
   const isAuditeeOwner = role === 'AuditeeOwner';
+  const isAuditor = role === 'Auditor';
+  const isCreator = finding?.createdBy === user?.userId;
+  
+  // Debug logging
+  console.log('🔍 Role check:', { role, isAuditor, isAuditeeOwner, userId: user?.userId, findingCreatedBy: finding?.createdBy, isCreator });
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     if (isOpen && findingId) {
@@ -132,29 +153,56 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
 
   const handleSaveRootCause = async () => {
     if (!finding || !rootCauseName.trim()) {
-      alert('Please enter root cause name');
+      showToast('Please enter root cause name', 'error');
+      return;
+    }
+
+    if (!rootCauseCategory.trim()) {
+      showToast('Please select a category', 'error');
       return;
     }
 
     setIsSavingRootCause(true);
     try {
-      // Create root cause với deptId và findingId
-      const rootCauseDto: CreateRootCauseDto & { deptId: number; findingId: string } = {
-        name: rootCauseName.trim(),
-        description: rootCauseDescription.trim(),
-        status: 'Active',
-        category: 'Finding',
-        deptId: finding.deptId || 0,
-        findingId: findingId,
-      };
+      if (editingRootCauseId) {
+        // Update existing root cause - API requires ReasonReject field
+        // Find current root cause to get its status and reviewBy
+        const currentRootCause = rootCauses.find(rc => rc.rootCauseId === editingRootCauseId);
+        
+        const rootCauseDto: Partial<CreateRootCauseDto> & { deptId?: number; findingId?: string; reasonReject?: string; reviewBy?: string } = {
+          name: rootCauseName.trim(),
+          description: rootCauseDescription.trim(),
+          status:  'Pending', // Keep current status
+          category: rootCauseCategory.trim(),
+          deptId: finding.deptId || 0,
+          findingId: findingId,
+          reasonReject: editingReasonReject || '',
+          reviewBy: currentRootCause?.reviewBy || '', // Include reviewBy if exists
+        };
+        
+        console.log('📤 Updating root cause with payload:', rootCauseDto);
+        await updateRootCause(editingRootCauseId, rootCauseDto as any);
+        showToast('Root cause updated successfully!', 'success');
+        setEditingRootCauseId(null);
+      } else {
+        // Create new root cause
+        const rootCauseDto: CreateRootCauseDto & { deptId: number; findingId: string; category: string } = {
+          name: rootCauseName.trim(),
+          description: rootCauseDescription.trim(),
+          status: 'Pending',
+          category: rootCauseCategory.trim(),
+          deptId: finding.deptId || 0,
+          findingId: findingId,
+        };
 
-      // POST to create root cause
-      const newRootCause = await createRootCause(rootCauseDto as any);
-      console.log('Root cause created:', newRootCause);
-
-      alert('Root cause saved successfully!');
+        await createRootCause(rootCauseDto as any);
+        showToast('Root cause created successfully!', 'success');
+      }
+      
       setRootCauseName('');
       setRootCauseDescription('');
+      setRootCauseCategory('Finding');
+      setEditingReasonReject('');
       setIsEditingRootCause(false);
       
       // Reload all root causes
@@ -163,11 +211,69 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       setRootCauses(rootCausesList);
     } catch (err: any) {
       console.error('Error saving root cause:', err);
-      alert('Failed to save root cause: ' + (err.message || 'Unknown error'));
+      showToast('Failed to save root cause: ' + (err.message || 'Unknown error'), 'error');
     } finally {
       setIsSavingRootCause(false);
     }
   };
+  
+  // Handle edit root cause
+  const handleEditRootCause = (rc: any) => {
+    setEditingRootCauseId(rc.rootCauseId);
+    setRootCauseName(rc.name || '');
+    setRootCauseDescription(rc.description || '');
+    setRootCauseCategory(rc.category || 'Finding');
+    setEditingReasonReject(rc.reasonReject || '');
+    setIsEditingRootCause(true);
+  };
+  
+  // Handle approve root cause
+  const handleApproveRootCause = async (id: number) => {
+    setIsProcessingReview(true);
+    try {
+      await approveRootCause(id);
+      showToast('Root cause approved successfully!', 'success');
+      
+      // Reload root causes
+      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+      const rootCausesList = res.data.$values || [];
+      setRootCauses(rootCausesList);
+    } catch (err: any) {
+      console.error('Error approving root cause:', err);
+      showToast('Failed to approve root cause: ' + (err.message || 'Unknown error'), 'error');
+    } finally {
+      setIsProcessingReview(false);
+    }
+  };
+  
+  // Handle reject root cause
+  const handleRejectRootCause = async (id: number, reason: string) => {
+    if (!reason.trim()) {
+      showToast('Please provide a reason for rejection', 'error');
+      return;
+    }
+    
+    setIsProcessingReview(true);
+    try {
+      await rejectRootCause(id, reason);
+      showToast('Root cause rejected successfully!', 'success');
+      setReviewingRootCauseId(null);
+      setRejectReason('');
+      
+      // Reload root causes
+      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+      const rootCausesList = res.data.$values || [];
+      setRootCauses(rootCausesList);
+    } catch (err: any) {
+      console.error('Error rejecting root cause:', err);
+      showToast('Failed to reject root cause: ' + (err.message || 'Unknown error'), 'error');
+    } finally {
+      setIsProcessingReview(false);
+    }
+  };
+  
+  // Check if any root cause is approved
+  const hasApprovedRootCause = rootCauses.some(rc => rc.status?.toLowerCase() === 'approved');
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -196,7 +302,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
 
   const getSeverityColor = (severity: string) => {
     const severityLower = severity?.toLowerCase() || '';
-    if (severityLower.includes('high')) return 'bg-red-100 text-red-800';
+    if (severityLower.includes('high')) return 'bg-orange-50 text-orange-600 border border-orange-200';
     if (severityLower.includes('medium')) return 'bg-yellow-100 text-yellow-800';
     if (severityLower.includes('low')) return 'bg-green-100 text-green-800';
     return 'bg-gray-100 text-gray-800';
@@ -250,12 +356,12 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
             )}
 
             {error && (
-              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-5 mb-6 shadow-sm">
+              <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-5 mb-6 shadow-sm">
                 <div className="flex items-start gap-3">
-                  <svg className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-orange-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <p className="text-red-700 font-medium">{error}</p>
+                  <p className="text-orange-700 font-medium">{error}</p>
                 </div>
               </div>
             )}
@@ -328,8 +434,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                   <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow md:col-span-2">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-red-200 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="w-10 h-10 bg-slate-200 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                           </svg>
                         </div>
@@ -373,6 +479,24 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                           />
                         </div>
 
+                        {/* Root Cause Category Input */}
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">Category *</label>
+                          <select
+                            value={rootCauseCategory}
+                            onChange={(e) => setRootCauseCategory(e.target.value)}
+                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+                          >
+                            <option value="Finding">Finding</option>
+                            <option value="Process">Process</option>
+                            <option value="System">System</option>
+                            <option value="Human Error">Human Error</option>
+                            <option value="Training">Training</option>
+                            <option value="Documentation">Documentation</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+
                         {/* Root Cause Description Input */}
                         <div>
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Description</label>
@@ -384,6 +508,17 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                             className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors resize-none"
                           />
                         </div>
+
+                        {/* Rejection Reason - Display only if editing rejected root cause */}
+                        {editingRootCauseId && editingReasonReject && (
+                          <div>
+                            <label className="block text-sm font-semibold text-rose-600 mb-2">Previous Rejection Reason</label>
+                            <div className="bg-rose-50 border-2 border-rose-200 rounded-lg p-4">
+                              <p className="text-sm text-rose-600">{editingReasonReject}</p>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Please update the root cause based on this feedback</p>
+                          </div>
+                        )}
 
                         {/* Save Button */}
                         <div className="flex justify-end gap-3">
@@ -417,36 +552,118 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                     ) : (
                       <div className="space-y-3">
                         {rootCauses.length > 0 ? (
-                          rootCauses.map((rc, index) => (
-                            <div 
-                              key={rc.rootCauseId || index}
-                              className="bg-gradient-to-br from-red-50 to-red-100/50 border-2 border-red-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow"
-                            >
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 bg-red-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                                    <span className="text-sm font-bold text-red-700">#{index + 1}</span>
+                          rootCauses.map((rc, index) => {
+                            const isPending = rc.status?.toLowerCase() === 'pending';
+                            const isApproved = rc.status?.toLowerCase() === 'approved';
+                            const isRejected = rc.status?.toLowerCase() === 'rejected';
+                            
+                            return (
+                              <div 
+                                key={rc.rootCauseId || index}
+                                className="bg-gradient-to-br from-slate-50 to-slate-100/50 border-2 border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow"
+                              >
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                      <span className="text-sm font-bold text-primary-700">#{index + 1}</span>
+                                    </div>
+                                    <h4 className="text-base font-bold text-gray-900">{rc.name}</h4>
                                   </div>
-                                  <h4 className="text-base font-bold text-gray-900">{rc.name}</h4>
+                                  <div className="flex items-center gap-2">
+                                    {isPending && (
+                                      <span className="px-3 py-1 bg-amber-50 text-amber-600 text-xs font-semibold rounded-full border border-amber-200">
+                                        Pending Review
+                                      </span>
+                                    )}
+                                    {isApproved && (
+                                      <span className="px-3 py-1 bg-green-50 text-green-600 text-xs font-semibold rounded-full border border-green-200 flex items-center gap-1">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        Approved
+                                      </span>
+                                    )}
+                                    {isRejected && (
+                                      <span className="px-3 py-1 bg-rose-50 text-rose-600 text-xs font-semibold rounded-full border border-rose-200 flex items-center gap-1">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                        Rejected
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                                <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                                  {rc.status}
-                                </span>
-                              </div>
-                              {rc.description && (
-                                <p className="text-sm text-gray-700 mt-2 pl-10">{rc.description}</p>
-                              )}
-                              <div className="flex items-center gap-4 mt-3 pl-10 text-xs text-gray-500">
-                                <span className="flex items-center gap-1">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                                  </svg>
-                                  {rc.category}
-                                </span>
                                 
+                                {rc.description && (
+                                  <p className="text-sm text-gray-700 mt-2 pl-10">{rc.description}</p>
+                                )}
+                                
+                                {rc.reasonReject && isRejected && (
+                                  <div className="mt-3 pl-10 bg-rose-50 border border-rose-200 rounded-lg p-3">
+                                    <p className="text-xs font-semibold text-rose-600 mb-1">Rejection Reason:</p>
+                                    <p className="text-sm text-rose-600">{rc.reasonReject}</p>
+                                  </div>
+                                )}
+                                
+                                <div className="flex items-center justify-between gap-4 mt-3 pl-10">
+                                  <span className="flex items-center gap-1 text-xs text-gray-500">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                                    </svg>
+                                    {rc.category}
+                                  </span>
+                                  
+                                  {/* Action Buttons */}
+                                  <div className="flex items-center gap-2">
+                                    {/* Auditor Review Buttons - Any Auditor can review pending root causes */}
+                                    {isAuditor && isPending && !isAuditeeOwner && (
+                                      <>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleApproveRootCause(rc.rootCauseId);
+                                          }}
+                                          disabled={isProcessingReview}
+                                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-semibold disabled:opacity-50 flex items-center gap-1"
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                          </svg>
+                                          Approve
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setReviewingRootCauseId(rc.rootCauseId);
+                                          }}
+                                          disabled={isProcessingReview}
+                                          className="px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-semibold disabled:opacity-50 flex items-center gap-1"
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                          </svg>
+                                          Reject
+                                        </button>
+                                      </>
+                                    )}
+                                    
+                                    {/* AuditeeOwner Edit Button for Rejected */}
+                                    {isAuditeeOwner && isRejected && (
+                                      <button
+                                        onClick={() => handleEditRootCause(rc)}
+                                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-semibold flex items-center gap-1"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                        Edit
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          ))
+                            );
+                          })
                         ) : (
                           <div className="text-center py-8">
                             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -455,7 +672,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                               </svg>
                             </div>
                             <p className="text-base text-gray-500 font-medium">No root cause added yet</p>
-                            <p className="text-sm text-gray-400 mt-1">Click Add button to create the first root cause</p>
+                            <p className="text-sm text-gray-400 mt-1">Click Add New button to create the first root cause</p>
                           </div>
                         )}
                       </div>
@@ -465,7 +682,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                   {/* Witness */}
                   {finding.witnessId && (
                     <div 
-                      className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow cursor-pointer hover:border-purple-300 md:col-span-2"
+                      className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow cursor-pointer hover:border-purple-300"
                       onClick={() => witnessData && setShowWitnessModal(true)}
                       title="Click to view witness details"
                     >
@@ -486,20 +703,42 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                     </div>
                   )}
 
-                
+                  {/* Created By / Responsible Person */}
+                  {finding.createdBy && (
+                    <div 
+                      className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow cursor-pointer hover:border-indigo-300"
+                      onClick={() => createdByData && setShowCreatedByModal(true)}
+                      title="Click to view responsible person details"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 bg-indigo-200 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Creator Person </label>
+                        {createdByData && (
+                          <svg className="w-4 h-4 text-indigo-600 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        )}
+                      </div>
+                      <p className="text-base font-semibold text-gray-900 pl-[52px]">{createdByName || 'Loading...'}</p>
+                    </div>
+                  )}
 
                   {/* Dates */}
                   {finding.deadline && (
-                    <div className="bg-gradient-to-br from-red-50 to-red-100/50 border-2 border-red-200 rounded-xl p-6 shadow-md">
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 border-2 border-orange-200 rounded-xl p-6 shadow-md">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-red-200 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="w-10 h-10 bg-orange-200 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                         </div>
-                        <label className="text-xs font-bold text-red-700 uppercase tracking-wide">Deadline</label>
+                        <label className="text-xs font-bold text-orange-700 uppercase tracking-wide">Deadline</label>
                       </div>
-                      <p className="text-lg font-bold text-red-900 pl-[52px]">{formatDate(finding.deadline)}</p>
+                      <p className="text-lg font-bold text-orange-900 pl-[52px]">{formatDate(finding.deadline)}</p>
                     </div>
                   )}
                   {finding.createdAt && (
@@ -701,8 +940,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                     </svg>
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-2xl font-bold mb-1">Responsible Person Details</h3>
-                    <p className="text-purple-100 text-sm font-medium">Complete information</p>
+                    <h3 className="text-2xl font-bold mb-1">creator Person Details</h3>
+
                   </div>
                 </div>
               </div>
@@ -732,20 +971,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                   </div>
                 )}
 
-                {/* Phone Number */}
-                {createdByData.phoneNumber && (
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                        <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                        </svg>
-                      </div>
-                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Phone Number</label>
-                    </div>
-                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{createdByData.phoneNumber}</p>
-                  </div>
-                )}
 
                 {/* Department */}
                 {createdByData.department && (
@@ -777,15 +1002,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                   </div>
                 )}
 
-                {/* User ID */}
-                {createdByData.userId && (
-                  <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-4">
-                    <p className="text-sm text-gray-600">
-                      <span className="font-bold">User ID:</span>{' '}
-                      <span className="font-mono text-gray-800">{createdByData.userId}</span>
-                    </p>
-                  </div>
-                )}
+               
               </div>
 
               {/* Footer */}
@@ -927,6 +1144,131 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Root Cause Modal */}
+      {reviewingRootCauseId && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+            onClick={() => {
+              setReviewingRootCauseId(null);
+              setRejectReason('');
+            }}
+          />
+
+          {/* Modal */}
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div
+              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-auto animate-slideUp"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-gradient-to-r from-red-600 to-red-700 px-6 py-5 rounded-t-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </div>
+                    <h3 className="text-xl font-bold text-white">Reject Root Cause</h3>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setReviewingRootCauseId(null);
+                      setRejectReason('');
+                    }}
+                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                <p className="text-gray-700">Please provide a reason for rejecting this root cause:</p>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Enter rejection reason..."
+                  rows={4}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-colors resize-none"
+                  autoFocus
+                />
+              </div>
+
+              {/* Footer */}
+              <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
+                <button
+                  onClick={() => {
+                    setReviewingRootCauseId(null);
+                    setRejectReason('');
+                  }}
+                  disabled={isProcessingReview}
+                  className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors font-semibold disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleRejectRootCause(reviewingRootCauseId, rejectReason)}
+                  disabled={isProcessingReview || !rejectReason.trim()}
+                  className="px-5 py-2.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isProcessingReview ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Rejecting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Reject
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-[70] animate-slideDown">
+          <div
+            className={`flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl ${
+              toast.type === 'success'
+                ? 'bg-green-600 text-white'
+                : 'bg-rose-600 text-white'
+            }`}
+          >
+            {toast.type === 'success' ? (
+              <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <span className="font-semibold text-base">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 p-1 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         </div>
       )}

@@ -84,3 +84,21 @@ export const createRootCause = async (dto: CreateRootCauseDto): Promise<RootCaus
   const res = await apiClient.post('/RootCauses', pascalDto);
   return res.data;
 };
+
+// Update root cause
+export const updateRootCause = async (id: number, dto: Partial<CreateRootCauseDto>): Promise<RootCause> => {
+  const pascalDto = toPascalCase(dto);
+  console.log('Updating root cause with PascalCase:', pascalDto);
+  const res = await apiClient.put(`/RootCauses/${id}`, pascalDto);
+  return res.data;
+};
+
+// Approve root cause
+export const approveRootCause = async (id: number): Promise<void> => {
+  await apiClient.post(`/RootCauses/${id}/approve`);
+};
+
+// Reject root cause
+export const rejectRootCause = async (id: number, reasonReject: string): Promise<void> => {
+  await apiClient.post(`/RootCauses/${id}/reject`, { reasonReject });
+};
