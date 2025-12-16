@@ -102,3 +102,13 @@ export const approveRootCause = async (id: number): Promise<void> => {
 export const rejectRootCause = async (id: number, reasonReject: string): Promise<void> => {
   await apiClient.post(`/RootCauses/${id}/reject`, { reasonReject });
 };
+
+// Send root cause for review (change from Draft to Pending)
+export const sendRootCauseForReview = async (id: number): Promise<void> => {
+  await apiClient.post(`/RootCauses/${id}/pending-review`);
+};
+
+// Delete root cause
+export const deleteRootCause = async (id: number): Promise<void> => {
+  await apiClient.delete(`/RootCauses/${id}`);
+};
