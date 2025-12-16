@@ -37,6 +37,7 @@ const LeadAuditorAuditDetail = lazy(() => import("../pages/LeadAuditor/auditplan
 const LeadAuditorSpecifyCreatePlan = lazy(() => import("../pages/LeadAuditor/SpecifyCreatePlan"));
 const LeadAuditorLeadReports = lazy(() => import("../pages/LeadAuditor/LeadReports"));
 const LeadAuditorActionReview = lazy(() => import("../pages/LeadAuditor/ActionReview"));
+const LeadAuditorDashboard = lazy(() => import("../pages/LeadAuditor/Dashboard"));
 const SQAStaffLeadFinalReview = lazy(() => import("../pages/Auditor/LeadFinalReview/LeadFinalReview"));
 
 // CAPA Owner pages (formerly Department Staff)
@@ -557,6 +558,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <LeadAuditorAuditPlanning />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/dashboard"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <LeadAuditorDashboard />
                     </ProtectedRoute>
                 }
             />

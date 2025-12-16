@@ -7,7 +7,8 @@ interface BarData {
 
 interface BarConfig {
   dataKey: string;
-  fill: string;
+  // fill can be a single color string or a tuple for gradient [start, end]
+  fill: string | [string, string];
   name: string;
   radius?: [number, number, number, number];
 }
@@ -34,6 +35,21 @@ export const BarChartCard: React.FC<BarChartCardProps> = ({
       <h3 className="text-lg font-semibold text-primary-600 mb-4">{title}</h3>
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data}>
+          <defs>
+            {bars.map((bar, i) => {
+              if (Array.isArray(bar.fill)) {
+                const id = `grad-bar-${i}`;
+                const [from, to] = bar.fill;
+                return (
+                  <linearGradient id={id} key={id} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={from} stopOpacity={1} />
+                    <stop offset="100%" stopColor={to} stopOpacity={1} />
+                  </linearGradient>
+                );
+              }
+              return null;
+            })}
+          </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#e0f2fe" />
           <XAxis dataKey={xAxisKey} stroke="#64748b" style={{ fontSize: '12px' }} />
           <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
@@ -41,15 +57,18 @@ export const BarChartCard: React.FC<BarChartCardProps> = ({
             contentStyle={{ backgroundColor: '#fff', border: '1px solid #e0f2fe', borderRadius: '8px' }}
           />
           <Legend />
-          {bars.map((bar, index) => (
-            <Bar
-              key={index}
-              dataKey={bar.dataKey}
-              fill={bar.fill}
-              radius={bar.radius || [8, 8, 0, 0]}
-              name={bar.name}
-            />
-          ))}
+          {bars.map((bar, index) => {
+            const fill = Array.isArray(bar.fill) ? `url(#grad-bar-${index})` : String(bar.fill);
+            return (
+              <Bar
+                key={index}
+                dataKey={bar.dataKey}
+                fill={fill}
+                radius={bar.radius || [8, 8, 0, 0]}
+                name={bar.name}
+              />
+            );
+          })}
         </BarChart>
       </ResponsiveContainer>
     </div>
