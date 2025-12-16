@@ -3,6 +3,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { BarChartCard } from '../../../components/charts/BarChartCard';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { useState } from 'react';
 
 // Department bar data
 const barData = [
@@ -15,6 +16,12 @@ const barData = [
   { department: 'Legal', Findings: 24, 'Finding Open': 38, 'Finding Closed': 34 },
   { department: 'Compliance', Findings: 12, 'Finding Open': 8, 'Finding Closed': 6 },
   { department: 'Quality', Findings: 30, 'Finding Open': 24, 'Finding Closed': 28 },
+];
+
+const orderStatusData = [
+  { name: 'Sales', value: 68, color: '#0284c7' },
+  { name: 'Product', value: 25, color: '#ff6b6b' },
+  { name: 'Income', value: 14, color: '#10b981' },
 ];
 
 const monthlyPie = [
@@ -72,6 +79,75 @@ const DonutSummary: React.FC<{
   );
 };
 
+const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: string }[] }> = ({ data }) => {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const percentage = Math.round((data.reduce((s, d) => s + d.value, 0) / 100) * 100);
+
+  const gradientData = [
+    { name: 'Draft', value: 45, startColor: '#ffb84d', endColor: '#ff7a00' },
+    { name: 'Pending', value: 35, startColor: '#60e0ff', endColor: '#0284c7' },
+    { name: 'Inprogress', value: 20, startColor: '#7ee787', endColor: '#10b981' },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4 w-full h-full flex flex-col">
+      <h3 className="text-base font-semibold text-gray-800 mb-4">Audits</h3>
+      
+      <div className="flex flex-col items-center mb-4">
+        <div style={{ width: 150, height: 150 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <defs>
+                {gradientData.map((item, idx) => (
+                  <linearGradient id={`grad-donut-${idx}`} key={`grad-donut-${idx}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={item.startColor} stopOpacity={1} />
+                    <stop offset="100%" stopColor={item.endColor} stopOpacity={1} />
+                  </linearGradient>
+                ))}
+              </defs>
+              <Pie
+                data={gradientData}
+                dataKey="value"
+                startAngle={90}
+                endAngle={-270}
+                innerRadius={45}
+                outerRadius={75}
+                paddingAngle={2}
+                activeIndex={activeIndex}
+                activeOuterRadius={110}
+                onMouseEnter={(_, index) => setActiveIndex(index)}
+                onMouseLeave={() => setActiveIndex(null)}
+              >
+                {gradientData.map((entry, idx) => (
+                  <Cell key={idx} fill={`url(#grad-donut-${idx})`} />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        
+        <div className="text-center mt-3">
+          <div className="text-2xl font-bold text-gray-800">{percentage}%</div>
+          <div className="text-xs text-gray-500 mt-1">Total</div>
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t pt-3">
+        {gradientData.map((item, idx) => (
+          <div key={idx} className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.startColor }}></div>
+              <span className="text-xs text-gray-700">{item.name}</span>
+            </div>
+            <span className="text-xs font-medium text-gray-800">{item.value}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const LeadAuditorDashboard: React.FC = () => {
   const { user } = useAuth();
   const layoutUser = user ? { name: (user as any).fullName || user.name, avatar: undefined } : undefined;
@@ -79,21 +155,24 @@ const LeadAuditorDashboard: React.FC = () => {
   return (
     <MainLayout title="Dashboard" user={layoutUser}>
       <div className="space-y-6">
-        <BarChartCard
-          title="Findings"
-          data={barData}
-          xAxisKey="department"
-          bars={[
-            { dataKey: 'Findings', fill: ['#ffb84d', '#ff7a00'], name: 'Findings' },
-            { dataKey: 'Finding Open', fill: ['#60e0ff', '#0284c7'], name: 'Finding Open' },
-            { dataKey: 'Finding Closed', fill: ['#7ee787', '#10b981'], name: 'Finding Closed' },
-          ]}
-          height={280}
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <DonutSummary data={monthlyPie} title="Monthly" subtitle="65,127" />
-          <DonutSummary data={yearlyPie} title="Yearly" subtitle="984,246" />
+        <div className="flex gap-6" style={{ height: 420 }}>
+          <div className="w-80 h-full">
+            <OrderStatusCard data={orderStatusData} />
+          </div>
+          <div className="flex-1 h-full">
+            <BarChartCard
+              title="Findings"
+              data={barData}
+              xAxisKey="department"
+              bars={[
+                { dataKey: 'Findings', fill: ['#ffb84d', '#ff7a00'], name: 'Findings' },
+                { dataKey: 'Finding Open', fill: ['#60e0ff', '#0284c7'], name: 'Finding Open' },
+                { dataKey: 'Finding Closed', fill: ['#7ee787', '#10b981'], name: 'Finding Closed' },
+              ]}
+              height={280}
+              className="h-full"
+            />
+          </div>
         </div>
       </div>
     </MainLayout>

@@ -50,7 +50,6 @@ export const BarChartCard: React.FC<BarChartCardProps> = ({
               return null;
             })}
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e0f2fe" />
           <XAxis dataKey={xAxisKey} stroke="#64748b" style={{ fontSize: '12px' }} />
           <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
           <Tooltip
