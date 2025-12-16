@@ -154,7 +154,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
     ? 'Loading plans...'
     : existingPlans.length > 0
     ? 'No plans match the current filters.'
-    : 'No audit plans found. Click "Create New Plan" to get started.';
+    : 'No audit plans found. ';
 
   return (
     <DataTable
