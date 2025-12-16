@@ -41,15 +41,31 @@ export interface GetAvailableMembersParams {
   excludePreviousPeriod?: boolean;
   previousPeriodStartDate?: string;
   previousPeriodEndDate?: string;
+  // New params from updated Swagger: /api/AuditTeam/available-members?startDate=&endDate=
+  startDate?: string;
+  endDate?: string;
 }
 
 export const getAvailableTeamMembers = async (params: GetAvailableMembersParams): Promise<any> => {
-  const { auditId, excludePreviousPeriod = false, previousPeriodStartDate, previousPeriodEndDate } = params;
+  const {
+    auditId,
+    excludePreviousPeriod = false,
+    previousPeriodStartDate,
+    previousPeriodEndDate,
+    startDate,
+    endDate,
+  } = params;
   
   let url = `/AuditTeam/available-members?auditId=${encodeURIComponent(auditId)}&excludePreviousPeriod=${excludePreviousPeriod}`;
   
+  // Legacy params (still kept for backward compatibility)
   if (excludePreviousPeriod && previousPeriodStartDate && previousPeriodEndDate) {
     url += `&previousPeriodStartDate=${encodeURIComponent(previousPeriodStartDate)}&previousPeriodEndDate=${encodeURIComponent(previousPeriodEndDate)}`;
+  }
+
+  // New params preferred by Swagger: startDate / endDate
+  if (startDate && endDate) {
+    url += `&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
   }
   
   const res: any = await apiClient.get(url);
@@ -63,15 +79,33 @@ export interface GetAvailableAuditorsParams {
   periodFrom?: string;
   periodTo?: string;
   excludePreviousPeriod?: true;
+  // New params from updated Swagger; if not provided, we fallback to periodFrom/periodTo
+  startDate?: string;
+  endDate?: string;
 }
 
 export const getAvailableAuditors = async (params: GetAvailableAuditorsParams = {}): Promise<any[]> => {
-  const { auditId = '', periodFrom, periodTo, excludePreviousPeriod = true } = params;
+  const {
+    auditId = '',
+    periodFrom,
+    periodTo,
+    excludePreviousPeriod = true,
+    startDate,
+    endDate,
+  } = params;
   const query = new URLSearchParams();
   if (auditId) query.append('auditId', auditId);
   query.append('excludePreviousPeriod', String(excludePreviousPeriod));
+
+  // Legacy params (still kept for backward compatibility)
   if (periodFrom) query.append('previousPeriodStartDate', periodFrom);
   if (periodTo) query.append('previousPeriodEndDate', periodTo);
+
+  // New params preferred by Swagger
+  const effectiveStart = startDate || periodFrom;
+  const effectiveEnd = endDate || periodTo;
+  if (effectiveStart) query.append('startDate', effectiveStart);
+  if (effectiveEnd) query.append('endDate', effectiveEnd);
 
   const url = `/AuditTeam/available-members${query.toString() ? `?${query.toString()}` : ''}`;
   const res: any = await apiClient.get(url);

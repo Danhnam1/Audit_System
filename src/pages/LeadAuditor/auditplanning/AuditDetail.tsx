@@ -7,7 +7,7 @@ import {
   getAuditPlanById,
   getAuditScopeDepartmentsByAuditId,
   approveForwardDirector,
-  rejectPlanContent,
+  declinedPlanContent,
   getAuditApprovals,
   getSensitiveDepartments,
 } from '../../../api/audits';
@@ -717,7 +717,8 @@ const AuditDetail = () => {
     }
     try {
       setActionLoading(true);
-      await rejectPlanContent(auditId, { comment: reason });
+      // Lead Auditor declines the plan content before it reaches Director
+      await declinedPlanContent(auditId, { comment: reason });
       toast.success('Plan has been rejected.');
       await loadAuditDetails();
       setShowRejectModal(false);

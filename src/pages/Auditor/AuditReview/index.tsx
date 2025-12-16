@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
 import AuditReviewList from './components/AuditReviewList';
 import { FilterBar } from './components/FilterBar';
-import { getAuditPlanById, approveForwardDirector, rejectPlanContent } from '../../../api/audits';
+import { getAuditPlanById, approveForwardDirector, declinedPlanContent } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
 import { getChecklistTemplates } from '../../../api/checklists';
@@ -373,7 +373,8 @@ const AuditorAuditReview = () => {
 
   const handleReject = async (auditId: string, comment?: string) => {
     try {
-      await rejectPlanContent(auditId, { comment });
+      // This screen represents Lead Auditor review – use declined-plan-content endpoint
+      await declinedPlanContent(auditId, { comment });
       await loadPlans();
       toast.success('Rejected the Audit Plan');
       setShowRejectModal(false);

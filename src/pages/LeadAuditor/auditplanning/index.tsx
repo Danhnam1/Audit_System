@@ -36,7 +36,19 @@ import { Step5Schedule } from './components/PlanForm/Step5Schedule';
 import { SensitiveAreaForm } from './components/PlanForm/SensitiveAreaForm';
 import { PermissionPreviewPanel } from './components/PlanForm/PermissionPreviewPanel';
 
-const LEAD_AUDITOR_VISIBLE_STATUSES = ['draft', 'pendingreview', 'pendingdirectorapproval', 'approved', 'rejected'];
+// Lead Auditor sees plans in review / execution flow, including rejected states:
+// - PendingReview            : waiting Lead review
+// - PendingDirectorApproval  : already forwarded to Director
+// - InProgress               : audit is being executed
+// - Declined                 : rejected by Lead Auditor
+// - Rejected                 : rejected by Director
+const LEAD_AUDITOR_VISIBLE_STATUSES = [
+  'pendingreview',
+  'pendingdirectorapproval',
+  'inprogress',
+  'declined',
+  'rejected',
+];
 
 const LeadAuditorAuditPlanning = () => {
   const { user } = useAuth();

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
-import { getAuditScopeDepartmentsByAuditId, getAuditPlans } from '../../../api/audits';
+import { getAuditScopeDepartmentsByAuditId, getAuditPlans, getSensitiveDepartments } from '../../../api/audits';
 import { createAuditAssignment, getAuditAssignments, bulkCreateAuditAssignments } from '../../../api/auditAssignments';
 import { getDepartmentById } from '../../../api/departments';
 import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
@@ -146,20 +146,65 @@ export default function AuditAssignment() {
           
           const deptList = unwrap<Department>(deptData);
           const deptArray = Array.isArray(deptList) ? deptList : [];
-          
-          // Map departments with auditIds + sensitive info (best-effort)
+
+          // Load sensitive flags for this audit and build a quick lookup by deptId
+          let sensitiveByDept: Record<
+            number,
+            { sensitiveFlag: boolean; areas?: string[]; notes?: string }
+          > = {};
+
+          try {
+            const sensitiveRaw: any = await getSensitiveDepartments(selectedAuditId);
+            const sensitiveArr: any[] = Array.isArray(sensitiveRaw)
+              ? (sensitiveRaw as any[])
+              : (sensitiveRaw?.$values as any[]) || [];
+
+            sensitiveByDept = sensitiveArr.reduce(
+              (acc: typeof sensitiveByDept, item: any) => {
+                const deptId: number =
+                  Number(item.deptId ?? item.DeptId ?? NaN);
+                if (!Number.isNaN(deptId)) {
+                  acc[deptId] = {
+                    sensitiveFlag: Boolean(
+                      item.sensitiveFlag ?? item.SensitiveFlag ?? false
+                    ),
+                    areas:
+                      item.areas ??
+                      item.Areas ??
+                      (Array.isArray(item.sensitiveAreas)
+                        ? item.sensitiveAreas
+                        : undefined),
+                    notes: item.notes ?? item.Notes,
+                  };
+                }
+                return acc;
+              },
+              {} as typeof sensitiveByDept
+            );
+          } catch (sensErr) {
+            console.warn(
+              '[AuditAssignment] Failed to load sensitive departments:',
+              sensErr
+            );
+          }
+
+          // Map departments with auditIds + merged sensitive info
           const mappedDepartments: Department[] = deptArray.map((dept: any) => {
-            // Normalize sensitive flags/areas from various possible backend field names
-            const sensitiveAreas =
-              Array.isArray(dept?.sensitiveAreas)
+            const backendSensitive = sensitiveByDept[dept.deptId];
+
+            // Normalize sensitive areas from department or sensitive map
+            const sensitiveAreas: string[] | undefined =
+              backendSensitive?.areas ??
+              (Array.isArray(dept?.sensitiveAreas)
                 ? dept.sensitiveAreas
                 : Array.isArray(dept?.areas)
                 ? dept.areas
                 : Array.isArray(dept?.SensitiveAreas)
                 ? dept.SensitiveAreas
-                : undefined;
+                : undefined);
 
             const sensitiveFlag =
+              !!backendSensitive?.sensitiveFlag ||
               !!dept?.sensitiveFlag ||
               !!dept?.isSensitive ||
               !!dept?.sensitive ||
@@ -172,6 +217,8 @@ export default function AuditAssignment() {
               ...dept,
               auditIds: [selectedAuditId],
               sensitiveFlag,
+              hasSensitiveAreas:
+                sensitiveFlag || !!(sensitiveAreas && sensitiveAreas.length),
               sensitiveAreas,
             } as Department;
           });
@@ -259,42 +306,62 @@ export default function AuditAssignment() {
     }
 
     const audit = audits.find(a => a.auditId === selectedAuditId);
-    if (!audit || !audit.startDate || !audit.endDate) {
-      toast.error('Audit dates are required for QR grant');
+    if (!audit) {
+      toast.error('Audit data is required for QR grant');
       return;
     }
 
-    // Validate dates - ensure we're working with UTC times
-    const now = new Date();
-    // Parse audit dates - if they're strings, they should be in ISO format
-    const auditStartDate = new Date(audit.startDate);
-    const auditEndDate = new Date(audit.endDate);
-    
-    // Validate parsed dates
-    if (isNaN(auditStartDate.getTime()) || isNaN(auditEndDate.getTime())) {
-      toast.error('Invalid audit dates. Please check the audit period.');
-      return;
-    }
-    
-    // Check if audit end date is in the past (compare UTC times)
-    const nowUtc = new Date(now.toISOString());
-    const auditEndDateUtc = new Date(auditEndDate.toISOString());
-    
-    if (auditEndDateUtc < nowUtc) {
-      toast.warning('Audit end date has passed. QR code will be extended for 30 days from now.');
+    // BE mới là nơi ràng buộc validity window (ValidFrom/ValidTo).
+    // FE KHÔNG chặn cấp QR nếu thiếu lịch; chỉ cố gắng gửi giá trị hợp lý nếu có.
+    const nowUtc = new Date();
+
+    // Ưu tiên: Fieldwork Start / Evidence Due nếu đã cấu hình
+    const fieldworkStartRaw: string | undefined =
+      (audit as any).fieldworkStart ||
+      (audit as any).FieldworkStart ||
+      (audit as any).fieldworkStartDate ||
+      (audit as any).FieldworkStartDate;
+
+    const evidenceDueRaw: string | undefined =
+      (audit as any).evidenceDue ||
+      (audit as any).EvidenceDue ||
+      (audit as any).evidenceDueDate ||
+      (audit as any).EvidenceDueDate;
+
+    let validFromDate: Date = nowUtc;
+    let validToDate: Date = new Date(nowUtc.getTime() + 7 * 24 * 60 * 60 * 1000); // fallback 7 ngày
+
+    if (fieldworkStartRaw) {
+      const d = new Date(fieldworkStartRaw);
+      if (!isNaN(d.getTime())) {
+        validFromDate = d;
+      }
+    } else if (audit.startDate) {
+      const d = new Date(audit.startDate);
+      if (!isNaN(d.getTime())) {
+        validFromDate = d;
+      }
     }
 
-    // Set validFrom: use current time (UTC) if audit hasn't started, otherwise use audit start date
-    const auditStartDateUtc = new Date(auditStartDate.toISOString());
-    const validFrom = auditStartDateUtc > nowUtc ? auditStartDateUtc : nowUtc;
-    
-    // Set validTo: if audit has ended, extend by 30 days from now (UTC)
-    let validTo = auditEndDateUtc;
-    if (auditEndDateUtc < nowUtc) {
-      // If audit has ended, extend QR validity by 30 days from now (UTC)
-      validTo = new Date(nowUtc.getTime() + 30 * 24 * 60 * 60 * 1000);
-      toast.info('Audit has ended. QR code will be valid for 30 days from now.');
+    if (evidenceDueRaw) {
+      const d = new Date(evidenceDueRaw);
+      if (!isNaN(d.getTime())) {
+        validToDate = d;
+      }
+    } else if (audit.endDate) {
+      const d = new Date(audit.endDate);
+      if (!isNaN(d.getTime())) {
+        validToDate = d;
+      }
     }
+
+    // Nếu validTo trước validFrom, kéo validTo về sau validFrom 1 ngày để tránh lỗi client.
+    if (validToDate <= validFromDate) {
+      validToDate = new Date(validFromDate.getTime() + 24 * 60 * 60 * 1000);
+    }
+
+    const validFrom = validFromDate.toISOString();
+    const validTo = validToDate.toISOString();
 
     setIssuingQr(true);
     setQrGrantResults([]);
@@ -317,8 +384,8 @@ export default function AuditAssignment() {
             auditId: selectedAuditId,
             auditorId: auditorId,
             deptId: selectedDepartment.deptId,
-            validFrom: validFrom.toISOString(),
-            validTo: validTo.toISOString(),
+            validFrom,
+            validTo,
             // TEST MODE: Use test dates instead
             // validFrom: testValidFrom.toISOString(),
             // validTo: testValidTo.toISOString(),
@@ -328,14 +395,8 @@ export default function AuditAssignment() {
           
           console.log('[AuditAssignment] Issuing QR grant for auditor:', auditorId, {
             requestPayload,
-            auditStartDate: audit.startDate,
-            auditEndDate: audit.endDate,
-            validFrom: validFrom.toISOString(),
-            validTo: validTo.toISOString(),
-            now: now.toISOString(),
-            auditEndDateInPast: auditEndDate < now,
-            // TEST INFO: Check if QR will be expired immediately
-            willBeExpired: validTo < now,
+            validFrom,
+            validTo,
           });
           
           const qrGrant = await issueAccessGrant(requestPayload);
@@ -1525,6 +1586,38 @@ export default function AuditAssignment() {
                   const now = new Date();
                   const auditEndDate = audit.endDate ? new Date(audit.endDate) : null;
                   const auditHasEnded = auditEndDate && auditEndDate < now;
+
+                  // Derive QR validity window the same way we build issue payload:
+                  const fieldworkStartRaw: string | undefined =
+                    (audit as any).fieldworkStart ||
+                    (audit as any).FieldworkStart ||
+                    (audit as any).fieldworkStartDate ||
+                    (audit as any).FieldworkStartDate;
+
+                  const evidenceDueRaw: string | undefined =
+                    (audit as any).evidenceDue ||
+                    (audit as any).EvidenceDue ||
+                    (audit as any).evidenceDueDate ||
+                    (audit as any).EvidenceDueDate;
+
+                  let validityFrom: Date | null = null;
+                  let validityTo: Date | null = null;
+
+                  if (fieldworkStartRaw) {
+                    const d = new Date(fieldworkStartRaw);
+                    if (!isNaN(d.getTime())) validityFrom = d;
+                  } else if (audit.startDate) {
+                    const d = new Date(audit.startDate);
+                    if (!isNaN(d.getTime())) validityFrom = d;
+                  }
+
+                  if (evidenceDueRaw) {
+                    const d = new Date(evidenceDueRaw);
+                    if (!isNaN(d.getTime())) validityTo = d;
+                  } else if (audit.endDate) {
+                    const d = new Date(audit.endDate);
+                    if (!isNaN(d.getTime())) validityTo = d;
+                  }
                   
                   return (
                     <div className="space-y-3">
@@ -1559,13 +1652,13 @@ export default function AuditAssignment() {
                               QR Code Validity Period
                             </p>
                             <p className={`text-xs mt-1 ${auditHasEnded ? 'text-amber-800' : 'text-blue-800'}`}>
-                              {auditHasEnded ? (
+                              {validityFrom && validityTo ? (
                                 <>
-                                  Audit has ended. QR codes will be valid for <strong>30 days from now</strong> to allow access for follow-up activities.
+                                  QR codes will be valid from <strong>{validityFrom.toLocaleDateString()}</strong> until <strong>{validityTo.toLocaleDateString()}</strong>.
                                 </>
                               ) : (
                                 <>
-                                  QR codes will be valid from <strong>{audit.startDate ? new Date(audit.startDate).toLocaleDateString() : 'audit start'}</strong> until <strong>{audit.endDate ? new Date(audit.endDate).toLocaleDateString() : 'audit end'}</strong>.
+                                  QR validity period follows the audit schedule configured by the Lead Auditor.
                                 </>
                               )}
                             </p>

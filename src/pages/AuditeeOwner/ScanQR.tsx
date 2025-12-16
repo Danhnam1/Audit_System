@@ -676,7 +676,9 @@ export default function ScanQR() {
                     </div>
                   ) : (() => {
                     const reasonLower = (scanResult.reason || '').toLowerCase();
+                    // Backend returns "Expired" when now is outside [ValidFrom, ValidTo]
                     const isExpired = reasonLower.includes('expired');
+                    // Legacy support: backend currently does NOT send "NotYetValid", but keep check for safety
                     const isNotYetValid = reasonLower.includes('notyetvalid') || reasonLower.includes('not yet');
 
                     return (
@@ -736,7 +738,7 @@ export default function ScanQR() {
                             {isExpired && (
                             <div className="mt-3 p-3 bg-white rounded-lg border border-red-200">
                               <p className="text-xs text-gray-600">
-                                <strong>Note:</strong> QR codes are valid for the duration of the audit period (from audit start date to audit end date). If you need to access the checklist after the audit period has ended, please ask the Lead Auditor to issue a new QR code.
+                                <strong>Note:</strong> QR codes are only valid within the time window defined by the Lead Auditor (from <em>Fieldwork Start</em> to <em>Evidence Due</em>). If you need access outside this window, please ask the Lead Auditor to issue a new QR code.
                               </p>
                             </div>
                           )}

@@ -5,7 +5,7 @@ import AuditReviewList from './components/AuditReviewList';
 import { FilterBar } from './components/FilterBar';
 // PlanReviewPanel previously provided inline actions; we removed inline panel to avoid duplicate UI with modal
 // import PlanReviewPanel from './components/PlanReviewPanel';
-import { getAuditPlanById, approveForwardDirector, rejectPlanContent, getSensitiveDepartments } from '../../../api/audits';
+import { getAuditPlanById, approveForwardDirector, declinedPlanContent, getSensitiveDepartments } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
 import { normalizePlanDetails, unwrap } from '../../../utils/normalize';
 import { getChecklistTemplates } from '../../../api/checklists';
@@ -330,7 +330,8 @@ const SQAHeadAuditReview = () => {
 
   const handleReject = async (auditId: string, comment?: string) => {
     try {
-      await rejectPlanContent(auditId, { comment });
+      // Lead Auditor declines the plan content (separate endpoint from Director reject)
+      await declinedPlanContent(auditId, { comment });
       await loadPlans();
       toast.success('Plan rejected successfully.');
       setSelectedPlanFull(null);
