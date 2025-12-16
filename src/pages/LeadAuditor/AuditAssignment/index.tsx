@@ -5,7 +5,7 @@ import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getAuditScopeDepartmentsByAuditId, getAuditPlans } from '../../../api/audits';
 import { createAuditAssignment, getAuditAssignments, bulkCreateAuditAssignments } from '../../../api/auditAssignments';
 import { getDepartmentById } from '../../../api/departments';
-
+import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
 import { issueAccessGrant, getAccessGrants } from '../../../api/accessGrant';
 
 import { getUserById } from '../../../api/adminUsers';
@@ -378,6 +378,18 @@ export default function AuditAssignment() {
           status: 'Assigned',
         });
         toast.success('Auditor assigned successfully!');
+      }
+      
+      // Add checklist items from template to this audit and department
+      try {
+        console.log('📝 Adding checklist items from template - AuditId:', selectedAuditId, 'DeptId:', selectedDepartment.deptId);
+        await createAuditChecklistItemsFromTemplate(selectedAuditId, selectedDepartment.deptId);
+        console.log('✅ Checklist items added successfully');
+        // toast.success('Checklist items added from template');
+      } catch (checklistError: any) {
+        console.error('Failed to add checklist items:', checklistError);
+        // Don't fail the whole assignment if checklist fails, just warn
+        // toast.warning('Assignment successful, but failed to add checklist items. Please add manually.');
       }
       
       // Always issue QR codes after assignment (not just for sensitive areas)
