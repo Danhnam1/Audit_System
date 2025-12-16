@@ -27,13 +27,14 @@ const CompliantModal = ({
 }: CompliantModalProps) => {
   const [submitting, setSubmitting] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState<string>('');
   
   // Get current user ID from auth store
   const currentUserId = useUserId();
   
   // Additional fields
   const [reason, setReason] = useState(''); // Why it meets standards
-  const [selectedWitnesses, setSelectedWitnesses] = useState<string[]>([]); // Selected witness IDs
+  const [selectedWitnesses, setSelectedWitnesses] = useState<string>(''); // Single witness ID
   const [departmentUsers, setDepartmentUsers] = useState<AdminUserDto[]>([]); // Users from department
   const [loadingUsers, setLoadingUsers] = useState(false); // Loading state for users
   const [showWitnessesDropdown, setShowWitnessesDropdown] = useState(false); // Dropdown visibility
@@ -76,30 +77,44 @@ const CompliantModal = ({
   };
 
   const handleWitnessToggle = (userId: string) => {
-    setSelectedWitnesses(prev =>
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
-    );
+    // Single selection: if clicking the same user, deselect; otherwise select the new user
+    setSelectedWitnesses(prev => prev === userId ? '' : userId);
   };
 
   const getSelectedWitnessesDisplay = (): string => {
-    if (selectedWitnesses.length === 0) return '';
-    return selectedWitnesses
-      .map(id => departmentUsers.find(u => u.userId === id)?.fullName || '')
-      .filter(name => name)
-      .join(', ');
+    if (!selectedWitnesses) return '';
+    return departmentUsers.find(u => u.userId === selectedWitnesses)?.fullName || '';
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
+      const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+      
+      // Validate file sizes
+      const invalidFiles = newFiles.filter(file => file.size > maxSize);
+      if (invalidFiles.length > 0) {
+        setFileError(`The following files exceed the 10MB limit: ${invalidFiles.map(f => `${f.name} (${(f.size / 1024 / 1024).toFixed(2)}MB)`).join(', ')}`);
+        // Clear the input
+        e.target.value = '';
+        return;
+      }
+      
+      // Clear file error if valid
+      if (fileError) {
+        setFileError('');
+      }
+      
       setFiles(prev => [...prev, ...newFiles]);
     }
   };
 
   const removeFile = (index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
+    // Clear file error when removing files
+    if (fileError) {
+      setFileError('');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -113,6 +128,20 @@ const CompliantModal = ({
     
     if (!departmentName?.trim()) {
       alert('Department is required');
+      return;
+    }
+    
+    // Validate files - check if there's an error or files exceed limit
+    if (fileError) {
+      alert('Please fix file upload errors before submitting');
+      return;
+    }
+    
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const invalidCurrentFiles = files.filter(file => file.size > maxSize);
+    if (invalidCurrentFiles.length > 0) {
+      setFileError(`Some files exceed 10MB limit: ${invalidCurrentFiles.map(f => f.name).join(', ')}`);
+      alert('Please remove files that exceed 10MB limit');
       return;
     }
     
@@ -135,8 +164,7 @@ const CompliantModal = ({
       console.log('currentUserId (GUID from JWT):', currentUserId);
 
       // Get witness userId (it's a GUID string from departmentUsers)
-      const witnessUserId = selectedWitnesses.length > 0 ? selectedWitnesses[0] : '';
-      console.log('Selected witness userId:', witnessUserId);
+      console.log('Selected witness userId:', selectedWitnesses);
 
       // Create compliant payload for API
       // Backend expects: auditChecklistItemId, title, reason, dateOfCompliance, timeOfCompliance, department, witnessId (GUID string), createdBy (GUID string)
@@ -146,7 +174,7 @@ const CompliantModal = ({
         dateOfCompliance: complianceDate,
         timeOfCompliance: complianceTime,
         department: departmentName,
-        witnessId: witnessUserId, // First witness's userId (GUID string)
+        witnessId: selectedWitnesses || '', // Single witness's userId (GUID string)
         createdBy: currentUserId || '', // Current user ID as GUID string from JWT token
       };
 
@@ -221,9 +249,10 @@ const CompliantModal = ({
       
       // Reset form
       setReason('');
-      setSelectedWitnesses([]);
+      setSelectedWitnesses('');
       setComplianceTime(defaultTime);
       setFiles([]);
+      setFileError('');
       
       onSuccess?.();
       onClose();
@@ -268,7 +297,7 @@ const CompliantModal = ({
 
     // Check if form has any data
     const hasData = reason.trim() !== '' || 
-                   selectedWitnesses.length > 0 || 
+                   selectedWitnesses !== '' || 
                    complianceTime !== defaultTime ||
                    files.length > 0;
 
@@ -283,9 +312,10 @@ const CompliantModal = ({
 
   const handleConfirmCancel = () => {
     setReason('');
-    setSelectedWitnesses([]);
+    setSelectedWitnesses('');
     setComplianceTime(defaultTime);
     setFiles([]);
+    setFileError('');
     setShowCancelConfirmModal(false);
     onClose();
   };
@@ -397,10 +427,10 @@ const CompliantModal = ({
               />
             </div>
 
-            {/* Witnesses - Multi-select dropdown */}
+            {/* Witnesses - Single select dropdown */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Witnesses
+                Witness 
               </label>
               <div className="relative">
                 <button
@@ -411,8 +441,8 @@ const CompliantModal = ({
                   <span className="text-gray-700">
                     {loadingUsers ? (
                       <span className="text-gray-500">Loading users...</span>
-                    ) : selectedWitnesses.length === 0 ? (
-                      <span className="text-gray-500">Select witnesses from department...</span>
+                    ) : !selectedWitnesses ? (
+                      <span className="text-gray-500">Select a witness from department...</span>
                     ) : (
                       getSelectedWitnessesDisplay()
                     )}
@@ -466,12 +496,13 @@ const CompliantModal = ({
                           className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                         >
                           <input
-                            type="checkbox"
-                            checked={selectedWitnesses.includes(user.userId || '')}
+                            type="radio"
+                            name="witness"
+                            checked={selectedWitnesses === user.userId}
                             onChange={() =>
                               handleWitnessToggle(user.userId || '')
                             }
-                            className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-2 focus:ring-primary-500"
+                            className="w-4 h-4 text-primary-600 border-gray-300 focus:ring-2 focus:ring-primary-500"
                           />
                           <span className="ml-3 text-sm text-gray-700">
                             {user.fullName}
@@ -492,14 +523,19 @@ const CompliantModal = ({
             {/* File Upload */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Attachments (Optional)
+                Attachments (Optional) <span className="text-gray-500 text-xs">(Max 10MB per file)</span>
               </label>
               <input
                 type="file"
                 multiple
                 onChange={handleFileChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                  fileError ? 'border-red-300' : 'border-gray-300'
+                }`}
               />
+              {fileError && (
+                <p className="mt-1 text-sm text-red-600">{fileError}</p>
+              )}
               
               {files.length > 0 && (
                 <div className="mt-4 space-y-2">

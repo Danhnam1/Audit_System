@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getActionById, type Action } from '../../api/actions';
+import { getActionById, getActionsByFinding, type Action } from '../../api/actions';
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById, type AdminUserDto } from '../../api/adminUsers';
 
@@ -7,6 +7,7 @@ interface ActionDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   actionId: string;
+  findingId?: string; // Optional: to load all related actions
   showReviewButtons?: boolean;
   onApprove?: (feedback: string) => Promise<void>;
   onReject?: (feedback: string) => Promise<void>;
@@ -17,6 +18,7 @@ const ActionDetailModal = ({
   isOpen, 
   onClose, 
   actionId, 
+  findingId,
   showReviewButtons = false,
   onApprove,
   onReject,
@@ -31,11 +33,49 @@ const ActionDetailModal = ({
   const [reviewFeedback, setReviewFeedback] = useState('');
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [reviewType, setReviewType] = useState<'approve' | 'reject'>('approve');
+  
+  // Multi-action support
+  const [relatedActions, setRelatedActions] = useState<Action[]>([]);
+  const [loadingRelatedActions, setLoadingRelatedActions] = useState(false);
+  const [selectedActionId, setSelectedActionId] = useState<string>(actionId);
+  // const [showActionsList, setShowActionsList] = useState(false);
+  const [relatedActionsUsers, setRelatedActionsUsers] = useState<Record<string, AdminUserDto>>({});
 
+  // Sync selectedActionId with actionId prop when modal opens
   useEffect(() => {
     if (isOpen && actionId) {
+      console.log('🔄 Syncing selectedActionId with actionId prop:', actionId);
+      setSelectedActionId(actionId);
+    }
+  }, [isOpen, actionId]);
+
+  useEffect(() => {
+    console.log('=== ActionDetailModal useEffect ===');
+    console.log('isOpen:', isOpen);
+    console.log('selectedActionId:', selectedActionId);
+    console.log('findingId:', findingId);
+    
+    if (isOpen && selectedActionId) {
       loadAction();
+      if (findingId) {
+        console.log('✅ findingId exists, calling loadRelatedActions()');
+        loadRelatedActions();
+        
+        // Auto-refresh related actions every 5 seconds for real-time updates
+        const refreshInterval = setInterval(() => {
+          console.log('🔄 Auto-refreshing related actions...');
+          loadRelatedActions();
+        }, 5000);
+        
+        return () => {
+          console.log('🛑 Clearing refresh interval');
+          clearInterval(refreshInterval);
+        };
+      } else {
+        console.log('⚠️ No findingId provided, skipping loadRelatedActions()');
+      }
     } else {
+      console.log('❌ Modal closed or no selectedActionId, resetting state');
       // Reset state when modal closes
       setAction(null);
       setAssignedToUser(null);
@@ -44,17 +84,70 @@ const ActionDetailModal = ({
       setReviewFeedback('');
       setShowFeedbackInput(false);
       setReviewType('approve');
+      setRelatedActions([]);
     }
-  }, [isOpen, actionId]);
+  }, [isOpen, selectedActionId, findingId]);
+
+  // Auto-refresh current action details every 10 seconds
+  useEffect(() => {
+    if (isOpen && selectedActionId && !loadingRelatedActions) {
+      const actionRefreshInterval = setInterval(() => {
+        console.log('🔄 Auto-refreshing action details...');
+        loadAction();
+      }, 10000);
+      
+      return () => {
+        clearInterval(actionRefreshInterval);
+      };
+    }
+  }, [isOpen, selectedActionId]);
+
+  const loadRelatedActions = async () => {
+    if (!findingId) {
+      console.log('No findingId provided, skipping related actions load');
+      return;
+    }
+    
+    console.log('Loading related actions for finding:', findingId);
+    setLoadingRelatedActions(true);
+    try {
+      // Load all actions for this finding using the correct API function
+      const actions = await getActionsByFinding(findingId);
+      console.log('Loaded related actions:', actions);
+      setRelatedActions(actions || []);
+      
+      // Load user info for all actions
+      const usersMap: Record<string, AdminUserDto> = {};
+      for (const action of actions || []) {
+        if (action.assignedTo && !usersMap[action.assignedTo]) {
+          try {
+            const user = await getUserById(action.assignedTo);
+            if (user) {
+              usersMap[action.assignedTo] = user;
+              console.log('Loaded user:', user.fullName, 'for action:', action.actionId);
+            }
+          } catch (error) {
+            console.error(`Error loading user ${action.assignedTo}:`, error);
+          }
+        }
+      }
+      setRelatedActionsUsers(usersMap);
+      console.log('Total users loaded:', Object.keys(usersMap).length);
+    } catch (err: any) {
+      console.error('Error loading related actions:', err);
+    } finally {
+      setLoadingRelatedActions(false);
+    }
+  };
 
   const loadAction = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getActionById(actionId);
+      const data = await getActionById(selectedActionId);
       setAction(data);
       // Load attachments for this action
-      loadAttachments(actionId);
+      loadAttachments(selectedActionId);
       // Load assignedTo user info
       if (data.assignedTo) {
         loadAssignedToUser(data.assignedTo);
@@ -134,201 +227,298 @@ const ActionDetailModal = ({
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
         <div
-          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col animate-slideUp"
+          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex animate-slideUp"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header with Gradient */}
-          <div className="sticky top-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 sm:px-8 py-6 shadow-lg z-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                  </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-white">Action Details</h2>
-              </div>
-              <button
-                onClick={onClose}
-                className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-gradient-to-b from-gray-50 to-white relative">
-            {loading ? (
-              <div className="flex items-center justify-center py-20">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-primary-600 mx-auto mb-4"></div>
-                  <p className="text-gray-600 text-lg font-medium">Loading action details...</p>
-                </div>
-              </div>
-            ) : error ? (
-              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-5 mb-6 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <svg className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-red-700 font-medium">{error}</p>
-                </div>
-              </div>
-            ) : action ? (
-              <div className="space-y-6">
-                {/* Title and Status */}
-                <div className="bg-gradient-to-r from-primary-50 to-blue-50 border-l-4 border-primary-600 p-6 rounded-r-xl shadow-md">
-                  <div className="flex items-start gap-3 mb-4">
-                    <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <svg className="w-6 h-6 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-xs font-bold text-primary-700 uppercase tracking-wide mb-2">Title</label>
-                      <h3 className="text-xl font-bold text-gray-900 break-words leading-tight">
-                        {action.title}
-                      </h3>
+          {/* Sidebar for Related Actions */}
+          {relatedActions.length > 1 && (
+            <div className="w-72 bg-gray-50 border-r border-gray-300 flex-shrink-0">
+              <div className="sticky top-0 bg-primary-600 px-4 py-4 border-b border-gray-300">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Team Members</h3>
+                      <p className="text-xs text-white/80">{relatedActions.length} working</p>
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3 pl-[52px]">
-                    <span className={`px-4 py-2 rounded-xl text-base font-bold shadow-sm ${getStatusColor(action.status)}`}>
-                      {action.status}
-                    </span>
-                    {action.progressPercent > 0 && (
-                      <span className="px-4 py-2 rounded-xl text-base font-bold bg-primary-100 text-primary-700 border-2 border-primary-200 shadow-sm">
-                        {action.progressPercent}% Complete
-                      </span>
+                  <button
+                    onClick={() => {
+                      loadRelatedActions();
+                      loadAction();
+                    }}
+                    disabled={loadingRelatedActions}
+                    className="p-1.5 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors disabled:opacity-50"
+                    title="Refresh"
+                  >
+                    <svg className={`w-4 h-4 ${loadingRelatedActions ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              
+              <div className="p-3 space-y-2 overflow-y-auto max-h-[calc(95vh-120px)]">
+                {relatedActions.map((relatedAction, index) => {
+                  const user = relatedActionsUsers[relatedAction.assignedTo];
+                  const userName = user?.fullName || relatedAction.assignedTo || 'Unknown';
+                  const isSelected = selectedActionId === relatedAction.actionId;
+                  
+                  return (
+                    <button
+                      key={relatedAction.actionId}
+                      onClick={() => {
+                        setSelectedActionId(relatedAction.actionId);
+                        setShowFeedbackInput(false);
+                        setReviewFeedback('');
+                      }}
+                      className={`w-full text-left p-3 rounded-lg transition-colors ${
+                        isSelected
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-white hover:bg-gray-100 border border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          isSelected ? 'bg-white/20' : 'bg-gray-100'
+                        }`}>
+                          <svg className={`w-4 h-4 ${
+                            isSelected ? 'text-white' : 'text-gray-600'
+                          }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-bold ${
+                            isSelected ? 'text-white' : 'text-gray-900'
+                          }`}>
+                            #{index + 1} - {userName}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between text-xs">
+                        <span className={`px-2 py-0.5 rounded ${
+                          isSelected
+                            ? 'bg-white/20 text-white'
+                            : getStatusColor(relatedAction.status)
+                        }`}>
+                          {relatedAction.status}
+                        </span>
+                        <span className={isSelected ? 'text-white' : 'text-gray-600'}>
+                          {relatedAction.progressPercent || 0}%
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Header with Gradient */}
+            <div className="sticky top-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 sm:px-8 py-6 shadow-lg z-10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">Action Details</h2>
+                    {relatedActions.length > 1 && (
+                      <p className="text-sm text-white/70 mt-0.5">
+                        Viewing action {relatedActions.findIndex(a => a.actionId === selectedActionId) + 1} of {relatedActions.length}
+                      </p>
                     )}
                   </div>
                 </div>
+                <button
+                  onClick={onClose}
+                  className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
 
-                {/* Description */}
-                {action.description && (
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-gradient-to-b from-gray-50 to-white">
+              {loading ? (
+                <div className="flex items-center justify-center py-20">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-primary-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600 text-lg font-medium">Loading action details...</p>
+                  </div>
+                </div>
+              ) : error ? (
+                <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-5 mb-6 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-6 h-6 text-orange-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-orange-700 font-medium">{error}</p>
+                  </div>
+                </div>
+              ) : action ? (
+                <div className="space-y-6">
+                  {/* Title and Status */}
+                  <div className="bg-gradient-to-r from-primary-50 to-blue-50 border-l-4 border-primary-600 p-6 rounded-r-xl shadow-md">
+                    <div className="flex items-start gap-3 mb-4">
+                      <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-6 h-6 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                         </svg>
                       </div>
-                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide pt-2">Description</label>
+                      <div className="flex-1">
+                        <label className="block text-xs font-bold text-primary-700 uppercase tracking-wide mb-2">Title</label>
+                        <h3 className="text-xl font-bold text-gray-900 break-words leading-tight">
+                          {action.title}
+                        </h3>
+                      </div>
                     </div>
-                    <p className="text-base text-gray-800 leading-relaxed break-words min-h-[80px] pl-[52px]">
-                      {action.description}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-3 pl-[52px]">
+                      <span className={`px-4 py-2 rounded-xl text-sm font-bold shadow-sm border-2 ${getStatusColor(action.status)}`}>
+                        {action.status}
+                      </span>
+                      {action.progressPercent > 0 && (
+                        <span className="px-4 py-2 rounded-xl text-sm font-bold bg-primary-100 text-primary-700 border-2 border-primary-200 shadow-sm">
+                          {action.progressPercent}% Complete
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
 
-                {/* Progress Bar */}
-                {action.progressPercent > 0 && (
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  {/* Description */}
+                  {action.description && (
+                    <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
                           </svg>
                         </div>
-                        <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Progress</h4>
+                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wide pt-2">Description</label>
                       </div>
-                      <span className="text-2xl font-bold text-primary-600">{action.progressPercent}%</span>
-                    </div>
-                    <div className="relative">
-                      <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner">
-                        <div
-                          className="bg-gradient-to-r from-primary-500 to-primary-600 h-4 rounded-full transition-all duration-500 relative overflow-hidden"
-                          style={{ width: `${action.progressPercent}%` }}
-                        >
-                          <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Details Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Responsible Person */}
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow md:col-span-2">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
-                        <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                      </div>
-                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Responsible Person</label>
-                    </div>
-                    <p className="text-base font-semibold text-gray-900 pl-[52px]">
-                      {assignedToUser?.fullName || action.assignedTo || 'N/A'}
-                    </p>
-                  </div>
-
-                  {/* Created Date */}
-                  <div className="bg-gradient-to-br from-green-50 to-green-100/50 border-2 border-green-200 rounded-xl p-6 shadow-md">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
-                        <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <label className="text-xs font-bold text-green-700 uppercase tracking-wide">Created Date</label>
-                    </div>
-                    <p className="text-lg font-bold text-green-900 pl-[52px]">
-                      {formatDate(action.createdAt)}
-                    </p>
-                  </div>
-
-                  {/* Due Date */}
-                  <div className="bg-gradient-to-br from-red-50 to-red-100/50 border-2 border-red-200 rounded-xl p-6 shadow-md">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 bg-red-200 rounded-lg flex items-center justify-center">
-                        <svg className="w-6 h-6 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <label className="text-xs font-bold text-red-700 uppercase tracking-wide">Due Date</label>
-                    </div>
-                    <p className="text-lg font-bold text-red-900 pl-[52px]">
-                      {formatDate(action.dueDate)}
-                    </p>
-                  </div>
-
-                  {/* Closed Date - Full Width (if exists) */}
-                  {action.closedAt && (
-                    <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-gray-200 rounded-xl p-6 shadow-md md:col-span-2">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Closed Date</label>
-                      </div>
-                      <p className="text-lg font-bold text-gray-900 pl-[52px]">
-                        {formatDate(action.closedAt)}
+                      <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap break-words min-h-[80px] pl-[52px]">
+                        {action.description}
                       </p>
                     </div>
                   )}
-                </div>
 
-                {/* Attachments */}
-                {action.findingId && (
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-10 h-10 bg-indigo-200 rounded-lg flex items-center justify-center">
-                        <svg className="w-6 h-6 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                        </svg>
+                  {/* Progress Bar */}
+                  {action.progressPercent > 0 && (
+                    <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center">
+                            <svg className="w-6 h-6 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                            </svg>
+                          </div>
+                          <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Progress</h4>
+                        </div>
+                        <span className="text-2xl font-bold text-primary-600">{action.progressPercent}%</span>
                       </div>
-                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Attachments</label>
-                      <span className="px-3 py-1 bg-primary-100 text-primary-700 text-sm font-bold rounded-full">
-                        {attachments.length}
-                      </span>
+                      <div className="relative">
+                        <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner">
+                          <div
+                            className="bg-gradient-to-r from-primary-500 to-primary-600 h-4 rounded-full transition-all duration-500 relative overflow-hidden"
+                            style={{ width: `${action.progressPercent}%` }}
+                          >
+                            <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+                  )}
+
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Responsible Person */}
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-2 border-purple-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow md:col-span-2">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                        <label className="text-xs font-bold text-purple-700 uppercase tracking-wide">Responsible Person</label>
+                      </div>
+                      <p className="text-lg font-bold text-purple-900 pl-[52px]">
+                        {assignedToUser?.fullName || action.assignedTo || 'N/A'}
+                      </p>
+                    </div>
+
+                    {/* Created Date */}
+                    <div className="bg-gradient-to-br from-green-50 to-green-100/50 border-2 border-green-200 rounded-xl p-6 shadow-md">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <label className="text-xs font-bold text-green-700 uppercase tracking-wide">Created Date</label>
+                      </div>
+                      <p className="text-lg font-bold text-green-900 pl-[52px]">
+                        {formatDate(action.createdAt)}
+                      </p>
+                    </div>
+
+                    {/* Due Date */}
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 border-2 border-orange-200 rounded-xl p-6 shadow-md">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="w-10 h-10 bg-orange-200 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <label className="text-xs font-bold text-orange-700 uppercase tracking-wide">Due Date</label>
+                      </div>
+                      <p className="text-lg font-bold text-orange-900 pl-[52px]">
+                        {formatDate(action.dueDate)}
+                      </p>
+                    </div>
+
+                    {/* Closed Date - Full Width (if exists) */}
+                    {action.closedAt && (
+                      <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-gray-200 rounded-xl p-6 shadow-md md:col-span-2">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center">
+                            <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Closed Date</label>
+                        </div>
+                        <p className="text-lg font-bold text-gray-900 pl-[52px]">
+                          {formatDate(action.closedAt)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Attachments */}
+                  {action.findingId && (
+                    <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-indigo-200 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                          </svg>
+                        </div>
+                        <label className="text-xs font-bold text-indigo-700 uppercase tracking-wide">Attachments</label>
+                        <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-sm font-bold rounded-full">
+                          {attachments.length}
+                        </span>
+                      </div>
                     {loadingAttachments ? (
                       <div className="flex items-center justify-center py-8">
                         <div className="text-center">
@@ -461,27 +651,45 @@ const ActionDetailModal = ({
 
             {/* Feedback Input */}
             {showFeedbackInput && showReviewButtons && action && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mt-4">
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-gray-700 mb-2">
-                    {reviewType === 'reject' ? 'Feedback (Required)' : 'Feedback (Optional)'}
-                  </label>
-                  <textarea
-                    value={reviewFeedback}
-                    onChange={(e) => setReviewFeedback(e.target.value)}
-                    rows={3}
-                    placeholder={reviewType === 'reject' ? 'Enter a reason for rejection...' : 'Enter feedback if needed...'}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm resize-none"
-                  />
+              <div className="bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-xl shadow-lg p-6 mt-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    reviewType === 'reject' ? 'bg-rose-100' : 'bg-green-100'
+                  }`}>
+                    <svg className={`w-6 h-6 ${reviewType === 'reject' ? 'text-rose-600' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {reviewType === 'reject' ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      )}
+                    </svg>
+                  </div>
+                  <div>
+                    <label className={`text-sm font-bold uppercase tracking-wide ${
+                      reviewType === 'reject' ? 'text-rose-700' : 'text-green-700'
+                    }`}>
+                      {reviewType === 'reject' ? 'Rejection Feedback (Required)' : 'Approval Feedback (Optional)'}
+                    </label>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {reviewType === 'reject' ? 'Please provide a reason for rejection' : 'Add any comments or notes'}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center justify-end gap-2">
+                <textarea
+                  value={reviewFeedback}
+                  onChange={(e) => setReviewFeedback(e.target.value)}
+                  rows={4}
+                  placeholder={reviewType === 'reject' ? 'Enter a detailed reason for rejection...' : 'Enter feedback or leave blank...'}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm resize-none font-medium shadow-sm"
+                />
+                <div className="flex items-center justify-end gap-3 mt-4">
                   <button
                     onClick={() => {
                       setShowFeedbackInput(false);
                       setReviewFeedback('');
                     }}
                     disabled={isProcessing}
-                    className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors disabled:opacity-50"
+                    className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-all disabled:opacity-50 shadow-sm border-2 border-gray-300"
                   >
                     Cancel
                   </button>
@@ -494,13 +702,31 @@ const ActionDetailModal = ({
                       }
                     }}
                     disabled={isProcessing || (reviewType === 'reject' && !reviewFeedback.trim())}
-                    className={`px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    className={`px-5 py-2.5 text-sm font-bold text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg border-2 ${
                       reviewType === 'approve'
-                        ? 'bg-green-600 hover:bg-green-700'
-                        : 'bg-red-600 hover:bg-red-700'
+                        ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 border-green-600/30'
+                        : 'bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 border-rose-600/30'
                     }`}
                   >
-                    {isProcessing ? 'Processing...' : reviewType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+                    <div className="flex items-center gap-2">
+                      {isProcessing ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            {reviewType === 'approve' ? (
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            ) : (
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            )}
+                          </svg>
+                          {reviewType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+                        </>
+                      )}
+                    </div>
                   </button>
                 </div>
               </div>
@@ -510,31 +736,52 @@ const ActionDetailModal = ({
 
           {/* Footer with Review Buttons */}
           {showReviewButtons && action && (action.status?.toLowerCase() === 'reviewed' || action.status?.toLowerCase() === 'verified') && !showFeedbackInput && (
-            <div className="border-t border-gray-200 bg-white px-6 py-3 flex items-center justify-end gap-2">
-              <button
-                onClick={() => {
-                  setShowFeedbackInput(true);
-                  setReviewType('approve');
-                }}
-                disabled={isProcessing}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-              >
-                Approve
-              </button>
-              <button
-                onClick={() => {
-                  setShowFeedbackInput(true);
-                  setReviewType('reject');
-                }}
-                disabled={isProcessing}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-              >
-                Reject
-              </button>
+            <div className="sticky bottom-0 border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 px-6 sm:px-8 py-4 flex items-center justify-between gap-4 shadow-lg">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                </div>
+                <span className="text-sm font-medium text-gray-700">Ready for review</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setShowFeedbackInput(true);
+                    setReviewType('reject');
+                  }}
+                  disabled={isProcessing}
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg border-2 border-rose-600/30"
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Reject
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowFeedbackInput(true);
+                    setReviewType('approve');
+                  }}
+                  disabled={isProcessing}
+                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg border-2 border-green-600/30"
+                >
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Approve
+                  </div>
+                </button>
+              </div>
             </div>
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 };

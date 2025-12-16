@@ -39,12 +39,12 @@ const AuditDepartments = () => {
         const auditData = await getAuditPlanById(auditId);
         const auditType = auditData.type || auditData.Type || auditData.auditType || 
                          auditData.audit?.type || auditData.audit?.Type || auditData.audit?.auditType || '';
-        const auditTitle = auditData.title || auditData.name || 'Untitled Audit';
+        const auditTitle = auditData.title || auditData.name || 'Department Audit' ;
         setAuditInfo({ title: auditTitle, type: auditType });
       } catch (err) {
         console.warn('Failed to load audit info:', err);
         // Set fallback info
-        setAuditInfo({ title: 'Untitled Audit', type: '' });
+        setAuditInfo({ title: 'Department Audit', type: '' });
       }
     };
 

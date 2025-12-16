@@ -42,7 +42,7 @@ const CreateFindingModal = ({
   const [severity, setSeverity] = useState('');
   const [deadline, setDeadline] = useState('');
   const [files, setFiles] = useState<File[]>([]);
-  const [witnesses, setWitnesses] = useState<string[]>([]);
+  const [witnesses, setWitnesses] = useState<string>(''); // Single witness selection
   
   // Department users for witnesses dropdown
   const [departmentUsers, setDepartmentUsers] = useState<AdminUserDto[]>([]);
@@ -77,6 +77,7 @@ const CreateFindingModal = ({
     severity?: string;
     deadline?: string;
     files?: string;
+    findingType?: string;
   }>({});
 
   // Confirmation modals
@@ -198,30 +199,47 @@ const CreateFindingModal = ({
   };
 
   const handleWitnessToggle = (userId: string) => {
-    setWitnesses(prev =>
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
-    );
+    // Single selection: if clicking the same user, deselect; otherwise select the new user
+    setWitnesses(prev => prev === userId ? '' : userId);
   };
 
   const getSelectedWitnessesDisplay = (): string => {
-    if (witnesses.length === 0) return '';
-    return witnesses
-      .map(id => departmentUsers.find(u => u.userId === id)?.fullName || '')
-      .filter(name => name)
-      .join(', ');
+    if (!witnesses) return '';
+    return departmentUsers.find(u => u.userId === witnesses)?.fullName || '';
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
+      const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+      
+      // Validate file sizes
+      const invalidFiles = newFiles.filter(file => file.size > maxSize);
+      if (invalidFiles.length > 0) {
+        setErrors(prev => ({
+          ...prev,
+          files: `The following files exceed the 10MB limit: ${invalidFiles.map(f => `${f.name} (${(f.size / 1024 / 1024).toFixed(2)}MB)`).join(', ')}`
+        }));
+        // Clear the input
+        e.target.value = '';
+        return;
+      }
+      
+      // Clear file error if valid
+      if (errors.files) {
+        setErrors(prev => ({ ...prev, files: undefined }));
+      }
+      
       setFiles(prev => [...prev, ...newFiles]);
     }
   };
 
   const removeFile = (index: number) => {
     setFiles(prev => prev.filter((_, i) => i !== index));
+    // Clear file error when removing files
+    if (errors.files) {
+      setErrors(prev => ({ ...prev, files: undefined }));
+    }
   };
 
   const validateForm = (): boolean => {
@@ -248,6 +266,26 @@ const CreateFindingModal = ({
         newErrors.deadline = `Deadline must be on or after Fieldwork Start date (${fieldworkStartDate.toISOString().split('T')[0]})`;
       } else if (evidenceDueDate && deadlineDate > evidenceDueDate) {
         newErrors.deadline = `Deadline must be on or before Evidence Due date (${evidenceDueDate.toISOString().split('T')[0]})`;
+      }
+    }
+    
+    // Validate finding type
+    if (!findingType) {
+      newErrors.findingType = 'Finding Type is required';
+    }
+    
+    // Validate files - check if at least one file is uploaded
+    if (files.length === 0) {
+      newErrors.files = 'At least one attachment is required';
+    } else if (errors.files) {
+      // Check if there's an existing file error
+      newErrors.files = errors.files;
+    } else {
+      // Additional validation: check each file in current files array
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      const invalidCurrentFiles = files.filter(file => file.size > maxSize);
+      if (invalidCurrentFiles.length > 0) {
+        newErrors.files = `Some files exceed 10MB limit: ${invalidCurrentFiles.map(f => f.name).join(', ')}`;
       }
     }
     
@@ -291,7 +329,7 @@ const CreateFindingModal = ({
         reviewerId: null, // null is accepted by backend
         source: '', // Empty string
         externalAuditorName: '', // Empty string
-        witnessId: witnesses.length > 0 ? witnesses[0] : '', // First witness's userId (GUID string)
+        witnessId: witnesses || '', // Single witness's userId (GUID string)
       };
 
       console.log('========== CREATE FINDING DEBUG ==========');
@@ -376,7 +414,7 @@ const CreateFindingModal = ({
       setDeadline('');
       setFiles([]);
       setErrors({});
-      setWitnesses([]);
+      setWitnesses('');
       setFieldworkStartDate(null);
       setEvidenceDueDate(null);
       
@@ -408,7 +446,7 @@ const CreateFindingModal = ({
     const hasData = description.trim() !== '' ||
                    severity !== '' ||
                    deadline !== '' ||
-                   witnesses.length > 0 ||
+                   witnesses !== '' ||
                    files.length > 0;
 
     if (hasData) {
@@ -431,7 +469,7 @@ const CreateFindingModal = ({
     setDeadline('');
     setFiles([]);
     setErrors({});
-    setWitnesses([]);
+    setWitnesses('');
     setFieldworkStartDate(null);
     setEvidenceDueDate(null);
     setShowCancelConfirmModal(false);
@@ -613,10 +651,10 @@ const CreateFindingModal = ({
                 </>
               )}
             </div>
-            {/* Witnesses - Multi-select dropdown */}
+            {/* Witnesses - Single select dropdown */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Witnesses
+                Witness
               </label>
               <div className="relative">
                 <button
@@ -627,8 +665,8 @@ const CreateFindingModal = ({
                   <span className="text-gray-700">
                     {loadingUsers ? (
                       <span className="text-gray-500">Loading users...</span>
-                    ) : witnesses.length === 0 ? (
-                      <span className="text-gray-500">Select witnesses from department...</span>
+                    ) : !witnesses ? (
+                      <span className="text-gray-500">Select a witness from department...</span>
                     ) : (
                       getSelectedWitnessesDisplay()
                     )}
@@ -682,12 +720,13 @@ const CreateFindingModal = ({
                           className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                         >
                           <input
-                            type="checkbox"
-                            checked={witnesses.includes(user.userId || '')}
+                            type="radio"
+                            name="witness"
+                            checked={witnesses === user.userId}
                             onChange={() =>
                               handleWitnessToggle(user.userId || '')
                             }
-                            className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-2 focus:ring-primary-500"
+                            className="w-4 h-4 text-primary-600 border-gray-300 focus:ring-2 focus:ring-primary-500"
                           />
                           <span className="ml-3 text-sm text-gray-700">
                             {user.fullName}
@@ -712,8 +751,13 @@ const CreateFindingModal = ({
               </label>
               <select
                 value={findingType}
-                onChange={(e) => setFindingType(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                onChange={(e) => {
+                  setFindingType(e.target.value);
+                  if (errors.findingType) setErrors(prev => ({ ...prev, findingType: undefined }));
+                }}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                  errors.findingType ? 'border-red-300' : 'border-gray-300'
+                }`}
               >
                 <option value="">Select finding type</option>
                 {findingTypes.map((type, index) => (
@@ -722,6 +766,9 @@ const CreateFindingModal = ({
                   </option>
                 ))}
               </select>
+              {errors.findingType && (
+                <p className="mt-1 text-sm text-red-600">{errors.findingType}</p>
+              )}
             </div>
 
             {/* Two-column layout for date/time */}
@@ -769,14 +816,19 @@ const CreateFindingModal = ({
             {/* File Upload */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Attachments (Optional)
+                Attachments <span className="text-red-500">*</span> <span className="text-gray-500 text-xs">(Max 10MB per file)</span>
               </label>
               <input
                 type="file"
                 multiple
                 onChange={handleFileChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                  errors.files ? 'border-red-300' : 'border-gray-300'
+                }`}
               />
+              {errors.files && (
+                <p className="mt-1 text-sm text-red-600">{errors.files}</p>
+              )}
               
               {/* File List */}
               {files.length > 0 && (

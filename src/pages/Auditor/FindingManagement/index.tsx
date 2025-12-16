@@ -15,6 +15,8 @@ interface AuditCard {
   departmentCount: number;
   startDate?: string;
   endDate?: string;
+  scope?: string;
+  objective?: string;
 }
 
 const SQAStaffFindingManagement = () => {
@@ -112,30 +114,17 @@ const SQAStaffFindingManagement = () => {
           try {
             console.log(`📥 Fetching audit info for ${auditId}...`);
             const auditData = await getAuditPlanById(auditId);
-            const auditType = auditData.type || auditData.Type || auditData.auditType || 
-                             auditData.audit?.type || auditData.audit?.Type || auditData.audit?.auditType || '';
-            const auditTitle = auditData.title || auditData.name || auditAssignments[0]?.auditTitle || 'Untitled Audit';
-            // Try multiple possible field names for status
-            const status = auditData.status || 
-                          auditData.Status || 
-                          auditData.auditStatus ||
-                          auditData.auditStatus ||
-                          auditData.audit?.status ||
-                          auditData.audit?.Status ||
-                          auditAssignments[0]?.status || 
-                          'Unknown';
             
-            console.log(`📋 Audit ${auditId} status check:`, {
-              auditTitle,
-              finalStatus: status,
-              statusFromData: auditData.status,
-              statusFromAssignment: auditAssignments[0]?.status,
-              allStatusFields: {
-                status: auditData.status,
-                Status: auditData.Status,
-                auditStatus: auditData.auditStatus
-              }
-            });
+            // Data is nested in audit object
+            const audit = auditData.audit || auditData;
+            
+            const auditType = audit.type || audit.Type || auditData.type || auditData.Type || '';
+            const auditTitle = audit.title || audit.name || auditData.title || auditData.name || auditAssignments[0]?.auditTitle || 'Department Audit';
+            const status = audit.status || audit.Status || auditData.status || auditData.Status || auditAssignments[0]?.status || 'Unknown';
+            const scope = audit.scope || audit.Scope || auditData.scope || auditData.Scope || '';
+            const startDate = audit.startDate || audit.StartDate || auditData.startDate || auditData.StartDate || '';
+            const endDate = audit.endDate || audit.EndDate || auditData.endDate || auditData.EndDate || '';
+            const objective = audit.objective || audit.Objective || auditData.objective || auditData.Objective || '';
             
             // Get unique department count
             const uniqueDeptIds = new Set(auditAssignments.map((a: any) => a.deptId));
@@ -146,8 +135,10 @@ const SQAStaffFindingManagement = () => {
               auditType: auditType,
               status: status,
               departmentCount: uniqueDeptIds.size,
-              startDate: auditData.startDate,
-              endDate: auditData.endDate,
+              startDate: startDate,
+              endDate: endDate,
+              scope: scope,
+              objective: objective,
             };
             console.log(`✅ Created card for audit ${auditId}:`, auditCard);
             return auditCard;
@@ -158,7 +149,7 @@ const SQAStaffFindingManagement = () => {
             const uniqueDeptIds = new Set(auditAssignments.map((a: any) => a.deptId));
             return {
               auditId: auditId,
-              auditTitle: firstAssignment?.auditTitle || 'Untitled Audit',
+              auditTitle: firstAssignment?.auditTitle || 'Department Audit',
               auditType: '',
               status: firstAssignment?.status || 'Unknown',
               departmentCount: uniqueDeptIds.size,
@@ -261,9 +252,9 @@ const SQAStaffFindingManagement = () => {
           </div>
         )}
         
-        {/* Available Audits - Card List View */}
+        {/* Available Audits - Table View */}
         {!loading && !error && (
-          <div className="bg-white rounded-xl border border-primary-100 overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             {audits.length === 0 ? (
               <div className="p-8 text-center">
                 <svg className="w-20 h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -273,23 +264,117 @@ const SQAStaffFindingManagement = () => {
                 <p className="text-sm text-gray-400 mt-2">Audits will appear here when you are assigned</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-200">
-                {audits.map((audit) => (
-                  <div
-                    key={audit.auditId}
-                    onClick={() => handleAuditClick(audit)}
-                    className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700">
-                        {audit.auditTitle}
-                      </h3>
-                      <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gradient-to-r from-primary-50 to-primary-100">
+                    <tr>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-primary-800 uppercase tracking-wider">
+                        Audit Title
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-primary-800 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-primary-800 uppercase tracking-wider">
+                        Scope
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-primary-800 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-primary-800 uppercase tracking-wider">
+                        Start Date
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-primary-800 uppercase tracking-wider">
+                        End Date
+                      </th>
+                      <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-primary-800 uppercase tracking-wider">
+                        Objective
+                      </th>
+                     
+                      <th scope="col" className="px-6 py-4 text-center text-xs font-bold text-primary-800 uppercase tracking-wider">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {audits.map((audit) => (
+                      <tr
+                        key={audit.auditId}
+                        className="hover:bg-primary-50 transition-colors cursor-pointer"
+                        onClick={() => handleAuditClick(audit)}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center">
+                            <div className="flex-shrink-0 h-10 w-10 bg-primary-100 rounded-lg flex items-center justify-center">
+                              <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-bold text-gray-900">{audit.auditTitle}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            audit.auditType?.toLowerCase() === 'internal' 
+                              ? 'bg-blue-100 text-blue-800'
+                              : audit.auditType?.toLowerCase() === 'external'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {audit.auditType || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className=
+                             'bg-gray-100 text-gray-800 px-2.5 py-1 rounded-full text-xs font-semibold' 
+                          >
+                            {audit.scope || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            audit.status?.toLowerCase() === 'inprogress' || audit.status?.toLowerCase() === 'in progress'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : audit.status?.toLowerCase() === 'completed'
+                              ? 'bg-green-100 text-green-800'
+                              : audit.status?.toLowerCase() === 'pending'
+                              ? 'bg-gray-100 text-gray-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {audit.status?.replace(/([A-Z])/g, ' $1').trim() || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {audit.startDate ? new Date(audit.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {audit.endDate ? new Date(audit.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-gray-900 max-w-xs truncate" title={audit.objective}>
+                            {audit.objective || 'N/A'}
+                          </div>
+                        </td>
+                     
+                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAuditClick(audit);
+                            }}
+                            className="inline-flex items-center px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                          >
+                            View
+                            <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

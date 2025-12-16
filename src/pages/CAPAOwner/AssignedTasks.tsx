@@ -36,6 +36,7 @@ const AssignedTasks = () => {
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const [selectedActionFindingId, setSelectedActionFindingId] = useState<string | null>(null);
   const [showStartModal, setShowStartModal] = useState(false);
   const [selectedStartActionId, setSelectedStartActionId] = useState<string | null>(null);
   const [showReviewFeedbackModal, setShowReviewFeedbackModal] = useState(false);
@@ -205,9 +206,11 @@ const AssignedTasks = () => {
     setShowDetailModal(true);
   };
 
-  const handleViewAction = (actionId: string) => {
+  const handleViewAction = (actionId: string, findingId: string) => {
     setSelectedActionId(actionId);
+    setSelectedActionFindingId(findingId);
     setShowActionDetailModal(true);
+    console.log('Opening action modal from AssignedTasks - ActionId:', actionId, 'FindingId:', findingId);
   };
 
   const handleStart = (actionId: string) => {
@@ -457,7 +460,7 @@ const AssignedTasks = () => {
                               </svg>
                             </button>
                             <button
-                              onClick={() => handleViewAction(task.actionId)}
+                              onClick={() => handleViewAction(task.actionId, task.findingId)}
                               className="p-1.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0"
                               title="View Action Details"
                             >
@@ -511,8 +514,10 @@ const AssignedTasks = () => {
             onClose={() => {
               setShowActionDetailModal(false);
               setSelectedActionId(null);
+              setSelectedActionFindingId(null);
             }}
             actionId={selectedActionId}
+            findingId={selectedActionFindingId || undefined}
           />
         )}
 
