@@ -57,21 +57,15 @@ const MonthlyRevenueCard: React.FC = () => {
                 <stop offset="100%" stopColor="#7ee787" stopOpacity={1} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="name" axisLine={false} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={8} />
-            <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" />
+            <XAxis dataKey="name" axisLine={{ stroke: '#e5e7eb', strokeWidth: 1 }} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={8} />
+            <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" ticks={[0, 15, 30, 45, 60]} />
             <Tooltip wrapperStyle={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #e2e8f0' }} />
             <Bar dataKey="value" fill="url(#grad-monthly)" radius={[8, 8, 0, 0]} barSize={28} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-4">
-        <div className="text-sm text-gray-500">Avrage monthly sale for every author</div>
-        <div className="flex items-center gap-4 mt-2">
-          <div className="text-4xl font-bold text-blue-600">68.9%</div>
-          <div className="text-sm text-green-500 font-medium">34.5% <span className="text-gray-400">▲</span></div>
-        </div>
-      </div>
+     
     </div>
   );
 };
@@ -90,16 +84,15 @@ const ProfitCard: React.FC = () => {
   ];
 
   return (
-    <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4 w-full">
+    <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6 w-full">
       <div className="flex items-start justify-between">
         <div>
           <div className="text-xl font-semibold text-gray-800">Actions</div>
-          <div className="text-xs text-gray-400">Total Profit</div>
         </div>
         <div className="text-gray-300">⋮</div>
       </div>
 
-      <div style={{ width: '100%', height: 120 }} className="mt-3">
+      <div style={{ width: '100%', height: 221 }} className="mt-3">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={profitData} margin={{ top: 6, right: 0, left: 0, bottom: 0 }} barGap={6} barCategoryGap="8%">
             <defs>
@@ -108,16 +101,14 @@ const ProfitCard: React.FC = () => {
                 <stop offset="100%" stopColor="#7c3aed" stopOpacity={1} />
               </linearGradient>
             </defs>
-            <XAxis dataKey="name" axisLine={false} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={6} />
-            <YAxis axisLine={false} tickLine={false} hide />
+            <XAxis dataKey="name" axisLine={{ stroke: '#e5e7eb', strokeWidth: 1 }} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={6} />
+            <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" domain={[0, 60]} ticks={[0, 15, 30, 45, 60]} />
             <Bar dataKey="value" fill="url(#grad-profit)" radius={[8, 8, 0, 0]} barSize={22} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-4 text-center">
-        <div className="text-sm text-green-500 font-medium">12.5% <span className="text-gray-400">from last month</span></div>
-      </div>
+      
     </div>
   );
 };
@@ -259,11 +250,11 @@ const LeadAuditorDashboard: React.FC = () => {
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-6">
-          <div>
+        <div className="grid grid-cols-2 gap-6" style={{ height: 500 }}>
+          <div className="h-full">
             <MonthlyRevenueCard />
           </div>
-          <div>
+          <div className="h-full">
             <ProfitCard />
           </div>
         </div>
