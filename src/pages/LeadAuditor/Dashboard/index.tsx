@@ -2,8 +2,7 @@ import React from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { BarChartCard } from '../../../components/charts/BarChartCard';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { useState } from 'react';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 
 // Department bar data
 const barData = [
@@ -31,6 +30,97 @@ const monthlyPie = [
 const yearlyPie = [
   { name: 'Yearly', value: 984246, color: '#fbbf24' },
 ];
+
+const monthlyData = [
+  { name: 'Jan', value: 12 },
+  { name: 'Feb', value: 40 },
+  { name: 'Mar', value: 35 },
+  { name: 'Apr', value: 50 },
+  { name: 'May', value: 25 },
+  { name: 'Jun', value: 18 },
+  { name: 'Jul', value: 20 },
+  { name: 'Aug', value: 34 },
+  { name: 'Sep', value: 14 },
+];
+
+const MonthlyRevenueCard: React.FC = () => {
+  return (
+    <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6 w-full">
+      <h3 className="text-center text-lg font-medium text-gray-700 mb-4">Finding weekly</h3>
+
+      <div style={{ width: '100%', height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={monthlyData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }} barGap={6} barCategoryGap="10%">
+            <defs>
+              <linearGradient id="grad-monthly" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#06b6d4" stopOpacity={1} />
+                <stop offset="100%" stopColor="#7ee787" stopOpacity={1} />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="name" axisLine={false} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={8} />
+            <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" />
+            <Tooltip wrapperStyle={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+            <Bar dataKey="value" fill="url(#grad-monthly)" radius={[8, 8, 0, 0]} barSize={28} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="mt-4">
+        <div className="text-sm text-gray-500">Avrage monthly sale for every author</div>
+        <div className="flex items-center gap-4 mt-2">
+          <div className="text-4xl font-bold text-blue-600">68.9%</div>
+          <div className="text-sm text-green-500 font-medium">34.5% <span className="text-gray-400">▲</span></div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProfitCard: React.FC = () => {
+  const profitData = [
+    { name: 'A', value: 6 },
+    { name: 'B', value: 8 },
+    { name: 'C', value: 12 },
+    { name: 'D', value: 10 },
+    { name: 'E', value: 9 },
+    { name: 'F', value: 11 },
+    { name: 'G', value: 7 },
+    { name: 'H', value: 5 },
+    { name: 'I', value: 3 },
+  ];
+
+  return (
+    <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4 w-full">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-xl font-semibold text-gray-800">Actions</div>
+          <div className="text-xs text-gray-400">Total Profit</div>
+        </div>
+        <div className="text-gray-300">⋮</div>
+      </div>
+
+      <div style={{ width: '100%', height: 120 }} className="mt-3">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={profitData} margin={{ top: 6, right: 0, left: 0, bottom: 0 }} barGap={6} barCategoryGap="8%">
+            <defs>
+              <linearGradient id="grad-profit" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ff2d95" stopOpacity={1} />
+                <stop offset="100%" stopColor="#7c3aed" stopOpacity={1} />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="name" axisLine={false} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={6} />
+            <YAxis axisLine={false} tickLine={false} hide />
+            <Bar dataKey="value" fill="url(#grad-profit)" radius={[8, 8, 0, 0]} barSize={22} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="mt-4 text-center">
+        <div className="text-sm text-green-500 font-medium">12.5% <span className="text-gray-400">from last month</span></div>
+      </div>
+    </div>
+  );
+};
 
 const DonutSummary: React.FC<{
   data: { name: string; value: number; color: string }[];
@@ -80,7 +170,6 @@ const DonutSummary: React.FC<{
 };
 
 const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: string }[] }> = ({ data }) => {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const total = data.reduce((s, d) => s + d.value, 0);
   const percentage = Math.round((data.reduce((s, d) => s + d.value, 0) / 100) * 100);
 
@@ -114,10 +203,6 @@ const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: st
                 innerRadius={45}
                 outerRadius={75}
                 paddingAngle={2}
-                activeIndex={activeIndex}
-                activeOuterRadius={110}
-                onMouseEnter={(_, index) => setActiveIndex(index)}
-                onMouseLeave={() => setActiveIndex(null)}
               >
                 {gradientData.map((entry, idx) => (
                   <Cell key={idx} fill={`url(#grad-donut-${idx})`} />
@@ -172,6 +257,14 @@ const LeadAuditorDashboard: React.FC = () => {
               height={280}
               className="h-full"
             />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <MonthlyRevenueCard />
+          </div>
+          <div>
+            <ProfitCard />
           </div>
         </div>
       </div>
