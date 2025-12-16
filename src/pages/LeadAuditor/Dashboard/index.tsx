@@ -88,12 +88,11 @@ const ProfitCard: React.FC = () => {
       <div className="flex items-start justify-between">
         <div>
           <div className="text-xl font-semibold text-gray-800">Actions</div>
-          <div className="text-xs text-gray-400">Total Profit</div>
         </div>
         <div className="text-gray-300">⋮</div>
       </div>
 
-      <div style={{ width: '100%', height: 209 }} className="mt-3">
+      <div style={{ width: '100%', height: 221 }} className="mt-3">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={profitData} margin={{ top: 6, right: 0, left: 0, bottom: 0 }} barGap={6} barCategoryGap="8%">
             <defs>
