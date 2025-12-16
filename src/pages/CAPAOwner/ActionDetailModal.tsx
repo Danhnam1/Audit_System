@@ -60,17 +60,6 @@ const ActionDetailModal = ({
       if (findingId) {
         console.log('✅ findingId exists, calling loadRelatedActions()');
         loadRelatedActions();
-        
-        // Auto-refresh related actions every 5 seconds for real-time updates
-        const refreshInterval = setInterval(() => {
-          console.log('🔄 Auto-refreshing related actions...');
-          loadRelatedActions();
-        }, 5000);
-        
-        return () => {
-          console.log('🛑 Clearing refresh interval');
-          clearInterval(refreshInterval);
-        };
       } else {
         console.log('⚠️ No findingId provided, skipping loadRelatedActions()');
       }
@@ -87,20 +76,6 @@ const ActionDetailModal = ({
       setRelatedActions([]);
     }
   }, [isOpen, selectedActionId, findingId]);
-
-  // Auto-refresh current action details every 10 seconds
-  useEffect(() => {
-    if (isOpen && selectedActionId && !loadingRelatedActions) {
-      const actionRefreshInterval = setInterval(() => {
-        console.log('🔄 Auto-refreshing action details...');
-        loadAction();
-      }, 10000);
-      
-      return () => {
-        clearInterval(actionRefreshInterval);
-      };
-    }
-  }, [isOpen, selectedActionId]);
 
   const loadRelatedActions = async () => {
     if (!findingId) {
