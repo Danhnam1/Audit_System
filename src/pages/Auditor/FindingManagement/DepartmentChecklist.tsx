@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getChecklistItemsByDepartment, createAuditChecklistItem, type CreateAuditChecklistItemDto, getCompliantIdByAuditItemId } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
-import { getFindings, getMyFindings, type Finding, approveFindingAction, returnFindingAction } from '../../../api/findings';
+import { getFindings, getMyFindings, type Finding} from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
 import CompliantModal from './CompliantModal';
@@ -12,12 +12,16 @@ import CompliantDetailsViewer from './CompliantDetailsViewer';
 import FindingDetailModal from './FindingDetailModal';
 import { toast } from 'react-toastify';
 import { getActionsByFinding, type Action } from '../../../api/actions';
-import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
+
+// import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
-import { getAccessGrants, verifyCode, type VerifyCodeRequest } from '../../../api/accessGrant';
+
+import AuditorActionReviewModal from './AuditorActionReviewModal';
+
+import { getAccessGrants, verifyCode} from '../../../api/accessGrant';
 import useAuthStore, { useUserId } from '../../../store/useAuthStore';
 import apiClient from '../../../api/client';
-import { getStatusColor } from '../../../constants';
+// import { getStatusColor } from '../../../constants';
 
 
 interface ChecklistItem {
@@ -79,7 +83,7 @@ const DepartmentChecklist = () => {
   const [loadingActions, setLoadingActions] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [verifiedActionsCount, setVerifiedActionsCount] = useState(0);
-  const [processingActionId, setProcessingActionId] = useState<string | null>(null);
+  // const [processingActionId, setProcessingActionId] = useState<string | null>(null);
   const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
 
   // Action detail modal state
@@ -1307,85 +1311,35 @@ const DepartmentChecklist = () => {
       />
 
       {/* Action Detail Modal */}
-      {selectedActionId && (() => {
-        const action = findingActions.find(a => a.actionId === selectedActionId);
-        const isVerified = action?.status?.toLowerCase() === 'verified';
-
-        return (
-          <ActionDetailModal
-            isOpen={showActionDetailModal}
-            findingId={selectedActionFindingId || undefined}
-            onClose={() => {
-              setShowActionDetailModal(false);
-              setSelectedActionFindingId(null);
-              setSelectedActionId(null);
-            }}
-            actionId={selectedActionId}
-            showReviewButtons={isVerified}
-            onApprove={async (_feedback: string) => {
-              if (!action) return;
-              setProcessingActionId(action.actionId);
-              try {
-                await approveFindingAction(action.actionId);
-                toast.success('Action approved successfully');
-                // Reload actions
-                if (selectedFindingForActions) {
-                  const actions = await getActionsByFinding(selectedFindingForActions.findingId);
-                  setFindingActions(Array.isArray(actions) ? actions : []);
-                  // Update actions map
-                  setFindingActionsMap(prev => ({
-                    ...prev,
-                    [selectedFindingForActions.findingId]: actions || []
-                  }));
-                  // Reload verified count
-                  await loadMyFindings();
-                }
-                setShowActionDetailModal(false);
-                setSelectedActionId(null);
-                setSelectedActionFindingId(null);
-              } catch (err: any) {
-                console.error('Error approving action:', err);
-                toast.error(err?.message || 'Failed to approve action');
-              } finally {
-                setProcessingActionId(null);
-              }
-            }}
-            onReject={async (feedback: string) => {
-              if (!action) return;
-              if (!feedback.trim()) {
-                toast.error('Please enter feedback when rejecting an action');
-                return;
-              }
-              setProcessingActionId(action.actionId);
-              try {
-                await returnFindingAction(action.actionId, feedback.trim());
-                toast.success('Action rejected successfully');
-                // Reload actions
-                if (selectedFindingForActions) {
-                  const actions = await getActionsByFinding(selectedFindingForActions.findingId);
-                  setFindingActions(Array.isArray(actions) ? actions : []);
-                  // Update actions map
-                  setFindingActionsMap(prev => ({
-                    ...prev,
-                    [selectedFindingForActions.findingId]: actions || []
-                  }));
-                  // Reload verified count
-                  await loadMyFindings();
-                }
-                setShowActionDetailModal(false);
-                setSelectedActionId(null);
-                setSelectedActionFindingId(null);
-              } catch (err: any) {
-                console.error('Error rejecting action:', err);
-                toast.error(err?.message || 'Failed to reject action');
-              } finally {
-                setProcessingActionId(null);
-              }
-            }}
-            isProcessing={processingActionId === selectedActionId}
-          />
-        );
-      })()}
+      {selectedActionId && (
+        <AuditorActionReviewModal
+          isOpen={showActionDetailModal}
+          onClose={() => {
+            setShowActionDetailModal(false);
+            setSelectedActionFindingId(null);
+            setSelectedActionId(null);
+          }}
+          actionId={selectedActionId}
+          findingId={selectedActionFindingId || undefined}
+          onDataReload={async () => {
+            // Reload findings
+            await reloadFindings();
+            
+            // Reload actions
+            if (selectedFindingForActions) {
+              const actions = await getActionsByFinding(selectedFindingForActions.findingId);
+              setFindingActions(Array.isArray(actions) ? actions : []);
+              // Update actions map
+              setFindingActionsMap(prev => ({
+                ...prev,
+                [selectedFindingForActions.findingId]: actions || []
+              }));
+              // Reload verified count
+              await loadMyFindings();
+            }
+          }}
+        />
+      )}
 
       {/* Add Checklist Item Modal */}
       {showAddItemModal && (

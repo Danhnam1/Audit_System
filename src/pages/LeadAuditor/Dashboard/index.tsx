@@ -2,7 +2,7 @@ import React from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { BarChartCard } from '../../../components/charts/BarChartCard';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 
 // Department bar data
 const barData = [
@@ -43,6 +43,38 @@ const monthlyData = [
   { name: 'Sep', value: 14 },
 ];
 
+const radarData = [
+  { subject: 'Completeness', A: 85 },
+  { subject: 'Timeliness', A: 72 },
+  { subject: 'Accuracy', A: 88 },
+  { subject: 'Coverage', A: 70 },
+  { subject: 'Responsiveness', A: 78 },
+];
+
+const RadarSummary: React.FC = () => {
+  return (
+    <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6 w-full">
+      <h3 className="text-lg font-semibold text-primary-600 mb-4">Performance Radar</h3>
+      <div style={{ width: '100%', height: 320 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+            <defs>
+              <linearGradient id="grad-radar" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.9} />
+                <stop offset="100%" stopColor="#ff2d95" stopOpacity={0.9} />
+              </linearGradient>
+            </defs>
+            <PolarGrid />
+            <PolarAngleAxis dataKey="subject" tick={{ fill: '#334155' }} />
+            <PolarRadiusAxis angle={30} domain={[0, 100]} />
+            <Radar name="Score" dataKey="A" stroke="#7c3aed" fill="url(#grad-radar)" fillOpacity={0.6} />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
 const MonthlyRevenueCard: React.FC = () => {
   return (
     <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6 w-full">
@@ -50,7 +82,7 @@ const MonthlyRevenueCard: React.FC = () => {
 
       <div style={{ width: '100%', height: 220 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={monthlyData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }} barGap={6} barCategoryGap="10%">
+          <BarChart data={monthlyData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }} barGap={2} barCategoryGap="4%">
             <defs>
               <linearGradient id="grad-monthly" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#06b6d4" stopOpacity={1} />
@@ -60,7 +92,7 @@ const MonthlyRevenueCard: React.FC = () => {
             <XAxis dataKey="name" axisLine={{ stroke: '#e5e7eb', strokeWidth: 1 }} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={8} />
             <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" ticks={[0, 15, 30, 45, 60]} />
             <Tooltip wrapperStyle={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #e2e8f0' }} />
-            <Bar dataKey="value" fill="url(#grad-monthly)" radius={[8, 8, 0, 0]} barSize={28} />
+            <Bar dataKey="value" fill="url(#grad-monthly)" radius={[8, 8, 0, 0]} barSize={44} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -72,15 +104,13 @@ const MonthlyRevenueCard: React.FC = () => {
 
 const ProfitCard: React.FC = () => {
   const profitData = [
-    { name: 'A', value: 6 },
-    { name: 'B', value: 8 },
-    { name: 'C', value: 12 },
-    { name: 'D', value: 10 },
-    { name: 'E', value: 9 },
-    { name: 'F', value: 11 },
-    { name: 'G', value: 7 },
-    { name: 'H', value: 5 },
-    { name: 'I', value: 3 },
+    { name: 'Monday', value: 6 },
+    { name: 'Tuesday', value: 8 },
+    { name: 'Wednesday', value: 12 },
+    { name: 'Thursday', value: 10 },
+    { name: 'Friday', value: 9 },
+    { name: 'Saturday', value: 11 },
+    { name: 'Sunday', value: 7 },
   ];
 
   return (
@@ -94,7 +124,7 @@ const ProfitCard: React.FC = () => {
 
       <div style={{ width: '100%', height: 221 }} className="mt-3">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={profitData} margin={{ top: 6, right: 0, left: 0, bottom: 0 }} barGap={6} barCategoryGap="8%">
+          <BarChart data={profitData} margin={{ top: 6, right: 0, left: 0, bottom: 0 }} barGap={2} barCategoryGap="2%">
             <defs>
               <linearGradient id="grad-profit" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#ff2d95" stopOpacity={1} />
@@ -103,7 +133,7 @@ const ProfitCard: React.FC = () => {
             </defs>
             <XAxis dataKey="name" axisLine={{ stroke: '#e5e7eb', strokeWidth: 1 }} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={6} />
             <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" domain={[0, 60]} ticks={[0, 15, 30, 45, 60]} />
-            <Bar dataKey="value" fill="url(#grad-profit)" radius={[8, 8, 0, 0]} barSize={22} />
+            <Bar dataKey="value" fill="url(#grad-profit)" radius={[8, 8, 0, 0]} barSize={56} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -230,7 +260,7 @@ const LeadAuditorDashboard: React.FC = () => {
 
   return (
     <MainLayout title="Dashboard" user={layoutUser}>
-      <div className="space-y-6">
+      <div className="space-y-3">
         <div className="flex gap-6" style={{ height: 420 }}>
           <div className="w-80 h-full">
             <OrderStatusCard data={orderStatusData} />
@@ -241,22 +271,25 @@ const LeadAuditorDashboard: React.FC = () => {
               data={barData}
               xAxisKey="department"
               bars={[
-                { dataKey: 'Findings', fill: ['#ffb84d', '#ff7a00'], name: 'Findings' },
-                { dataKey: 'Finding Open', fill: ['#60e0ff', '#0284c7'], name: 'Finding Open' },
                 { dataKey: 'Finding Closed', fill: ['#7ee787', '#10b981'], name: 'Finding Closed' },
+                { dataKey: 'Finding Open', fill: ['#60e0ff', '#0284c7'], name: 'Finding Open' },
+                { dataKey: 'Findings', fill: ['#ffb84d', '#ff7a00'], name: 'Findings' },
               ]}
               height={280}
               className="h-full"
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-6" style={{ height: 500 }}>
+        <div className="grid grid-cols-2 gap-4 items-start" style={{ height: 360 }}>
           <div className="h-full">
             <MonthlyRevenueCard />
           </div>
           <div className="h-full">
             <ProfitCard />
           </div>
+        </div>
+        <div className="-mt-4">
+          <RadarSummary />
         </div>
       </div>
     </MainLayout>

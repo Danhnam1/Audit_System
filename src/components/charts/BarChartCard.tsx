@@ -55,7 +55,7 @@ export const BarChartCard: React.FC<BarChartCardProps> = ({
           <Tooltip
             contentStyle={{ backgroundColor: '#fff', border: '1px solid #e0f2fe', borderRadius: '8px' }}
           />
-          <Legend />
+          <Legend verticalAlign="bottom" align="center" iconType="rect" />
           {bars.map((bar, index) => {
             const fill = Array.isArray(bar.fill) ? `url(#grad-bar-${index})` : String(bar.fill);
             return (

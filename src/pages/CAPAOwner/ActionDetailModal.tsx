@@ -9,8 +9,9 @@ interface ActionDetailModalProps {
   actionId: string;
   findingId?: string; // Optional: to load all related actions
   showReviewButtons?: boolean;
-  onApprove?: (feedback: string) => Promise<void>;
-  onReject?: (feedback: string) => Promise<void>;
+  expectedStatus?: string; // Expected status for showing review buttons
+  onApprove?: (actionId: string, feedback: string) => Promise<void>;
+  onReject?: (actionId: string, feedback: string) => Promise<void>;
   isProcessing?: boolean;
 }
 
@@ -20,6 +21,7 @@ const ActionDetailModal = ({
   actionId, 
   findingId,
   showReviewButtons = false,
+  expectedStatus,
   onApprove,
   onReject,
   isProcessing = false
@@ -54,6 +56,11 @@ const ActionDetailModal = ({
     console.log('isOpen:', isOpen);
     console.log('selectedActionId:', selectedActionId);
     console.log('findingId:', findingId);
+    console.log('Current action state:', action ? {
+      actionId: action.actionId,
+      status: action.status,
+      progressPercent: action.progressPercent
+    } : null);
     
     if (isOpen && selectedActionId) {
       loadAction();
@@ -83,12 +90,18 @@ const ActionDetailModal = ({
       return;
     }
     
-    console.log('Loading related actions for finding:', findingId);
+    console.log('🔄 [loadRelatedActions] Loading actions for finding:', findingId);
     setLoadingRelatedActions(true);
     try {
       // Load all actions for this finding using the correct API function
       const actions = await getActionsByFinding(findingId);
-      console.log('Loaded related actions:', actions);
+      console.log('✅ [loadRelatedActions] Loaded actions:', actions?.map((a, i) => ({
+        index: i + 1,
+        actionId: a.actionId,
+        status: a.status,
+        progressPercent: a.progressPercent,
+        assignedTo: a.assignedTo
+      })));
       setRelatedActions(actions || []);
       
       // Load user info for all actions
@@ -116,10 +129,18 @@ const ActionDetailModal = ({
   };
 
   const loadAction = async () => {
+    console.log('📥 [loadAction] Fetching action:', selectedActionId);
     setLoading(true);
     setError(null);
     try {
       const data = await getActionById(selectedActionId);
+      console.log('✅ [loadAction] Received data:', {
+        actionId: data.actionId,
+        title: data.title,
+        status: data.status,
+        progressPercent: data.progressPercent,
+        assignedTo: data.assignedTo
+      });
       setAction(data);
       // Load attachments for this action
       loadAttachments(selectedActionId);
@@ -128,7 +149,7 @@ const ActionDetailModal = ({
         loadAssignedToUser(data.assignedTo);
       }
     } catch (err: any) {
-      console.error('Error loading action:', err);
+      console.error('❌ [loadAction] Error loading action:', err);
       setError(err?.response?.data?.message || err?.message || 'Failed to load action details');
     } finally {
       setLoading(false);
@@ -245,6 +266,8 @@ const ActionDetailModal = ({
                     <button
                       key={relatedAction.actionId}
                       onClick={() => {
+                        console.log('🖱️ [Sidebar Click] Switching to action:', relatedAction.actionId);
+                        console.log('Previous selectedActionId:', selectedActionId);
                         setSelectedActionId(relatedAction.actionId);
                         setShowFeedbackInput(false);
                         setReviewFeedback('');
@@ -326,6 +349,17 @@ const ActionDetailModal = ({
 
             {/* Body */}
             <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-gradient-to-b from-gray-50 to-white">
+              {(() => {
+                console.log('📺 [Modal Display] Currently showing action:', {
+                  selectedActionId,
+                  actionData: action ? {
+                    actionId: action.actionId,
+                    status: action.status,
+                    title: action.title?.substring(0, 50) + '...'
+                  } : 'null'
+                });
+                return null;
+              })()}
               {loading ? (
                 <div className="flex items-center justify-center py-20">
                   <div className="text-center">
@@ -625,7 +659,7 @@ const ActionDetailModal = ({
             ) : null}
 
             {/* Feedback Input */}
-            {showFeedbackInput && showReviewButtons && action && (
+            {showFeedbackInput && onApprove && onReject && action && (
               <div className="bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-xl shadow-lg p-6 mt-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
@@ -669,11 +703,31 @@ const ActionDetailModal = ({
                     Cancel
                   </button>
                   <button
-                    onClick={() => {
-                      if (reviewType === 'approve') {
-                        onApprove?.(reviewFeedback);
-                      } else if (reviewType === 'reject' && reviewFeedback.trim()) {
-                        onReject?.(reviewFeedback);
+                    onClick={async () => {
+                      console.log('🔵 Confirm button clicked');
+                      console.log('reviewType:', reviewType);
+                      console.log('reviewFeedback:', reviewFeedback);
+                      console.log('onApprove exists:', !!onApprove);
+                      console.log('onReject exists:', !!onReject);
+                      
+                      if (reviewType === 'approve' && onApprove) {
+                        console.log('✅ Calling onApprove with actionId:', selectedActionId, 'feedback:', reviewFeedback);
+                        await onApprove(selectedActionId, reviewFeedback);
+                        console.log('🔄 Reloading action details in modal...');
+                        await loadAction(); // Reload action to show updated status
+                        console.log('✅ Action reloaded in modal');
+                        setShowFeedbackInput(false);
+                        setReviewFeedback('');
+                      } else if (reviewType === 'reject' && reviewFeedback.trim() && onReject) {
+                        console.log('❌ Calling onReject with actionId:', selectedActionId, 'feedback:', reviewFeedback);
+                        await onReject(selectedActionId, reviewFeedback);
+                        console.log('🔄 Reloading action details in modal...');
+                        await loadAction(); // Reload action to show updated status
+                        console.log('✅ Action reloaded in modal');
+                        setShowFeedbackInput(false);
+                        setReviewFeedback('');
+                      } else {
+                        console.log('⚠️ No action taken - conditions not met');
                       }
                     }}
                     disabled={isProcessing || (reviewType === 'reject' && !reviewFeedback.trim())}
@@ -710,7 +764,27 @@ const ActionDetailModal = ({
           </div>
 
           {/* Footer with Review Buttons */}
-          {showReviewButtons && action && (action.status?.toLowerCase() === 'reviewed' || action.status?.toLowerCase() === 'verified') && !showFeedbackInput && (
+          {(() => {
+            // Check if status matches expected status (if provided)
+            const statusMatches = expectedStatus 
+              ? action?.status?.toLowerCase() === expectedStatus.toLowerCase()
+              : true; // If no expected status, don't filter by status
+            
+            const shouldShowButtons = showReviewButtons && onApprove && onReject && action && !showFeedbackInput && statusMatches;
+            
+            console.log('🔍 [Footer Buttons Check]', {
+              showReviewButtons,
+              hasCallbacks: !!(onApprove && onReject),
+              hasAction: !!action,
+              showFeedbackInput,
+              status: action?.status,
+              expectedStatus,
+              statusMatches,
+              shouldShowButtons
+            });
+            
+            return shouldShowButtons;
+          })() && (
             <div className="sticky bottom-0 border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 px-6 sm:px-8 py-4 flex items-center justify-between gap-4 shadow-lg">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
@@ -738,6 +812,11 @@ const ActionDetailModal = ({
                 </button>
                 <button
                   onClick={() => {
+                    console.log('✅ [Footer] Approve button clicked for action:', {
+                      selectedActionId,
+                      currentActionId: action?.actionId,
+                      currentStatus: action?.status
+                    });
                     setShowFeedbackInput(true);
                     setReviewType('approve');
                   }}

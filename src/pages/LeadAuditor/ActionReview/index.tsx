@@ -9,7 +9,7 @@ import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from 
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import FindingDetailModal from '../../Auditor/FindingManagement/FindingDetailModal';
-import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
+import LeadAuditorActionReviewModal from './LeadAuditorActionReviewModal';
 import { getStatusColor } from '../../../constants';
 
 interface Audit {
@@ -55,6 +55,19 @@ const ActionReview = () => {
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
+  const [approvingAll, setApprovingAll] = useState(false);
+  const [showApproveAllModal, setShowApproveAllModal] = useState(false);
+  const [approveAllFeedback, setApproveAllFeedback] = useState('');
+  const [approveResults, setApproveResults] = useState<{
+    succeeded: Array<{actionId: string, title: string}>;
+    failed: Array<{actionId: string, title: string, error: string}>;
+  } | null>(null);
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [approvingProgress, setApprovingProgress] = useState<{
+    total: number;
+    current: number;
+    currentAction: string;
+  } | null>(null);
 
   const getStatusBadgeColor = (status: string) => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
@@ -232,6 +245,180 @@ const ActionReview = () => {
     setFeedbackType('reject');
     setFeedback('');
     setShowFeedbackModal(true);
+  };
+
+  // Handle approve all actions at once
+  const handleApproveAll = () => {
+    setApproveAllFeedback('');
+    setShowApproveAllModal(true);
+  };
+
+  // Retry failed actions - one by one
+  const handleRetryFailed = async () => {
+    if (!approveResults?.failed.length) return;
+
+    setShowResultsModal(false);
+    setApprovingAll(true);
+
+    const succeeded: Array<{actionId: string, title: string}> = [];
+    const stillFailed: Array<{actionId: string, title: string, error: string}> = [];
+
+    try {
+      const failedActions = approveResults.failed;
+      
+      // Retry each failed action one by one
+      for (let i = 0; i < failedActions.length; i++) {
+        const failedAction = failedActions[i];
+        const action = actions.find(a => a.actionId === failedAction.actionId);
+        
+        if (!action) {
+          stillFailed.push({ ...failedAction, error: 'Action not found' });
+          continue;
+        }
+
+        // Update progress
+        setApprovingProgress({
+          total: failedActions.length,
+          current: i + 1,
+          currentAction: action.title
+        });
+
+        try {
+          // Retry approve this action
+          await approveFindingActionHigherLevel(action.actionId, approveAllFeedback || '');
+          
+          succeeded.push({ actionId: action.actionId, title: action.title });
+          toast.success(`✅ Retry successful: ${action.title}`, { autoClose: 2000 });
+        } catch (error: any) {
+          const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+          stillFailed.push({
+            actionId: action.actionId,
+            title: action.title,
+            error: errorMsg
+          });
+          toast.error(`❌ Retry failed: ${action.title}`, { autoClose: 3000 });
+        }
+
+        // Small delay between retries
+        if (i < failedActions.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+
+      // Update results with retry outcomes
+      const newSucceeded = [...(approveResults.succeeded || []), ...succeeded];
+      setApproveResults({ succeeded: newSucceeded, failed: stillFailed });
+
+      if (stillFailed.length === 0) {
+        toast.success(`🎉 Successfully approved all remaining ${succeeded.length} action${succeeded.length > 1 ? 's' : ''}!`, { autoClose: 5000 });
+      } else {
+        toast.warning(`⚠️ Retry completed: ${succeeded.length} succeeded, ${stillFailed.length} still failed`);
+        setShowResultsModal(true);
+      }
+
+      // Reload data
+      if (selectedFindingId) {
+        const actionsData = await getActionsByFinding(selectedFindingId);
+        setActions(Array.isArray(actionsData) ? actionsData : []);
+      }
+      if (selectedAuditId && selectedDeptId) {
+        await loadFindings(selectedDeptId);
+      }
+    } catch (err: any) {
+      console.error('Error retrying failed actions:', err);
+      toast.error('Failed to retry actions');
+    } finally {
+      setApprovingAll(false);
+      setApprovingProgress(null);
+    }
+  };
+
+  // Confirm approve all actions - approve one by one
+  const handleConfirmApproveAll = async () => {
+    const reviewedActions = actions.filter(a => a.status?.toLowerCase() === 'reviewed');
+    
+    if (reviewedActions.length === 0) {
+      toast.warning('No actions to approve');
+      return;
+    }
+
+    setApprovingAll(true);
+    setShowApproveAllModal(false);
+
+    const succeeded: Array<{actionId: string, title: string}> = [];
+    const failed: Array<{actionId: string, title: string, error: string}> = [];
+
+    try {
+      // Approve each action one by one
+      for (let i = 0; i < reviewedActions.length; i++) {
+        const action = reviewedActions[i];
+        
+        // Update progress
+        setApprovingProgress({
+          total: reviewedActions.length,
+          current: i + 1,
+          currentAction: action.title
+        });
+
+        try {
+          // Approve this action
+          await approveFindingActionHigherLevel(action.actionId, approveAllFeedback || '');
+          
+          // Add to succeeded list
+          succeeded.push({ actionId: action.actionId, title: action.title });
+          
+          // Show success toast for each action
+          toast.success(`✅ Approved: ${action.title}`, { autoClose: 2000 });
+        } catch (error: any) {
+          // Add to failed list
+          const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
+          failed.push({
+            actionId: action.actionId,
+            title: action.title,
+            error: errorMsg
+          });
+          
+          // Show error toast
+          toast.error(`❌ Failed: ${action.title} - ${errorMsg}`, { autoClose: 3000 });
+        }
+
+        // Small delay between approvals for better UX
+        if (i < reviewedActions.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+      
+      // Store results
+      setApproveResults({ succeeded, failed });
+      
+      // Show final summary message
+      if (failed.length === 0) {
+        toast.success(`🎉 Successfully approved all ${succeeded.length} action${succeeded.length > 1 ? 's' : ''}!`, { autoClose: 5000 });
+      } else if (succeeded.length === 0) {
+        toast.error(`❌ Failed to approve all ${failed.length} action${failed.length > 1 ? 's' : ''}`);
+        setShowResultsModal(true);
+      } else {
+        toast.warning(`⚠️ Completed: ${succeeded.length} succeeded, ${failed.length} failed`);
+        setShowResultsModal(true);
+      }
+      
+      // Reload actions and findings
+      if (selectedFindingId) {
+        const actionsData = await getActionsByFinding(selectedFindingId);
+        setActions(Array.isArray(actionsData) ? actionsData : []);
+      }
+      
+      if (selectedAuditId && selectedDeptId) {
+        await loadFindings(selectedDeptId);
+      }
+    } catch (err: any) {
+      console.error('Error in approve all process:', err);
+      toast.error('An unexpected error occurred during bulk approval');
+    } finally {
+      setApprovingProgress(null);
+      setApprovingAll(false);
+      setApproveAllFeedback('');
+    }
   };
 
   // Submit feedback
@@ -539,7 +726,48 @@ const ActionReview = () => {
                 <p className="text-gray-500">No actions found for this finding</p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-200">
+              <>
+                {/* Approve All Button - Show if there are multiple reviewed actions */}
+                {actions.filter(a => a.status?.toLowerCase() === 'reviewed').length > 1 && (
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-b-2 border-green-200 px-4 sm:px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                          <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-gray-900">Bulk Approval</h3>
+                          <p className="text-xs text-gray-600">
+                            {actions.filter(a => a.status?.toLowerCase() === 'reviewed').length} actions ready for approval
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleApproveAll}
+                        disabled={approvingAll}
+                        className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        {approvingAll ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Approving...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Approve All
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="divide-y divide-gray-200">
                 {actions.map((action) => (
                   <div
                     key={action.actionId}
@@ -599,17 +827,23 @@ const ActionReview = () => {
                       >
                         View Detail
                       </button>
-                      {action.status?.toLowerCase() === 'approved' && (
+                      {action.status?.toLowerCase() === 'reviewed' && (
                         <>
                           <button
-                            onClick={() => handleApproveAction(action.actionId)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleApproveAction(action.actionId);
+                            }}
                             disabled={processingActionId === action.actionId}
                             className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             {processingActionId === action.actionId ? 'Processing...' : 'Approve'}
                           </button>
                           <button
-                            onClick={() => handleRejectAction(action.actionId)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRejectAction(action.actionId);
+                            }}
                             disabled={processingActionId === action.actionId}
                             className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
@@ -620,7 +854,8 @@ const ActionReview = () => {
                     </div>
                   </div>
                 ))}
-              </div>
+                </div>
+              </>
             )}
           </div>
         )}
@@ -639,17 +874,107 @@ const ActionReview = () => {
       )}
 
       {/* Action Detail Modal */}
-      {showActionDetailModal && selectedActionId && (
-        <ActionDetailModal
-          isOpen={showActionDetailModal}
-          findingId={actions.find(a => a.actionId === selectedActionId)?.findingId}
-          onClose={() => {
-            setShowActionDetailModal(false);
-            setSelectedActionId(null);
-          }}
-          actionId={selectedActionId}
-          showReviewButtons={false}
-        />
+      {showActionDetailModal && selectedActionId && (() => {
+        const action = actions.find(a => a.actionId === selectedActionId);
+
+        return (
+          <LeadAuditorActionReviewModal
+            isOpen={showActionDetailModal}
+            onClose={() => {
+              setShowActionDetailModal(false);
+              setSelectedActionId(null);
+            }}
+            actionId={selectedActionId}
+            findingId={action?.findingId}
+            onDataReload={async () => {
+              // Reload actions
+              if (selectedFindingId) {
+                const actionsData = await getActionsByFinding(selectedFindingId);
+                const actionsList = unwrap<Action>(actionsData);
+                setActions(Array.isArray(actionsList) ? actionsList : []);
+                // Update actions map
+                setFindingActionsMap(prev => ({
+                  ...prev,
+                  [selectedFindingId]: actionsList || []
+                }));
+              }
+            }}
+          />
+        );
+      })()}
+
+      {/* Approving Progress Modal */}
+      {approvingProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-primary-600 to-primary-700">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                  <svg className="animate-spin h-6 w-6 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-white">Approving Actions</h3>
+                  <p className="text-sm text-white/80">Please wait, processing...</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Progress Content */}
+            <div className="px-6 py-5 space-y-4">
+              {/* Progress Counter */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">Progress</span>
+                <span className="text-lg font-bold text-primary-600">
+                  {approvingProgress.current} / {approvingProgress.total}
+                </span>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="relative">
+                <div className="w-full bg-gray-200 rounded-full h-3 shadow-inner overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-primary-500 to-primary-600 h-3 rounded-full transition-all duration-500 relative"
+                    style={{ width: `${(approvingProgress.current / approvingProgress.total) * 100}%` }}
+                  >
+                    <div className="absolute inset-0 bg-white/30 animate-pulse"></div>
+                  </div>
+                </div>
+                <div className="absolute -top-1 right-0 text-xs font-bold text-primary-600">
+                  {Math.round((approvingProgress.current / approvingProgress.total) * 100)}%
+                </div>
+              </div>
+
+              {/* Current Action */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4">
+                <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">Current Action</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-blue-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-blue-700 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-blue-900 flex-1 break-words leading-relaxed">
+                    {approvingProgress.currentAction}
+                  </p>
+                </div>
+              </div>
+
+              {/* Info Message */}
+              <div className="flex items-start gap-2 text-xs text-gray-600 bg-gray-50 p-3 rounded-lg">
+                <svg className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="flex-1">
+                  Approving each action individually. Please do not close this window.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Feedback Modal */}
@@ -695,6 +1020,243 @@ const ActionReview = () => {
                 }`}
               >
                 {processingActionId === pendingActionId ? 'Processing...' : feedbackType === 'approve' ? 'Approve' : 'Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approve All Results Modal */}
+      {showResultsModal && approveResults && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-primary-600 to-primary-700">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Bulk Approval Results</h3>
+                </div>
+                <button
+                  onClick={() => setShowResultsModal(false)}
+                  className="p-1.5 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-green-50 border-2 border-green-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-sm font-medium text-green-700">Succeeded</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-600">{approveResults.succeeded.length}</p>
+                </div>
+                <div className="bg-red-50 border-2 border-red-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    <span className="text-sm font-medium text-red-700">Failed</span>
+                  </div>
+                  <p className="text-2xl font-bold text-red-600">{approveResults.failed.length}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Succeeded Actions */}
+              {approveResults.succeeded.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-bold text-green-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Successfully Approved ({approveResults.succeeded.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {approveResults.succeeded.map((action, idx) => (
+                      <div key={action.actionId} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 bg-green-200 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="text-xs font-bold text-green-700">{idx + 1}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-green-900 break-words">{action.title}</p>
+                            <p className="text-xs text-green-600 mt-1">Action ID: {action.actionId}</p>
+                          </div>
+                          <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Failed Actions */}
+              {approveResults.failed.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-bold text-red-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Failed to Approve ({approveResults.failed.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {approveResults.failed.map((action, idx) => (
+                      <div key={action.actionId} className="bg-red-50 border border-red-200 rounded-lg p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 bg-red-200 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="text-xs font-bold text-red-700">{idx + 1}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-red-900 break-words">{action.title}</p>
+                            <p className="text-xs text-red-600 mt-1">Action ID: {action.actionId}</p>
+                            <div className="mt-2 bg-red-100 border border-red-200 rounded px-2 py-1">
+                              <p className="text-xs text-red-700 font-medium">Error: {action.error}</p>
+                            </div>
+                          </div>
+                          <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setShowResultsModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+                {approveResults.failed.length > 0 && (
+                  <button
+                    onClick={handleRetryFailed}
+                    disabled={approvingAll}
+                    className="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {approvingAll ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Retrying...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Retry Failed ({approveResults.failed.length})
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approve All Modal */}
+      {showApproveAllModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full">
+            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 rounded-t-xl">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Approve All Actions</h3>
+                  <p className="text-sm text-white/80 mt-0.5">
+                    {actions.filter(a => a.status?.toLowerCase() === 'reviewed').length} actions will be approved
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="px-6 py-5">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-blue-900">Bulk Approval Confirmation</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      This will approve all reviewed actions with the same feedback message.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Feedback (Optional)
+              </label>
+              <textarea
+                value={approveAllFeedback}
+                onChange={(e) => setApproveAllFeedback(e.target.value)}
+                placeholder="Enter feedback for all actions (optional)"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
+                rows={4}
+              />
+            </div>
+            
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-xl flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowApproveAllModal(false);
+                  setApproveAllFeedback('');
+                }}
+                disabled={approvingAll}
+                className="px-5 py-2.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmApproveAll}
+                disabled={approvingAll}
+                className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-lg transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {approvingAll ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Approving...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Approve All
+                  </>
+                )}
               </button>
             </div>
           </div>
