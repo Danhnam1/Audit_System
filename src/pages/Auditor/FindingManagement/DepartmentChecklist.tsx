@@ -17,6 +17,7 @@ import { getActionsByFinding, type Action } from '../../../api/actions';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
 
 import AuditorActionReviewModal from './AuditorActionReviewModal';
+import ActionDetailsModal from '../../LeadAuditor/auditplanning/components/ActionDetailsModal';
 
 import { getAccessGrants, verifyCode} from '../../../api/accessGrant';
 import useAuthStore, { useUserId } from '../../../store/useAuthStore';
@@ -90,6 +91,7 @@ const DepartmentChecklist = () => {
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [selectedActionFindingId, setSelectedActionFindingId] = useState<string | null>(null);
+  const [showActionDetailsModal, setShowActionDetailsModal] = useState(false);
 
   // QR Scan & Verify Code state
   const [qrScanned, setQrScanned] = useState<boolean>(false);
@@ -1108,13 +1110,20 @@ const DepartmentChecklist = () => {
           />
           <div className="flex min-h-full items-center justify-center p-4">
             <div
-              className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+              className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900">Actions for Finding</h2>
-                  <p className="text-sm text-gray-600 mt-1">{selectedFindingForActions.title}</p>
+              <div className="sticky top-0 bg-blue-600 px-6 py-5 flex items-center justify-between z-10 shadow-lg border-b-4 border-blue-700">
+                <div className="flex-1 min-w-0 flex items-center gap-3">
+                  <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-white">Actions for Finding</h2>
+                    <p className="text-sm text-blue-100 mt-1 truncate">{selectedFindingForActions.title}</p>
+                  </div>
                 </div>
                 <button
                   onClick={() => {
@@ -1122,68 +1131,97 @@ const DepartmentChecklist = () => {
                     setSelectedFindingForActions(null);
                     setFindingActions([]);
                   }}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-2 hover:bg-white/20 rounded-lg transition-all duration-200 flex-shrink-0 group"
                 >
-                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-white group-hover:rotate-90 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
 
-              <div className="p-6">
+              <div className="flex-1 overflow-y-auto p-6">
                 {loadingActions ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                     <span className="ml-3 text-gray-600">Loading actions...</span>
                   </div>
                 ) : findingActions.length === 0 ? (
                   <div className="text-center py-12">
-                    <p className="text-gray-500">No actions found for this finding</p>
+                    <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="mt-3 text-gray-500 font-medium">No actions found for this finding</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
                     {findingActions.map((action) => (
                       <div
                         key={action.actionId}
-                        className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                        className="bg-white border-2 border-blue-200 rounded-xl p-5 hover:shadow-xl hover:border-blue-400 transition-all duration-200"
                       >
-                        <div className="flex items-start justify-between mb-2">
-                          <h3 className="text-base font-medium text-gray-900">{action.title}</h3>
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${action.status?.toLowerCase() === 'verified'
+                        <div className="flex items-start justify-between mb-3">
+                          <h3 className="text-base font-semibold text-gray-900 flex-1 mr-3">{action.title}</h3>
+                          <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${action.status?.toLowerCase() === 'verified'
                               ? 'bg-green-100 text-green-700'
                               : action.status?.toLowerCase() === 'completed'
                                 ? 'bg-blue-100 text-blue-700'
+                                : action.status?.toLowerCase() === 'approved'
+                                ? 'bg-emerald-100 text-emerald-700'
                                 : 'bg-gray-100 text-gray-700'
                             }`}>
                             {action.status || 'N/A'}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 mb-3">{action.description || 'No description'}</p>
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
-                          <span>Progress: {action.progressPercent || 0}%</span>
+                        <p className="text-sm text-gray-600 mb-3 line-clamp-2">{action.description || 'No description provided'}</p>
+                        <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
+                          <div className="flex items-center gap-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            <span className="font-medium">Progress: {action.progressPercent || 0}%</span>
+                          </div>
                           {action.dueDate && (
-                            <span>Due: {new Date(action.dueDate).toLocaleDateString()}</span>
+                            <div className="flex items-center gap-1">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              <span>Due: {new Date(action.dueDate).toLocaleDateString()}</span>
+                            </div>
                           )}
                         </div>
-                        {action.progressPercent && action.progressPercent > 0 && (
-                          <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className="bg-primary-600 h-2 rounded-full transition-all"
-                              style={{ width: `${action.progressPercent}%` }}
-                            />
+                        {action.progressPercent !== undefined && (
+                          <div className="mb-4">
+                            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
+                              <div
+                                className="bg-blue-600 h-3 rounded-full transition-all duration-500 shadow-md relative overflow-hidden"
+                                style={{ width: `${action.progressPercent}%` }}
+                              >
+                                <div className="absolute inset-0 bg-white opacity-20 animate-pulse"></div>
+                              </div>
+                            </div>
                           </div>
                         )}
-                        <div className="mt-4 flex items-center justify-end gap-2 pt-4 border-t border-gray-200">
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t-2 border-blue-100">
                           <button
                             onClick={() => {
                               setSelectedActionId(action.actionId);
                               setSelectedActionFindingId(action.findingId);
-                              setShowActionDetailModal(true);
-                              console.log('Opening action modal - ActionId:', action.actionId, 'FindingId:', action.findingId);
+                              
+                              // If status is Verified, open review modal with approve/reject buttons
+                              // Otherwise, open read-only details modal
+                              if (action.status?.toLowerCase() === 'verified') {
+                                setShowActionDetailModal(true); // Review modal (with approve/reject)
+                              } else {
+                                setShowActionDetailsModal(true); // Read-only modal
+                              }
                             }}
-                            className="px-3 py-1.5 text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors border border-primary-200"
+                            className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all duration-200 shadow-md hover:shadow-xl hover:scale-105 flex items-center gap-2 group"
                           >
-                            View Details
+                            <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            {action.status?.toLowerCase() === 'verified' ? 'Review Action' : 'View Details'}
                           </button>
                         </div>
                       </div>
@@ -1338,6 +1376,18 @@ const DepartmentChecklist = () => {
               await loadMyFindings();
             }
           }}
+        />
+      )}
+
+      {/* Action Details Modal - New Component */}
+      {selectedActionId && (
+        <ActionDetailsModal
+          isOpen={showActionDetailsModal}
+          onClose={() => {
+            setShowActionDetailsModal(false);
+            setSelectedActionId(null);
+          }}
+          actionId={selectedActionId}
         />
       )}
 

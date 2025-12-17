@@ -662,25 +662,17 @@ const ActionDetailModal = ({
             {showFeedbackInput && onApprove && onReject && action && (
               <div className="bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-xl shadow-lg p-6 mt-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    reviewType === 'reject' ? 'bg-rose-100' : 'bg-green-100'
-                  }`}>
-                    <svg className={`w-6 h-6 ${reviewType === 'reject' ? 'text-rose-600' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      {reviewType === 'reject' ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      ) : (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      )}
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-rose-100">
+                    <svg className="w-6 h-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                   <div>
-                    <label className={`text-sm font-bold uppercase tracking-wide ${
-                      reviewType === 'reject' ? 'text-rose-700' : 'text-green-700'
-                    }`}>
-                      {reviewType === 'reject' ? 'Rejection Feedback (Required)' : 'Approval Feedback (Optional)'}
+                    <label className="text-sm font-bold uppercase tracking-wide text-rose-700">
+                      Rejection Feedback (Required)
                     </label>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {reviewType === 'reject' ? 'Please provide a reason for rejection' : 'Add any comments or notes'}
+                      Please provide a reason for rejection
                     </p>
                   </div>
                 </div>
@@ -688,7 +680,7 @@ const ActionDetailModal = ({
                   value={reviewFeedback}
                   onChange={(e) => setReviewFeedback(e.target.value)}
                   rows={4}
-                  placeholder={reviewType === 'reject' ? 'Enter a detailed reason for rejection...' : 'Enter feedback or leave blank...'}
+                  placeholder="Enter a detailed reason for rejection..."
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm resize-none font-medium shadow-sm"
                 />
                 <div className="flex items-center justify-end gap-3 mt-4">
@@ -704,38 +696,24 @@ const ActionDetailModal = ({
                   </button>
                   <button
                     onClick={async () => {
-                      console.log('🔵 Confirm button clicked');
-                      console.log('reviewType:', reviewType);
+                      console.log('🔵 Confirm Rejection button clicked');
                       console.log('reviewFeedback:', reviewFeedback);
-                      console.log('onApprove exists:', !!onApprove);
                       console.log('onReject exists:', !!onReject);
                       
-                      if (reviewType === 'approve' && onApprove) {
-                        console.log('✅ Calling onApprove with actionId:', selectedActionId, 'feedback:', reviewFeedback);
-                        await onApprove(selectedActionId, reviewFeedback);
-                        console.log('🔄 Reloading action details in modal...');
-                        await loadAction(); // Reload action to show updated status
-                        console.log('✅ Action reloaded in modal');
-                        setShowFeedbackInput(false);
-                        setReviewFeedback('');
-                      } else if (reviewType === 'reject' && reviewFeedback.trim() && onReject) {
+                      if (reviewFeedback.trim() && onReject) {
                         console.log('❌ Calling onReject with actionId:', selectedActionId, 'feedback:', reviewFeedback);
                         await onReject(selectedActionId, reviewFeedback);
                         console.log('🔄 Reloading action details in modal...');
-                        await loadAction(); // Reload action to show updated status
+                        await loadAction();
                         console.log('✅ Action reloaded in modal');
                         setShowFeedbackInput(false);
                         setReviewFeedback('');
                       } else {
-                        console.log('⚠️ No action taken - conditions not met');
+                        console.log('⚠️ No action taken - feedback required for rejection');
                       }
                     }}
-                    disabled={isProcessing || (reviewType === 'reject' && !reviewFeedback.trim())}
-                    className={`px-5 py-2.5 text-sm font-bold text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg border-2 ${
-                      reviewType === 'approve'
-                        ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 border-green-600/30'
-                        : 'bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 border-rose-600/30'
-                    }`}
+                    disabled={isProcessing || !reviewFeedback.trim()}
+                    className="px-5 py-2.5 text-sm font-bold text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg border-2 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 border-rose-600/30"
                   >
                     <div className="flex items-center gap-2">
                       {isProcessing ? (
@@ -746,13 +724,9 @@ const ActionDetailModal = ({
                       ) : (
                         <>
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            {reviewType === 'approve' ? (
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            ) : (
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            )}
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                           </svg>
-                          {reviewType === 'approve' ? 'Confirm Approval' : 'Confirm Rejection'}
+                          Confirm Rejection
                         </>
                       )}
                     </div>
@@ -772,15 +746,25 @@ const ActionDetailModal = ({
             
             const shouldShowButtons = showReviewButtons && onApprove && onReject && action && !showFeedbackInput && statusMatches;
             
-            console.log('🔍 [Footer Buttons Check]', {
-              showReviewButtons,
-              hasCallbacks: !!(onApprove && onReject),
-              hasAction: !!action,
-              showFeedbackInput,
-              status: action?.status,
-              expectedStatus,
-              statusMatches,
-              shouldShowButtons
+            console.log('🔍 [Footer Buttons Check - DETAILED]', {
+              '1_showReviewButtons': showReviewButtons,
+              '2_onApprove_exists': !!onApprove,
+              '3_onReject_exists': !!onReject,
+              '4_hasAction': !!action,
+              '5_showFeedbackInput': showFeedbackInput,
+              '6_action_status_raw': action?.status,
+              '7_action_status_lower': action?.status?.toLowerCase(),
+              '8_expectedStatus': expectedStatus,
+              '9_expectedStatus_lower': expectedStatus?.toLowerCase(),
+              '10_statusMatches': statusMatches,
+              '11_FINAL_shouldShowButtons': shouldShowButtons,
+              'ALL_CONDITIONS': {
+                showReviewButtons,
+                hasCallbacks: !!(onApprove && onReject),
+                hasAction: !!action,
+                showFeedbackInput,
+                statusMatches
+              }
             });
             
             return shouldShowButtons;
@@ -811,23 +795,37 @@ const ActionDetailModal = ({
                   </div>
                 </button>
                 <button
-                  onClick={() => {
-                    console.log('✅ [Footer] Approve button clicked for action:', {
+                  onClick={async () => {
+                    console.log('✅ [Footer] Approve button clicked - Direct approval for action:', {
                       selectedActionId,
                       currentActionId: action?.actionId,
                       currentStatus: action?.status
                     });
-                    setShowFeedbackInput(true);
-                    setReviewType('approve');
+                    if (onApprove) {
+                      console.log('✅ Calling onApprove directly without feedback');
+                      await onApprove(selectedActionId, '');
+                      console.log('🔄 Reloading action details in modal...');
+                      await loadAction();
+                      console.log('✅ Action reloaded in modal');
+                    }
                   }}
                   disabled={isProcessing}
                   className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg border-2 border-green-600/30"
                 >
                   <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Approve
+                    {isProcessing ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Approve
+                      </>
+                    )}
                   </div>
                 </button>
               </div>

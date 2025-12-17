@@ -5,11 +5,11 @@ import { getAuditPlans, getAuditPlanById } from '../../../api/audits';
 import { getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getActionsByFinding, type Action } from '../../../api/actions';
-import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../api/findings';
+import { approveFindingActionHigherLevel } from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import FindingDetailModal from '../../Auditor/FindingManagement/FindingDetailModal';
-import LeadAuditorActionReviewModal from './LeadAuditorActionReviewModal';
+import LeadAuditorActionDetailsModal from './LeadAuditorActionDetailsModal';
 import { getStatusColor } from '../../../constants';
 
 interface Audit {
@@ -45,13 +45,8 @@ const ActionReview = () => {
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [actions, setActions] = useState<Action[]>([]);
   const [loadingActions, setLoadingActions] = useState(false);
-  const [processingActionId, setProcessingActionId] = useState<string | null>(null);
   const [showFindingDetailModal, setShowFindingDetailModal] = useState(false);
   const [selectedFindingForDetail, setSelectedFindingForDetail] = useState<string | null>(null);
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [feedbackType, setFeedbackType] = useState<'approve' | 'reject'>('approve');
-  const [feedback, setFeedback] = useState('');
-  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
@@ -174,13 +169,8 @@ const ActionReview = () => {
     }
   };
 
-  // Load findings when department is selected
-  const handleDepartmentSelect = async (deptId: number) => {
-    setSelectedDeptId(deptId);
-    setFindings([]);
-    setSelectedFindingId(null);
-    setActions([]);
-    
+  // Helper function to load findings
+  const loadFindings = async (deptId: number) => {
     setLoadingFindings(true);
     try {
       const findingsData = await getFindingsByDepartment(deptId);
@@ -205,6 +195,16 @@ const ActionReview = () => {
     } finally {
       setLoadingFindings(false);
     }
+  };
+
+  // Load findings when department is selected
+  const handleDepartmentSelect = async (deptId: number) => {
+    setSelectedDeptId(deptId);
+    setFindings([]);
+    setSelectedFindingId(null);
+    setActions([]);
+    
+    await loadFindings(deptId);
   };
   
   // Check if finding has action with "Approved" status
@@ -231,21 +231,7 @@ const ActionReview = () => {
     }
   };
 
-  // Handle approve action (open feedback modal)
-  const handleApproveAction = (actionId: string) => {
-    setPendingActionId(actionId);
-    setFeedbackType('approve');
-    setFeedback('');
-    setShowFeedbackModal(true);
-  };
 
-  // Handle reject action (open feedback modal)
-  const handleRejectAction = (actionId: string) => {
-    setPendingActionId(actionId);
-    setFeedbackType('reject');
-    setFeedback('');
-    setShowFeedbackModal(true);
-  };
 
   // Handle approve all actions at once
   const handleApproveAll = () => {
@@ -335,9 +321,9 @@ const ActionReview = () => {
 
   // Confirm approve all actions - approve one by one
   const handleConfirmApproveAll = async () => {
-    const reviewedActions = actions.filter(a => a.status?.toLowerCase() === 'reviewed');
+    const approvedActions = actions.filter(a => a.status?.toLowerCase() === 'approved');
     
-    if (reviewedActions.length === 0) {
+    if (approvedActions.length === 0) {
       toast.warning('No actions to approve');
       return;
     }
@@ -350,12 +336,12 @@ const ActionReview = () => {
 
     try {
       // Approve each action one by one
-      for (let i = 0; i < reviewedActions.length; i++) {
-        const action = reviewedActions[i];
+      for (let i = 0; i < approvedActions.length; i++) {
+        const action = approvedActions[i];
         
         // Update progress
         setApprovingProgress({
-          total: reviewedActions.length,
+          total: approvedActions.length,
           current: i + 1,
           currentAction: action.title
         });
@@ -383,7 +369,7 @@ const ActionReview = () => {
         }
 
         // Small delay between approvals for better UX
-        if (i < reviewedActions.length - 1) {
+        if (i < approvedActions.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 300));
         }
       }
@@ -420,49 +406,6 @@ const ActionReview = () => {
       setApproveAllFeedback('');
     }
   };
-
-  // Submit feedback
-  const handleSubmitFeedback = async () => {
-    if (!pendingActionId) return;
-
-    // For reject, feedback is required
-    if (feedbackType === 'reject' && !feedback.trim()) {
-      toast.warning('Please enter feedback for rejection');
-      return;
-    }
-
-    setProcessingActionId(pendingActionId);
-    try {
-      if (feedbackType === 'approve') {
-        await approveFindingActionHigherLevel(pendingActionId, feedback || '');
-        toast.success('Action approved successfully');
-      } else {
-        await rejectFindingActionHigherLevel(pendingActionId, feedback);
-        toast.success('Action rejected successfully');
-      }
-      
-      setShowFeedbackModal(false);
-      setPendingActionId(null);
-      setFeedback('');
-      
-      // Reload actions
-      if (selectedFindingId) {
-        const actionsData = await getActionsByFinding(selectedFindingId);
-        setActions(Array.isArray(actionsData) ? actionsData : []);
-        // Update actions map
-        setFindingActionsMap(prev => ({
-          ...prev,
-          [selectedFindingId]: actionsData || []
-        }));
-      }
-    } catch (err: any) {
-      console.error(`Error ${feedbackType === 'approve' ? 'approving' : 'rejecting'} action:`, err);
-      toast.error(err?.message || `Failed to ${feedbackType === 'approve' ? 'approve' : 'reject'} action`);
-    } finally {
-      setProcessingActionId(null);
-    }
-  };
-
   const handleBack = () => {
     if (selectedFindingId) {
       setSelectedFindingId(null);
@@ -499,10 +442,9 @@ const ActionReview = () => {
     <MainLayout user={layoutUser}>
       {/* Header */}
       {!selectedAuditId && !selectedDeptId && !selectedFindingId && (
-        <div className="bg-gradient-to-r from-primary-500 to-primary-600 shadow-lg mb-6">
-          <div className="px-4 sm:px-6 py-4 sm:py-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">Action Review</h1>
-            <p className="text-primary-100 text-sm sm:text-base mt-2">Select an audit to review actions</p>
+        <div className="bg-white border-b border-primary-100 shadow-sm mb-4 sm:mb-6 ml-6">
+                    <div className="px-4 sm:px-6 py-4 sm:py-6">
+            <h1 className="text-2xl sm:text-3xl font-bold text-blue-600">Action Review</h1>
           </div>
         </div>
       )}
@@ -510,7 +452,7 @@ const ActionReview = () => {
       <div className="px-4 sm:px-6 pb-4 sm:pb-6">
         {/* Header for nested views */}
         {(selectedAuditId || selectedDeptId || selectedFindingId) && (
-          <div className="bg-white border-b border-primary-100 shadow-sm mb-4 sm:mb-6">
+          <div className="bg-white border-b border-primary-100 shadow-sm mb-4 sm:mb-6 ">
             <div className="px-4 sm:px-6 py-3 sm:py-4">
               <div className="flex items-center gap-3 mb-2">
                 <button
@@ -557,49 +499,115 @@ const ActionReview = () => {
                     <p className="text-sm text-gray-400 mt-2">Audits with "In Progress" status will appear here</p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-200">
-                    {audits.map((audit) => (
-                      <div
-                        key={audit.auditId}
-                        onClick={() => handleAuditSelect(audit.auditId)}
-                        className="px-4 sm:px-6 py-4 hover:bg-primary-50 transition-colors cursor-pointer group"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700 mb-2">
-                              {audit.title}
-                            </h3>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(audit.type)}`}>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-primary-50">
+                        <tr>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Title
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Type
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Scope
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Status
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Start Date
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            End Date
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Departments
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Findings
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {audits.map((audit) => (
+                          <tr
+                            key={audit.auditId}
+                            className="hover:bg-primary-50 transition-colors cursor-pointer group"
+                            onClick={() => handleAuditSelect(audit.auditId)}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-semibold text-gray-900 group-hover:text-primary-700">
+                                {audit.title}
+                              </div>
+                              {audit.objective && (
+                                <div className="text-xs text-gray-500 mt-1 truncate max-w-xs">
+                                  {audit.objective}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getAuditTypeBadgeColor(audit.type)}`}>
                                 {audit.type || 'N/A'}
                               </span>
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(audit.status)}`}>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <span className="text-sm text-gray-700 font-medium">
+                                {audit.scope || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getStatusBadgeColor(audit.status)}`}>
                                 {audit.status || 'Unknown'}
                               </span>
-                              {audit.departmentCount !== undefined && (
-                                <span className="text-xs text-gray-500 flex items-center gap-1">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                  </svg>
-                                  {audit.departmentCount} {audit.departmentCount === 1 ? 'department' : 'departments'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-700">
+                              {formatDate(audit.startDate)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-700">
+                              {formatDate(audit.endDate)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                                <span className="text-sm font-semibold text-gray-700">
+                                  {audit.departmentCount !== undefined ? audit.departmentCount : '-'}
                                 </span>
-                              )}
-                              {audit.findingCount !== undefined && (
-                                <span className="text-xs text-gray-500 flex items-center gap-1">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                  </svg>
-                                  {audit.findingCount} {audit.findingCount === 1 ? 'finding' : 'findings'}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <span className="text-sm font-semibold text-gray-700">
+                                  {audit.findingCount !== undefined ? audit.findingCount : '-'}
                                 </span>
-                              )}
-                            </div>
-                          </div>
-                          <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600 flex-shrink-0 ml-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
-                    ))}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAuditSelect(audit.auditId);
+                                }}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium text-sm shadow-sm hover:shadow-md"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                                View
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -727,8 +735,8 @@ const ActionReview = () => {
               </div>
             ) : (
               <>
-                {/* Approve All Button - Show if there are multiple reviewed actions */}
-                {actions.filter(a => a.status?.toLowerCase() === 'reviewed').length > 1 && (
+                {/* Approve All Button - Show if there are multiple approved actions ready for final review */}
+                {actions.filter(a => a.status?.toLowerCase() === 'approved').length > 1 && (
                   <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-b-2 border-green-200 px-4 sm:px-6 py-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -740,7 +748,7 @@ const ActionReview = () => {
                         <div>
                           <h3 className="text-sm font-bold text-gray-900">Bulk Approval</h3>
                           <p className="text-xs text-gray-600">
-                            {actions.filter(a => a.status?.toLowerCase() === 'reviewed').length} actions ready for approval
+                            {actions.filter(a => a.status?.toLowerCase() === 'approved').length} actions ready for final approval
                           </p>
                         </div>
                       </div>
@@ -767,93 +775,93 @@ const ActionReview = () => {
                   </div>
                 )}
                 
-                <div className="divide-y divide-gray-200">
-                {actions.map((action) => (
-                  <div
-                    key={action.actionId}
-                    className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className={`flex items-start justify-between mb-3 ${
-                      action.status?.toLowerCase() === 'complete'
-                        ? 'bg-green-50 border-l-4 border-green-500 p-3 rounded-r-lg'
-                        : action.status?.toLowerCase() === 'rejected'
-                        ? 'bg-red-50 border-l-4 border-red-500 p-3 rounded-r-lg'
-                        : ''
-                    }`}>
-                      <div className="flex-1">
-                        <h3 className="text-base font-semibold text-gray-900 mb-1">{action.title}</h3>
-                        <p className="text-sm text-gray-600 mb-2">{action.description || 'No description'}</p>
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
-                          <span>Progress: {action.progressPercent || 0}%</span>
-                          {action.dueDate && <span>Due: {formatDate(action.dueDate)}</span>}
-                        </div>
-                        {action.progressPercent && action.progressPercent > 0 && (
-                          <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full transition-all ${
-                                action.status?.toLowerCase() === 'complete'
-                                  ? 'bg-green-600'
-                                  : action.status?.toLowerCase() === 'rejected'
-                                  ? 'bg-red-600'
-                                  : 'bg-primary-600'
-                              }`}
-                              style={{ width: `${action.progressPercent}%` }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ml-4 ${
-                        action.status?.toLowerCase() === 'complete'
-                          ? 'bg-green-100 text-green-700'
-                          : action.status?.toLowerCase() === 'rejected'
-                          ? 'bg-red-100 text-red-700'
-                          : action.status?.toLowerCase() === 'approved'
-                          ? 'bg-blue-100 text-blue-700'
-                          : action.status?.toLowerCase() === 'verified'
-                          ? 'bg-purple-100 text-purple-700'
-                          : 'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {action.status || 'N/A'}
-                      </span>
-                    </div>
-                    <div className="mt-4 flex items-center justify-end gap-2 pt-4 border-t border-gray-200">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedActionId(action.actionId);
-                          setShowActionDetailModal(true);
-                        }}
-                        className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                      >
-                        View Detail
-                      </button>
-                      {action.status?.toLowerCase() === 'reviewed' && (
-                        <>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleApproveAction(action.actionId);
-                            }}
-                            disabled={processingActionId === action.actionId}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {processingActionId === action.actionId ? 'Processing...' : 'Approve'}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRejectAction(action.actionId);
-                            }}
-                            disabled={processingActionId === action.actionId}
-                            className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {processingActionId === action.actionId ? 'Processing...' : 'Reject'}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-blue-50">
+                      <tr>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Title
+                        </th>
+                       
+                        <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Progress
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Due Date
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {actions.map((action) => (
+                        <tr key={action.actionId} className="hover:bg-blue-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-normal">
+                            <div className="text-sm font-semibold text-gray-900">{action.title}</div>
+                            {action.description && (
+                              <div className="text-xs text-gray-500 mt-1 line-clamp-2">{action.description}</div>
+                            )}
+                          </td>
+                        
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-sm font-bold text-blue-600">{action.progressPercent || 0}%</span>
+                              <div className="w-20 bg-gray-200 rounded-full h-2 shadow-inner">
+                                <div
+                                  className="bg-blue-600 h-2 rounded-full transition-all duration-500 relative overflow-hidden"
+                                  style={{ width: `${action.progressPercent || 0}%` }}
+                                >
+                                  <div className="absolute inset-0 bg-white opacity-20 animate-pulse"></div>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-600">
+                            {action.dueDate ? formatDate(action.dueDate) : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold border-2 ${
+                              action.status?.toLowerCase() === 'complete'
+                                ? 'bg-green-100 text-green-700 border-green-200'
+                                : action.status?.toLowerCase() === 'rejected'
+                                ? 'bg-red-100 text-red-700 border-red-200'
+                                : action.status?.toLowerCase() === 'approved'
+                                ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                : action.status?.toLowerCase() === 'verified'
+                                ? 'bg-purple-100 text-purple-700 border-purple-200'
+                                : action.status?.toLowerCase() === 'reviewed'
+                                ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                : action.status?.toLowerCase() === 'approved'
+                                ? 'bg-cyan-100 text-cyan-700 border-cyan-200'
+                                : 'bg-gray-100 text-gray-700 border-gray-200'
+                            }`}>
+                              {action.status || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedActionId(action.actionId);
+                                setShowActionDetailModal(true);
+                              }}
+                              className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all shadow-md hover:shadow-lg hover:scale-105 flex items-center gap-2 mx-auto"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              View Detail
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </>
             )}
@@ -874,34 +882,29 @@ const ActionReview = () => {
       )}
 
       {/* Action Detail Modal */}
-      {showActionDetailModal && selectedActionId && (() => {
-        const action = actions.find(a => a.actionId === selectedActionId);
-
-        return (
-          <LeadAuditorActionReviewModal
-            isOpen={showActionDetailModal}
-            onClose={() => {
-              setShowActionDetailModal(false);
-              setSelectedActionId(null);
+      {showActionDetailModal && selectedActionId && (
+        <LeadAuditorActionDetailsModal
+          isOpen={showActionDetailModal}
+          onClose={() => {
+            setShowActionDetailModal(false);
+            setSelectedActionId(null);
+          }}
+          actionId={selectedActionId}
+          onDataReload={async () => {
+            // Reload actions
+            if (selectedFindingId) {
+              const actionsData = await getActionsByFinding(selectedFindingId);
+              const actionsList = unwrap<Action>(actionsData);
+              setActions(Array.isArray(actionsList) ? actionsList : []);
+              // Update actions map
+              setFindingActionsMap(prev => ({
+                ...prev,
+                [selectedFindingId]: actionsList || []
+              }));
+            }
             }}
-            actionId={selectedActionId}
-            findingId={action?.findingId}
-            onDataReload={async () => {
-              // Reload actions
-              if (selectedFindingId) {
-                const actionsData = await getActionsByFinding(selectedFindingId);
-                const actionsList = unwrap<Action>(actionsData);
-                setActions(Array.isArray(actionsList) ? actionsList : []);
-                // Update actions map
-                setFindingActionsMap(prev => ({
-                  ...prev,
-                  [selectedFindingId]: actionsList || []
-                }));
-              }
-            }}
-          />
-        );
-      })()}
+        />
+      )}
 
       {/* Approving Progress Modal */}
       {approvingProgress && (
@@ -977,54 +980,7 @@ const ActionReview = () => {
         </div>
       )}
 
-      {/* Feedback Modal */}
-      {showFeedbackModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {feedbackType === 'approve' ? 'Approve Action' : 'Reject Action'}
-              </h3>
-            </div>
-            <div className="px-6 py-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Feedback {feedbackType === 'reject' && <span className="text-red-500">*</span>}
-              </label>
-              <textarea
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-                placeholder={feedbackType === 'approve' ? 'Enter feedback (optional)' : 'Enter feedback for rejection'}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
-                rows={4}
-              />
-            </div>
-            <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-2">
-              <button
-                onClick={() => {
-                  setShowFeedbackModal(false);
-                  setPendingActionId(null);
-                  setFeedback('');
-                }}
-                disabled={processingActionId === pendingActionId}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmitFeedback}
-                disabled={processingActionId === pendingActionId || (feedbackType === 'reject' && !feedback.trim())}
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                  feedbackType === 'approve'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
-              >
-                {processingActionId === pendingActionId ? 'Processing...' : feedbackType === 'approve' ? 'Approve' : 'Reject'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Approve All Results Modal */}
       {showResultsModal && approveResults && (
@@ -1195,7 +1151,7 @@ const ActionReview = () => {
                 <div>
                   <h3 className="text-xl font-bold text-white">Approve All Actions</h3>
                   <p className="text-sm text-white/80 mt-0.5">
-                    {actions.filter(a => a.status?.toLowerCase() === 'reviewed').length} actions will be approved
+                    {actions.filter(a => a.status?.toLowerCase() === 'approved').length} actions will be approved
                   </p>
                 </div>
               </div>
@@ -1210,7 +1166,7 @@ const ActionReview = () => {
                   <div>
                     <p className="text-sm font-semibold text-blue-900">Bulk Approval Confirmation</p>
                     <p className="text-xs text-blue-700 mt-1">
-                      This will approve all reviewed actions with the same feedback message.
+                      This will give final approval to all actions that have been approved by Auditor.
                     </p>
                   </div>
                 </div>
