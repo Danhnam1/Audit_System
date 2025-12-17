@@ -3,6 +3,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getAuditScopeDepartmentsByAuditId, getAuditPlans, getSensitiveDepartments } from '../../../api/audits';
+import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { createAuditAssignment, getAuditAssignments, bulkCreateAuditAssignments } from '../../../api/auditAssignments';
 import { getDepartmentById } from '../../../api/departments';
 import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
@@ -67,6 +68,8 @@ export default function AuditAssignment() {
   const [error, setError] = useState<string | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [userNamesCache, setUserNamesCache] = useState<Record<string, string>>({});
+  const [qrValidityFrom, setQrValidityFrom] = useState<Date | null>(null);
+  const [qrValidityTo, setQrValidityTo] = useState<Date | null>(null);
   
   // Modal state
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
@@ -123,6 +126,8 @@ export default function AuditAssignment() {
   useEffect(() => {
     if (!selectedAuditId) {
       setDepartments([]);
+      setQrValidityFrom(null);
+      setQrValidityTo(null);
       return;
     }
 
@@ -224,6 +229,35 @@ export default function AuditAssignment() {
           });
 
           setDepartments(mappedDepartments);
+
+          // Load audit schedule to determine QR validity window from backend configuration
+          try {
+            const scheduleResponse = await getAuditScheduleByAudit(selectedAuditId);
+            const schedulesArray = unwrap<any>(scheduleResponse);
+
+            const fieldworkStart = (schedulesArray || []).find((s: any) =>
+              String(s.milestoneName || '').toLowerCase().includes('fieldwork start')
+            );
+            const evidenceDue = (schedulesArray || []).find((s: any) =>
+              String(s.milestoneName || '').toLowerCase().includes('evidence due')
+            );
+
+            if (fieldworkStart?.dueDate) {
+              setQrValidityFrom(new Date(fieldworkStart.dueDate));
+            } else {
+              setQrValidityFrom(null);
+            }
+
+            if (evidenceDue?.dueDate) {
+              setQrValidityTo(new Date(evidenceDue.dueDate));
+            } else {
+              setQrValidityTo(null);
+            }
+          } catch (scheduleErr) {
+            console.error('[AuditAssignment] Failed to load audit schedule for QR validity:', scheduleErr);
+            setQrValidityFrom(null);
+            setQrValidityTo(null);
+          }
         } catch (apiErr: any) {
           // If 404 or "no departments" message, just set empty array
           const errorData = apiErr?.response?.data || apiErr?.data;
@@ -315,40 +349,19 @@ export default function AuditAssignment() {
     // FE KHÔNG chặn cấp QR nếu thiếu lịch; chỉ cố gắng gửi giá trị hợp lý nếu có.
     const nowUtc = new Date();
 
-    // Ưu tiên: Fieldwork Start / Evidence Due nếu đã cấu hình
-    const fieldworkStartRaw: string | undefined =
-      (audit as any).fieldworkStart ||
-      (audit as any).FieldworkStart ||
-      (audit as any).fieldworkStartDate ||
-      (audit as any).FieldworkStartDate;
+    // Lấy cửa sổ validity từ schedule backend nếu có; fallback sang Audit Period
+    let validFromDate: Date = qrValidityFrom || nowUtc;
+    let validToDate: Date =
+      qrValidityTo || new Date(nowUtc.getTime() + 7 * 24 * 60 * 60 * 1000); // fallback 7 ngày
 
-    const evidenceDueRaw: string | undefined =
-      (audit as any).evidenceDue ||
-      (audit as any).EvidenceDue ||
-      (audit as any).evidenceDueDate ||
-      (audit as any).EvidenceDueDate;
-
-    let validFromDate: Date = nowUtc;
-    let validToDate: Date = new Date(nowUtc.getTime() + 7 * 24 * 60 * 60 * 1000); // fallback 7 ngày
-
-    if (fieldworkStartRaw) {
-      const d = new Date(fieldworkStartRaw);
-      if (!isNaN(d.getTime())) {
-        validFromDate = d;
-      }
-    } else if (audit.startDate) {
+    if (!qrValidityFrom && audit.startDate) {
       const d = new Date(audit.startDate);
       if (!isNaN(d.getTime())) {
         validFromDate = d;
       }
     }
 
-    if (evidenceDueRaw) {
-      const d = new Date(evidenceDueRaw);
-      if (!isNaN(d.getTime())) {
-        validToDate = d;
-      }
-    } else if (audit.endDate) {
+    if (!qrValidityTo && audit.endDate) {
       const d = new Date(audit.endDate);
       if (!isNaN(d.getTime())) {
         validToDate = d;
@@ -1550,37 +1563,9 @@ export default function AuditAssignment() {
                   const auditEndDate = audit.endDate ? new Date(audit.endDate) : null;
                   const auditHasEnded = auditEndDate && auditEndDate < now;
 
-                  // Derive QR validity window the same way we build issue payload:
-                  const fieldworkStartRaw: string | undefined =
-                    (audit as any).fieldworkStart ||
-                    (audit as any).FieldworkStart ||
-                    (audit as any).fieldworkStartDate ||
-                    (audit as any).FieldworkStartDate;
-
-                  const evidenceDueRaw: string | undefined =
-                    (audit as any).evidenceDue ||
-                    (audit as any).EvidenceDue ||
-                    (audit as any).evidenceDueDate ||
-                    (audit as any).EvidenceDueDate;
-
-                  let validityFrom: Date | null = null;
-                  let validityTo: Date | null = null;
-
-                  if (fieldworkStartRaw) {
-                    const d = new Date(fieldworkStartRaw);
-                    if (!isNaN(d.getTime())) validityFrom = d;
-                  } else if (audit.startDate) {
-                    const d = new Date(audit.startDate);
-                    if (!isNaN(d.getTime())) validityFrom = d;
-                  }
-
-                  if (evidenceDueRaw) {
-                    const d = new Date(evidenceDueRaw);
-                    if (!isNaN(d.getTime())) validityTo = d;
-                  } else if (audit.endDate) {
-                    const d = new Date(audit.endDate);
-                    if (!isNaN(d.getTime())) validityTo = d;
-                  }
+                  // Lấy QR validity window từ schedule backend nếu có
+                  const validityFrom: Date | null = qrValidityFrom;
+                  const validityTo: Date | null = qrValidityTo;
                   
                   return (
                     <div className="space-y-3">
@@ -1617,7 +1602,7 @@ export default function AuditAssignment() {
                             <p className={`text-xs mt-1 ${auditHasEnded ? 'text-amber-800' : 'text-blue-800'}`}>
                               {validityFrom && validityTo ? (
                                 <>
-                                  QR codes will be valid from <strong>{validityFrom.toLocaleDateString()}</strong> until <strong>{validityTo.toLocaleDateString()}</strong>.
+                                  QR codes will be valid from <strong>Fieldwork Start ({validityFrom.toLocaleDateString()})</strong> until <strong>Evidence Due ({validityTo.toLocaleDateString()})</strong>.
                                 </>
                               ) : (
                                 <>

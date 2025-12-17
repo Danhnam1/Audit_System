@@ -735,18 +735,7 @@ export default function ScanQR() {
                       )}
 
                       {/* Direct Access Button (if verify code not required) */}
-                      {!verifyCodeInput && (
-                        <button
-                          onClick={() => {
-                            if (scanResult.auditId) {
-                              navigate(`/auditee-owner/findings/audit/${scanResult.auditId}`);
-                            }
-                          }}
-                          className="w-full mt-4 px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
-                        >
-                          Open Audit Checklist
-                        </button>
-                      )}
+                      
                     </div>
                   ) : (() => {
                     const reasonLower = (scanResult.reason || '').toLowerCase();

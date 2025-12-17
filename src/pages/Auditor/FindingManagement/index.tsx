@@ -160,8 +160,8 @@ const SQAStaffFindingManagement = () => {
         const auditResults = await Promise.all(auditPromises);
         const validAudits: AuditCard[] = auditResults.filter((audit): audit is AuditCard => audit !== null);
         
-        // Filter out audits with status "Archived" (case-insensitive)
-        const nonArchivedAudits = validAudits.filter((audit) => {
+        // Filter out audits with status "Archived" or "Inactive" (case-insensitive)
+        const activeAudits = validAudits.filter((audit) => {
           const status = audit.status || '';
           const statusLower = String(status).toLowerCase().trim();
           
@@ -169,19 +169,22 @@ const SQAStaffFindingManagement = () => {
           const isArchived = statusLower === 'archived' || 
                            statusLower === 'archive' ||
                            statusLower.includes('archived');
+
+          // Also treat "Inactive" audits as closed and hide them from Task Management
+          const isInactive = statusLower === 'inactive';
           
-          if (isArchived) {
-            console.log(`🚫 Filtering out archived audit: ${audit.auditTitle} (status: "${status}")`);
+          if (isArchived || isInactive) {
+            console.log(`🚫 Filtering out closed audit: ${audit.auditTitle} (status: "${status}")`);
           }
           
-          return !isArchived;
+          return !isArchived && !isInactive;
         });
         
-        console.log('🎯 Final audits to display (excluding archived):', {
+        console.log('🎯 Final audits to display (excluding archived/inactive):', {
           total: validAudits.length,
-          nonArchived: nonArchivedAudits.length,
-          removed: validAudits.length - nonArchivedAudits.length,
-          audits: nonArchivedAudits.map(a => ({ title: a.auditTitle, status: a.status }))
+          active: activeAudits.length,
+          removed: validAudits.length - activeAudits.length,
+          audits: activeAudits.map(a => ({ title: a.auditTitle, status: a.status }))
         });
         
         // Debug: Log all statuses to see what we're getting
@@ -191,7 +194,7 @@ const SQAStaffFindingManagement = () => {
           statusType: typeof a.status
         })));
         
-        setAudits(nonArchivedAudits);
+        setAudits(activeAudits);
       } catch (err: any) {
         console.error('❌ Error loading audits:', err);
         console.error('Error details:', {

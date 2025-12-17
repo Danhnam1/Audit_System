@@ -13,7 +13,7 @@ import FindingDetailModal from './FindingDetailModal';
 import { toast } from 'react-toastify';
 import { getActionsByFinding, type Action } from '../../../api/actions';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
-import { getAuditPlanById } from '../../../api/audits';
+import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
 import { getAccessGrants, verifyCode, type VerifyCodeRequest } from '../../../api/accessGrant';
 import useAuthStore, { useUserId } from '../../../store/useAuthStore';
 import apiClient from '../../../api/client';
@@ -97,6 +97,7 @@ const DepartmentChecklist = () => {
   const authStore = useAuthStore();
   const userIdFromToken = useUserId();
   const [scannerUserId, setScannerUserId] = useState<string | null>(null);
+  const [isSensitiveDept, setIsSensitiveDept] = useState<boolean | null>(null);
 
   // Get auditId and auditType from location state (passed from parent component)
   const auditId = (location.state as any)?.auditId || '';
@@ -115,10 +116,65 @@ const DepartmentChecklist = () => {
     }
   }, [userIdFromToken, authStore.user?.email]);
 
+  // Determine if current department is sensitive for this audit.
+  // If not sensitive -> skip QR requirement.
+  useEffect(() => {
+    const checkSensitiveDepartment = async () => {
+      if (!deptId || !auditId) {
+        setIsSensitiveDept(null);
+        return;
+      }
+
+      try {
+        const sensitiveDepts = await getSensitiveDepartments(String(auditId));
+        const list: any[] = Array.isArray(sensitiveDepts)
+          ? sensitiveDepts
+          : (sensitiveDepts as any)?.$values || [];
+
+        const deptIdNum = parseInt(deptId, 10);
+        const isSensitive = list.some((item: any) => {
+          const itemDeptId = Number(
+            item.deptId ?? item.DeptId ?? item.departmentId ?? NaN
+          );
+          return !Number.isNaN(itemDeptId) && itemDeptId === deptIdNum;
+        });
+
+        setIsSensitiveDept(isSensitive);
+
+        if (!isSensitive) {
+          // Non-sensitive department: allow access without QR
+          setQrScanned(true);
+          setShowQrScanModal(false);
+          setShowVerifyCodeModal(false);
+        }
+      } catch (error) {
+        console.error(
+          '[DepartmentChecklist] Failed to check sensitive department:',
+          error
+        );
+        // Nếu không xác định được, không chặn auditor: cho phép tiếp tục mà không cần QR
+        setIsSensitiveDept(null);
+        setQrScanned(true);
+        setShowQrScanModal(false);
+        setShowVerifyCodeModal(false);
+      }
+    };
+
+    checkSensitiveDepartment();
+  }, [deptId, auditId]);
+
   // Check QR scan status on mount
   useEffect(() => {
     const checkQrScanStatus = async () => {
       if (!deptId || !auditId || !scannerUserId) return;
+      // Nếu phòng không sensitive thì không cần check QR
+      if (isSensitiveDept === false) {
+        return;
+      }
+      // Chờ xác định sensitive trước khi check QR
+      if (isSensitiveDept === null) {
+        return;
+      }
 
       try {
         // Check sessionStorage first
@@ -162,7 +218,7 @@ const DepartmentChecklist = () => {
     if (deptId && auditId && scannerUserId) {
       checkQrScanStatus();
     }
-  }, [deptId, auditId, scannerUserId]);
+  }, [deptId, auditId, scannerUserId, isSensitiveDept]);
 
   // Set audit type from state or load from API
   useEffect(() => {
