@@ -210,6 +210,54 @@ export const deleteAuditPlanAssignment = async (assignmentId: string): Promise<v
   }
 };
 
+// Approve audit plan assignment
+export const approveAuditPlanAssignment = async (assignmentId: string): Promise<any> => {
+  if (!assignmentId) throw new Error('assignmentId is required');
+  const res: any = await apiClient.post(`/AuditPlanAssignment/${assignmentId}/approve`);
+  return res?.data || res;
+};
+
+// Reject audit plan assignment (auditor action) with optional files
+export const rejectAuditPlanAssignment = async (
+  assignmentId: string,
+  params: { rejectionReason: string; files?: File[] }
+): Promise<any> => {
+  if (!assignmentId) throw new Error('assignmentId is required');
+  if (!params.rejectionReason || !params.rejectionReason.trim()) {
+    throw new Error('Rejection reason is required');
+  }
+
+  const formData = new FormData();
+  formData.append('RejectionReason', params.rejectionReason.trim());
+  if (params.files && params.files.length > 0) {
+    params.files.forEach((file) => formData.append('files', file));
+  }
+
+  const res: any = await apiClient.post(`/AuditPlanAssignment/${assignmentId}/reject`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res?.data || res;
+};
+
+// Auditor: get rejection count and details for self (token-based)
+export const getRejectionCount = async (): Promise<{ rejectionCount: number; rejections: any[] }> => {
+  const res: any = await apiClient.get('/AuditPlanAssignment/rejection-count');
+  const data = res?.data || res || {};
+  const rejections = (data.rejections?.$values ?? data.rejections) || [];
+  return {
+    rejectionCount: data.rejectionCount ?? 0,
+    rejections,
+  };
+};
+
+// Lead Auditor: get all rejections
+export const getAllRejections = async (): Promise<any[]> => {
+  const res: any = await apiClient.get('/AuditPlanAssignment/rejections/all');
+  const data = res?.data || res || [];
+  const values = data?.$values ?? data;
+  return Array.isArray(values) ? values : [];
+};
+
 // Check if auditor has permission to create plans (auditorId can be number or UUID string)
 export const hasAuditPlanCreationPermission = async (auditorId: number | string): Promise<boolean> => {
   try {
@@ -221,27 +269,30 @@ export const hasAuditPlanCreationPermission = async (auditorId: number | string)
     }
     
     console.log('[hasAuditPlanCreationPermission] Checking permission for auditorId:', auditorIdStr);
+
+    const isApproved = (a: AuditPlanAssignment) =>
+      String(a.status || '').toLowerCase().trim() === 'approved';
     
     // Try to get assignments by auditor ID
     const assignments = await getAuditPlanAssignmentsByAuditor(auditorIdStr);
     console.log('[hasAuditPlanCreationPermission] Found assignments:', assignments);
-    
+    const approvedAssignments = assignments.filter(isApproved);
+
     // Also check all assignments and compare by string (in case API endpoint doesn't work)
-    if (assignments.length === 0) {
+    if (approvedAssignments.length === 0) {
       const allAssignments = await getAuditPlanAssignments();
       console.log('[hasAuditPlanCreationPermission] All assignments:', allAssignments);
       
-      // Check if any assignment matches this auditorId (compare as strings)
-      const matching = allAssignments.filter((a: AuditPlanAssignment) => {
+      const matchingApproved = allAssignments.filter((a: AuditPlanAssignment) => {
         const assignmentAuditorId = String(a.auditorId || '').trim();
-        return assignmentAuditorId === auditorIdStr;
+        return assignmentAuditorId === auditorIdStr && isApproved(a);
       });
       
-      console.log('[hasAuditPlanCreationPermission] Matching assignments:', matching);
-      return matching.length > 0;
+      console.log('[hasAuditPlanCreationPermission] Matching approved assignments:', matchingApproved);
+      return matchingApproved.length > 0;
     }
     
-    return assignments.length > 0;
+    return approvedAssignments.length > 0;
   } catch (error) {
     console.error('[hasAuditPlanCreationPermission] Error checking permission:', error);
     return false;

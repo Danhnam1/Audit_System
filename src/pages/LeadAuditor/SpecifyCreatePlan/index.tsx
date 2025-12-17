@@ -6,16 +6,19 @@ import {
   getAuditPlanAssignments,
   createAuditPlanAssignment,
   deleteAuditPlanAssignment,
+  getAllRejections,
   type AuditPlanAssignment,
 } from '../../../api/auditPlanAssignment';
 import { toast } from 'react-toastify';
 import { AuditorSelectionTable } from './components/AuditorSelectionTable';
 import { AssignedAuditorsList } from './components/AssignedAuditorsList';
+import { AuditorAssignmentsView } from './components/AuditorAssignmentsView';
 import { useUserId } from '../../../store/useAuthStore';
 import { createNotification } from '../../../api/notifications';
-import { getPeriodStatus, type PeriodStatusResponse, getAuditPlans, getAuditsByPeriod } from '../../../api/audits';
+import { getAuditPlans } from '../../../api/audits';
 import { StatCard } from '../../../components/StatCard';
-import { getStatusColor } from '../../../constants/statusColors';
+
+type AssignmentViewMode = 'all' | 'assigned' | 'responses' | 'created';
 
 const SpecifyCreatePlan = () => {
   const { user } = useAuth();
@@ -31,16 +34,15 @@ const SpecifyCreatePlan = () => {
   // DRL files state - Map<auditorId, {file: File, fileName: string}>
   const [drlFiles, setDrlFiles] = useState<Map<string, { file: File; fileName: string }>>(new Map());
   
-  // Period management state
-  const [periodStartDate, setPeriodStartDate] = useState<string>('');
-  const [periodEndDate, setPeriodEndDate] = useState<string>('');
-  const [periodStatus, setPeriodStatus] = useState<PeriodStatusResponse | null>(null);
-  const [loadingPeriodStatus, setLoadingPeriodStatus] = useState(false);
-  const [assignmentsInPeriod, setAssignmentsInPeriod] = useState<AuditPlanAssignment[]>([]);
-  const [loadingAssignmentsInPeriod, setLoadingAssignmentsInPeriod] = useState(false);
-  const [assignmentViewMode, setAssignmentViewMode] = useState<'all' | 'assigned' | 'period'>('all');
+  const [assignmentViewMode, setAssignmentViewMode] = useState<AssignmentViewMode>('all');
   const [allAudits, setAllAudits] = useState<any[]>([]);
-  const [auditsInPeriod, setAuditsInPeriod] = useState<any[]>([]);
+  const [allRejections, setAllRejections] = useState<any[]>([]);
+  const [loadingRejections, setLoadingRejections] = useState(false);
+  const [approvedAssignments, setApprovedAssignments] = useState<AuditPlanAssignment[]>([]);
+  const [rejectedAssignments, setRejectedAssignments] = useState<AuditPlanAssignment[]>([]);
+  const [loadingResponses, setLoadingResponses] = useState(false);
+  // Date filter for Created tab
+  const [createdDate, setCreatedDate] = useState<string>('');
 
   // Debug: Log when selectedAuditorId changes
   useEffect(() => {
@@ -48,6 +50,16 @@ const SpecifyCreatePlan = () => {
   }, [selectedAuditorId]);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
+  const normalizedRole = (user?.roleName || '').toLowerCase().replace(/\s+/g, '');
+  const isAuditor = normalizedRole === 'auditor';
+  const isLead = normalizedRole === 'leadauditor' || normalizedRole === 'lead';
+
+  const toArray = (input: any) => {
+    if (!input) return [];
+    if (Array.isArray(input)) return input;
+    if (input.$values && Array.isArray(input.$values)) return input.$values;
+    return [];
+  };
 
   // Load auditors, assignments, and all audits
   useEffect(() => {
@@ -94,111 +106,50 @@ const SpecifyCreatePlan = () => {
     loadData();
   }, []);
 
-  // Load period status and assignments when dates change
+  // Load all rejections for Lead Auditor
   useEffect(() => {
-    const loadPeriodData = async () => {
-      if (!periodStartDate || !periodEndDate) {
-        setPeriodStatus(null);
-        setAssignmentsInPeriod([]);
-        setAssignmentViewMode('all'); // Reset to 'all' when no period dates
-        return;
-      }
-
-      if (new Date(periodStartDate) >= new Date(periodEndDate)) {
-        setPeriodStatus(null);
-        setAssignmentsInPeriod([]);
-        setAssignmentViewMode('all');
-        return;
-      }
-
-      // Auto-switch to period view when valid dates are selected
-      setAssignmentViewMode('period');
-
-      setLoadingPeriodStatus(true);
-      setLoadingAssignmentsInPeriod(true);
-      
+    const loadRejections = async () => {
+      if (!isLead) return;
+      setLoadingRejections(true);
       try {
-        // Load period status and audits in period (as text/plain or JSON)
-        const [status, auditsData] = await Promise.all([
-          getPeriodStatus(periodStartDate, periodEndDate),
-          getAuditsByPeriod(periodStartDate, periodEndDate),
-        ]);
-        
-        setPeriodStatus(status);
-        
-        // Unwrap response from /api/Audits/by-period
-        const { unwrap } = await import('../../../utils/normalize');
-        
-        // Debug: Log raw response
-        console.log('[SpecifyCreatePlan] Raw auditsData response:', auditsData);
-        console.log('[SpecifyCreatePlan] auditsData.$values:', (auditsData as any)?.$values);
-        console.log('[SpecifyCreatePlan] auditsData.$values length:', (auditsData as any)?.$values?.length);
-        
-        // Some environments return text/plain (string). Parse if needed.
-        let parsedAuditsData: any = auditsData;
-        if (typeof auditsData === 'string') {
-          try {
-            parsedAuditsData = JSON.parse(auditsData);
-            console.log('[SpecifyCreatePlan] Parsed auditsData from string');
-          } catch (err) {
-            console.warn('[SpecifyCreatePlan] Failed to parse auditsData string', err);
-          }
-        }
-        
-        const auditsList = unwrap(parsedAuditsData);
-        const auditsArray = Array.isArray(auditsList) ? auditsList : [];
-        
-        console.log('[SpecifyCreatePlan] After unwrap - auditsArray length:', auditsArray.length);
-        console.log('[SpecifyCreatePlan] After unwrap - auditsArray:', auditsArray.map((a: any) => ({
-          auditId: a.auditId || a.id,
-          title: a.title,
-          createdBy: a.createdBy,
-          startDate: a.startDate,
-          endDate: a.endDate,
-        })));
-        
-        // Extract unique auditor IDs from audits (createdBy field)
-        const auditorIdsFromAudits = Array.from(new Set(
-          auditsArray.map((a: any) => a.createdBy).filter(Boolean)
-        ));
-        
-        console.log('[SpecifyCreatePlan] Unique auditor IDs from audits:', auditorIdsFromAudits);
-        
-        // Create assignments from audits for display in-period
-        const assignmentsFromAudits: AuditPlanAssignment[] = auditorIdsFromAudits.map((auditorId: string) => {
-          const audit = auditsArray.find((a: any) => a.createdBy === auditorId);
-          return {
-            assignmentId: `audit-${auditorId}-${audit?.auditId || ''}`,
-            auditorId: auditorId,
-            assignBy: '', // not provided
-            assignedDate: audit?.createdAt || new Date().toISOString(),
-            remarks: audit?.remarks || '',
-            status: audit?.status || 'Active',
-          };
-        });
-        
-        console.log('[SpecifyCreatePlan] Created assignments from audits:', assignmentsFromAudits.length);
-        
-        setAssignmentsInPeriod(assignmentsFromAudits);
-        setAuditsInPeriod(auditsArray);
+        const data = await getAllRejections();
+        setAllRejections(toArray(data));
       } catch (error: any) {
-        console.error('Failed to load period data', error);
-        setPeriodStatus(null);
-        setAssignmentsInPeriod([]);
-        setAuditsInPeriod([]);
+        console.error('Failed to load rejections', error);
+        toast.error('Failed to load rejections');
       } finally {
-        setLoadingPeriodStatus(false);
-        setLoadingAssignmentsInPeriod(false);
+        setLoadingRejections(false);
       }
     };
 
-    // Debounce API call
-    const timeoutId = setTimeout(() => {
-      loadPeriodData();
-    }, 500);
+    loadRejections();
+  }, [isLead]);
 
-    return () => clearTimeout(timeoutId);
-  }, [periodStartDate, periodEndDate]);
+  // Load approved and rejected assignments for Responses tab
+  useEffect(() => {
+    const loadResponses = async () => {
+      if (assignmentViewMode !== 'responses') return;
+      setLoadingResponses(true);
+      try {
+        const allAssignments = await getAuditPlanAssignments();
+        const approved = allAssignments.filter((a: AuditPlanAssignment) => 
+          String(a.status || '').toLowerCase() === 'approved'
+        );
+        const rejected = allAssignments.filter((a: AuditPlanAssignment) => 
+          String(a.status || '').toLowerCase() === 'rejected'
+        );
+        setApprovedAssignments(approved);
+        setRejectedAssignments(rejected);
+      } catch (error: any) {
+        console.error('Failed to load responses', error);
+        toast.error('Failed to load auditor responses');
+      } finally {
+        setLoadingResponses(false);
+      }
+    };
+
+    loadResponses();
+  }, [assignmentViewMode]);
 
   // Get assigned auditor IDs (convert to strings for comparison)
   const assignedAuditorIds = assignments.map((a) => String(a.auditorId));
@@ -260,43 +211,103 @@ const SpecifyCreatePlan = () => {
     }) as Array<AuditPlanAssignment & { auditor: AdminUserDto; auditInfo?: { startDate?: string; endDate?: string } | null }>;
   })();
 
-  // Get assigned auditors in the selected period with their details and audit info
-  const assignedAuditorsInPeriod = assignmentsInPeriod
-    .map((assignment) => {
-      const auditor = auditors.find(
-        (a) => String(a.userId || '') === String(assignment.auditorId || '')
-      );
+  // Get auditors who have created plans (with date filter)
+  const createdAuditors = (() => {
+    if (!allAudits || allAudits.length === 0) return [];
+
+    // Group audits by createdBy (auditorId)
+    const auditsByAuditor = new Map<string, any[]>();
+    
+    allAudits.forEach((audit: any) => {
+      const createdBy = audit.createdBy || audit.createdByUserId || audit.auditorId || audit.userId;
+      if (!createdBy) return;
       
-      // Find audit created by this auditor (from audits in period)
-      let auditInfo: { startDate?: string; endDate?: string } | null = null;
-      if (auditsInPeriod.length > 0) {
-        const audit = auditsInPeriod.find((a: any) => {
-          const createdBy = a.createdBy || a.createdByUserId || a.auditorId || a.userId;
-          return String(createdBy) === String(assignment.auditorId);
+      const auditorId = String(createdBy);
+      if (!auditsByAuditor.has(auditorId)) {
+        auditsByAuditor.set(auditorId, []);
+      }
+      auditsByAuditor.get(auditorId)!.push(audit);
+    });
+
+    // Filter by creation date if provided
+    let filteredAuditsByAuditor = auditsByAuditor;
+    if (createdDate) {
+      filteredAuditsByAuditor = new Map<string, any[]>();
+      auditsByAuditor.forEach((audits, auditorId) => {
+        const filteredAudits = audits.filter((audit: any) => {
+          const auditCreatedDate = audit.createdDate || audit.createdAt || audit.startDate || audit.periodFrom || audit.PeriodFrom;
+          if (!auditCreatedDate) return false;
+          
+          const auditDate = new Date(auditCreatedDate);
+          const filterDate = new Date(createdDate);
+          // Filter: show audits created on or after the selected date
+          return auditDate >= filterDate;
         });
         
-        if (audit) {
-          auditInfo = {
-            startDate: audit.startDate || audit.periodFrom || audit.PeriodFrom,
-            endDate: audit.endDate || audit.periodTo || audit.PeriodTo
-          };
+        if (filteredAudits.length > 0) {
+          filteredAuditsByAuditor.set(auditorId, filteredAudits);
         }
-      }
+      });
+    }
+
+    // Map to auditor info with audit details
+    return Array.from(filteredAuditsByAuditor.entries()).map(([auditorId, audits]) => {
+      const auditor = auditors.find(
+        (a) => String(a.userId || '') === auditorId
+      );
       
+      // Get the latest audit (most recent createdDate)
+      const latestAudit = audits.sort((a: any, b: any) => {
+        const dateA = new Date(a.createdDate || a.createdAt || a.startDate || a.periodFrom || a.PeriodFrom || 0);
+        const dateB = new Date(b.createdDate || b.createdAt || b.startDate || b.periodFrom || b.PeriodFrom || 0);
+        return dateB.getTime() - dateA.getTime();
+      })[0];
+
+      const auditInfo = {
+        auditId: latestAudit.auditId || latestAudit.id,
+        title: latestAudit.title || latestAudit.name || 'Untitled Audit',
+        startDate: latestAudit.startDate || latestAudit.periodFrom || latestAudit.PeriodFrom,
+        endDate: latestAudit.endDate || latestAudit.periodTo || latestAudit.PeriodTo,
+        createdDate: latestAudit.createdDate || latestAudit.createdAt || latestAudit.startDate || latestAudit.periodFrom || latestAudit.PeriodFrom,
+        planCount: audits.length
+      };
+
       if (!auditor) {
         return {
-          ...assignment,
+          auditorId,
           auditor: {
-            userId: assignment.auditorId,
+            userId: auditorId,
             fullName: 'Unknown Auditor',
             email: 'N/A',
           } as AdminUserDto,
           auditInfo
         };
       }
-      
-      return { ...assignment, auditor, auditInfo };
-    }) as Array<AuditPlanAssignment & { auditor: AdminUserDto; auditInfo?: { startDate?: string; endDate?: string } | null }>;
+
+      return {
+        auditorId,
+        auditor,
+        auditInfo
+      };
+    });
+  })();
+
+  // If auditor accesses this screen, show their assignment inbox to approve/reject
+  if (isAuditor) {
+    return (
+      <MainLayout user={layoutUser}>
+        <div className="max-w-6xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Plan Creation Assignments</h1>
+            <p className="text-gray-600 text-sm mt-1">
+              Approve or reject plan creation permissions assigned by Lead Auditor.
+            </p>
+          </div>
+          <AuditorAssignmentsView />
+        </div>
+      </MainLayout>
+    );
+  }
 
   // Handle assign auditor
   const handleAssign = async () => {
@@ -592,144 +603,6 @@ const SpecifyCreatePlan = () => {
           />
         </div>
 
-        {/* Period Status Card */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-primary-100 bg-gradient-to-r from-primary-600 to-primary-700">
-            <div>
-              <h2 className="text-lg font-semibold text-white">
-                Period Status & Audit Count
-              </h2>
-              <p className="text-primary-100 text-sm mt-1">
-                Monitor audit creation capacity for the selected period
-              </p>
-            </div>
-          </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Period Start Date
-                </label>
-                <input
-                  type="date"
-                  value={periodStartDate}
-                  onChange={(e) => setPeriodStartDate(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Period End Date
-                </label>
-                <input
-                  type="date"
-                  value={periodEndDate}
-                  onChange={(e) => setPeriodEndDate(e.target.value)}
-                  min={periodStartDate || undefined}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-
-            {loadingPeriodStatus ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                <span className="ml-3 text-sm text-gray-600 font-medium">Loading period status...</span>
-              </div>
-            ) : periodStatus ? (
-              <div className="space-y-4">
-                {/* Key Metrics */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white rounded-lg p-5 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                    <p className="text-sm font-medium text-gray-600 mb-3">Current Audits</p>
-                    <p className="text-4xl font-bold text-primary-600">
-                      {periodStatus.currentAuditCount}
-                    </p>
-                  </div>
-                  <div className="bg-white rounded-lg p-5 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                    <p className="text-sm font-medium text-gray-600 mb-3">Max Allowed</p>
-                    <p className="text-4xl font-bold text-gray-800">
-                      {periodStatus.maxAuditsAllowed}
-                    </p>
-                  </div>
-                  <div className="bg-white rounded-lg p-5 shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                    <p className="text-sm font-medium text-gray-600 mb-3">Remaining</p>
-                    <p className={`text-4xl font-bold ${
-                      periodStatus.remainingSlots > 0 ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {periodStatus.remainingSlots}
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Assignment Status */}
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <div className="bg-white rounded-lg p-4 border border-gray-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          Assignment Status
-                        </p>
-                        <p className="text-xs text-gray-600 mt-1">
-                          {periodStatus.canAssignNewPlans
-                            ? 'You can assign auditors to create new plans'
-                            : 'Cannot assign new plans. Period is active and all slots are full.'}
-                        </p>
-                      </div>
-                      <span className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-                        periodStatus.canAssignNewPlans
-                          ? getStatusColor('Approved')
-                          : getStatusColor('Rejected')
-                      }`}>
-                        {periodStatus.canAssignNewPlans ? 'Allowed' : 'Not Allowed'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="mt-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">Assigned</span>
-                    <span className="text-sm text-gray-500">
-                      {periodStatus.currentAuditCount} / {periodStatus.maxAuditsAllowed}
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div
-                      className={`h-3 rounded-full transition-all duration-300 ${
-                        periodStatus.currentAuditCount >= periodStatus.maxAuditsAllowed
-                          ? 'bg-red-600'
-                          : periodStatus.currentAuditCount >= periodStatus.maxAuditsAllowed * 0.8
-                          ? 'bg-yellow-500'
-                          : 'bg-teal-500'
-                      }`}
-                      style={{
-                        width: `${Math.min(
-                          (periodStatus.currentAuditCount / periodStatus.maxAuditsAllowed) * 100,
-                          100
-                        )}%`,
-                      }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            ) : periodStartDate && periodEndDate ? (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm text-yellow-800">
-                  Please select a valid date range (End Date must be after Start Date).
-                </p>
-              </div>
-            ) : (
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-sm text-gray-600">
-                  Please select a period (Start Date and End Date) to view audit count and status.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* Auditors Management Section - Combined Layout */}
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
           {/* Header with Tabs */}
@@ -746,7 +619,7 @@ const SpecifyCreatePlan = () => {
             </div>
 
             {/* Tabs for switching views */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setAssignmentViewMode('all')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
@@ -767,18 +640,26 @@ const SpecifyCreatePlan = () => {
               >
                 Assigned ({assignedAuditors.length})
               </button>
-              {periodStartDate && periodEndDate && (
-                <button
-                  onClick={() => setAssignmentViewMode('period')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
-                    assignmentViewMode === 'period'
-                      ? 'bg-white text-primary-700 shadow-md'
-                      : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
-                >
-                  In Period ({assignedAuditorsInPeriod.length})
-                </button>
-              )}
+              <button
+                onClick={() => setAssignmentViewMode('responses')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  assignmentViewMode === 'responses'
+                    ? 'bg-white text-primary-700 shadow-md'
+                    : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
+              >
+                Responses ({approvedAssignments.length + rejectedAssignments.length})
+              </button>
+              <button
+                onClick={() => setAssignmentViewMode('created')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  assignmentViewMode === 'created'
+                    ? 'bg-white text-primary-700 shadow-md'
+                    : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
+              >
+                Created ({createdAuditors.length})
+              </button>
             </div>
           </div>
 
@@ -899,41 +780,369 @@ const SpecifyCreatePlan = () => {
             )}
 
             {/* Assigned Auditors View */}
-            {(assignmentViewMode === 'assigned' || assignmentViewMode === 'period') && (
+            {assignmentViewMode === 'assigned' && (
               <>
-                {assignmentViewMode === 'period' && loadingAssignmentsInPeriod ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                    <span className="ml-3 text-sm text-gray-600 font-medium">Loading assignments...</span>
-          </div>
-                ) : (assignmentViewMode === 'assigned' ? assignedAuditors : assignedAuditorsInPeriod).length === 0 ? (
+                {assignedAuditors.length === 0 ? (
                   <div className="text-center py-12">
                     <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
                       <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                       </svg>
-        </div>
+                    </div>
                     <p className="text-gray-700 font-medium text-lg mb-2">
-                      {assignmentViewMode === 'assigned' ? 'No Assignments Yet' : 'No Assignments in This Period'}
+                      No Assignments Yet
                     </p>
                     <p className="text-gray-500 text-sm">
-                      {assignmentViewMode === 'assigned'
-                        ? 'Start by selecting an auditor from the Available tab above.'
-                        : 'No auditors have been assigned to create plans for this period yet.'
-                      }
+                      Start by selecting an auditor from the Available tab above.
                     </p>
-              </div>
-            ) : (
-              <AssignedAuditorsList
-                    assignedAuditors={assignmentViewMode === 'assigned' ? assignedAuditors : assignedAuditorsInPeriod}
-                onRemove={handleRemove}
-              />
+                  </div>
+                ) : (
+                  <AssignedAuditorsList
+                    assignedAuditors={assignedAuditors}
+                    onRemove={handleRemove}
+                  />
                 )}
               </>
+            )}
+
+            {/* Responses View - Approved & Rejected */}
+            {assignmentViewMode === 'responses' && (
+              <div className="space-y-6">
+                {loadingResponses ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                    <span className="ml-3 text-sm text-gray-600 font-medium">Loading responses...</span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Approved Assignments */}
+                    <div className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden">
+                      <div className="bg-gradient-to-r from-green-50 to-green-100 px-6 py-4 border-b border-green-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold text-gray-900">Approved Assignments</h3>
+                            <p className="text-sm text-gray-600">{approvedAssignments.length} auditor(s) approved</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-6">
+                        {approvedAssignments.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500">
+                            <p>No assignments have been approved yet.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {approvedAssignments.map((assignment) => {
+                              const auditor = auditors.find((a) => String(a.userId || '') === String(assignment.auditorId));
+                              return (
+                                <div key={assignment.assignmentId} className="border border-green-100 rounded-lg p-4 bg-green-50/50 hover:bg-green-50 transition-colors">
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-3 mb-2">
+                                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-semibold">
+                                          {auditor?.fullName?.charAt(0) || 'A'}
+                                        </div>
+                                        <div>
+                                          <p className="font-semibold text-gray-900">{auditor?.fullName || 'Unknown Auditor'}</p>
+                                          <p className="text-sm text-gray-600">{auditor?.email || 'N/A'}</p>
+                                        </div>
+                                      </div>
+                                      {assignment.remarks && (
+                                        <p className="text-sm text-gray-700 mt-2 pl-13">
+                                          <span className="font-medium">Remarks:</span> {assignment.remarks}
+                                        </p>
+                                      )}
+                                      <p className="text-xs text-gray-500 mt-2 pl-13">
+                                        Assigned: {new Date(assignment.assignedDate).toLocaleString('vi-VN')}
+                                      </p>
+                                    </div>
+                                    <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
+                                      Approved
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Rejected Assignments */}
+                    <div className="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
+                      <div className="bg-gradient-to-r from-red-50 to-red-100 px-6 py-4 border-b border-red-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold text-gray-900">Rejected Assignments</h3>
+                            <p className="text-sm text-gray-600">{rejectedAssignments.length} auditor(s) rejected</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-6">
+                        {rejectedAssignments.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500">
+                            <p>No assignments have been rejected yet.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {rejectedAssignments.map((assignment) => {
+                              const auditor = auditors.find((a) => String(a.userId || '') === String(assignment.auditorId));
+                              const rejectionInfo = allRejections.find((r: any) => {
+                                const rejections = toArray(r.rejections);
+                                return rejections.some((rej: any) => rej.assignmentId === assignment.assignmentId);
+                              });
+                              const latestRejection = rejectionInfo ? toArray(rejectionInfo.rejections)[0] : null;
+                              return (
+                                <div key={assignment.assignmentId} className="border border-red-100 rounded-lg p-4 bg-red-50/50 hover:bg-red-50 transition-colors">
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-3 mb-2">
+                                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-700 font-semibold">
+                                          {auditor?.fullName?.charAt(0) || 'A'}
+                                        </div>
+                                        <div>
+                                          <p className="font-semibold text-gray-900">{auditor?.fullName || 'Unknown Auditor'}</p>
+                                          <p className="text-sm text-gray-600">{auditor?.email || 'N/A'}</p>
+                                        </div>
+                                      </div>
+                                      {latestRejection?.rejectionReason && (
+                                        <div className="mt-3 pl-13 p-3 bg-white rounded border border-red-200">
+                                          <p className="text-sm font-medium text-gray-900 mb-1">Rejection reason:</p>
+                                          <p className="text-sm text-gray-700">{latestRejection.rejectionReason}</p>
+                                        </div>
+                                      )}
+                                      {assignment.remarks && (
+                                        <p className="text-sm text-gray-600 mt-2 pl-13">
+                                          <span className="font-medium">Original Remarks:</span> {assignment.remarks}
+                                        </p>
+                                      )}
+                                      <p className="text-xs text-gray-500 mt-2 pl-13">
+                                        Assigned: {new Date(assignment.assignedDate).toLocaleString('vi-VN')}
+                                        {latestRejection?.rejectedAt && (
+                                          <> • Rejected: {new Date(latestRejection.rejectedAt).toLocaleString('vi-VN')}</>
+                                        )}
+                                      </p>
+                                    </div>
+                                    <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded-full">
+                                      Rejected
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Created View - Auditors who have created plans */}
+            {assignmentViewMode === 'created' && (
+              <div className="space-y-6">
+                {/* Date Filter Section */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Filter by Creation Date</h3>
+                  <div className="max-w-md">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Creation Date
+                    </label>
+                    <input
+                      type="date"
+                      value={createdDate}
+                      onChange={(e) => setCreatedDate(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    />
+                  </div>
+                  {createdDate && (
+                    <button
+                      onClick={() => {
+                        setCreatedDate('');
+                      }}
+                      className="mt-4 px-4 py-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
+                    >
+                      Clear Filter
+                    </button>
+                  )}
+                </div>
+
+                {/* Created Auditors List */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="bg-gradient-to-r from-primary-50 to-primary-100 px-6 py-4 border-b border-primary-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary-500 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">Created Plans</h3>
+                        <p className="text-sm text-gray-600">{createdAuditors.length} auditor(s) have created plans</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    {createdAuditors.length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">
+                        <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <p className="text-gray-700 font-medium text-lg mb-2">
+                          {createdDate ? 'No plans found for selected creation date' : 'No plans created yet'}
+                        </p>
+                        <p className="text-gray-500 text-sm">
+                          {createdDate 
+                            ? 'Try adjusting your creation date filter or clear it to see all created plans.'
+                            : 'Auditors will appear here once they create their first audit plan.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {createdAuditors.map((item) => (
+                          <div key={item.auditorId} className="border border-primary-100 rounded-lg p-4 bg-primary-50/50 hover:bg-primary-50 transition-colors">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-semibold">
+                                    {item.auditor?.fullName?.charAt(0) || 'A'}
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold text-gray-900">{item.auditor?.fullName || 'Unknown Auditor'}</p>
+                                    <p className="text-sm text-gray-600">{item.auditor?.email || 'N/A'}</p>
+                                  </div>
+                                </div>
+                                {item.auditInfo && (
+                                  <div className="mt-3 pl-13 space-y-2">
+                                    <div className="flex items-center gap-2 text-sm text-gray-700">
+                                      <span className="font-medium">Latest Plan:</span>
+                                      <span>{item.auditInfo.title}</span>
+                                    </div>
+                                    {item.auditInfo.createdDate && (
+                                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                                        <span className="font-medium">Created:</span>
+                                        <span>{new Date(item.auditInfo.createdDate).toLocaleString('en-US')}</span>
+                                      </div>
+                                    )}
+                                    {(item.auditInfo.startDate || item.auditInfo.endDate) && (
+                                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                                        <span className="font-medium">Period:</span>
+                                        <span>
+                                          {item.auditInfo.startDate 
+                                            ? new Date(item.auditInfo.startDate).toLocaleDateString('en-US')
+                                            : 'N/A'}
+                                          {' - '}
+                                          {item.auditInfo.endDate 
+                                            ? new Date(item.auditInfo.endDate).toLocaleDateString('en-US')
+                                            : 'N/A'}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {item.auditInfo.planCount > 1 && (
+                                      <div className="flex items-center gap-2 text-xs text-primary-600 font-medium">
+                                        <span>Total Plans Created: {item.auditInfo.planCount}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="px-3 py-1 bg-primary-100 text-primary-800 text-xs font-semibold rounded-full">
+                                Created
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
       </div>
+
+        {/* Lead Auditor - rejected assignments overview */}
+        {isLead && (
+          <div className="mt-8 bg-white border border-gray-200 rounded-xl shadow-sm">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Rejected plan assignments</h3>
+                <p className="text-sm text-gray-500">
+                  Summary of all times auditors rejected plan creation assignments.
+                </p>
+              </div>
+              {loadingRejections && (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                  Loading...
+                </div>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Auditor</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Rejection Count</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Latest Reason</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Latest Date</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Assignment Id</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {(allRejections || []).map((item, idx) => {
+                    const rejections = toArray(item.rejections);
+                    const latest = rejections[0];
+                    return (
+                      <tr key={item.userId || idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-700">
+                              {item.fullName ? item.fullName.charAt(0) : 'A'}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-gray-900">{item.fullName || 'N/A'}</div>
+                              <div className="text-xs text-gray-500">{item.email || '—'}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">{item.rejectionCount ?? rejections.length ?? 0}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{latest?.rejectionReason || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {latest?.rejectionDate
+                            ? new Date(latest.rejectionDate).toLocaleString('vi-VN')
+                            : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-600">{latest?.assignmentId || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                  {!loadingRejections && (allRejections || []).length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                        No rejection information available.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
     </MainLayout>
   );
 };

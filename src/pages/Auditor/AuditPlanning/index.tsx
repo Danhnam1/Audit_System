@@ -14,11 +14,9 @@ import {
   getAuditPlanById,
   deleteAuditPlan,
   submitToLeadAuditor,
-  getAuditScopeDepartments,
-  getAuditPlans,
 } from "../../../api/audits";
 import { getAuditCriteria } from "../../../api/auditCriteria";
-import { addCriterionToAudit, bulkCreateAuditCriteriaMappings } from "../../../api/auditCriteriaMap";
+import { addCriterionToAudit } from "../../../api/auditCriteriaMap";
 import { getAdminUsers } from "../../../api/adminUsers";
 import {
   addTeamMember,
@@ -30,6 +28,7 @@ import {
   addAuditSchedule,
   getAuditSchedules,
 } from "../../../api/auditSchedule";
+import { getDepartmentSensitiveAreas } from "../../../api/departmentSensitiveAreas";
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from "../../../constants/audit";
 import { getPlansWithDepartments } from "../../../services/auditPlanning.service";
 import {
@@ -78,8 +77,9 @@ import { Step4Team } from "./components/PlanForm/Step4Team";
 import { Step5Schedule } from "./components/PlanForm/Step5Schedule";
 import { SensitiveAreaForm } from "./components/PlanForm/SensitiveAreaForm";
 import { PermissionPreviewPanel } from "./components/PlanForm/PermissionPreviewPanel";
-import { DRLTemplateViewer } from "./components/PlanForm/DRLTemplateViewer";
+// import { DRLTemplateViewer } from "./components/PlanForm/DRLTemplateViewer";
 import { DRLTemplateHistory } from "./components/DRLTemplateHistory";
+import { AuditorAssignmentsView } from "../../LeadAuditor/SpecifyCreatePlan/components/AuditorAssignmentsView";
 
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
@@ -95,14 +95,14 @@ const SQAStaffAuditPlanning = () => {
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [isCheckingPermission, setIsCheckingPermission] = useState(true);
   
-  // DRL template from assignment
-  const [drlTemplateFiles, setDrlTemplateFiles] = useState<
-    Array<{
-    fileName: string;
-    fileUrl?: string;
-    fileId?: string;
-    }>
-  >([]);
+  // // DRL template from assignment
+  // const [drlTemplateFiles, setDrlTemplateFiles] = useState<
+  //   Array<{
+  //   fileName: string;
+  //   fileUrl?: string;
+  //   fileId?: string;
+  //   }>
+  // >([]);
 
   // Data fetching states
   const [departments, setDepartments] = useState<
@@ -127,7 +127,7 @@ const SQAStaffAuditPlanning = () => {
   const pageSize = 7;
 
   // Tab state for main view
-  const [activeMainTab, setActiveMainTab] = useState<"plans" | "drl-templates">(
+  const [activeMainTab, setActiveMainTab] = useState<"plans" | "drl-templates" | "assignments">(
     "plans"
   );
 
@@ -492,6 +492,72 @@ const SQAStaffAuditPlanning = () => {
       }
     }
 
+    // Minimum day-gap constraints between milestones
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+    const addGapError = (
+      laterKey: keyof typeof formState,
+      laterLabel: string,
+      earlierValue?: string,
+      earlierLabel?: string,
+      minDays?: number
+    ) => {
+      if (!earlierValue || !minDays) return;
+      const laterVal = (formState as any)[laterKey] as string | undefined;
+      if (!laterVal) return;
+
+      const earlierDate = toDate(earlierValue);
+      const laterDate = toDate(laterVal);
+      if (!earlierDate || !laterDate) return;
+
+      const diffDays = Math.floor(
+        (laterDate.getTime() - earlierDate.getTime()) / MS_PER_DAY
+      );
+      if (diffDays < minDays) {
+        if (!errs[laterKey as string]) {
+          errs[
+            laterKey as string
+          ] = `${laterLabel} must be at least ${minDays} day(s) after ${earlierLabel}.`;
+        }
+      }
+    };
+
+    // Fieldwork ≥ Kickoff + 1 day
+    addGapError(
+      "fieldworkStart",
+      "Fieldwork Start",
+      formState.kickoffMeeting,
+      "Kickoff Meeting",
+      1
+    );
+
+    // Evidence ≥ Fieldwork + 5 days
+    addGapError(
+      "evidenceDue",
+      "Evidence Due",
+      formState.fieldworkStart,
+      "Fieldwork Start",
+      5
+    );
+
+    // CAPA ≥ Evidence + 5 days
+    addGapError(
+      "capaDue",
+      "CAPA Due",
+      formState.evidenceDue,
+      "Evidence Due",
+      5
+    );
+
+    // Draft Report Due ≥ CAPA + 3 days
+    addGapError(
+      "draftReportDue",
+      "Draft Report Due",
+      formState.capaDue,
+      "CAPA Due",
+      3
+    );
+
     return errs;
   }, [
     formState.kickoffMeeting,
@@ -556,6 +622,17 @@ const SQAStaffAuditPlanning = () => {
         return false;
       }
 
+      // Require total period length >= 14 days
+      const totalDays = Math.floor((periodEnd - periodStart) / MS_PER_DAY);
+      if (totalDays < 14) {
+        if (showToast) {
+          toast.warning(
+            "Invalid period: The difference between Period From and Period To must be at least 14 days."
+          );
+        }
+        return false;
+      }
+
       return true;
     };
 
@@ -583,22 +660,15 @@ const SQAStaffAuditPlanning = () => {
   ]);
 
   const validateStep2 = useMemo(() => {
-    // Department level: every selected department must have at least one criterion chosen
-    if (formState.level === "department") {
-      if (formState.selectedDeptIds.length === 0) return false;
+    const sharedCount =
+      selectedCriteriaByDept.get("shared")?.size ??
+      formState.selectedCriteriaIds.length;
 
-      return formState.selectedDeptIds.every((deptId) => {
-        const set = selectedCriteriaByDept.get(String(deptId));
-        return !!set && set.size > 0;
-      });
+    if (formState.level === "department") {
+      return formState.selectedDeptIds.length > 0 && sharedCount > 0;
     }
 
-    // Academy level: at least one criterion overall (prefer map if available)
-    const academySet = selectedCriteriaByDept.get("academy");
-    const totalSelected =
-      (academySet?.size ?? 0) || formState.selectedCriteriaIds.length;
-
-    return totalSelected > 0;
+    return sharedCount > 0;
   }, [
     formState.level,
     formState.selectedDeptIds,
@@ -773,14 +843,6 @@ const SQAStaffAuditPlanning = () => {
       
       // Only update if there's a change (to avoid infinite loops)
       if (validTemplateIds.length !== formState.selectedTemplateIds.length) {
-        console.log("🔍 Filtering selected templates by departments:", {
-          before: formState.selectedTemplateIds.length,
-          after: validTemplateIds.length,
-          selectedDeptIds: formState.selectedDeptIds,
-          removed: formState.selectedTemplateIds.filter(
-            (id) => !validTemplateIds.includes(id)
-          ),
-        });
         formState.setSelectedTemplateIds(validTemplateIds);
       }
     } else if (
@@ -789,9 +851,6 @@ const SQAStaffAuditPlanning = () => {
     ) {
       // If no departments selected, clear all template selections
       if (formState.selectedTemplateIds.length > 0) {
-        console.log(
-          "🔍 Clearing template selections - no departments selected"
-        );
         formState.setSelectedTemplateIds([]);
       }
     }
@@ -876,7 +935,6 @@ const SQAStaffAuditPlanning = () => {
 
       // If allUsers is empty, wait a bit and try again (might be loading)
       if (!allUsers || allUsers.length === 0) {
-        console.log("[loadAvailableAuditors] allUsers is empty, waiting...");
         await new Promise((resolve) => setTimeout(resolve, 300));
         // Re-check allUsers after waiting
         if (!allUsers || allUsers.length === 0) {
@@ -889,15 +947,9 @@ const SQAStaffAuditPlanning = () => {
       const allAuditors = (allUsers || []).filter(
         (u: any) => norm(u.roleName || u.role) === "auditor"
       );
-      
-      console.log("[loadAvailableAuditors] allAuditors count:", allAuditors.length);
 
       // In edit mode: Show original selected auditors (from plan) + available auditors (not conflicting)
       if (formState.isEditMode && formState.periodFrom && formState.periodTo) {
-        console.log(
-          "[loadAvailableAuditors] Edit mode - loading original selected + available auditors"
-        );
-
         try {
           // Get available auditors (not conflicting with period)
           const available = await getAvailableAuditors({
@@ -905,30 +957,21 @@ const SQAStaffAuditPlanning = () => {
             periodTo: formState.periodTo,
             excludePreviousPeriod: true,
           });
-
           const availableAuditors = (available || []).filter(
             (u: any) => norm(u.roleName || u.role) === "auditor"
           );
-
           // Get ORIGINAL selected auditor IDs (from plan, not current selection)
           // This ensures auditors that were originally selected always show in dropdown
           const originalSelectedIds = new Set(
             originalSelectedAuditorIds.map((id) => String(id).toLowerCase().trim())
           );
-
-          console.log("[loadAvailableAuditors] Edit mode - originalSelectedIds:", Array.from(originalSelectedIds));
-          console.log("[loadAvailableAuditors] Edit mode - allAuditors count:", allAuditors.length);
-          console.log("[loadAvailableAuditors] Edit mode - allAuditors userIds:", allAuditors.map((u: any) => String(u.userId || u.id || u.$id || "").toLowerCase().trim()));
-
           // Get original selected auditors from allUsers (always include these)
           // Use case-insensitive matching
           const originalSelectedAuditors = allAuditors.filter((u: any) => {
             const userId = String(u.userId || u.id || u.$id || "").toLowerCase().trim();
             return originalSelectedIds.has(userId);
           });
-
-          console.log("[loadAvailableAuditors] Edit mode - found original selected auditors:", originalSelectedAuditors.length);
-
+      
           // Merge: original selected auditors + available auditors (avoid duplicates)
           const originalIds = new Set(
             originalSelectedAuditors.map((u: any) =>
@@ -944,15 +987,6 @@ const SQAStaffAuditPlanning = () => {
             ...originalSelectedAuditors,
             ...additionalAvailable,
           ];
-
-          console.log(
-            "[loadAvailableAuditors] Edit mode - original selected:",
-            originalSelectedAuditors.length,
-            "available:",
-            availableAuditors.length,
-            "merged:",
-            mergedAuditors.length
-          );
           setAuditorOptions(mergedAuditors);
           return;
         } catch (err) {
@@ -973,7 +1007,6 @@ const SQAStaffAuditPlanning = () => {
             return !originalSelectedIds.has(userId);
           });
           const fallbackAuditors = [...originalSelectedAuditors, ...remainingAuditors];
-          console.log("[loadAvailableAuditors] Edit mode - fallback auditors:", fallbackAuditors.length);
           setAuditorOptions(fallbackAuditors);
           return;
         }
@@ -981,9 +1014,6 @@ const SQAStaffAuditPlanning = () => {
 
       // Edit mode but no period dates: Show original selected + all auditors
       if (formState.isEditMode && (!formState.periodFrom || !formState.periodTo)) {
-        console.log(
-          "[loadAvailableAuditors] Edit mode but no period dates - showing original selected + all auditors"
-        );
         if (originalSelectedAuditorIds.length > 0) {
           const originalSelectedIds = new Set(
             originalSelectedAuditorIds.map((id) => String(id).toLowerCase().trim())
@@ -997,7 +1027,6 @@ const SQAStaffAuditPlanning = () => {
             return !originalSelectedIds.has(userId);
           });
           const noPeriodAuditors = [...originalSelectedAuditors, ...remainingAuditors];
-          console.log("[loadAvailableAuditors] Edit mode no period - setting auditors:", noPeriodAuditors.length);
           setAuditorOptions(noPeriodAuditors);
         } else {
           setAuditorOptions(allAuditors);
@@ -1007,9 +1036,6 @@ const SQAStaffAuditPlanning = () => {
 
       // Create mode: Filter by period
       if (!formState.periodFrom || !formState.periodTo) {
-        console.log(
-          "[loadAvailableAuditors] No period dates, using all auditors"
-        );
         setAuditorOptions(allAuditors);
         return;
       }
@@ -1023,10 +1049,6 @@ const SQAStaffAuditPlanning = () => {
 
         const auditors = (available || []).filter(
           (u: any) => norm(u.roleName || u.role) === "auditor"
-        );
-        console.log(
-          "[loadAvailableAuditors] Create mode - filtered auditors:",
-          auditors.length
         );
         setAuditorOptions(auditors);
       } catch (err) {
@@ -1352,14 +1374,12 @@ const SQAStaffAuditPlanning = () => {
         // If has permission, load DRL template files from assignment
         if (hasPermission && currentUserId) {
           try {
-            const assignments = await getAuditPlanAssignmentsByAuditor(
-              currentUserId
-            );
-            // Get the most recent active assignment
+            const assignments = await getAuditPlanAssignmentsByAuditor(currentUserId);
+            // Ưu tiên assignment đã được Approved
             const activeAssignment =
               assignments.find(
-                (a) => (a.status || "").toLowerCase() === "active"
-            ) || assignments[0];
+                (a) => (a.status || "").toLowerCase() === "approved"
+              ) || assignments[0];
             
             if (activeAssignment) {
               // Extract files from assignment - prioritize filePaths from API
@@ -1417,19 +1437,13 @@ const SQAStaffAuditPlanning = () => {
                 const files =
                   activeAssignment.files || activeAssignment.attachments || [];
                 drlFiles = files
-                .filter((f: any) => f.fileName || f.fileUrl || f.fileId)
-                .map((f: any) => ({
+                  .filter((f: any) => f.fileName || f.fileUrl || f.fileId)
+                  .map((f: any) => ({
                     fileName: f.fileName || "DRL Template",
-                  fileUrl: f.fileUrl,
-                  fileId: f.fileId || f.attachmentId,
-                }));
+                    fileUrl: f.fileUrl,
+                    fileId: f.fileId || f.attachmentId,
+                  }));
               }
-
-              setDrlTemplateFiles(drlFiles);
-              console.log(
-                "[AuditPlanning] Loaded DRL template files:",
-                drlFiles
-              );
             }
           } catch (error) {
             console.error(
@@ -1716,6 +1730,58 @@ const SQAStaffAuditPlanning = () => {
             }
           } catch (sensitiveErr: any) {
             console.error("Failed to load sensitive flag data:", sensitiveErr);
+          }
+        }
+
+        // Fallback: if still no sensitive areas and scopeDepartments contain departmentSensitiveAreaIds,
+        // map those GUIDs to names using DepartmentSensitiveArea master
+        if (
+          sensitiveAreas.length === 0 &&
+          Object.keys(sensitiveAreasByDept).length === 0 &&
+          detailsWithSchedules?.scopeDepartments?.values?.length > 0
+        ) {
+          try {
+            const masterAreas = await getDepartmentSensitiveAreas();
+            const masterById = new Map<string, { deptId: number; deptName?: string; sensitiveArea?: string }>();
+            masterAreas.forEach((m) => {
+              const key = m.id ? String(m.id) : "";
+              if (key) {
+                masterById.set(key, {
+                  deptId: Number(m.deptId),
+                  deptName: m.deptName || m.departmentName,
+                  sensitiveArea: m.sensitiveArea,
+                });
+              }
+            });
+
+            const mergedSensitiveAreas = new Set<string>();
+            const mergedSensitiveAreasByDept: Record<number, string[]> = {};
+
+            detailsWithSchedules.scopeDepartments.values.forEach((sd: any) => {
+              const deptId = Number(sd.deptId);
+              if (!deptId || !Array.isArray(sd.departmentSensitiveAreaIds)) return;
+
+              sd.departmentSensitiveAreaIds.forEach((areaId: any) => {
+                const key = areaId != null ? String(areaId) : "";
+                const found = key ? masterById.get(key) : undefined;
+                if (found?.sensitiveArea) {
+                  const name = found.sensitiveArea;
+                  if (!mergedSensitiveAreasByDept[deptId]) {
+                    mergedSensitiveAreasByDept[deptId] = [];
+                  }
+                  mergedSensitiveAreasByDept[deptId].push(name);
+                  mergedSensitiveAreas.add(name);
+                }
+              });
+            });
+
+            if (Object.keys(mergedSensitiveAreasByDept).length > 0) {
+              sensitiveFlag = true;
+              sensitiveAreas = Array.from(mergedSensitiveAreas);
+              sensitiveAreasByDept = mergedSensitiveAreasByDept;
+            }
+          } catch (fallbackErr) {
+            console.error("Fallback load sensitive areas by departmentSensitiveAreaIds failed:", fallbackErr);
           }
         }
 
@@ -2253,13 +2319,6 @@ const SQAStaffAuditPlanning = () => {
         existingPlans
       );
 
-      console.log(
-        "[handleEditPlan] Plan details loaded, calling loadPlanForEdit"
-      );
-      console.log(
-        "[handleEditPlan] Details auditTeams:",
-        detailsWithId.auditTeams
-      );
       
       // Use formState.loadPlanForEdit with the best-effort details
       formState.loadPlanForEdit(detailsWithId);
@@ -2290,19 +2349,6 @@ const SQAStaffAuditPlanning = () => {
       }
 
       setOriginalSelectedAuditorIds(originalAuditorIds);
-
-      console.log(
-        "[handleEditPlan] After loadPlanForEdit - selectedAuditorIds:",
-        formState.selectedAuditorIds
-      );
-      console.log(
-        "[handleEditPlan] After loadPlanForEdit - originalSelectedAuditorIds:",
-        originalAuditorIds
-      );
-      console.log(
-        "[handleEditPlan] After loadPlanForEdit - auditorOptions:",
-        auditorOptions.length
-      );
 
       // Manually trigger auditor options update after setting originalSelectedAuditorIds
       // This ensures auditors are loaded even if useEffect hasn't run yet
@@ -2635,7 +2681,7 @@ const SQAStaffAuditPlanning = () => {
         auditId = formState.editingAuditId;
 
         // Prepare complete update payload using service
-        const completeUpdatePayload = prepareCompleteUpdatePayload({
+        const completeUpdatePayload = await prepareCompleteUpdatePayload({
           auditId,
           basicPayload,
           formState,
@@ -2646,7 +2692,9 @@ const SQAStaffAuditPlanning = () => {
         });
 
         try {
-          await completeUpdateAuditPlan(auditId, completeUpdatePayload);
+          console.log('📤 Complete-update payload:', JSON.stringify(completeUpdatePayload, null, 2));
+          const updateResult = await completeUpdateAuditPlan(auditId, completeUpdatePayload);
+          console.log('📥 Complete-update response:', updateResult);
         } catch (apiError) {
           console.error("Complete-update API failed:", apiError);
           throw apiError; // Re-throw to be caught by outer try-catch
@@ -2971,97 +3019,29 @@ const SQAStaffAuditPlanning = () => {
           console.error("Attach departments to audit failed", scopeErr);
         }
 
-        // Attach criteria with deptId using bulk API (status removed per backend change)
+        // Attach criteria (common standards, not per department)
         try {
-          const mappings: Array<{ deptId: number; criteriaId: string }> = [];
-          
-          if (formState.level === "department" && formState.selectedDeptIds.length > 0) {
-            // Department level: use selectedCriteriaByDept if available, otherwise assign all criteria to all departments
-            if (selectedCriteriaByDept.size > 0) {
-              // Build mappings from selectedCriteriaByDept (per-department selection)
-              selectedCriteriaByDept.forEach((criteriaSet, deptIdStr) => {
-                const deptId = Number(deptIdStr);
-                if (!isNaN(deptId) && deptId > 0 && deptIdStr !== 'shared' && deptIdStr !== 'academy') {
-                  criteriaSet.forEach((criteriaId) => {
-                    mappings.push({
-                      deptId: deptId,
-                      criteriaId: criteriaId,
-                    });
-                  });
-                }
-              });
-            }
-            
-            // If no mappings from selectedCriteriaByDept, assign all criteria to all selected departments
-            if (mappings.length === 0 && formState.selectedCriteriaIds.length > 0) {
-              formState.selectedDeptIds.forEach((deptIdStr) => {
-                const deptId = Number(deptIdStr);
-                if (!isNaN(deptId) && deptId > 0) {
-                  formState.selectedCriteriaIds.forEach((criteriaId) => {
-                    mappings.push({
-                      deptId: deptId,
-                      criteriaId: criteriaId,
-                    });
-                  });
-                }
-              });
-            }
-          } else if (formState.level === "academy") {
-            // Academy level: get criteria from selectedCriteriaByDept.get('academy') or fallback to selectedCriteriaIds
-            let academyCriteria: string[] = [];
-            
-            // Try to get from selectedCriteriaByDept first
-            const academySet = selectedCriteriaByDept.get('academy');
-            if (academySet && academySet.size > 0) {
-              academyCriteria = Array.from(academySet);
-            } else if (formState.selectedCriteriaIds.length > 0) {
-              // Fallback to selectedCriteriaIds
-              academyCriteria = formState.selectedCriteriaIds;
-            }
-            
-            if (academyCriteria.length > 0) {
-              // Get all departments for academy level
-              const allDepts = await ensureDepartmentsLoaded();
-              
-              if (allDepts.length > 0) {
-                allDepts.forEach((dept) => {
-                  const deptId = Number(dept.deptId);
-                  if (!isNaN(deptId) && deptId > 0) {
-                    academyCriteria.forEach((criteriaId) => {
-                      mappings.push({
-                        deptId: deptId,
-                        criteriaId: criteriaId,
-                      });
-                    });
-                  }
-                });
-              } else {
-                console.warn('[handleSubmitPlan] Academy level: No departments found, cannot create criteria mappings');
-                toast.warning('No departments found. Please ensure departments are configured.');
-              }
-            } else {
-              console.warn('[handleSubmitPlan] Academy level: No criteria selected');
-            }
-          }
-          
-          if (mappings.length > 0) {
-            console.log('[handleSubmitPlan] Using bulk API with mappings:', mappings.length, 'mappings');
-            console.log('[handleSubmitPlan] Sample mappings:', mappings.slice(0, 3));
-            await bulkCreateAuditCriteriaMappings({
-              auditId: String(newAuditId),
-              mappings: mappings
+          const criteriaSet = new Set<string>();
+
+          if (selectedCriteriaByDept.size > 0) {
+            selectedCriteriaByDept.forEach((criteriaIds) => {
+              criteriaIds.forEach((id) => criteriaSet.add(String(id)));
             });
-            console.log('[handleSubmitPlan] Successfully created criteria mappings');
+          } else if (formState.selectedCriteriaIds.length > 0) {
+            formState.selectedCriteriaIds.forEach((id) => criteriaSet.add(String(id)));
+          }
+
+          if (criteriaSet.size > 0) {
+            await Promise.allSettled(
+              Array.from(criteriaSet).map((criteriaId) =>
+                addCriterionToAudit(String(newAuditId), String(criteriaId))
+              )
+            );
           } else {
-            console.warn('[handleSubmitPlan] No mappings to create - skipping criteria attachment');
+            toast.warning("No criteria selected to attach to audit.");
           }
         } catch (critErr: any) {
-            console.error("Attach criteria to audit failed", critErr);
-          console.error("Error details:", {
-            message: critErr?.message,
-            response: critErr?.response?.data,
-            status: critErr?.response?.status
-          });
+          console.error("Attach criteria to audit failed", critErr);
           toast.error("Failed to attach criteria to audit. Please try again.");
         }
 
@@ -3419,7 +3399,7 @@ const SQAStaffAuditPlanning = () => {
               <div className="flex-1 overflow-y-auto px-6 py-4">
                 {formState.currentStep === 1 && (
                   <>
-                    <DRLTemplateViewer drlFiles={drlTemplateFiles} />
+                    {/* <DRLTemplateViewer drlFiles={drlTemplateFiles} /> */}
                   <Step1BasicInfo
                     title={formState.title}
                     auditType={formState.auditType}
@@ -3471,9 +3451,6 @@ const SQAStaffAuditPlanning = () => {
                       const unionArr = Array.from(union);
                       formState.setSelectedCriteriaIds(unionArr);
                    }}
-                    periodFrom={formState.periodFrom}
-                    periodTo={formState.periodTo}
-                    editingAuditId={formState.editingAuditId}
                   />
                     <SensitiveAreaForm
                       sensitiveFlag={formState.sensitiveFlag}
@@ -3759,6 +3736,31 @@ const SQAStaffAuditPlanning = () => {
                   DRL Templates
                 </div>
               </button>
+              <button
+                onClick={() => setActiveMainTab("assignments")}
+                className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                  activeMainTab === "assignments"
+                    ? "border-primary-600 text-primary-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M13 11a4 4 0 11-8 0 4 4 0 018 0zm6 0a4 4 0 11-8 0 4 4 0 018 0z"
+                    />
+                  </svg>
+                  Plan Assignments
+                </div>
+              </button>
             </nav>
           </div>
         </div>
@@ -3844,6 +3846,28 @@ const SQAStaffAuditPlanning = () => {
                 </p>
               </div>
               <DRLTemplateHistory userId={currentUserId} />
+            </div>
+          </div>
+        )}
+
+        {/* Tab Content: Plan Assignments */}
+        {activeMainTab === "assignments" && (
+          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200">
+            <div className="p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Plan Assignments from Lead Auditor
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Xem và phản hồi các yêu cầu giao quyền tạo audit plan (Approve / Reject kèm minh chứng).
+                  </p>
+                </div>
+              </div>
+
+              <div className="border border-gray-200 rounded-xl p-4 sm:p-5 bg-gray-50">
+                <AuditorAssignmentsView />
+              </div>
             </div>
           </div>
         )}
