@@ -263,6 +263,43 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
               </p>
             </div>
           )}
+          {/* Select All / Clear All for currently visible templates */}
+          {filteredTemplates.length > 0 && (
+            <div className="mb-2 flex items-center justify-end">
+              {(() => {
+                const allIds = filteredTemplates.map((t: any) =>
+                  String(t.templateId || t.id || t.$id)
+                );
+                const allSelected =
+                  allIds.length > 0 &&
+                  allIds.every((id) => selectedTemplateIds.includes(id));
+
+                const handleSelectAllToggle = () => {
+                  if (allSelected) {
+                    // Clear only those templates that are in the current filtered list
+                    const remaining = selectedTemplateIds.filter(
+                      (id) => !allIds.includes(String(id))
+                    );
+                    onSelectionChange(remaining);
+                  } else {
+                    const union = new Set<string>(selectedTemplateIds);
+                    allIds.forEach((id) => union.add(String(id)));
+                    onSelectionChange(Array.from(union));
+                  }
+                };
+
+                return (
+                  <button
+                    type="button"
+                    onClick={handleSelectAllToggle}
+                    className="px-3 py-1 text-xs border rounded text-gray-700 hover:bg-gray-100"
+                  >
+                    {allSelected ? 'Clear all' : 'Select all'}
+                  </button>
+                );
+              })()}
+            </div>
+          )}
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {filteredTemplates.length === 0 ? (
               <p className="text-sm text-gray-500">

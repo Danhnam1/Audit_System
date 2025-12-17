@@ -583,17 +583,27 @@ const SQAStaffAuditPlanning = () => {
   ]);
 
   const validateStep2 = useMemo(() => {
+    // Department level: every selected department must have at least one criterion chosen
     if (formState.level === "department") {
-      return (
-        formState.selectedDeptIds.length > 0 &&
-        formState.selectedCriteriaIds.length > 0
-      );
+      if (formState.selectedDeptIds.length === 0) return false;
+
+      return formState.selectedDeptIds.every((deptId) => {
+        const set = selectedCriteriaByDept.get(String(deptId));
+        return !!set && set.size > 0;
+      });
     }
-    return formState.selectedCriteriaIds.length > 0;
+
+    // Academy level: at least one criterion overall (prefer map if available)
+    const academySet = selectedCriteriaByDept.get("academy");
+    const totalSelected =
+      (academySet?.size ?? 0) || formState.selectedCriteriaIds.length;
+
+    return totalSelected > 0;
   }, [
     formState.level,
     formState.selectedDeptIds,
     formState.selectedCriteriaIds,
+    selectedCriteriaByDept,
   ]);
 
   const validateStep3 = useMemo(() => {
