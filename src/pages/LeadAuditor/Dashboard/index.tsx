@@ -32,15 +32,13 @@ const yearlyPie = [
 ];
 
 const monthlyData = [
-  { name: 'Jan', value: 12 },
-  { name: 'Feb', value: 40 },
-  { name: 'Mar', value: 35 },
-  { name: 'Apr', value: 50 },
-  { name: 'May', value: 25 },
-  { name: 'Jun', value: 18 },
-  { name: 'Jul', value: 20 },
-  { name: 'Aug', value: 34 },
-  { name: 'Sep', value: 14 },
+  { name: 'Monday', value: 18 },
+  { name: 'Tuesday', value: 24 },
+  { name: 'Wednesday', value: 32 },
+  { name: 'Thursday', value: 28 },
+  { name: 'Friday', value: 22 },
+  { name: 'Saturday', value: 19 },
+  { name: 'Sunday', value: 15 },
 ];
 
 const radarData = [
@@ -90,7 +88,7 @@ const MonthlyRevenueCard: React.FC = () => {
               </linearGradient>
             </defs>
             <XAxis dataKey="name" axisLine={{ stroke: '#e5e7eb', strokeWidth: 1 }} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={8} />
-            <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" ticks={[0, 15, 30, 45, 60]} />
+            <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" ticks={[0, 5, 10, 15, 30]} />
             <Tooltip wrapperStyle={{ backgroundColor: '#fff', borderRadius: 8, border: '1px solid #e2e8f0' }} />
             <Bar dataKey="value" fill="url(#grad-monthly)" radius={[8, 8, 0, 0]} barSize={44} />
           </BarChart>
@@ -132,7 +130,7 @@ const ProfitCard: React.FC = () => {
               </linearGradient>
             </defs>
             <XAxis dataKey="name" axisLine={{ stroke: '#e5e7eb', strokeWidth: 1 }} tickLine={true} tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }} interval={0} tickMargin={6} />
-            <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" domain={[0, 60]} ticks={[0, 15, 30, 45, 60]} />
+            <YAxis axisLine={false} tickLine={false} stroke="#94a3b8" domain={[0, 30]} ticks={[0, 5, 10, 15, 30]} />
             <Bar dataKey="value" fill="url(#grad-profit)" radius={[8, 8, 0, 0]} barSize={56} />
           </BarChart>
         </ResponsiveContainer>
