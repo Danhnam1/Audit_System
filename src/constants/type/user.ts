@@ -6,6 +6,7 @@ export interface User {
     deptId?: number | null
     role?: string  // Backend returns "role"
     roleName?: string  // Keep for backward compatibility
+    avatarUrl?: string | null  // Profile picture URL
 }
 
 

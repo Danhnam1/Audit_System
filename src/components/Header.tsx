@@ -86,7 +86,23 @@ export const Navigation = () => {
                 className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 aria-label="User menu"
               >
-                <div className="w-9 h-9 bg-gradient-to-r from-sky-600 to-sky-700 rounded-full flex items-center justify-center border-2 border-gray-600">
+                {user?.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt="Profile"
+                    className="w-9 h-9 rounded-full object-cover border-2 border-gray-600"
+                    onError={(e) => {
+                      // Fallback to initial if image fails to load
+                      (e.target as HTMLImageElement).style.display = 'none';
+                      const parent = (e.target as HTMLImageElement).parentElement;
+                      if (parent) {
+                        const fallback = parent.querySelector('.avatar-fallback');
+                        if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                      }
+                    }}
+                  />
+                ) : null}
+                <div className={`avatar-fallback w-9 h-9 bg-gradient-to-r from-sky-600 to-sky-700 rounded-full flex items-center justify-center border-2 border-gray-600 ${user?.avatarUrl ? 'hidden' : ''}`}>
                   <span className="text-white text-sm font-semibold">
                     {user?.fullName?.charAt(0)}
                   </span>
@@ -107,7 +123,22 @@ export const Navigation = () => {
                   {/* User Info */}
                   <div className="px-4 py-3 border-b ">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-gradient-to-r from-sky-600 to-sky-700 rounded-full flex items-center justify-center">
+                      {user?.avatarUrl ? (
+                        <img
+                          src={user.avatarUrl}
+                          alt="Profile"
+                          className="w-12 h-12 rounded-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                            const parent = (e.target as HTMLImageElement).parentElement;
+                            if (parent) {
+                              const fallback = parent.querySelector('.dropdown-avatar-fallback');
+                              if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                            }
+                          }}
+                        />
+                      ) : null}
+                      <div className={`dropdown-avatar-fallback w-12 h-12 bg-gradient-to-r from-sky-600 to-sky-700 rounded-full flex items-center justify-center ${user?.avatarUrl ? 'hidden' : ''}`}>
                         <span className="text-white text-lg font-semibold">
                           {user?.fullName?.charAt(0)}
                         </span>

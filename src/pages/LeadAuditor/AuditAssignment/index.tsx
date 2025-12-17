@@ -1279,7 +1279,7 @@ export default function AuditAssignment() {
                                 </div>
                                 <div>
                                   <p className="text-sm font-medium text-gray-900">{auditor.name}</p>
-                                  <p className="text-xs text-gray-600">ID: {auditor.auditorId.substring(0, 8)}...</p>
+                         
                                 </div>
                               </div>
                             </div>
