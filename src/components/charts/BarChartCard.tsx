@@ -33,8 +33,9 @@ export const BarChartCard: React.FC<BarChartCardProps> = ({
   return (
     <div className={`bg-white rounded-xl border border-primary-100 shadow-md p-6 ${className}`}>
       <h3 className="text-lg font-semibold text-primary-600 mb-4">{title}</h3>
-      <ResponsiveContainer width="100%" height={height}>
-        <BarChart data={data}>
+      <div style={{ width: '100%', height, minWidth: 0, minHeight: height }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data}>
           <defs>
             {bars.map((bar, i) => {
               if (Array.isArray(bar.fill)) {
@@ -50,12 +51,20 @@ export const BarChartCard: React.FC<BarChartCardProps> = ({
               return null;
             })}
           </defs>
-          <XAxis dataKey={xAxisKey} stroke="#64748b" style={{ fontSize: '12px' }} />
-          <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
-          <Tooltip
-            contentStyle={{ backgroundColor: '#fff', border: '1px solid #e0f2fe', borderRadius: '8px' }}
+          <XAxis 
+            dataKey={xAxisKey} 
+            stroke="#cbd5e1" 
+            style={{ fontSize: '13px', fontWeight: 500 }}
+            angle={-45}
+            textAnchor="end"
+            height={100}
           />
-          <Legend verticalAlign="bottom" align="center" iconType="rect" />
+          <YAxis stroke="#cbd5e1" style={{ fontSize: '13px' }} />
+          <Tooltip
+            contentStyle={{ backgroundColor: '#fff', border: '2px solid #3b82f6', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+            cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
+          />
+          <Legend verticalAlign="bottom" align="center" iconType="rect" wrapperStyle={{ paddingTop: '20px' }} />
           {bars.map((bar, index) => {
             const fill = Array.isArray(bar.fill) ? `url(#grad-bar-${index})` : String(bar.fill);
             return (
@@ -68,8 +77,9 @@ export const BarChartCard: React.FC<BarChartCardProps> = ({
               />
             );
           })}
-        </BarChart>
-      </ResponsiveContainer>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 };
