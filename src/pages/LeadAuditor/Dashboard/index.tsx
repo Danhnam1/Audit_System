@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { BarChartCard } from '../../../components/charts/BarChartCard';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
+import axios from 'axios';
+import { createPortal } from 'react-dom';
 
 // Department bar data
 const barData = [
@@ -188,19 +190,29 @@ const DonutSummary: React.FC<{
   );
 };
 
-const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: string }[] }> = ({ data }) => {
+const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: string }[]; onDetails?: () => void }> = ({ data, onDetails }) => {
   const total = data.reduce((s, d) => s + d.value, 0);
-  const percentage = Math.round((data.reduce((s, d) => s + d.value, 0) / 100) * 100);
-
-  const gradientData = [
-    { name: 'Draft', value: 45, startColor: '#ffb84d', endColor: '#ff7a00' },
-    { name: 'Pending', value: 35, startColor: '#60e0ff', endColor: '#0284c7' },
-    { name: 'Inprogress', value: 20, startColor: '#7ee787', endColor: '#10b981' },
-  ];
+  const gradientData = data.map((item, idx) => ({
+    name: item.name,
+    value: item.value,
+    startColor: item.color,
+    endColor: item.color,
+  }));
 
   return (
     <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4 w-full h-full flex flex-col">
-      <h3 className="text-base font-semibold text-gray-800 mb-4">Audits</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-base font-semibold text-gray-800">Audits</h3>
+        <button
+          onClick={() => onDetails && onDetails()}
+          className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-primary-700 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A2 2 0 0122 9.618V18a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h8.382a2 2 0 011.118.346L15 6" />
+          </svg>
+          Details
+        </button>
+      </div>
       
       <div className="flex flex-col items-center mb-4">
         <div style={{ width: 150, height: 150 }}>
@@ -232,7 +244,7 @@ const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: st
         </div>
         
         <div className="text-center mt-3">
-          <div className="text-2xl font-bold text-gray-800">{percentage}%</div>
+          <div className="text-2xl font-bold text-gray-800">{total}</div>
           <div className="text-xs text-gray-500 mt-1">Total</div>
         </div>
       </div>
@@ -244,7 +256,7 @@ const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: st
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.startColor }}></div>
               <span className="text-xs text-gray-700">{item.name}</span>
             </div>
-            <span className="text-xs font-medium text-gray-800">{item.value}%</span>
+            <span className="text-xs font-medium text-gray-800">{item.value}</span>
           </div>
         ))}
       </div>
@@ -254,14 +266,66 @@ const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: st
 
 const LeadAuditorDashboard: React.FC = () => {
   const { user } = useAuth();
+  const [auditCounts, setAuditCounts] = useState({ draftCount: 45, pendingCount: 35, inProgressCount: 20 });
   const layoutUser = user ? { name: (user as any).fullName || user.name, avatar: undefined } : undefined;
+
+  useEffect(() => {
+    const fetchAuditDashboard = async () => {
+      try {
+        const response = await axios.get('https://moca.mom/api/AuditDashboard/audits');
+        setAuditCounts({
+          draftCount: response.data.draftCount || 0,
+          pendingCount: response.data.pendingCount || 0,
+          inProgressCount: response.data.inProgressCount || 0,
+        });
+      } catch (error) {
+        console.error('Failed to fetch audit dashboard:', error);
+      }
+    };
+
+    fetchAuditDashboard();
+  }, []);
+
+  // keep full items for the details modal
+  const [auditItems, setAuditItems] = useState({ drafts: [] as any[], pendings: [] as any[], inProgress: [] as any[] });
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'Draft' | 'Pending' | 'Inprogress'>('Draft');
+
+  useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        const res = await axios.get('https://moca.mom/api/AuditDashboard/audits');
+        const data = res.data || {};
+        setAuditItems({
+          drafts: (data.drafts && data.drafts.$values) || [],
+          pendings: (data.pendings && data.pendings.$values) || [],
+          inProgress: (data.inProgress && data.inProgress.$values) || [],
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchItems();
+  }, []);
+
+  const auditStatusData = [
+    { name: 'Draft', value: auditCounts.draftCount, color: '#ffb84d' },
+    { name: 'Pending', value: auditCounts.pendingCount, color: '#60e0ff' },
+    { name: 'Inprogress', value: auditCounts.inProgressCount, color: '#7ee787' },
+  ];
+
+  const openDetails = () => {
+    setActiveTab('Draft');
+    setShowDetailModal(true);
+  };
 
   return (
     <MainLayout title="Dashboard" user={layoutUser}>
       <div className="space-y-3">
         <div className="flex gap-6" style={{ height: 420 }}>
           <div className="w-80 h-full">
-            <OrderStatusCard data={orderStatusData} />
+            <OrderStatusCard data={auditStatusData} onDetails={openDetails} />
           </div>
           <div className="flex-1 h-full">
             <BarChartCard
@@ -289,6 +353,61 @@ const LeadAuditorDashboard: React.FC = () => {
         <div className="-mt-4">
           <RadarSummary />
         </div>
+        {showDetailModal && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black bg-opacity-40" onClick={() => setShowDetailModal(false)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col border border-gray-100">
+              <div className="px-6 py-4 border-b bg-gradient-to-r from-primary-600 to-primary-500 text-white flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Audit Details</h2>
+                <button onClick={() => setShowDetailModal(false)} className="text-white hover:text-gray-200 bg-white/10 px-2 py-1 rounded-full">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-5">
+                <div className="flex gap-3 mb-4">
+                  {(['Draft','Pending','Inprogress'] as const).map((t) => (
+                    <button key={t} onClick={() => setActiveTab(t)} className={`px-4 py-2 rounded-full border ${activeTab===t? 'bg-primary-600 border-primary-600 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                <div className="overflow-auto" style={{ maxHeight: 420 }}>
+                  <table className="w-full text-sm table-auto">
+                    <thead>
+                      <tr className="text-left text-xs text-gray-500 border-b">
+                        <th className="py-3 px-4">Title</th>
+                        <th className="py-3 px-4">Type</th>
+                        <th className="py-3 px-4">Scope</th>
+                        <th className="py-3 px-4">Start</th>
+                        <th className="py-3 px-4">End</th>
+                        <th className="py-3 px-4">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white">
+                      {(activeTab==='Draft' ? auditItems.drafts : activeTab==='Pending' ? auditItems.pendings : auditItems.inProgress).map((a:any, i:number) => (
+                        <tr key={i} className={`border-b hover:bg-gray-50 ${i % 2 === 0 ? '' : ''}`}>
+                          <td className="py-3 px-4 align-top">{a.title || '—'}</td>
+                          <td className="py-3 px-4 align-top">{a.type || '—'}</td>
+                          <td className="py-3 px-4 align-top">{a.scope || '—'}</td>
+                          <td className="py-3 px-4 align-top">{a.startDate ? new Date(a.startDate).toLocaleString() : '—'}</td>
+                          <td className="py-3 px-4 align-top">{a.endDate ? new Date(a.endDate).toLocaleString() : '—'}</td>
+                          <td className="py-3 px-4 align-top"><span className="px-2 py-0.5 rounded-full text-xs bg-gray-100">{a.status}</span></td>
+                        </tr>
+                      ))}
+                      {((activeTab==='Draft' ? auditItems.drafts : activeTab==='Pending' ? auditItems.pendings : auditItems.inProgress).length === 0) && (
+                        <tr>
+                          <td colSpan={6} className="py-6 text-center text-gray-500">No items</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>, document.body
+        )}
       </div>
     </MainLayout>
   );
