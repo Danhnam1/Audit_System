@@ -29,6 +29,7 @@ const SQAStaffAuditReview = lazy(() => import("../pages/Auditor/AuditReview"));
 const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"));
 const SQAStaffSchedule = lazy(() => import("../pages/Auditor/Schedule"));
 const SQAStaffMyQR = lazy(() => import("../pages/Auditor/MyQR"));
+const AuditorFinalSummaryPage = lazy(() => import("../pages/Auditor/FinalSummary"));
 
 // Lead Auditor pages
 const LeadAuditorAuditAssignment = lazy(() => import("../pages/LeadAuditor/AuditAssignment"));
@@ -40,6 +41,9 @@ const LeadAuditorLeadReports = lazy(() => import("../pages/LeadAuditor/LeadRepor
 const LeadAuditorActionReview = lazy(() => import("../pages/LeadAuditor/ActionReview"));
 const LeadAuditorDashboard = lazy(() => import("../pages/LeadAuditor/Dashboard"));
 const SQAStaffLeadFinalReview = lazy(() => import("../pages/Auditor/LeadFinalReview/LeadFinalReview"));
+const LeadAuditorFinalSummaryReviewPage = lazy(
+    () => import("../pages/LeadAuditor/FinalSummaryReview")
+);
 
 // CAPA Owner pages (formerly Department Staff)
 const CAPAOwnerAuditList = lazy(() => import("../pages/CAPAOwner/AuditList"));
@@ -71,6 +75,7 @@ const DirectorReviewAuditPlans = lazy(() => import("../pages/Director/ReviewAudi
 const DirectorAuditPlanDetail = lazy(() => import("../pages/Director/AuditPlanDetail"));
 const DirectorReviewAuditResults = lazy(() => import("../pages/Director/ReviewAuditResults"));
 const DirectorSummaryReport = lazy(() => import("../pages/Director/SummaryReport"));
+const DirectorFinalSummaryPage = lazy(() => import("../pages/Director/FinalSummary"));
 
 // Shared pages
 const ArchivedHistory = lazy(() => import("../pages/Shared/ArchivedHistory"));
@@ -296,6 +301,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
                         <SQAStaffMyQR />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditor/final-summary"
+                element={
+                    <ProtectedRoute allowedRoles={["Auditor"]}>
+                        <AuditorFinalSummaryPage />
                     </ProtectedRoute>
                 }
             />
@@ -548,6 +561,14 @@ export function AppRoutes() {
                 }
             />
             <Route
+                path="/director/final-summary"
+                element={
+                    <ProtectedRoute allowedRoles={["Director"]}>
+                        <DirectorFinalSummaryPage />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
                 path="/director/archived-history"
                 element={
                     <ProtectedRoute allowedRoles={["Director"]}>
@@ -616,6 +637,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <ArchivedHistory />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/lead-auditor/final-summary-review"
+                element={
+                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
+                        <LeadAuditorFinalSummaryReviewPage />
                     </ProtectedRoute>
                 }
             />

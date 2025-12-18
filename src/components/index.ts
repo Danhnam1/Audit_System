@@ -10,3 +10,4 @@ export { Button } from './Button';
 export { NotificationBell } from './NotificationBell';
 export { Pagination } from './Pagination';
 export { DataTable } from './DataTable';
+export { PageHeader } from './PageHeader';

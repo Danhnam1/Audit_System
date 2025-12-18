@@ -1,4 +1,5 @@
 import { MainLayout } from "../../../layouts";
+import { PageHeader } from "../../../components";
 import { useAuth } from "../../../contexts";
 import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
@@ -3197,14 +3198,10 @@ const SQAStaffAuditPlanning = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-6 animate-slideInLeft">
-        <div className="px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-black">Audit Planning</h1>
-            <p className="text-[#5b6166] text-sm mt-1">
-              Create and manage audit plans
-            </p>
-          </div>
+      <PageHeader
+        title="Audit Planning"
+        subtitle="Create and manage audit plans"
+        rightContent={
           <button
             onClick={() => {
               // Check permission before opening form
@@ -3237,8 +3234,8 @@ const SQAStaffAuditPlanning = () => {
           >
             + Create New Plan
           </button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="px-6 pb-6 space-y-6">
         {/* Permission Granted Banner */}

@@ -1,4 +1,5 @@
 import { MainLayout } from '../../../layouts';
+import { PageHeader } from '../../../components';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -217,12 +218,11 @@ const SQAStaffFindingManagement = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      {/* Header */}
-      <div className="bg-gradient-to-r from-primary-500 to-primary-600 shadow-lg mb-6">
-        <div className="px-4 sm:px-6 py-4 sm:py-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Task Management</h1>
-          <p className="text-primary-100 text-sm sm:text-base mt-2">Select a department to manage audit findings</p>
-        </div>
+      <div className="px-4 sm:px-6">
+        <PageHeader
+          title="Task Management"
+          subtitle="Select a department to manage audit findings"
+        />
       </div>
 
       <div className="px-4 sm:px-6 pb-6 sm:pb-8 space-y-6">

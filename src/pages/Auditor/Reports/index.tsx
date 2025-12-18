@@ -1,4 +1,5 @@
 import { MainLayout } from '../../../layouts';
+import { PageHeader } from '../../../components';
 import { useAuth } from '../../../contexts';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -722,13 +723,10 @@ const SQAStaffReports = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      {/* Header */}
-      <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-6 animate-slideInLeft">
-        <div className="px-6 py-4">
-          <h1 className="text-2xl font-bold text-black">Report Management</h1>
-          <p className="text-[#5b6166] text-sm mt-1">Create and manage audit reports</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Report Management"
+        subtitle="Create and manage audit reports"
+      />
 
       <div className="px-6 pb-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-slideInRight animate-delay-100">

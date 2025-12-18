@@ -184,6 +184,18 @@ export const getAuditSummary = async (auditId: string): Promise<any> => {
   return apiClient.get(`/Audits/Summary/${auditId}`) as any;
 };
 
+// Full audit detail (plan, scope, findings, actions, documents...) for Stream 5
+export const getAuditFullDetail = async (auditId: string): Promise<any> => {
+  if (!auditId) {
+    throw new Error('auditId is required to load full audit detail');
+  }
+
+  // Swagger: GET /api/Audits/{id}/full-detail
+  const res: any = await apiClient.get(`/Audits/${encodeURIComponent(auditId)}/full-detail`);
+  // hooks/axios usually returns response.data already, keep both for safety
+  return res?.data ?? res;
+};
+
 // Audit approvals history (used to show latest reject/approve comments to Auditor)
 export const getAuditApprovals = async (): Promise<any> => {
   // Backend returns a collection with $values; use unwrap() on the caller side
@@ -305,6 +317,7 @@ export default {
   getAuditChartPie,
   getAuditChartBar,
   getAuditSummary,
+  getAuditFullDetail,
   exportAuditPdf,
   submitAudit,
   approveAuditReport,
