@@ -198,7 +198,7 @@ const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: st
   }));
 
   return (
-    <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4 w-full h-full flex flex-col">
+    <div className="bg-white rounded-lg border border-primary-100 shadow-sm p-3 w-full h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-gray-800">Audits</h3>
         <button
@@ -476,23 +476,28 @@ const LeadAuditorDashboard: React.FC = () => {
   return (
     <MainLayout title="Dashboard" user={layoutUser}>
       <div className="space-y-2">
-        <div className="flex gap-6 overflow-hidden rounded-2xl bg-white shadow-lg" style={{ height: 580 }}>
-          <div className="w-96 h-full overflow-hidden" style={{ flexShrink: 0 }}>
-            <OrderStatusCard data={auditStatusData} onDetails={openDetails} />
+        <div className="flex gap-6" style={{ height: 580 }}>
+          <div className="w-96 h-full" style={{ flexShrink: 0 }}>
+            <div className="h-full overflow-hidden rounded-2xl bg-white shadow-lg p-3">
+              <OrderStatusCard data={auditStatusData} onDetails={openDetails} />
+            </div>
           </div>
-          <div className="flex-1 h-full overflow-hidden p-4">
-            <BarChartCard
-              title="Findings"
-              data={findingsData}
-              xAxisKey="department"
-              bars={[
-                { dataKey: 'Finding Closed', fill: ['#7ee787', '#10b981'], name: 'Finding Closed' },
-                { dataKey: 'Finding Open', fill: ['#60e0ff', '#0284c7'], name: 'Finding Open' },
-                { dataKey: 'Findings', fill: ['#ffb84d', '#ff7a00'], name: 'Findings' },
-              ]}
-              height={440}
-              className="h-full"
-            />
+
+          <div className="flex-1 h-full">
+            <div className="h-full overflow-hidden rounded-2xl bg-white shadow-lg p-4">
+              <BarChartCard
+                title="Findings"
+                data={findingsData}
+                xAxisKey="department"
+                bars={[
+                  { dataKey: 'Finding Closed', fill: ['#7ee787', '#10b981'], name: 'Finding Closed' },
+                  { dataKey: 'Finding Open', fill: ['#60e0ff', '#0284c7'], name: 'Finding Open' },
+                  { dataKey: 'Findings', fill: ['#ffb84d', '#ff7a00'], name: 'Findings' },
+                ]}
+                height={440}
+                className="h-full"
+              />
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 items-start overflow-hidden" style={{ height: 380 }}>
