@@ -206,20 +206,20 @@ const RadarSummary: React.FC = () => {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center" style={{ height: 320 }}>
+        <div className="flex items-center justify-center" style={{ height: 450 }}>
           <div className="text-gray-500">Loading data...</div>
         </div>
       ) : (!audit1Id || !audit2Id) ? (
-        <div className="flex items-center justify-center" style={{ height: 320 }}>
+        <div className="flex items-center justify-center" style={{ height: 450 }}>
           <div className="text-gray-500 text-center">
             <p>Please select both audits to compare</p>
           </div>
         </div>
       ) : (
         <>
-          <div style={{ width: '100%', height: 320, minWidth: 0, minHeight: 320 }}>
+          <div style={{ width: '100%', height: 450, minWidth: 0, minHeight: 450 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+              <RadarChart cx="50%" cy="50%" outerRadius="85%" data={radarData}>
                 <defs>
                   <linearGradient id="grad-radar-1" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#7c3aed" stopOpacity={0.9} />
