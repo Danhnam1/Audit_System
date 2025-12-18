@@ -55,7 +55,7 @@ const RadarSummary: React.FC = () => {
   return (
     <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6 w-full">
       <h3 className="text-lg font-semibold text-primary-600 mb-4">Performance Radar</h3>
-      <div style={{ width: '100%', height: 320 }}>
+      <div style={{ width: '100%', height: 320, minWidth: 0, minHeight: 320 }}>
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
             <defs>
@@ -80,7 +80,7 @@ const MonthlyRevenueCard: React.FC = () => {
     <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6 w-full">
       <h3 className="text-center text-lg font-medium text-gray-700 mb-4">Finding weekly</h3>
 
-      <div style={{ width: '100%', height: 220 }}>
+      <div style={{ width: '100%', height: 220, minWidth: 0, minHeight: 220 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={monthlyData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }} barGap={2} barCategoryGap="4%">
             <defs>
@@ -122,7 +122,7 @@ const ProfitCard: React.FC = () => {
         <div className="text-gray-300">⋮</div>
       </div>
 
-      <div style={{ width: '100%', height: 221 }} className="mt-3">
+      <div style={{ width: '100%', height: 221, minWidth: 0, minHeight: 221 }} className="mt-3">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={profitData} margin={{ top: 6, right: 0, left: 0, bottom: 0 }} barGap={2} barCategoryGap="2%">
             <defs>
@@ -153,24 +153,22 @@ const DonutSummary: React.FC<{
   return (
     <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6 w-full">
       <div className="flex items-center gap-6">
-        <div style={{ width: 120, height: 120 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="value"
-                startAngle={90}
-                endAngle={-270}
-                innerRadius={36}
-                outerRadius={48}
-                paddingAngle={2}
-              >
-                {data.map((entry, idx) => (
-                  <Cell key={idx} fill={entry.color} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
+        <div style={{ width: 120, height: 120, minWidth: 0, minHeight: 120 }}>
+          <PieChart width={120} height={120}>
+            <Pie
+              data={data}
+              dataKey="value"
+              startAngle={90}
+              endAngle={-270}
+              innerRadius={28}
+              outerRadius={40}
+              paddingAngle={2}
+            >
+              {data.map((entry, idx) => (
+                <Cell key={idx} fill={entry.color} />
+              ))}
+            </Pie>
+          </PieChart>
         </div>
 
         <div className="flex-1">
@@ -215,32 +213,30 @@ const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: st
       </div>
       
       <div className="flex flex-col items-center mb-4">
-        <div style={{ width: 150, height: 150 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <defs>
-                {gradientData.map((item, idx) => (
-                  <linearGradient id={`grad-donut-${idx}`} key={`grad-donut-${idx}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={item.startColor} stopOpacity={1} />
-                    <stop offset="100%" stopColor={item.endColor} stopOpacity={1} />
-                  </linearGradient>
-                ))}
-              </defs>
-              <Pie
-                data={gradientData}
-                dataKey="value"
-                startAngle={90}
-                endAngle={-270}
-                innerRadius={45}
-                outerRadius={75}
-                paddingAngle={2}
-              >
-                {gradientData.map((entry, idx) => (
-                  <Cell key={idx} fill={`url(#grad-donut-${idx})`} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
+        <div style={{ width: 140, height: 140, minWidth: 140, maxWidth: 140, minHeight: 140, maxHeight: 140, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <PieChart width={140} height={140}>
+            <defs>
+              {gradientData.map((item, idx) => (
+                <linearGradient id={`grad-donut-${idx}`} key={`grad-donut-${idx}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={item.startColor} stopOpacity={1} />
+                  <stop offset="100%" stopColor={item.endColor} stopOpacity={1} />
+                </linearGradient>
+              ))}
+            </defs>
+            <Pie
+              data={gradientData}
+              dataKey="value"
+              startAngle={90}
+              endAngle={-270}
+              innerRadius={44}
+              outerRadius={60}
+              paddingAngle={2}
+            >
+              {gradientData.map((entry, idx) => (
+                <Cell key={idx} fill={`url(#grad-donut-${idx})`} />
+              ))}
+            </Pie>
+          </PieChart>
         </div>
         
         <div className="text-center mt-3">
@@ -309,6 +305,163 @@ const LeadAuditorDashboard: React.FC = () => {
     fetchItems();
   }, []);
 
+  // Findings data for department bar chart (fetched from API)
+  const [findingsData, setFindingsData] = useState<any[]>(barData);
+
+  useEffect(() => {
+    const fetchFindings = async () => {
+      try {
+        const res = await axios.get('https://moca.mom/api/AuditDashboard/findings');
+        const data = res.data || {};
+          // gather findings from multiple fields and de-duplicate by findingId
+          const gather = (src: any) => (src && src.$values) || (Array.isArray(src) ? src : []);
+          const rawLists = [gather(data.allFindings), gather(data.openFindings), gather(data.closedFindings)];
+          const mapById: Record<string, any> = {};
+          rawLists.flat().forEach((f: any) => {
+            if (!f) return;
+            const id = f.findingId || f.id || f.$id || JSON.stringify(f);
+            mapById[id] = f;
+          });
+          const items: any[] = Object.values(mapById);
+
+          // helper to robustly extract deptId from various shapes
+          const extractDeptId = (f: any) => {
+            if (!f) return null;
+            if (f.deptId !== undefined && f.deptId !== null) return f.deptId;
+            if (f.audit && (f.audit.deptId !== undefined)) return f.audit.deptId;
+            if (f.audit && f.audit.departmentId !== undefined) return f.audit.departmentId;
+            if (f.audit && f.audit.department && f.audit.department.deptId !== undefined) return f.audit.department.deptId;
+            if (f.auditItem && f.auditItem.deptId !== undefined) return f.auditItem.deptId;
+            if (f.audit && f.audit.auditItem && f.audit.auditItem.deptId !== undefined) return f.audit.auditItem.deptId;
+            return null;
+          };
+
+          // group by deptId
+          const groups: Record<string, { deptId: number | string | null; total: number; open: number; closed: number }> = {};
+          const deptIds = new Set<string>();
+          items.forEach((f: any) => {
+            const deptIdRaw = extractDeptId(f);
+            const deptId = (deptIdRaw !== null && deptIdRaw !== undefined) ? deptIdRaw : '0';
+            const key = String(deptId);
+            deptIds.add(key);
+            if (!groups[key]) groups[key] = { deptId: deptIdRaw, total: 0, open: 0, closed: 0 };
+            groups[key].total += 1;
+            const status = (f.status || '').toString().toLowerCase();
+            if (status === 'closed') groups[key].closed += 1;
+            if (status === 'open') groups[key].open += 1;
+          });
+
+          // debug: show unique deptIds discovered
+          try {
+            // eslint-disable-next-line no-console
+            console.debug('unique deptIds discovered in findings:', Array.from(deptIds));
+          } catch (e) {}
+
+
+        // fetch departments list once and map names; include all depts on X axis even if counts are zero
+        let deptMap: Record<string, string> = {};
+        let depsList: any[] = [];
+        try {
+          const depsRes = await axios.get('https://moca.mom/api/admin/AdminDepartments');
+          const depsRaw = depsRes.data || {};
+          depsList = (depsRaw.$values && depsRaw.$values) || (Array.isArray(depsRaw) ? depsRaw : []);
+          depsList.forEach((d: any) => {
+            if (d && (d.deptId !== undefined)) {
+              deptMap[String(d.deptId)] = d.name || d.code || `Dept ${d.deptId}`;
+            }
+          });
+        } catch (err) {
+          console.warn('Failed to fetch departments list, falling back to deptId labels', err);
+        }
+
+        // If some deptIds from findings are missing in the list, fetch them individually
+        const missingDeptIds = Object.keys(groups).filter((k) => !deptMap[k]);
+        if (missingDeptIds.length > 0) {
+          try {
+            const promises = missingDeptIds.map((id) =>
+              axios.get(`https://moca.mom/api/admin/AdminDepartments/${encodeURIComponent(id)}`).then((r) => ({ id, data: r.data })).catch((e) => ({ id, data: null, err: e }))
+            );
+            const results = await Promise.all(promises);
+            results.forEach((r: any) => {
+              if (r && r.data && (r.data.deptId !== undefined)) {
+                deptMap[String(r.data.deptId)] = r.data.name || r.data.code || `Dept ${r.data.deptId}`;
+              } else if (r && r.data && r.data.deptId === undefined && r.data.deptId !== 0) {
+                // some responses may return a single object without deptId field; try to use provided id
+                deptMap[String(r.id)] = (r.data && (r.data.name || r.data.code)) || `Dept ${r.id}`;
+              } else {
+                // fetch failed - fallback
+                deptMap[String(r.id)] = `Dept ${r.id}`;
+                // eslint-disable-next-line no-console
+                console.warn('Failed to fetch department for id', r.id, r.err || r.data);
+              }
+            });
+            // eslint-disable-next-line no-console
+            console.debug('fetched missing departments:', missingDeptIds, deptMap);
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn('Error fetching missing departments', e);
+          }
+        }
+
+        const arr: any[] = [];
+        if (depsList && depsList.length > 0) {
+          // include all departments from AdminDepartments in X axis
+          depsList.forEach((d: any) => {
+            const key = String(d.deptId);
+            const g = groups[key] || { total: 0, open: 0, closed: 0 };
+            arr.push({
+              department: d.name || d.code || `Dept ${d.deptId}`,
+              deptId: d.deptId,
+              Findings: g.total,
+              'Finding Closed': g.closed,
+              'Finding Open': g.open,
+            });
+          });
+          // add any departments found in findings but missing from AdminDepartments
+          Object.keys(groups).forEach((k) => {
+            if (!deptMap[k]) {
+              const g = groups[k];
+              arr.push({
+                department: `Dept ${k}`,
+                deptId: g.deptId,
+                Findings: g.total,
+                'Finding Closed': g.closed,
+                'Finding Open': g.open,
+              });
+            }
+          });
+        } else {
+          // fallback: only include departments discovered in findings
+          Object.keys(groups).forEach((k) => {
+            const g = groups[k];
+            arr.push({
+              department: `Dept ${k}`,
+              deptId: g.deptId,
+              Findings: g.total,
+              'Finding Closed': g.closed,
+              'Finding Open': g.open,
+            });
+          });
+        }
+
+        // sort by total desc for nicer display
+        arr.sort((a, b) => (b.Findings || 0) - (a.Findings || 0));
+        // debug: print groups and final array to browser console to verify deptIds
+        try {
+          // eslint-disable-next-line no-console
+          console.debug('findings groups:', groups);
+          // eslint-disable-next-line no-console
+          console.debug('findings array for chart:', arr);
+        } catch (e) {}
+        setFindingsData(arr);
+      } catch (err) {
+        console.error('Failed to fetch findings:', err);
+      }
+    };
+
+    fetchFindings();
+  }, []);
+
   const auditStatusData = [
     { name: 'Draft', value: auditCounts.draftCount, color: '#ffb84d' },
     { name: 'Pending', value: auditCounts.pendingCount, color: '#60e0ff' },
@@ -322,35 +475,35 @@ const LeadAuditorDashboard: React.FC = () => {
 
   return (
     <MainLayout title="Dashboard" user={layoutUser}>
-      <div className="space-y-3">
-        <div className="flex gap-6" style={{ height: 420 }}>
-          <div className="w-80 h-full">
+      <div className="space-y-2">
+        <div className="flex gap-6 overflow-hidden rounded-2xl bg-white shadow-lg" style={{ height: 580 }}>
+          <div className="w-96 h-full overflow-hidden" style={{ flexShrink: 0 }}>
             <OrderStatusCard data={auditStatusData} onDetails={openDetails} />
           </div>
-          <div className="flex-1 h-full">
+          <div className="flex-1 h-full overflow-hidden p-4">
             <BarChartCard
               title="Findings"
-              data={barData}
+              data={findingsData}
               xAxisKey="department"
               bars={[
                 { dataKey: 'Finding Closed', fill: ['#7ee787', '#10b981'], name: 'Finding Closed' },
                 { dataKey: 'Finding Open', fill: ['#60e0ff', '#0284c7'], name: 'Finding Open' },
                 { dataKey: 'Findings', fill: ['#ffb84d', '#ff7a00'], name: 'Findings' },
               ]}
-              height={280}
+              height={440}
               className="h-full"
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4 items-start" style={{ height: 360 }}>
-          <div className="h-full">
+        <div className="grid grid-cols-2 gap-4 items-start overflow-hidden" style={{ height: 380 }}>
+          <div className="h-full overflow-hidden rounded-2xl bg-white shadow-lg p-4">
             <MonthlyRevenueCard />
           </div>
-          <div className="h-full">
+          <div className="h-full overflow-hidden rounded-2xl bg-white shadow-lg p-4">
             <ProfitCard />
           </div>
         </div>
-        <div className="-mt-4">
+        <div className="rounded-2xl bg-white shadow-lg p-4">
           <RadarSummary />
         </div>
         {showDetailModal && createPortal(
