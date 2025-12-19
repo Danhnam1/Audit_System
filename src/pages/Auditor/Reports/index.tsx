@@ -11,6 +11,8 @@ import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlan
 import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
 import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
+import { getAuditPlanRevisionRequestsByAuditId, type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
+import { updateOverdueToActiveByAuditId } from '../../../api/checklists';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
@@ -37,6 +39,10 @@ const SQAStaffReports = () => {
   const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
+  
+  // Extension request states
+  const [extensionRequests, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
+  const [updatingOverdue, setUpdatingOverdue] = useState<string>('');
 
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
@@ -423,13 +429,17 @@ const SQAStaffReports = () => {
     loadCharts();
   }, [selectedAuditId]);
 
-  // Load summary when audit changes (does not alter charts)
+  // Load summary and extension requests when audit changes
   useEffect(() => {
     const loadSummary = async () => {
       if (!selectedAuditId) return;
       try {
-        const sum = await getAuditSummary(selectedAuditId);
+        const [sum, requests] = await Promise.all([
+          getAuditSummary(selectedAuditId),
+          getAuditPlanRevisionRequestsByAuditId(selectedAuditId).catch(() => [])
+        ]);
         setSummary(sum);
+        setExtensionRequests(prev => ({ ...prev, [selectedAuditId]: requests }));
         const total = Number((sum as any)?.totalFindings ?? 0);
         if (!isNaN(total)) {
           setFindingsMap((prev) => ({ ...prev, [String(selectedAuditId)]: total }));
@@ -499,6 +509,26 @@ const SQAStaffReports = () => {
 
   // NOTE: Previously we restricted export/upload to the creator only.
   // Now we allow any team member (already filtered in `reloadReports`) once the report is Closed/Completed.
+
+  // Handle update overdue items after extension approved
+  const handleUpdateOverdueItems = async () => {
+    if (!selectedAuditId) return;
+    
+    setUpdatingOverdue(selectedAuditId);
+    try {
+      const result = await updateOverdueToActiveByAuditId(selectedAuditId);
+      toast.success(`Successfully updated ${result.updatedCount || 0} checklist item(s) from Overdue to Active.`);
+      // Reload summary to reflect changes
+      const sum = await getAuditSummary(selectedAuditId);
+      setSummary(sum);
+    } catch (err: any) {
+      console.error('Failed to update overdue items:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to update overdue items';
+      toast.error(errorMessage);
+    } finally {
+      setUpdatingOverdue('');
+    }
+  };
 
   const handleSubmitToLead = async () => {
     if (!selectedAuditId) return;
@@ -990,6 +1020,60 @@ const SQAStaffReports = () => {
         {/* Summary section - clearer, card-based UI; show after View */}
         {showSummary && (
           <div ref={summaryRef} className="bg-white rounded-xl border border-primary-100 shadow-md p-6 scroll-mt-24">
+            {/* Extension Approved Banner */}
+            {(() => {
+              const requests = extensionRequests[selectedAuditId] || [];
+              const approvedRequest = requests.find(r => r.status === 'Approved');
+              if (!approvedRequest) return null;
+              
+              return (
+                <div className="mb-4 bg-green-50 border border-green-200 rounded-xl shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10">
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </span>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide">
+                          Extension Request Approved by Director
+                        </p>
+                        <p className="text-[11px] text-white/80">
+                          Your extension request has been approved. Please update overdue checklist items and resubmit the report.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleUpdateOverdueItems}
+                      disabled={updatingOverdue === selectedAuditId}
+                      className="px-3 py-1.5 rounded-md bg-white/95 text-green-700 font-medium shadow-sm hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {updatingOverdue === selectedAuditId ? (
+                        <>
+                          <div className="h-4 w-4 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Update Overdue Items
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {approvedRequest.responseComment && (
+                    <div className="px-4 py-3 text-xs text-green-900 bg-green-50/70 border-t border-green-100">
+                      <p className="font-semibold mb-1">Director's Response:</p>
+                      <p className="whitespace-pre-line">{approvedRequest.responseComment}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold text-primary-600">Summary Findings</h2>

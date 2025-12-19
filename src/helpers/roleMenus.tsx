@@ -11,6 +11,7 @@ import {
   ArchiveIcon,
   DepartmentIcon,
   ShieldIcon,
+  ClockIcon,
 } from '../layouts/icons';
 import { HiOutlineUpload } from 'react-icons/hi';
 
@@ -99,6 +100,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: '/director/dashboard' },
         { icon: <AuditIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
+        { icon: <ClockIcon />, label: 'Extension Requests', path: '/director/extension-requests' },
         { icon: <ArchiveIcon />, label: 'Archived History', path: '/director/archived-history' },
         { icon: <DocumentIcon />, label: 'Final Summary & Effectiveness (Flow 5)', path: '/director/final-summary' },
         // { icon: <AuditIcon />, label: 'Review Audit Results', path: '/director/review-results' },

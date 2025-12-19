@@ -124,20 +124,92 @@ export const useAuditPlanForm = () => {
     setIsEditMode(true);
     setEditingAuditId(auditIdValue);
     setShowForm(true);
-    setCurrentStep(1);
+    setCurrentStep(1); // Always start from step 1 when editing
     
     console.log('📝 After setting - isEditMode: true, editingAuditId:', auditIdValue);
 
-    // Step 1: Basic info
-    setTitle(details.title || details.audit?.title || '');
-    setAuditType(details.type || details.audit?.type || 'Internal');
-    setGoal(details.objective || details.audit?.objective || '');
+    // Step 1: Basic info - ensure all values are properly formatted
+    const titleValue = details.title || details.audit?.title || '';
+    const auditTypeValue = details.type || details.audit?.type || 'Internal';
+    const goalValue = details.objective || details.audit?.objective || '';
+    
+    // Parse dates properly - handle ISO strings and ensure YYYY-MM-DD format
     const startDate = details.startDate || details.audit?.startDate;
     const endDate = details.endDate || details.audit?.endDate;
-    setPeriodFrom(startDate ? (startDate.split('T')[0] || startDate) : '');
-    setPeriodTo(endDate ? (endDate.split('T')[0] || endDate) : '');
+    
+    let periodFromValue = '';
+    let periodToValue = '';
+    
+    if (startDate) {
+      try {
+        // Handle ISO string format (e.g., "2025-01-15T10:00:00Z")
+        if (typeof startDate === 'string' && startDate.includes('T')) {
+          periodFromValue = startDate.split('T')[0];
+        } else if (typeof startDate === 'string') {
+          // Already in YYYY-MM-DD format
+          periodFromValue = startDate;
+        } else {
+          // If it's a Date object or other format, try to convert
+          const date = new Date(startDate);
+          if (!isNaN(date.getTime())) {
+            periodFromValue = date.toISOString().split('T')[0];
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse startDate:', startDate, e);
+      }
+    }
+    
+    if (endDate) {
+      try {
+        // Handle ISO string format (e.g., "2025-01-15T10:00:00Z")
+        if (typeof endDate === 'string' && endDate.includes('T')) {
+          periodToValue = endDate.split('T')[0];
+        } else if (typeof endDate === 'string') {
+          // Already in YYYY-MM-DD format
+          periodToValue = endDate;
+        } else {
+          // If it's a Date object or other format, try to convert
+          const date = new Date(endDate);
+          if (!isNaN(date.getTime())) {
+            periodToValue = date.toISOString().split('T')[0];
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse endDate:', endDate, e);
+      }
+    }
+    
+    setTitle(titleValue);
+    setAuditType(auditTypeValue);
+    setGoal(goalValue);
+    setPeriodFrom(periodFromValue);
+    setPeriodTo(periodToValue);
     setDrlFileName(details.drlFileName || '');
     setDrlFile(null);
+    
+    console.log('📝 Step 1 values loaded:', {
+      title: titleValue,
+      auditType: auditTypeValue,
+      goal: goalValue,
+      periodFrom: periodFromValue,
+      periodTo: periodToValue,
+      originalStartDate: startDate,
+      originalEndDate: endDate,
+    });
+    
+    // Debug: Check if dates are valid for validation
+    if (periodFromValue && periodToValue) {
+      const fromDate = new Date(periodFromValue);
+      const toDate = new Date(periodToValue);
+      const daysDiff = Math.floor((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
+      console.log('📝 Date validation check:', {
+        fromDate: fromDate.toISOString(),
+        toDate: toDate.toISOString(),
+        daysDiff,
+        isValid: !isNaN(fromDate.getTime()) && !isNaN(toDate.getTime()) && daysDiff >= 0,
+      });
+    }
     
     // Step 2: Scope
     const scope = details.scope || details.audit?.scope;

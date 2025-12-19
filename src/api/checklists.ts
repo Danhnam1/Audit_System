@@ -363,6 +363,22 @@ export const getCompliantIdByAuditItemId = async (auditItemId: string): Promise<
   }
 };
 
+// Get overdue checklist items for an audit
+export const getOverdueChecklistItems = async (auditId: string): Promise<any[]> => {
+  const allItems = await getAuditChecklistItems(auditId);
+  // Filter items with status "Overdue"
+  return allItems.filter((item: any) => {
+    const status = String(item.status || '').toLowerCase();
+    return status === 'overdue';
+  });
+};
+
+// Update overdue checklist items to active for an audit
+export const updateOverdueToActiveByAuditId = async (auditId: string): Promise<{ message: string; updatedCount: number }> => {
+  const res: any = await apiClient.put(`/AuditChecklistItems/audit/${auditId}/update-overdue-to-active`);
+  return res?.data ?? res;
+};
+
 export default {
   getChecklistTemplates,
   getChecklistItemsByTemplate,
@@ -375,4 +391,5 @@ export default {
   createAuditChecklistItem,
   getChecklistItemCompliantDetails,
   getCompliantIdByAuditItemId,
+  updateOverdueToActiveByAuditId,
 };

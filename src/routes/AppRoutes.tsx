@@ -78,6 +78,7 @@ const DirectorAuditPlanDetail = lazy(() => import("../pages/Director/AuditPlanDe
 const DirectorReviewAuditResults = lazy(() => import("../pages/Director/ReviewAuditResults"));
 const DirectorSummaryReport = lazy(() => import("../pages/Director/SummaryReport"));
 const DirectorFinalSummaryPage = lazy(() => import("../pages/Director/FinalSummary"));
+const DirectorExtensionRequests = lazy(() => import("../pages/Director/ExtensionRequests"));
 
 // Shared pages
 const ArchivedHistory = lazy(() => import("../pages/Shared/ArchivedHistory"));
@@ -583,6 +584,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Director"]}>
                         <DirectorFinalSummaryPage />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/director/extension-requests"
+                element={
+                    <ProtectedRoute allowedRoles={["Director"]}>
+                        <DirectorExtensionRequests />
                     </ProtectedRoute>
                 }
             />

@@ -650,6 +650,18 @@ const SQAStaffAuditPlanning = () => {
     ) {
       return false;
     }
+    // In edit mode, only validate that dates are valid and end >= start
+    // Skip past date and 14-day minimum checks for existing plans
+    if (formState.isEditMode) {
+      const periodStart = new Date(formState.periodFrom).getTime();
+      const periodEnd = new Date(formState.periodTo).getTime();
+      if (Number.isNaN(periodStart) || Number.isNaN(periodEnd)) {
+        return false;
+      }
+      // Only check that end date is not before start date
+      return periodStart <= periodEnd;
+    }
+    // For new plans, use full validation
     return validatePlanPeriod(formState.periodFrom, formState.periodTo, false);
   }, [
     formState.title,
@@ -657,6 +669,7 @@ const SQAStaffAuditPlanning = () => {
     formState.goal,
     formState.periodFrom,
     formState.periodTo,
+    formState.isEditMode,
     validatePlanPeriod,
   ]);
 
