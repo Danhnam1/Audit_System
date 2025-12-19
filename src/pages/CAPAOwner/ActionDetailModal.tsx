@@ -260,7 +260,12 @@ const ActionDetailModal = ({
                     </svg>
                     <div>
                       <h3 className="text-sm font-bold text-white">Team Members</h3>
-                      <p className="text-xs text-white/80">{relatedActions.length} working</p>
+                      <p className="text-xs text-white/80">
+                        {(() => {
+                          const uniqueUsers = new Set(relatedActions.map(a => a.assignedTo));
+                          return `${uniqueUsers.size} ${uniqueUsers.size === 1 ? 'member' : 'members'}`;
+                        })()}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -280,61 +285,111 @@ const ActionDetailModal = ({
               </div>
               
               <div className="p-3 space-y-2 overflow-y-auto max-h-[calc(95vh-120px)]">
-                {relatedActions.map((relatedAction, index) => {
-                  const user = relatedActionsUsers[relatedAction.assignedTo];
-                  const userName = user?.fullName || relatedAction.assignedTo || 'Unknown';
-                  const isSelected = selectedActionId === relatedAction.actionId;
+                {(() => {
+                  // Group actions by assignedTo user to avoid duplicates
+                  const userActionsMap = new Map<string, Action[]>();
+                  relatedActions.forEach(action => {
+                    const userId = action.assignedTo;
+                    if (!userActionsMap.has(userId)) {
+                      userActionsMap.set(userId, []);
+                    }
+                    userActionsMap.get(userId)!.push(action);
+                  });
                   
-                  return (
-                    <button
-                      key={relatedAction.actionId}
-                      onClick={() => {
-                        console.log('🖱️ [Sidebar Click] Switching to action:', relatedAction.actionId);
-                        console.log('Previous selectedActionId:', selectedActionId);
-                        setSelectedActionId(relatedAction.actionId);
-                        setShowFeedbackInput(false);
-                        setReviewFeedback('');
-                      }}
-                      className={`w-full text-left p-3 rounded-lg transition-colors ${
-                        isSelected
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-white hover:bg-gray-100 border border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                          isSelected ? 'bg-white/20' : 'bg-gray-100'
+                  // Create array of unique users with their actions
+                  const uniqueUsers = Array.from(userActionsMap.entries()).map(([userId, actions]) => ({
+                    userId,
+                    actions,
+                    // Use first action's data for display
+                    representativeAction: actions[0]
+                  }));
+                  
+                  return uniqueUsers.map((userGroup, index) => {
+                    const user = relatedActionsUsers[userGroup.userId];
+                    const userName = user?.fullName || userGroup.userId || 'Unknown';
+                    const hasSelectedAction = userGroup.actions.some(a => a.actionId === selectedActionId);
+                    
+                    return (
+                      <div key={userGroup.userId} className="space-y-1">
+                        {/* User header */}
+                        <div className={`w-full text-left p-3 rounded-lg ${
+                          hasSelectedAction
+                            ? 'bg-primary-600 text-white'
+                            : 'bg-white border border-gray-300'
                         }`}>
-                          <svg className={`w-4 h-4 ${
-                            isSelected ? 'text-white' : 'text-gray-600'
-                          }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                              hasSelectedAction ? 'bg-white/20' : 'bg-gray-100'
+                            }`}>
+                              <svg className={`w-4 h-4 ${
+                                hasSelectedAction ? 'text-white' : 'text-gray-600'
+                              }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-xs font-bold ${
+                                hasSelectedAction ? 'text-white' : 'text-gray-900'
+                              }`}>
+                                #{index + 1} - {userName}
+                              </p>
+                              {userGroup.actions.length > 1 && (
+                                <p className={`text-xs ${
+                                  hasSelectedAction ? 'text-white/80' : 'text-gray-500'
+                                }`}>
+                                  {userGroup.actions.length} actions
+                                </p>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-xs font-bold ${
-                            isSelected ? 'text-white' : 'text-gray-900'
-                          }`}>
-                            #{index + 1} - {userName}
-                          </p>
-                        </div>
+                        
+                        {/* Show all actions for this user */}
+                        {userGroup.actions.map((action, actionIndex) => {
+                          const isSelected = selectedActionId === action.actionId;
+                          
+                          return (
+                            <button
+                              key={action.actionId}
+                              onClick={() => {
+                                console.log('🖱️ [Sidebar Click] Switching to action:', action.actionId);
+                                console.log('Previous selectedActionId:', selectedActionId);
+                                setSelectedActionId(action.actionId);
+                                setShowFeedbackInput(false);
+                                setReviewFeedback('');
+                              }}
+                              className={`w-full text-left p-2 pl-12 rounded-lg transition-colors ${
+                                isSelected
+                                  ? 'bg-primary-500 text-white'
+                                  : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between text-xs">
+                                <span className={`font-medium ${
+                                  isSelected ? 'text-white' : 'text-gray-700'
+                                }`}>
+                                  Action {actionIndex + 1}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2 py-0.5 rounded ${
+                                    isSelected
+                                      ? 'bg-white/20 text-white'
+                                      : getStatusColor(action.status)
+                                  }`}>
+                                    {action.status}
+                                  </span>
+                                  <span className={isSelected ? 'text-white' : 'text-gray-600'}>
+                                    {action.progressPercent || 0}%
+                                  </span>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
-                      
-                      <div className="flex items-center justify-between text-xs">
-                        <span className={`px-2 py-0.5 rounded ${
-                          isSelected
-                            ? 'bg-white/20 text-white'
-                            : getStatusColor(relatedAction.status)
-                        }`}>
-                          {relatedAction.status}
-                        </span>
-                        <span className={isSelected ? 'text-white' : 'text-gray-600'}>
-                          {relatedAction.progressPercent || 0}%
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}

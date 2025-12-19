@@ -52,9 +52,12 @@ const CAPAOwnerAuditList = () => {
   const [error, setError] = useState<string | null>(null);
   
   // Search and filter states
+  const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+const defaultDate = tomorrow.toISOString().split('T')[0];
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [dateFrom, setDateFrom] = useState<string>('');
-  const [dateTo, setDateTo] = useState<string>('');
+ const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState<string>(defaultDate);
 
   useEffect(() => {
     const loadAudits = async () => {

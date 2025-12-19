@@ -40,6 +40,7 @@ const AssignedTasks = () => {
   const [selectedStartActionId, setSelectedStartActionId] = useState<string | null>(null);
   const [showReviewFeedbackModal, setShowReviewFeedbackModal] = useState(false);
   const [selectedReviewFeedback, setSelectedReviewFeedback] = useState<string | null>(null);
+  const [expandedFindings, setExpandedFindings] = useState<Set<string>>(new Set());
   
   // Search and filter states
   const tomorrow = new Date();
@@ -56,7 +57,21 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
         setLoading(true);
         setError(null);
         const allActions = await getMyAssignedActions();
-        console.log('Actions from API:', allActions);
+        console.log('📦 Raw Actions from API (check rootCauseId field):', JSON.stringify(allActions, null, 2));
+        console.log('📊 Total actions received:', allActions.length);
+        
+        // Log each action with its details
+        allActions.forEach((a: any, index: number) => {
+          console.log(`Action ${index + 1}:`, {
+            actionId: a.actionId,
+            findingId: a.findingId,
+            rootCauseId: a.rootCauseId,
+            title: a.title,
+            status: a.status,
+            hasRootCauseId: 'rootCauseId' in a,
+            rootCauseValue: a.rootCauseId
+          });
+        });
         
         // Filter actions by auditId if provided
         let actions = allActions;
@@ -65,6 +80,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
           
           // Get unique findingIds from actions
           const uniqueFindingIds = Array.from(new Set(allActions.map((a: any) => a.findingId).filter(Boolean)));
+          console.log('📋 Unique findingIds found:', uniqueFindingIds);
           
           // Fetch findings to get auditIds
           const findingPromises = uniqueFindingIds.map(async (findingId: string) => {
@@ -80,7 +96,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
           const findings = await Promise.all(findingPromises);
           const validFindings = findings.filter((f): f is any => f !== null);
           
-          console.log('📋 Valid findings:', validFindings);
+          console.log('📋 Valid findings loaded:', validFindings.length);
           
           // Filter actions: only include those whose finding has matching auditId
           const findingIdsForAudit = validFindings
@@ -98,17 +114,27 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
             })
             .map((f: any) => f.findingId);
           
-          console.log(`📌 Findings for audit ${auditIdFromState}:`, findingIdsForAudit);
+          console.log(`📌 Finding IDs for audit ${auditIdFromState}:`, findingIdsForAudit);
           
-          actions = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
+          // Filter actions before removing duplicates
+          const filteredBeforeDedupe = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
+          console.log(`✅ Actions after audit filter: ${filteredBeforeDedupe.length}`);
           
-          console.log(`✅ Filtered actions: ${actions.length} out of ${allActions.length} for audit ${auditIdFromState}`);
+          // Log all actions before deduplication
+          filteredBeforeDedupe.forEach((a: any, index: number) => {
+            console.log(`  Action ${index + 1} before dedupe:`, {
+              actionId: a.actionId,
+              findingId: a.findingId,
+              rootCauseId: a.rootCauseId,
+              title: a.title
+            });
+          });
           
-          // Remove duplicate actions by actionId
+          // Remove duplicate actions by actionId (keeping unique actions)
           const uniqueActionIds = new Set<string>();
-          actions = actions.filter((a: any) => {
+          actions = filteredBeforeDedupe.filter((a: any) => {
             if (uniqueActionIds.has(a.actionId)) {
-              console.log(`🚫 Removing duplicate action: ${a.actionId}`);
+              console.log(`🚫 Removing duplicate actionId: ${a.actionId} (rootCauseId: ${a.rootCauseId})`);
               return false;
             }
             uniqueActionIds.add(a.actionId);
@@ -116,6 +142,19 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
           });
           
           console.log(`✅ After removing duplicates: ${actions.length} unique actions`);
+          
+          // Log final actions
+          actions.forEach((a: any, index: number) => {
+            console.log(`  Final Action ${index + 1}:`, {
+              actionId: a.actionId,
+              findingId: a.findingId,
+              rootCauseId: a.rootCauseId,
+              title: a.title,
+              status: a.status
+            });
+          });
+        } else {
+          console.log('⚠️ No auditId provided, showing all actions');
         }
         
         // Map API actions to Task interface
@@ -279,6 +318,18 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
   const handleStart = (actionId: string) => {
     setSelectedStartActionId(actionId);
     setShowStartModal(true);
+  };
+
+  const toggleFinding = (findingId: string) => {
+    setExpandedFindings(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(findingId)) {
+        newSet.delete(findingId);
+      } else {
+        newSet.add(findingId);
+      }
+      return newSet;
+    });
   };
 
   const handleStartSuccess = () => {
@@ -520,141 +571,170 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                 </div>
               )}
 
-              {/* Tasks Table */}
+              {/* Tasks Grouped by Finding */}
               {!loading && !error && (
-                <div className="overflow-x-auto">
+                <div className="space-y-4">
                   {sortedTasks.length === 0 ? (
                     <div className="p-6 sm:p-8 text-center">
                       <p className="text-gray-500 text-sm sm:text-base">No tasks found</p>
                     </div>
-                  ) : (
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          {activeTab === 'reject' && (
-                            <th scope="col" className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                              Feedback
-                            </th>
-                          )}
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                            Title
-                          </th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                            Due Date
-                          </th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                            Progress
-                          </th>
-                          <th scope="col" className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {sortedTasks.map((task) => (
-                          <tr key={task.actionId} className="hover:bg-gray-50 transition-colors">
-                            {/* Feedback Icon for Reject Tab */}
-                            {activeTab === 'reject' && (
-                              <td className="px-3 py-4 whitespace-nowrap">
-                                <button
-                                  onClick={() => {
-                                    const feedback = task.reviewFeedback;
-                                    if (feedback && typeof feedback === 'string' && feedback.trim() !== '') {
-                                      setSelectedReviewFeedback(feedback);
-                                    } else {
-                                      setSelectedReviewFeedback('No feedback available');
-                                    }
-                                    setShowReviewFeedbackModal(true);
-                                  }}
-                                  className="p-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
-                                  title="View Review Feedback"
+                  ) : (() => {
+                    // Group tasks by findingId
+                    const findingGroups = new Map<string, Task[]>();
+                    sortedTasks.forEach(task => {
+                      if (!findingGroups.has(task.findingId)) {
+                        findingGroups.set(task.findingId, []);
+                      }
+                      findingGroups.get(task.findingId)!.push(task);
+                    });
+                    
+                    return Array.from(findingGroups.entries()).map(([findingId, tasks]) => {
+                      const isExpanded = expandedFindings.has(findingId);
+                      const firstTask = tasks[0];
+                      // Extract finding title from task title (remove user-specific suffix after ' - ')
+                      const findingTitle = firstTask.title.split(' - ')[0];
+                      
+                      return (
+                        <div key={findingId} className="border border-gray-200 rounded-lg overflow-hidden">
+                          {/* Finding Header */}
+                          <div
+                            onClick={() => toggleFinding(findingId)}
+                            className="bg-gray-50 px-4 py-3 cursor-pointer hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3 flex-1">
+                                <svg
+                                  className={`w-5 h-5 text-gray-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
                                 >
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                  </svg>
-                                </button>
-                              </td>
-                            )}
-                            
-                            {/* Title */}
-                            <td className="px-6 py-4">
-                              <div className="text-sm font-semibold text-gray-900">{task.title}</div>
-                              <div className="text-xs text-gray-500 mt-1">ID: {task.actionId}</div>
-                            </td>
-                            
-                            {/* Due Date */}
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900">{formatDate(task.dueDate)}</div>
-                            </td>
-                            
-                            {/* Progress */}
-                            <td className="px-6 py-4">
-                              <div className="flex items-center">
-                                <div className="w-full bg-gray-200 rounded-full h-2 mr-2">
-                                  <div
-                                    className={`${getProgressColor(task.progressPercent)} h-2 rounded-full transition-all`}
-                                    style={{ width: `${task.progressPercent}%` }}
-                                  ></div>
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                                <div className="flex-1">
+                                  <h3 className="text-sm font-semibold text-gray-900">{findingTitle}</h3>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} assigned • Finding ID: {findingId.substring(0, 8)}...
+                                  </p>
                                 </div>
-                                <span className="text-sm font-medium text-gray-700 whitespace-nowrap">{task.progressPercent}%</span>
                               </div>
-                            </td>
-                            
-                            {/* Actions */}
-                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                {activeTab === 'reject' ? (
-                                  <button
-                                    onClick={() => handleStart(task.actionId)}
-                                    className="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium"
-                                  >
-                                    Retry
-                                  </button>
-                                ) : task.progressPercent === 100 ? (
-                                  <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-xs font-medium">
-                                    Completed
-                                  </span>
-                                ) : task.progressPercent > 0 ? (
-                                  <button
-                                    onClick={() => handleStart(task.actionId)}
-                                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium"
-                                  >
-                                    Continue
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => handleStart(task.actionId)}
-                                    className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium"
-                                  >
-                                    Start
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => handleViewDetail(task)}
-                                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                  title="View Finding Details"
-                                >
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                  </svg>
-                                </button>
-                                <button
-                                  onClick={() => handleViewAction(task.actionId)}
-                                  className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                  title="View Action Details"
-                                >
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                  </svg>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                            </div>
+                          </div>
+                          
+                          {/* Tasks List */}
+                          {isExpanded && (
+                            <div className="divide-y divide-gray-200">
+                              {tasks.map((task, index) => (
+                                <div key={task.actionId} className="bg-white hover:bg-gray-50 transition-colors">
+                                  <div className="px-4 py-4">
+                                    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                                      {/* Task Info */}
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-start gap-3">
+                                          <div className="flex-shrink-0 w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                                            <span className="text-sm font-bold text-primary-700">#{index + 1}</span>
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <h4 className="text-sm font-semibold text-gray-900 truncate">{task.title}</h4>
+                                            <p className="text-xs text-gray-500 mt-1">ID: {task.actionId}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Due Date */}
+                                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        <span>{formatDate(task.dueDate)}</span>
+                                      </div>
+                                      
+                                      {/* Progress */}
+                                      <div className="w-full lg:w-32">
+                                        <div className="flex items-center gap-2">
+                                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                                            <div
+                                              className={`${getProgressColor(task.progressPercent)} h-2 rounded-full transition-all`}
+                                              style={{ width: `${task.progressPercent}%` }}
+                                            ></div>
+                                          </div>
+                                          <span className="text-xs font-medium text-gray-700 w-10 text-right">{task.progressPercent}%</span>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Actions */}
+                                      <div className="flex items-center gap-2">
+                                        {activeTab === 'reject' ? (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                const feedback = task.reviewFeedback;
+                                                setSelectedReviewFeedback(feedback && typeof feedback === 'string' && feedback.trim() !== '' ? feedback : 'No feedback available');
+                                                setShowReviewFeedbackModal(true);
+                                              }}
+                                              className="p-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
+                                              title="View Feedback"
+                                            >
+                                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                              </svg>
+                                            </button>
+                                            <button
+                                              onClick={() => handleStart(task.actionId)}
+                                              className="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium"
+                                            >
+                                              Retry
+                                            </button>
+                                          </>
+                                        ) : task.progressPercent === 100 ? (
+                                          <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-xs font-medium">
+                                            Completed
+                                          </span>
+                                        ) : task.progressPercent > 0 ? (
+                                          <button
+                                            onClick={() => handleStart(task.actionId)}
+                                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium"
+                                          >
+                                            Continue
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={() => handleStart(task.actionId)}
+                                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium"
+                                          >
+                                            Start
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => handleViewDetail(task)}
+                                          className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                          title="View Finding"
+                                        >
+                                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          onClick={() => handleViewAction(task.actionId)}
+                                          className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                          title="View Action"
+                                        >
+                                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               )}
             </div>
