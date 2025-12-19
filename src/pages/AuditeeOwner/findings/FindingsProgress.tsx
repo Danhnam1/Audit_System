@@ -653,10 +653,23 @@ const FindingsProgress = () => {
                                       // Reload findings and actions
                                       const deptId = getUserDeptId();
                                       if (deptId) {
-                                        const data = await getFindingsByDepartment(deptId);
-                                        setFindings(data);
-                                        await loadAssignedUsers(data);
-                                        await loadRootCauseStatus(data);
+                                        const allFindings = await getFindingsByDepartment(deptId);
+                                        
+                                        // Filter by auditId if needed
+                                        let filteredData = allFindings;
+                                        if (auditIdFromState) {
+                                          filteredData = allFindings.filter((finding: Finding) => {
+                                            const findingAuditId = finding.auditId || 
+                                                                 (finding as any).AuditId || 
+                                                                 (finding as any).auditPlanId ||
+                                                                 (finding as any).audit?.auditId;
+                                            return String(findingAuditId) === String(auditIdFromState);
+                                          });
+                                        }
+                                        
+                                        setFindings(filteredData);
+                                        await loadAssignedUsers(filteredData);
+                                        await loadRootCauseStatus(filteredData);
                                       }
                                     } catch (err: any) {
                                       console.error('Error resubmitting action:', err);
@@ -1217,10 +1230,23 @@ const FindingsProgress = () => {
               const deptId = getUserDeptId();
               if (deptId) {
                 console.log('🔄 Reloading findings...');
-                const data = await getFindingsByDepartment(deptId);
-                setFindings(data);
-                await loadAssignedUsers(data);
-                await loadRootCauseStatus(data);
+                const allFindings = await getFindingsByDepartment(deptId);
+                
+                // Filter by auditId if needed (same as initial load)
+                let filteredData = allFindings;
+                if (auditIdFromState) {
+                  filteredData = allFindings.filter((finding: Finding) => {
+                    const findingAuditId = finding.auditId || 
+                                         (finding as any).AuditId || 
+                                         (finding as any).auditPlanId ||
+                                         (finding as any).audit?.auditId;
+                    return String(findingAuditId) === String(auditIdFromState);
+                  });
+                }
+                
+                setFindings(filteredData);
+                await loadAssignedUsers(filteredData);
+                await loadRootCauseStatus(filteredData);
                 console.log('✅ Findings reloaded');
               }
               
