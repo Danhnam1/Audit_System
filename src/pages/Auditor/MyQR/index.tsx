@@ -168,10 +168,6 @@ export default function MyQR() {
     return 'bg-yellow-100 text-yellow-800';
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard!');
-  };
 
   return (
     <MainLayout user={layoutUser}>

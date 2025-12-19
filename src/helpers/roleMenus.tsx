@@ -8,7 +8,6 @@ import {
   ClipboardCheckIcon,
   DocumentIcon,
   QualityIcon,
-  ClockIcon,
   ArchiveIcon,
   DepartmentIcon,
   ShieldIcon,

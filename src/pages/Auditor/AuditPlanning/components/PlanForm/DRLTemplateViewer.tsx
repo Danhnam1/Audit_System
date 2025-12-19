@@ -9,7 +9,7 @@ interface DRLTemplateViewerProps {
   assignmentId?: string;
 }
 
-export const DRLTemplateViewer: React.FC<DRLTemplateViewerProps> = ({ drlFiles, assignmentId }) => {
+export const DRLTemplateViewer: React.FC<DRLTemplateViewerProps> = ({ drlFiles }) => {
   if (!drlFiles || drlFiles.length === 0) {
     return null;
   }

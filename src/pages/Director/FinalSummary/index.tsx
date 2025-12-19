@@ -173,7 +173,6 @@ export default function DirectorFinalSummaryPage() {
     }
   };
 
-  const selectedReport = reportRequests.find(r => r.reportRequestId === selectedReportId);
   const audit = auditDetail?.audit ?? {};
 
   const unwrapArray = <T,>(value: any): T[] => {

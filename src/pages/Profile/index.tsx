@@ -1,20 +1,16 @@
 import { useState, useEffect } from 'react';
 import { MainLayout } from '../../layouts';
 import useAuthStore, { useUserId } from '../../store/useAuthStore';
-import { getUserById, updateUserProfile } from '../../api/adminUsers';
+import { getUserById } from '../../api/adminUsers';
 import { getDepartmentById } from '../../api/departments';
 import { toast } from 'react-toastify';
 
 export default function Profile() {
-  const { user: authUser, fetchUser } = useAuthStore();
+  const { user: authUser } = useAuthStore();
   const userId = useUserId();
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [departmentName, setDepartmentName] = useState<string>('N/A');
   const [roleName, setRoleName] = useState<string>('N/A');
 
@@ -63,75 +59,9 @@ export default function Profile() {
     }
   };
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        toast.error('Please select an image file');
-        return;
-      }
-      
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('Image size must be less than 5MB');
-        return;
-      }
-      
-      setAvatarFile(file);
-      
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
-  const handleSave = async () => {
-    if (!userId) {
-      toast.error('User ID not found');
-      return;
-    }
 
-    if (!fullName.trim()) {
-      toast.error('Full name is required');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await updateUserProfile(userId, fullName.trim(), avatarFile || undefined);
-      
-      // Refresh user data from auth store
-      await fetchUser();
-      
-      // Reload profile to get updated avatar URL
-      await loadProfile();
-      
-      setIsEditing(false);
-      setAvatarFile(null);
-      setAvatarPreview(null);
-      toast.success('Profile updated successfully');
-    } catch (error: any) {
-      console.error('Failed to update profile:', error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update profile';
-      toast.error(errorMessage);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    setAvatarFile(null);
-    setAvatarPreview(null);
-    // Reload original data
-    loadProfile();
-  };
-
-  const displayAvatar = avatarPreview || avatarUrl;
+  const displayAvatar = avatarUrl;
   const displayInitial = fullName?.charAt(0)?.toUpperCase() || authUser?.fullName?.charAt(0)?.toUpperCase() || '?';
 
   const layoutUser = authUser ? { name: authUser.fullName, avatar: undefined } : undefined;
@@ -184,28 +114,7 @@ export default function Profile() {
                         {displayInitial}
                       </span>
                     </div>
-                    
-                    {isEditing && (
-                      <label className="absolute bottom-0 right-0 bg-primary-600 text-white rounded-full p-2 cursor-pointer hover:bg-primary-700 transition-colors shadow-lg">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleAvatarChange}
-                          className="hidden"
-                        />
-                      </label>
-                    )}
                   </div>
-                  
-                  {isEditing && avatarFile && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      New avatar selected: {avatarFile.name}
-                    </p>
-                  )}
                 </div>
 
                 {/* Profile Information */}
@@ -215,17 +124,7 @@ export default function Profile() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Full Name
                     </label>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                        placeholder="Enter your full name"
-                      />
-                    ) : (
-                      <p className="text-gray-900 font-medium">{fullName || 'N/A'}</p>
-                    )}
+                    <p className="text-gray-900 font-medium">{fullName || 'N/A'}</p>
                   </div>
 
                   {/* Department (Read-only) */}
