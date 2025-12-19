@@ -97,7 +97,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
 
     case 'director':
       return [
-        // { icon: <DashboardIcon />, label: 'Dashboard', path: ROUTES.DIRECTOR },
+        { icon: <DashboardIcon />, label: 'Dashboard', path: '/director/dashboard' },
         { icon: <AuditIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
         { icon: <ArchiveIcon />, label: 'Archived History', path: '/director/archived-history' },
         { icon: <DocumentIcon />, label: 'Final Summary & Effectiveness (Flow 5)', path: '/director/final-summary' },

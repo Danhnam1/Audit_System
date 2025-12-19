@@ -71,6 +71,7 @@ const AuditeeOwnerScanQR = lazy(() => import("../pages/AuditeeOwner/ScanQR"));
 const AuditeeOwnerAuditChecklist = lazy(() => import("../pages/AuditeeOwner/checklist/AuditChecklist"));
 
 // Director pages
+const DirectorDashboard = lazy(() => import("../pages/Director/Dashboard"));
 const DirectorReviewAuditPlans = lazy(() => import("../pages/Director/ReviewAuditPlans"));
 const DirectorAuditPlanDetail = lazy(() => import("../pages/Director/AuditPlanDetail"));
 const DirectorReviewAuditResults = lazy(() => import("../pages/Director/ReviewAuditResults"));
@@ -97,7 +98,7 @@ export function AppRoutes() {
             auditor: ROUTES.AUDITOR,
             capaowner: '/capa-owner/tasks',
             auditeeowner: '/auditee-owner/audit-plans',
-            director: '/director/review-plans',
+            director: '/director/dashboard',
             leadauditor: '/lead-auditor/auditplanning',
         };
 
@@ -524,7 +525,15 @@ export function AppRoutes() {
                 path={ROUTES.DIRECTOR}
                 element={
                     <ProtectedRoute allowedRoles={["Director"]}>
-                        <Navigate to="/director/review-plans" replace />
+                        <Navigate to="/director/dashboard" replace />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/director/dashboard"
+                element={
+                    <ProtectedRoute allowedRoles={["Director"]}>
+                        <DirectorDashboard />
                     </ProtectedRoute>
                 }
             />

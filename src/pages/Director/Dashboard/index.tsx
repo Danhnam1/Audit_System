@@ -3,7 +3,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { AuditDashboard } from '../../../components/Dashboard/AuditDashboard';
 
-const LeadAuditorDashboard: React.FC = () => {
+const DirectorDashboard: React.FC = () => {
   const { user } = useAuth();
   const layoutUser = user ? { name: (user as any).fullName || (user as any).name || 'User', avatar: undefined } : undefined;
 
@@ -14,4 +14,5 @@ const LeadAuditorDashboard: React.FC = () => {
   );
 };
 
-export default LeadAuditorDashboard;
+export default DirectorDashboard;
+
