@@ -30,6 +30,7 @@ const AuditorPlanAssignments = () => {
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 sm:p-6">
+          {/* Ở màn hình riêng Plan Assignments, không cần callback đặc biệt */}
           <AuditorAssignmentsView />
         </div>
       </div>

@@ -3863,7 +3863,14 @@ const SQAStaffAuditPlanning = () => {
               </div>
 
               <div className="border border-gray-200 rounded-xl p-4 sm:p-5 bg-gray-50">
-                <AuditorAssignmentsView />
+                <AuditorAssignmentsView
+                  onPermissionGranted={() => {
+                    // Khi auditor được approve assignment ngay trong màn hình này,
+                    // cập nhật luôn state để có thể tạo plan mà không cần reload.
+                    setHasPlanPermission(true);
+                    setIsCheckingPermission(false);
+                  }}
+                />
               </div>
             </div>
           </div>

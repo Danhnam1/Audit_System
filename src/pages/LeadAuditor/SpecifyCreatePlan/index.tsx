@@ -303,6 +303,7 @@ const SpecifyCreatePlan = () => {
               Approve or reject plan creation permissions assigned by Lead Auditor.
             </p>
           </div>
+          {/* Lead Auditor chỉ xem/duyệt, không cần callback permission */}
           <AuditorAssignmentsView />
         </div>
       </MainLayout>

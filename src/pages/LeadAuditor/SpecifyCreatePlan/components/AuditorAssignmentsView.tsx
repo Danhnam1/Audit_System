@@ -29,7 +29,12 @@ interface AssignmentWithLeadAuditor {
   leadAuditorEmail?: string;
 }
 
-export const AuditorAssignmentsView = () => {
+interface AuditorAssignmentsViewProps {
+  // Optional callback: dùng ở màn hình Auditor Planning để set quyền tạo plan ngay sau khi approve
+  onPermissionGranted?: () => void;
+}
+
+export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmentsViewProps) => {
   const userIdFromToken = useUserId();
   const [assignments, setAssignments] = useState<AssignmentWithLeadAuditor[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,59 +52,60 @@ export const AuditorAssignmentsView = () => {
   const [filterStartDate, setFilterStartDate] = useState<string>('');
   const [filterEndDate, setFilterEndDate] = useState<string>('');
 
-  // Load assignments and users
+  // Helper: load assignments + users + rejection stats
+  const loadData = async () => {
+    if (!userIdFromToken) {
+      console.warn('[AuditorAssignmentsView] No userIdFromToken available');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const [assignmentsData, usersData, rejectionStats] = await Promise.all([
+        getAuditPlanAssignmentsByAuditor(userIdFromToken),
+        getAdminUsers(),
+        getRejectionCount().catch((err) => {
+          console.error('[AuditorAssignmentsView] Failed to load rejection count', err);
+          return { rejectionCount: 0, rejections: [] };
+        }),
+      ]);
+
+      setRejectionCount(rejectionStats.rejectionCount ?? 0);
+      setRejections(rejectionStats.rejections || []);
+      setAllUsers(usersData || []);
+
+      // Enrich assignments with Lead Auditor info
+      const enrichedAssignments: AssignmentWithLeadAuditor[] = (assignmentsData || []).map((assignment) => {
+        const leadAuditor = (usersData || []).find((u: AdminUserDto) => {
+          const assignByStr = String(assignment.assignBy || '').trim();
+          const userIdStr = String(u.userId || '').trim();
+          return assignByStr && userIdStr && assignByStr === userIdStr;
+        });
+
+        return {
+          ...assignment,
+          leadAuditorName: leadAuditor?.fullName || 'Unknown',
+          leadAuditorEmail: leadAuditor?.email || 'N/A',
+        };
+      });
+
+      enrichedAssignments.sort((a, b) => {
+        const dateA = new Date(a.assignedDate || '').getTime();
+        const dateB = new Date(b.assignedDate || '').getTime();
+        return dateB - dateA;
+      });
+
+      setAssignments(enrichedAssignments);
+    } catch (error: any) {
+      console.error('[AuditorAssignmentsView] Failed to load data:', error);
+      toast.error('Failed to load assignments');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Initial load
   useEffect(() => {
-    const loadData = async () => {
-      if (!userIdFromToken) {
-        console.warn('[AuditorAssignmentsView] No userIdFromToken available');
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const [assignmentsData, usersData, rejectionStats] = await Promise.all([
-          getAuditPlanAssignmentsByAuditor(userIdFromToken),
-          getAdminUsers(),
-          getRejectionCount().catch((err) => {
-            console.error('[AuditorAssignmentsView] Failed to load rejection count', err);
-            return { rejectionCount: 0, rejections: [] };
-          }),
-        ]);
-
-        setRejectionCount(rejectionStats.rejectionCount ?? 0);
-        setRejections(rejectionStats.rejections || []);
-        setAllUsers(usersData || []);
-
-        // Enrich assignments with Lead Auditor info
-        const enrichedAssignments: AssignmentWithLeadAuditor[] = (assignmentsData || []).map((assignment) => {
-          const leadAuditor = (usersData || []).find((u: AdminUserDto) => {
-            const assignByStr = String(assignment.assignBy || '').trim();
-            const userIdStr = String(u.userId || '').trim();
-            return assignByStr && userIdStr && assignByStr === userIdStr;
-          });
-
-          return {
-            ...assignment,
-            leadAuditorName: leadAuditor?.fullName || 'Unknown',
-            leadAuditorEmail: leadAuditor?.email || 'N/A',
-          };
-        });
-
-        enrichedAssignments.sort((a, b) => {
-          const dateA = new Date(a.assignedDate || '').getTime();
-          const dateB = new Date(b.assignedDate || '').getTime();
-          return dateB - dateA;
-        });
-
-        setAssignments(enrichedAssignments);
-      } catch (error: any) {
-        console.error('[AuditorAssignmentsView] Failed to load data:', error);
-        toast.error('Failed to load assignments');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     loadData();
   }, [userIdFromToken]);
 
@@ -156,7 +162,8 @@ export const AuditorAssignmentsView = () => {
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('vi-VN', {
+      // Use English-friendly format while keeping day-first ordering
+      return date.toLocaleDateString('en-GB', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -180,22 +187,19 @@ export const AuditorAssignmentsView = () => {
     try {
       setActionLoadingId(assignmentId);
       await approveAuditPlanAssignment(assignmentId);
-      toast.success('Đã chấp nhận assignment');
-      
-      // Reload assignments and rejections
-      const [refreshed, rejectionStats] = await Promise.all([
-        getAuditPlanAssignmentsByAuditor(userIdFromToken || ''),
-        getRejectionCount().catch(() => ({ rejectionCount: 0, rejections: [] })),
-      ]);
-      
-      setAssignments((prev) => {
-        const byId = new Map(prev.map((a) => [a.assignmentId, a]));
-        const merged = refreshed.map((a) => byId.get(a.assignmentId) || a);
-        return merged as any;
-      });
-      
-      setRejectionCount(rejectionStats.rejectionCount ?? 0);
-      setRejections(rejectionStats.rejections || []);
+      toast.success('Assignment approved');
+
+      // Reload assignments so status & permission-related data are up to date
+      await loadData();
+
+      // Thông báo cho parent (nếu có) là auditor đã được cấp quyền tạo plan
+      if (onPermissionGranted) {
+        try {
+          onPermissionGranted();
+        } catch (err) {
+          console.error('[AuditorAssignmentsView] onPermissionGranted callback error', err);
+        }
+      }
     } catch (error: any) {
       console.error('[AuditorAssignmentsView] Approve failed', error);
       toast.error(error?.response?.data?.message || 'Approve failed');
@@ -213,22 +217,17 @@ export const AuditorAssignmentsView = () => {
   const handleReject = async (assignmentId?: string) => {
     if (!assignmentId) return;
     if (!rejectReason.trim()) {
-      toast.warning('Vui lòng nhập lý do từ chối');
+      toast.warning('Please enter the reason for rejecting this assignment');
       return;
     }
     try {
       setActionLoadingId(assignmentId);
       await rejectAuditPlanAssignment(assignmentId, { rejectionReason: rejectReason, files: rejectFiles });
-      toast.success('Đã từ chối assignment');
+      toast.success('Assignment rejected');
       resetRejectForm();
-      const refreshed = await getAuditPlanAssignmentsByAuditor(userIdFromToken || '');
-      setAssignments((prev) => {
-        const byId = new Map(prev.map((a) => [a.assignmentId, a]));
-        const merged = refreshed.map((a) => byId.get(a.assignmentId) || a);
-        return merged as any;
-      });
-      const stats = await getRejectionCount().catch(() => ({ rejectionCount: 0, rejections: [] }));
-      setRejectionCount(stats.rejectionCount ?? 0);
+
+      // Reload assignments & rejection stats so UI reflects latest status
+      await loadData();
     } catch (error: any) {
       console.error('[AuditorAssignmentsView] Reject failed', error);
       toast.error(error?.response?.data?.message || 'Reject failed');
@@ -239,22 +238,28 @@ export const AuditorAssignmentsView = () => {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center gap-3">
+      <div className="bg-white border border-gray-200 rounded-lg p-4 flex items-center gap-3 shadow-sm">
         <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-semibold">
           {rejectionCount}
         </div>
         <div className="flex-1">
-          <p className="text-sm font-semibold text-gray-800">Số lần từ chối tạo plan</p>
-          <p className="text-xs text-gray-500">Tổng số lần bạn đã reject các assignment</p>
+          <p className="text-sm font-semibold text-gray-800">Rejection count</p>
+          <p className="text-xs text-gray-500">
+            Total number of plan assignment requests you have rejected.
+          </p>
         </div>
       </div>
 
       {/* Filter Section */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Lọc theo thời gian gửi</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">
+          Filter by assignment date
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Từ ngày</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              From date
+            </label>
             <input
               type="date"
               value={filterStartDate}
@@ -263,7 +268,9 @@ export const AuditorAssignmentsView = () => {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Đến ngày</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              To date
+            </label>
             <input
               type="date"
               value={filterEndDate}
@@ -281,7 +288,7 @@ export const AuditorAssignmentsView = () => {
             }}
             className="mt-4 px-4 py-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
           >
-            Xóa bộ lọc
+            Clear filters
           </button>
         )}
       </div>
@@ -291,15 +298,17 @@ export const AuditorAssignmentsView = () => {
         <div className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-gray-800">
-              Đã xử lý ({filteredProcessedAssignments.length})
+              Processed assignments ({filteredProcessedAssignments.length})
             </p>
-            <p className="text-xs text-gray-500">Các assignment đã được approve hoặc reject</p>
+            <p className="text-xs text-gray-500">
+              Assignments that have already been approved or rejected.
+            </p>
           </div>
           <button
             onClick={() => setShowProcessed(!showProcessed)}
             className="px-4 py-2 text-sm font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
           >
-            {showProcessed ? 'Ẩn' : 'Hiển thị'}
+            {showProcessed ? 'Hide' : 'Show'}
           </button>
         </div>
       )}
@@ -308,20 +317,24 @@ export const AuditorAssignmentsView = () => {
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-          <span className="ml-3 text-sm text-gray-600 font-medium">Đang tải assignments...</span>
+          <span className="ml-3 text-sm text-gray-600 font-medium">
+            Loading assignments...
+          </span>
         </div>
       ) : filteredPendingAssignments.length === 0 && (!showProcessed || filteredProcessedAssignments.length === 0) ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="text-center py-12 bg-gradient-to-b from-gray-50 to-white rounded-xl border border-dashed border-gray-300">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-50 rounded-full mb-4 shadow-sm">
+            <svg className="w-8 h-8 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </div>
-          <p className="text-gray-700 font-medium text-lg mb-2">Chưa có assignment nào</p>
-          <p className="text-gray-500 text-sm">
+          <p className="text-gray-800 font-semibold text-lg mb-1">
+            No assignments yet
+          </p>
+          <p className="text-gray-500 text-sm max-w-md mx-auto">
             {filterStartDate || filterEndDate
-              ? 'Không có assignment nào trong khoảng thời gian đã chọn.'
-              : 'Bạn chưa nhận được assignment nào từ Lead Auditor.'}
+              ? 'There are no assignments in the selected date range. Try adjusting your filters.'
+              : 'You have not received any plan creation assignments from the Lead Auditor yet.'}
           </p>
         </div>
       ) : (
@@ -355,10 +368,10 @@ export const AuditorAssignmentsView = () => {
                       </div>
                       <div className="text-sm text-gray-600 space-y-1">
                         <p>
-                          <span className="font-medium">Ngày gửi:</span> {formatDate(assignment.assignedDate)}
+                          <span className="font-medium">Assigned on:</span> {formatDate(assignment.assignedDate)}
                         </p>
                         <p>
-                          <span className="font-medium">Gửi bởi:</span> {assignment.leadAuditorName} ({assignment.leadAuditorEmail})
+                          <span className="font-medium">Assigned by:</span> {assignment.leadAuditorName} ({assignment.leadAuditorEmail})
                         </p>
                       </div>
                     </div>
@@ -366,7 +379,9 @@ export const AuditorAssignmentsView = () => {
 
                   {assignment.remarks && (
                     <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className="text-sm font-medium text-gray-700 mb-1">Ghi chú:</p>
+                      <p className="text-sm font-medium text-gray-700 mb-1">
+                        Notes from Lead Auditor:
+                      </p>
                       <p className="text-sm text-gray-600 whitespace-pre-wrap">{assignment.remarks}</p>
                     </div>
                   )}
@@ -412,19 +427,23 @@ export const AuditorAssignmentsView = () => {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86L12 5 5.07 19z" />
                         </svg>
                         <div className="flex-1">
-                          <p className="text-sm font-semibold text-amber-800 mb-1">Lý do từ chối</p>
+                          <p className="text-sm font-semibold text-amber-800 mb-1">
+                            Rejection reason
+                          </p>
                           <textarea
                             className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
                             rows={3}
                             value={rejectReason}
                             onChange={(e) => setRejectReason(e.target.value)}
-                            placeholder="Nhập lý do từ chối..."
+                            placeholder="Enter the reason for rejecting this assignment..."
                           />
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-amber-800 mb-2">Đính kèm (tùy chọn)</label>
+                        <label className="block text-sm font-medium text-amber-800 mb-2">
+                          Attachments (optional)
+                        </label>
                         <input
                           type="file"
                           multiple
@@ -442,13 +461,13 @@ export const AuditorAssignmentsView = () => {
                           disabled={actionLoadingId === assignment.assignmentId}
                           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60"
                         >
-                          {actionLoadingId === assignment.assignmentId ? 'Đang gửi...' : 'Xác nhận từ chối'}
+                          {actionLoadingId === assignment.assignmentId ? 'Submitting...' : 'Confirm rejection'}
                         </button>
                         <button
                           onClick={resetRejectForm}
                           className="text-sm font-semibold text-gray-600 hover:text-gray-800"
                         >
-                          Hủy
+                          Cancel
                         </button>
                       </div>
                     </div>
@@ -492,7 +511,7 @@ export const AuditorAssignmentsView = () => {
                     </div>
                   ) : (
                     <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-sm text-gray-500 italic">Không có file đính kèm</p>
+                      <p className="text-sm text-gray-500 italic">No files attached</p>
                     </div>
                   )}
                 </div>
@@ -571,14 +590,17 @@ export const AuditorAssignmentsView = () => {
                           )}
                           <div className="mt-2 ml-7 flex items-center gap-4">
                             <span className="text-xs text-gray-500">
-                              Ngày gửi: <span className="font-medium">{formatDate(assignment.assignedDate)}</span>
+                              Assigned on:{' '}
+                              <span className="font-medium">{formatDate(assignment.assignedDate)}</span>
                             </span>
                             <span className="text-xs text-gray-500">
-                              Gửi bởi: <span className="font-medium">{assignment.leadAuditorName}</span>
+                              Assigned by:{' '}
+                              <span className="font-medium">{assignment.leadAuditorName}</span>
                             </span>
                             {isRejected && evidenceCount > 0 && (
                               <span className="text-xs text-gray-500">
-                                Minh chứng: <span className="font-medium text-primary-600">{evidenceCount}</span>
+                                Evidence:{' '}
+                                <span className="font-medium text-primary-600">{evidenceCount}</span>
                               </span>
                             )}
                           </div>
@@ -610,10 +632,12 @@ export const AuditorAssignmentsView = () => {
                                 <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
-                                <p className="text-sm font-semibold text-green-800">Đã chấp nhận</p>
+                                <p className="text-sm font-semibold text-green-800">
+                                  Approved
+                                </p>
                               </div>
                               <p className="text-sm text-green-700">
-                                Bạn đã chấp nhận assignment này vào {formatDate(assignment.assignedDate)}
+                                You approved this assignment on {formatDate(assignment.assignedDate)}
                               </p>
                             </div>
                           )}
@@ -624,22 +648,28 @@ export const AuditorAssignmentsView = () => {
                                 <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
-                                <p className="text-sm font-semibold text-red-800">Đã từ chối</p>
+                                <p className="text-sm font-semibold text-red-800">
+                                  Rejected
+                                </p>
                               </div>
                               {latestRejection.rejectionReason && (
                                 <div className="mb-3">
-                                  <p className="text-sm font-medium text-red-700 mb-1">Lý do từ chối:</p>
+                                  <p className="text-sm font-medium text-red-700 mb-1">
+                                    Rejection reason:
+                                  </p>
                                   <p className="text-sm text-red-600 whitespace-pre-wrap">{latestRejection.rejectionReason}</p>
                                 </div>
                               )}
                               {latestRejection.rejectedAt && (
                                 <p className="text-xs text-red-600">
-                                  Từ chối vào: {formatDate(latestRejection.rejectedAt)}
+                                  Rejected on: {formatDate(latestRejection.rejectedAt)}
                                 </p>
                               )}
                               {latestRejection.files && Array.isArray(latestRejection.files) && latestRejection.files.length > 0 && (
                                 <div className="mt-3 pt-3 border-t border-red-200">
-                                  <p className="text-sm font-medium text-red-700 mb-2">Minh chứng đính kèm:</p>
+                                  <p className="text-sm font-medium text-red-700 mb-2">
+                                    Attached evidence:
+                                  </p>
                                   <div className="space-y-2">
                                     {latestRejection.files.map((file: any, index: number) => (
                                       <div key={index} className="flex items-center gap-2 p-2 bg-white rounded border border-red-200">
@@ -652,7 +682,7 @@ export const AuditorAssignmentsView = () => {
                                             onClick={() => window.open(file.fileUrl, '_blank')}
                                             className="text-xs text-red-600 hover:text-red-700 underline"
                                           >
-                                            Tải xuống
+                                            Download
                                           </button>
                                         )}
                                       </div>
@@ -702,7 +732,7 @@ export const AuditorAssignmentsView = () => {
                             </div>
                           ) : (
                             <div className="pt-4 border-t border-gray-200">
-                              <p className="text-sm text-gray-500 italic">Không có file đính kèm</p>
+                              <p className="text-sm text-gray-500 italic">No files attached</p>
                             </div>
                           )}
                       </div>
