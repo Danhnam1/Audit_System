@@ -19,37 +19,6 @@ const barData = [
   { department: 'Quality', Findings: 30, 'Finding Open': 24, 'Finding Closed': 28 },
 ];
 
-const orderStatusData = [
-  { name: 'Sales', value: 68, color: '#0284c7' },
-  { name: 'Product', value: 25, color: '#ff6b6b' },
-  { name: 'Income', value: 14, color: '#10b981' },
-];
-
-const monthlyPie = [
-  { name: 'Monthly', value: 65127, color: '#1e90ff' },
-];
-
-const yearlyPie = [
-  { name: 'Yearly', value: 984246, color: '#fbbf24' },
-];
-
-const monthlyData = [
-  { name: 'Monday', value: 18 },
-  { name: 'Tuesday', value: 24 },
-  { name: 'Wednesday', value: 32 },
-  { name: 'Thursday', value: 28 },
-  { name: 'Friday', value: 22 },
-  { name: 'Saturday', value: 19 },
-  { name: 'Sunday', value: 15 },
-];
-
-const radarData = [
-  { subject: 'Completeness', A: 85 },
-  { subject: 'Timeliness', A: 72 },
-  { subject: 'Accuracy', A: 88 },
-  { subject: 'Coverage', A: 70 },
-  { subject: 'Responsiveness', A: 78 },
-];
 
 const RadarSummary: React.FC = () => {
   const [audits, setAudits] = useState<any[]>([]);
@@ -628,54 +597,10 @@ const ProfitCard: React.FC = () => {
   );
 };
 
-const DonutSummary: React.FC<{
-  data: { name: string; value: number; color: string }[];
-  title: string;
-  subtitle?: string;
-}> = ({ data, title, subtitle }) => {
-  const total = data.reduce((s, d) => s + d.value, 0);
-  const display = data[0];
-  return (
-    <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6 w-full">
-      <div className="flex items-center gap-6">
-        <div style={{ width: 120, height: 120, minWidth: 0, minHeight: 120 }}>
-          <PieChart width={120} height={120}>
-            <Pie
-              data={data}
-              dataKey="value"
-              startAngle={90}
-              endAngle={-270}
-              innerRadius={28}
-              outerRadius={40}
-              paddingAngle={2}
-            >
-              {data.map((entry, idx) => (
-                <Cell key={idx} fill={entry.color} />
-              ))}
-            </Pie>
-          </PieChart>
-        </div>
-
-        <div className="flex-1">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-500">{title}</div>
-              <div className="text-3xl font-semibold">{display.value.toLocaleString()}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm text-green-600 font-medium">16.5% <span className="text-gray-400 text-sm">55.21 USD</span></div>
-            </div>
-          </div>
-          {subtitle && <div className="mt-3 text-sm text-gray-500">{subtitle}</div>}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: string }[]; onDetails?: () => void }> = ({ data, onDetails }) => {
   const total = data.reduce((s, d) => s + d.value, 0);
-  const gradientData = data.map((item, idx) => ({
+  const gradientData = data.map((item) => ({
     name: item.name,
     value: item.value,
     startColor: item.color,
@@ -717,7 +642,7 @@ const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: st
               outerRadius={60}
               paddingAngle={2}
             >
-              {gradientData.map((entry, idx) => (
+              {gradientData.map((_entry, idx) => (
                 <Cell key={idx} fill={`url(#grad-donut-${idx})`} />
               ))}
             </Pie>
@@ -748,7 +673,7 @@ const OrderStatusCard: React.FC<{ data: { name: string; value: number; color: st
 const LeadAuditorDashboard: React.FC = () => {
   const { user } = useAuth();
   const [auditCounts, setAuditCounts] = useState({ draftCount: 45, pendingCount: 35, inProgressCount: 20 });
-  const layoutUser = user ? { name: (user as any).fullName || user.name, avatar: undefined } : undefined;
+  const layoutUser = user ? { name: (user as any).fullName || (user as any).name || 'User', avatar: undefined } : undefined;
 
   useEffect(() => {
     const fetchAuditDashboard = async () => {
@@ -959,7 +884,7 @@ const LeadAuditorDashboard: React.FC = () => {
   };
 
   return (
-    <MainLayout title="Dashboard" user={layoutUser}>
+    <MainLayout user={layoutUser}>
       <div className="space-y-2">
         <div className="flex gap-6" style={{ height: 580 }}>
           <div className="w-96 h-full" style={{ flexShrink: 0 }}>

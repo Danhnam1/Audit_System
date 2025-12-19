@@ -6,7 +6,7 @@ import { getUserById, type AdminUserDto } from '../../api/adminUsers';
 interface ActionDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
-  actionId: string;
+  actionId: string | undefined;
   findingId?: string; // Optional: to load all related actions
   showReviewButtons?: boolean;
   expectedStatus?: string; // Expected status for showing review buttons
@@ -34,12 +34,11 @@ const ActionDetailModal = ({
   const [assignedToUser, setAssignedToUser] = useState<AdminUserDto | null>(null);
   const [reviewFeedback, setReviewFeedback] = useState('');
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
-  const [reviewType, setReviewType] = useState<'approve' | 'reject'>('approve');
   
   // Multi-action support
   const [relatedActions, setRelatedActions] = useState<Action[]>([]);
   const [loadingRelatedActions, setLoadingRelatedActions] = useState(false);
-  const [selectedActionId, setSelectedActionId] = useState<string>(actionId);
+  const [selectedActionId, setSelectedActionId] = useState<string | undefined>(actionId);
   // const [showActionsList, setShowActionsList] = useState(false);
   const [relatedActionsUsers, setRelatedActionsUsers] = useState<Record<string, AdminUserDto>>({});
 
@@ -79,7 +78,6 @@ const ActionDetailModal = ({
       setError(null);
       setReviewFeedback('');
       setShowFeedbackInput(false);
-      setReviewType('approve');
       setRelatedActions([]);
     }
   }, [isOpen, selectedActionId, findingId]);
@@ -129,6 +127,7 @@ const ActionDetailModal = ({
   };
 
   const loadAction = async () => {
+    if (!selectedActionId) return;
     console.log('📥 [loadAction] Fetching action:', selectedActionId);
     setLoading(true);
     setError(null);
@@ -143,7 +142,7 @@ const ActionDetailModal = ({
       });
       setAction(data);
       // Load attachments for this action
-      loadAttachments(selectedActionId);
+      if (selectedActionId) loadAttachments(selectedActionId);
       // Load assignedTo user info
       if (data.assignedTo) {
         loadAssignedToUser(data.assignedTo);
@@ -700,7 +699,7 @@ const ActionDetailModal = ({
                       console.log('reviewFeedback:', reviewFeedback);
                       console.log('onReject exists:', !!onReject);
                       
-                      if (reviewFeedback.trim() && onReject) {
+                      if (reviewFeedback.trim() && onReject && selectedActionId) {
                         console.log('❌ Calling onReject with actionId:', selectedActionId, 'feedback:', reviewFeedback);
                         await onReject(selectedActionId, reviewFeedback);
                         console.log('🔄 Reloading action details in modal...');
@@ -782,7 +781,6 @@ const ActionDetailModal = ({
                 <button
                   onClick={() => {
                     setShowFeedbackInput(true);
-                    setReviewType('reject');
                   }}
                   disabled={isProcessing}
                   className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg border-2 border-rose-600/30"
@@ -801,7 +799,7 @@ const ActionDetailModal = ({
                       currentActionId: action?.actionId,
                       currentStatus: action?.status
                     });
-                    if (onApprove) {
+                    if (onApprove && selectedActionId) {
                       console.log('✅ Calling onApprove directly without feedback');
                       await onApprove(selectedActionId, '');
                       console.log('🔄 Reloading action details in modal...');

@@ -58,7 +58,9 @@ export const rejectFinalReport = async (
 export const getAllReportRequests = async (): Promise<ViewReportRequest[]> => {
   const res = await apiClient.get('/ReportRequest');
   const { unwrap } = await import('../utils/normalize');
-  return unwrap<ViewReportRequest[]>(res);
+  const unwrapped = unwrap<ViewReportRequest[]>(res);
+  // Flatten in case unwrap returns array of arrays
+  return Array.isArray(unwrapped) ? unwrapped.flat() : [];
 };
 
 // Get report request by ID

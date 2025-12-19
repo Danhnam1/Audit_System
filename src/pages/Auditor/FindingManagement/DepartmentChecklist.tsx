@@ -1361,7 +1361,7 @@ const DepartmentChecklist = () => {
           findingId={selectedActionFindingId || undefined}
           onDataReload={async () => {
             // Reload findings
-            await reloadFindings();
+            await loadMyFindings();
             
             // Reload actions
             if (selectedFindingForActions) {

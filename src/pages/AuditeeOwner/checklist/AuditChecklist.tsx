@@ -8,7 +8,7 @@ import {
 } from '../../../api/checklists';
 import { toast } from 'react-toastify';
 
-interface RouteParams {
+interface RouteParams extends Record<string, string | undefined> {
   auditId?: string;
   deptId?: string;
 }
