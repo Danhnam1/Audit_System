@@ -179,6 +179,13 @@ export const getFindingsByAudit = async (auditId: string): Promise<any[]> => {
   return unwrap(res);
 };
 
+// Get findings by department for dashboard (AuditDashboard API)
+export const getFindingsByDepartmentDashboard = async (deptId: number): Promise<Finding[]> => {
+  const res = await apiClient.get(`/AuditDashboard/department/${deptId}/findings`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Finding>(res);
+};
+
 // Return action (Auditor returns action for revision)
 export const returnFindingAction = async (actionId: string, feedback: string): Promise<void> => {
   await apiClient.post(`/ActionReview/${actionId}/returned`, {

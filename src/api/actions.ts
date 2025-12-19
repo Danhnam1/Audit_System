@@ -114,3 +114,10 @@ export const rejectActionForResubmit = async (actionId: string): Promise<void> =
   await apiClient.put(`/Action/${actionId}/reject`);
 };
 
+// Get actions by department for dashboard (AuditDashboard API)
+export const getActionsByDepartmentDashboard = async (deptId: number): Promise<Action[]> => {
+  const res = await apiClient.get(`/AuditDashboard/department/${deptId}/actions`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Action>(res);
+};
+
