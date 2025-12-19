@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getActionById, getActionsByFinding, type Action } from '../../api/actions';
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById, type AdminUserDto } from '../../api/adminUsers';
+import { getRootCauseById, type RootCause } from '../../api/rootCauses';
 
 interface ActionDetailModalProps {
   isOpen: boolean;
@@ -34,6 +35,8 @@ const ActionDetailModal = ({
   const [assignedToUser, setAssignedToUser] = useState<AdminUserDto | null>(null);
   const [reviewFeedback, setReviewFeedback] = useState('');
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
+  const [rootCause, setRootCause] = useState<RootCause | null>(null);
+  const [loadingRootCause, setLoadingRootCause] = useState(false);
   
   // Multi-action support
   const [relatedActions, setRelatedActions] = useState<Action[]>([]);
@@ -138,7 +141,8 @@ const ActionDetailModal = ({
         title: data.title,
         status: data.status,
         progressPercent: data.progressPercent,
-        assignedTo: data.assignedTo
+        assignedTo: data.assignedTo,
+        rootCauseId: data.rootCauseId
       });
       setAction(data);
       // Load attachments for this action
@@ -147,11 +151,31 @@ const ActionDetailModal = ({
       if (data.assignedTo) {
         loadAssignedToUser(data.assignedTo);
       }
+      // Load root cause if rootCauseId exists
+      if (data.rootCauseId) {
+        loadRootCause(data.rootCauseId);
+      } else {
+        setRootCause(null);
+      }
     } catch (err: any) {
       console.error('❌ [loadAction] Error loading action:', err);
       setError(err?.response?.data?.message || err?.message || 'Failed to load action details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadRootCause = async (rootCauseId: number) => {
+    setLoadingRootCause(true);
+    try {
+      const data = await getRootCauseById(rootCauseId);
+      console.log('✅ Loaded root cause:', data);
+      setRootCause(data);
+    } catch (err: any) {
+      console.error('Error loading root cause:', err);
+      setRootCause(null);
+    } finally {
+      setLoadingRootCause(false);
     }
   };
 
@@ -236,7 +260,12 @@ const ActionDetailModal = ({
                     </svg>
                     <div>
                       <h3 className="text-sm font-bold text-white">Team Members</h3>
-                      <p className="text-xs text-white/80">{relatedActions.length} working</p>
+                      <p className="text-xs text-white/80">
+                        {(() => {
+                          const uniqueUsers = new Set(relatedActions.map(a => a.assignedTo));
+                          return `${uniqueUsers.size} ${uniqueUsers.size === 1 ? 'member' : 'members'}`;
+                        })()}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -256,61 +285,111 @@ const ActionDetailModal = ({
               </div>
               
               <div className="p-3 space-y-2 overflow-y-auto max-h-[calc(95vh-120px)]">
-                {relatedActions.map((relatedAction, index) => {
-                  const user = relatedActionsUsers[relatedAction.assignedTo];
-                  const userName = user?.fullName || relatedAction.assignedTo || 'Unknown';
-                  const isSelected = selectedActionId === relatedAction.actionId;
+                {(() => {
+                  // Group actions by assignedTo user to avoid duplicates
+                  const userActionsMap = new Map<string, Action[]>();
+                  relatedActions.forEach(action => {
+                    const userId = action.assignedTo;
+                    if (!userActionsMap.has(userId)) {
+                      userActionsMap.set(userId, []);
+                    }
+                    userActionsMap.get(userId)!.push(action);
+                  });
                   
-                  return (
-                    <button
-                      key={relatedAction.actionId}
-                      onClick={() => {
-                        console.log('🖱️ [Sidebar Click] Switching to action:', relatedAction.actionId);
-                        console.log('Previous selectedActionId:', selectedActionId);
-                        setSelectedActionId(relatedAction.actionId);
-                        setShowFeedbackInput(false);
-                        setReviewFeedback('');
-                      }}
-                      className={`w-full text-left p-3 rounded-lg transition-colors ${
-                        isSelected
-                          ? 'bg-primary-600 text-white'
-                          : 'bg-white hover:bg-gray-100 border border-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                          isSelected ? 'bg-white/20' : 'bg-gray-100'
+                  // Create array of unique users with their actions
+                  const uniqueUsers = Array.from(userActionsMap.entries()).map(([userId, actions]) => ({
+                    userId,
+                    actions,
+                    // Use first action's data for display
+                    representativeAction: actions[0]
+                  }));
+                  
+                  return uniqueUsers.map((userGroup, index) => {
+                    const user = relatedActionsUsers[userGroup.userId];
+                    const userName = user?.fullName || userGroup.userId || 'Unknown';
+                    const hasSelectedAction = userGroup.actions.some(a => a.actionId === selectedActionId);
+                    
+                    return (
+                      <div key={userGroup.userId} className="space-y-1">
+                        {/* User header */}
+                        <div className={`w-full text-left p-3 rounded-lg ${
+                          hasSelectedAction
+                            ? 'bg-primary-600 text-white'
+                            : 'bg-white border border-gray-300'
                         }`}>
-                          <svg className={`w-4 h-4 ${
-                            isSelected ? 'text-white' : 'text-gray-600'
-                          }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                              hasSelectedAction ? 'bg-white/20' : 'bg-gray-100'
+                            }`}>
+                              <svg className={`w-4 h-4 ${
+                                hasSelectedAction ? 'text-white' : 'text-gray-600'
+                              }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-xs font-bold ${
+                                hasSelectedAction ? 'text-white' : 'text-gray-900'
+                              }`}>
+                                #{index + 1} - {userName}
+                              </p>
+                              {userGroup.actions.length > 1 && (
+                                <p className={`text-xs ${
+                                  hasSelectedAction ? 'text-white/80' : 'text-gray-500'
+                                }`}>
+                                  {userGroup.actions.length} actions
+                                </p>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-xs font-bold ${
-                            isSelected ? 'text-white' : 'text-gray-900'
-                          }`}>
-                            #{index + 1} - {userName}
-                          </p>
-                        </div>
+                        
+                        {/* Show all actions for this user */}
+                        {userGroup.actions.map((action, actionIndex) => {
+                          const isSelected = selectedActionId === action.actionId;
+                          
+                          return (
+                            <button
+                              key={action.actionId}
+                              onClick={() => {
+                                console.log('🖱️ [Sidebar Click] Switching to action:', action.actionId);
+                                console.log('Previous selectedActionId:', selectedActionId);
+                                setSelectedActionId(action.actionId);
+                                setShowFeedbackInput(false);
+                                setReviewFeedback('');
+                              }}
+                              className={`w-full text-left p-2 pl-12 rounded-lg transition-colors ${
+                                isSelected
+                                  ? 'bg-primary-500 text-white'
+                                  : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between text-xs">
+                                <span className={`font-medium ${
+                                  isSelected ? 'text-white' : 'text-gray-700'
+                                }`}>
+                                  Action {actionIndex + 1}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2 py-0.5 rounded ${
+                                    isSelected
+                                      ? 'bg-white/20 text-white'
+                                      : getStatusColor(action.status)
+                                  }`}>
+                                    {action.status}
+                                  </span>
+                                  <span className={isSelected ? 'text-white' : 'text-gray-600'}>
+                                    {action.progressPercent || 0}%
+                                  </span>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
-                      
-                      <div className="flex items-center justify-between text-xs">
-                        <span className={`px-2 py-0.5 rounded ${
-                          isSelected
-                            ? 'bg-white/20 text-white'
-                            : getStatusColor(relatedAction.status)
-                        }`}>
-                          {relatedAction.status}
-                        </span>
-                        <span className={isSelected ? 'text-white' : 'text-gray-600'}>
-                          {relatedAction.progressPercent || 0}%
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}
@@ -404,6 +483,83 @@ const ActionDetailModal = ({
                     </div>
                   </div>
 
+                  {/* Root Cause (if available) */}
+                  {(() => {
+                    // Check if root cause exists (from API or legacy description)
+                    const hasRootCauseFromApi = rootCause || loadingRootCause;
+                    
+                    // Parse legacy root cause from description
+                    let legacyRootCauseName = null;
+                    let legacyRootCauseDesc = null;
+                    if (!hasRootCauseFromApi && action.description) {
+                      const match = action.description.match(/\n\nAssigned Root Cause:([\s\S]*?)(?:\n\nAssigned to:|$)/);
+                      if (match) {
+                        const fullText = match[1].trim();
+                        // Parse format: "• name (category)\n  Description: desc"
+                        const nameMatch = fullText.match(/^[•\-\*]\s*(.+?)\s*\([^)]+\)/);
+                        const descMatch = fullText.match(/Description:\s*(.+)$/s);
+                        
+                        if (nameMatch) {
+                          legacyRootCauseName = nameMatch[1].trim();
+                        }
+                        if (descMatch) {
+                          legacyRootCauseDesc = descMatch[1].trim();
+                        }
+                        
+                        // If parsing failed, use the whole text as name
+                        if (!legacyRootCauseName && !legacyRootCauseDesc) {
+                          legacyRootCauseName = fullText;
+                        }
+                      }
+                    }
+                    
+                    if (!hasRootCauseFromApi && !legacyRootCauseName) return null;
+                    
+                    return (
+                      <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-2 border-purple-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                          </div>
+                          <label className="text-xs font-bold text-purple-700 uppercase tracking-wide pt-2">Assigned Root Cause</label>
+                        </div>
+                        {loadingRootCause ? (
+                          <div className="flex items-center gap-2 pl-[52px]">
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-300 border-t-purple-600"></div>
+                            <span className="text-sm text-purple-600">Loading root cause...</span>
+                          </div>
+                        ) : rootCause ? (
+                          <div className="pl-[52px] space-y-2">
+                            <p className="text-lg font-bold text-purple-900">
+                              {rootCause.name}
+                            </p>
+                            {rootCause.description && (
+                              <p className="text-base text-gray-700 leading-relaxed">
+                                {rootCause.description}
+                              </p>
+                            )}
+                          </div>
+                        ) : legacyRootCauseName ? (
+                          <div className="pl-[52px] space-y-3">
+                            <div className="space-y-2">
+                              <p className="text-lg font-bold text-purple-900">
+                               Rootcause: {legacyRootCauseName}
+                              </p>
+                              {legacyRootCauseDesc && (
+                                <p className="text-base text-gray-700 leading-relaxed">
+                                Description:  {legacyRootCauseDesc}
+                                </p>
+                              )}
+                            </div>
+                       
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+
                   {/* Description */}
                   {action.description && (
                     <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
@@ -416,7 +572,16 @@ const ActionDetailModal = ({
                         <label className="text-xs font-bold text-gray-700 uppercase tracking-wide pt-2">Description</label>
                       </div>
                       <p className="text-base text-gray-800 leading-relaxed whitespace-pre-wrap break-words min-h-[80px] pl-[52px]">
-                        {action.description}
+                        {(() => {
+                          // Clean up legacy descriptions that have embedded root cause info
+                          let cleanDescription = action.description;
+                          // Remove "Assigned Root Cause:" section if it exists (legacy data)
+                          const rootCauseMatch = cleanDescription.match(/\n\nAssigned Root Cause:[\s\S]*/);
+                          if (rootCauseMatch) {
+                            cleanDescription = cleanDescription.substring(0, rootCauseMatch.index);
+                          }
+                          return cleanDescription;
+                        })()}
                       </p>
                     </div>
                   )}

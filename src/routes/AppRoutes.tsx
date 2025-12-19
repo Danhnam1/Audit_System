@@ -46,6 +46,7 @@ const LeadAuditorFinalSummaryReviewPage = lazy(
 );
 
 // CAPA Owner pages (formerly Department Staff)
+const CAPAOwnerDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard/index"));
 const CAPAOwnerAuditList = lazy(() => import("../pages/CAPAOwner/AuditList"));
 const DepartmentStaffAssignedTasks = lazy(() => import("../pages/CAPAOwner/AssignedTasks"));
 const DepartmentStaffTaskDetail = lazy(() => import("../pages/CAPAOwner/TaskDetail"));
@@ -345,7 +346,15 @@ export function AppRoutes() {
                 path={ROUTES.CAPA_OWNER}
                 element={
                     <ProtectedRoute allowedRoles={["CAPAOwner"]}>
-                        <Navigate to="/capa-owner/tasks" replace />
+                        <Navigate to="/capa-owner/dashboard" replace />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/capa-owner/dashboard"
+                element={
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
+                        <CAPAOwnerDashboard />
                     </ProtectedRoute>
                 }
             />

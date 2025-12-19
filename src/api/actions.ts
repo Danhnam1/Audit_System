@@ -22,6 +22,7 @@ export interface CreateActionDto {
   progressPercent: number;
   dueDate: string;
   reviewFeedback?: string;
+  rootCauseId?: number; // Link to root cause
 }
 
 export interface Action {
@@ -38,6 +39,7 @@ export interface Action {
   createdAt?: string;
   closedAt?: string | null;
   reviewFeedback?: string | null;
+  rootCauseId?: number; // Link to root cause
 }
 
 // Create a new action

@@ -4,7 +4,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { getMyAssignedActions } from '../../api/actions';
 import { getFindingById } from '../../api/findings';
 import FindingDetailModal from '../Auditor/FindingManagement/FindingDetailModal';
-import ActionDetailModal from './ActionDetailModal';
+import CAPAOwnerActionDetailModal from './CAPAOwnerActionDetailModal';
 import StartActionModal from './StartActionModal';
 
 interface Task {
@@ -36,11 +36,20 @@ const AssignedTasks = () => {
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
-  const [selectedActionFindingId, setSelectedActionFindingId] = useState<string | null>(null);
   const [showStartModal, setShowStartModal] = useState(false);
   const [selectedStartActionId, setSelectedStartActionId] = useState<string | null>(null);
   const [showReviewFeedbackModal, setShowReviewFeedbackModal] = useState(false);
   const [selectedReviewFeedback, setSelectedReviewFeedback] = useState<string | null>(null);
+  const [expandedFindings, setExpandedFindings] = useState<Set<string>>(new Set());
+  
+  // Search and filter states
+  const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+const defaultDate = tomorrow.toISOString().split('T')[0];
+
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState<string>(defaultDate);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -48,7 +57,21 @@ const AssignedTasks = () => {
         setLoading(true);
         setError(null);
         const allActions = await getMyAssignedActions();
-        console.log('Actions from API:', allActions);
+        console.log('📦 Raw Actions from API (check rootCauseId field):', JSON.stringify(allActions, null, 2));
+        console.log('📊 Total actions received:', allActions.length);
+        
+        // Log each action with its details
+        allActions.forEach((a: any, index: number) => {
+          console.log(`Action ${index + 1}:`, {
+            actionId: a.actionId,
+            findingId: a.findingId,
+            rootCauseId: a.rootCauseId,
+            title: a.title,
+            status: a.status,
+            hasRootCauseId: 'rootCauseId' in a,
+            rootCauseValue: a.rootCauseId
+          });
+        });
         
         // Filter actions by auditId if provided
         let actions = allActions;
@@ -57,6 +80,7 @@ const AssignedTasks = () => {
           
           // Get unique findingIds from actions
           const uniqueFindingIds = Array.from(new Set(allActions.map((a: any) => a.findingId).filter(Boolean)));
+          console.log('📋 Unique findingIds found:', uniqueFindingIds);
           
           // Fetch findings to get auditIds
           const findingPromises = uniqueFindingIds.map(async (findingId: string) => {
@@ -72,7 +96,7 @@ const AssignedTasks = () => {
           const findings = await Promise.all(findingPromises);
           const validFindings = findings.filter((f): f is any => f !== null);
           
-          console.log('📋 Valid findings:', validFindings);
+          console.log('📋 Valid findings loaded:', validFindings.length);
           
           // Filter actions: only include those whose finding has matching auditId
           const findingIdsForAudit = validFindings
@@ -90,17 +114,27 @@ const AssignedTasks = () => {
             })
             .map((f: any) => f.findingId);
           
-          console.log(`📌 Findings for audit ${auditIdFromState}:`, findingIdsForAudit);
+          console.log(`📌 Finding IDs for audit ${auditIdFromState}:`, findingIdsForAudit);
           
-          actions = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
+          // Filter actions before removing duplicates
+          const filteredBeforeDedupe = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
+          console.log(`✅ Actions after audit filter: ${filteredBeforeDedupe.length}`);
           
-          console.log(`✅ Filtered actions: ${actions.length} out of ${allActions.length} for audit ${auditIdFromState}`);
+          // Log all actions before deduplication
+          filteredBeforeDedupe.forEach((a: any, index: number) => {
+            console.log(`  Action ${index + 1} before dedupe:`, {
+              actionId: a.actionId,
+              findingId: a.findingId,
+              rootCauseId: a.rootCauseId,
+              title: a.title
+            });
+          });
           
-          // Remove duplicate actions by actionId
+          // Remove duplicate actions by actionId (keeping unique actions)
           const uniqueActionIds = new Set<string>();
-          actions = actions.filter((a: any) => {
+          actions = filteredBeforeDedupe.filter((a: any) => {
             if (uniqueActionIds.has(a.actionId)) {
-              console.log(`🚫 Removing duplicate action: ${a.actionId}`);
+              console.log(`🚫 Removing duplicate actionId: ${a.actionId} (rootCauseId: ${a.rootCauseId})`);
               return false;
             }
             uniqueActionIds.add(a.actionId);
@@ -108,6 +142,19 @@ const AssignedTasks = () => {
           });
           
           console.log(`✅ After removing duplicates: ${actions.length} unique actions`);
+          
+          // Log final actions
+          actions.forEach((a: any, index: number) => {
+            console.log(`  Final Action ${index + 1}:`, {
+              actionId: a.actionId,
+              findingId: a.findingId,
+              rootCauseId: a.rootCauseId,
+              title: a.title,
+              status: a.status
+            });
+          });
+        } else {
+          console.log('⚠️ No auditId provided, showing all actions');
         }
         
         // Map API actions to Task interface
@@ -189,8 +236,39 @@ const AssignedTasks = () => {
         return statusLower === 'reviewed' || statusLower === 'approved' || statusLower === 'active' || statusLower === 'inprogress';
       });
 
+  // Apply search and date filters
+  const filteredTasks = filteredTasksByTab.filter(task => {
+    // Search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = 
+        task.title?.toLowerCase().includes(searchLower) ||
+        task.description?.toLowerCase().includes(searchLower) ||
+        task.actionId?.toLowerCase().includes(searchLower);
+      if (!matchesSearch) return false;
+    }
+    
+    // Date range filter (filter by dueDate)
+    if (dateFrom && task.dueDate) {
+      const taskDate = new Date(task.dueDate);
+      const fromDate = new Date(dateFrom);
+      fromDate.setHours(0, 0, 0, 0);
+      taskDate.setHours(0, 0, 0, 0);
+      if (taskDate < fromDate) return false;
+    }
+    
+    if (dateTo && task.dueDate) {
+      const taskDate = new Date(task.dueDate);
+      const toDate = new Date(dateTo);
+      toDate.setHours(23, 59, 59, 999);
+      if (taskDate > toDate) return false;
+    }
+    
+    return true;
+  });
+
   // Sort tasks: Continue first, Start second, Completed last
-  const sortedTasks = [...filteredTasksByTab].sort((a, b) => {
+  const sortedTasks = [...filteredTasks].sort((a, b) => {
     // Get priority: Continue = 1, Start = 2, Completed = 3
     const getPriority = (progress: number) => {
       if (progress > 0 && progress < 100) return 1; // Continue
@@ -231,16 +309,27 @@ const AssignedTasks = () => {
     setShowDetailModal(true);
   };
 
-  const handleViewAction = (actionId: string, findingId: string) => {
+  const handleViewAction = (actionId: string) => {
     setSelectedActionId(actionId);
-    setSelectedActionFindingId(findingId);
     setShowActionDetailModal(true);
-    console.log('Opening action modal from AssignedTasks - ActionId:', actionId, 'FindingId:', findingId);
+    console.log('Opening action modal from AssignedTasks - ActionId:', actionId);
   };
 
   const handleStart = (actionId: string) => {
     setSelectedStartActionId(actionId);
     setShowStartModal(true);
+  };
+
+  const toggleFinding = (findingId: string) => {
+    setExpandedFindings(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(findingId)) {
+        newSet.delete(findingId);
+      } else {
+        newSet.add(findingId);
+      }
+      return newSet;
+    });
   };
 
   const handleStartSuccess = () => {
@@ -405,6 +494,68 @@ const AssignedTasks = () => {
           {/* Action Tab Content */}
           {(activeTab === 'action' || activeTab === 'reject' || activeTab === 'completed') && (
             <div className="p-4 sm:p-6">
+              {/* Search and Filter Bar */}
+              <div className="mb-6 space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Search Input */}
+                  <div className="flex-1">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Search by title, description, or ID..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                      <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  {/* Date From */}
+                  <div className="w-full sm:w-48">
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="From Date"
+                    />
+                  </div>
+                  
+                  {/* Date To */}
+                  <div className="w-full sm:w-48">
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="To Date"
+                    />
+                  </div>
+                  
+                  {/* Clear Filters */}
+                  {(searchTerm || dateFrom || dateTo) && (
+                    <button
+                      onClick={() => {
+                        setSearchTerm('');
+                        setDateFrom('');
+                        setDateTo('');
+                      }}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                
+                {/* Results Count */}
+                <div className="text-sm text-gray-600">
+                  Showing {sortedTasks.length} of {filteredTasksByTab.length} tasks
+                </div>
+              </div>
+
               {/* Loading State */}
               {loading && (
                 <div className="p-8 text-center">
@@ -420,115 +571,170 @@ const AssignedTasks = () => {
                 </div>
               )}
 
-              {/* Tasks List */}
+              {/* Tasks Grouped by Finding */}
               {!loading && !error && (
-                <div className="divide-y divide-gray-200">
+                <div className="space-y-4">
                   {sortedTasks.length === 0 ? (
                     <div className="p-6 sm:p-8 text-center">
                       <p className="text-gray-500 text-sm sm:text-base">No tasks found</p>
                     </div>
-                  ) : (
-                    sortedTasks.map((task) => (
-                      <div key={task.actionId} className="p-3 sm:p-4 hover:bg-gray-50 transition-colors">
-                        {/* Title, Due Date, Status and Start Button */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
-                          {/* Exclamation mark icon for reject tab - at the start */}
-                          {activeTab === 'reject' && (
-                            <button
-                              onClick={() => {
-                                const feedback = task.reviewFeedback;
-                                console.log('Clicking feedback button, task.reviewFeedback:', task.reviewFeedback, 'Type:', typeof task.reviewFeedback, 'Full task:', task);
-                                // Check if feedback exists and is not empty string
-                                if (feedback && typeof feedback === 'string' && feedback.trim() !== '') {
-                                  setSelectedReviewFeedback(feedback);
-                                } else {
-                                  setSelectedReviewFeedback('No feedback available');
-                                }
-                                setShowReviewFeedbackModal(true);
-                              }}
-                              className="p-1.5 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-full transition-colors flex-shrink-0"
-                              title="View Review Feedback"
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                              </svg>
-                            </button>
+                  ) : (() => {
+                    // Group tasks by findingId
+                    const findingGroups = new Map<string, Task[]>();
+                    sortedTasks.forEach(task => {
+                      if (!findingGroups.has(task.findingId)) {
+                        findingGroups.set(task.findingId, []);
+                      }
+                      findingGroups.get(task.findingId)!.push(task);
+                    });
+                    
+                    return Array.from(findingGroups.entries()).map(([findingId, tasks]) => {
+                      const isExpanded = expandedFindings.has(findingId);
+                      const firstTask = tasks[0];
+                      // Extract finding title from task title (remove user-specific suffix after ' - ')
+                      const findingTitle = firstTask.title.split(' - ')[0];
+                      
+                      return (
+                        <div key={findingId} className="border border-gray-200 rounded-lg overflow-hidden">
+                          {/* Finding Header */}
+                          <div
+                            onClick={() => toggleFinding(findingId)}
+                            className="bg-gray-50 px-4 py-3 cursor-pointer hover:bg-gray-100 transition-colors"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3 flex-1">
+                                <svg
+                                  className={`w-5 h-5 text-gray-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                                <div className="flex-1">
+                                  <h3 className="text-sm font-semibold text-gray-900">{findingTitle}</h3>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} assigned • Finding ID: {findingId.substring(0, 8)}...
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Tasks List */}
+                          {isExpanded && (
+                            <div className="divide-y divide-gray-200">
+                              {tasks.map((task, index) => (
+                                <div key={task.actionId} className="bg-white hover:bg-gray-50 transition-colors">
+                                  <div className="px-4 py-4">
+                                    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                                      {/* Task Info */}
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-start gap-3">
+                                          <div className="flex-shrink-0 w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                                            <span className="text-sm font-bold text-primary-700">#{index + 1}</span>
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <h4 className="text-sm font-semibold text-gray-900 truncate">{task.title}</h4>
+                                            <p className="text-xs text-gray-500 mt-1">ID: {task.actionId}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Due Date */}
+                                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        <span>{formatDate(task.dueDate)}</span>
+                                      </div>
+                                      
+                                      {/* Progress */}
+                                      <div className="w-full lg:w-32">
+                                        <div className="flex items-center gap-2">
+                                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                                            <div
+                                              className={`${getProgressColor(task.progressPercent)} h-2 rounded-full transition-all`}
+                                              style={{ width: `${task.progressPercent}%` }}
+                                            ></div>
+                                          </div>
+                                          <span className="text-xs font-medium text-gray-700 w-10 text-right">{task.progressPercent}%</span>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Actions */}
+                                      <div className="flex items-center gap-2">
+                                        {activeTab === 'reject' ? (
+                                          <>
+                                            <button
+                                              onClick={() => {
+                                                const feedback = task.reviewFeedback;
+                                                setSelectedReviewFeedback(feedback && typeof feedback === 'string' && feedback.trim() !== '' ? feedback : 'No feedback available');
+                                                setShowReviewFeedbackModal(true);
+                                              }}
+                                              className="p-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50 rounded-lg transition-colors"
+                                              title="View Feedback"
+                                            >
+                                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                              </svg>
+                                            </button>
+                                            <button
+                                              onClick={() => handleStart(task.actionId)}
+                                              className="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium"
+                                            >
+                                              Retry
+                                            </button>
+                                          </>
+                                        ) : task.progressPercent === 100 ? (
+                                          <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-xs font-medium">
+                                            Completed
+                                          </span>
+                                        ) : task.progressPercent > 0 ? (
+                                          <button
+                                            onClick={() => handleStart(task.actionId)}
+                                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium"
+                                          >
+                                            Continue
+                                          </button>
+                                        ) : (
+                                          <button
+                                            onClick={() => handleStart(task.actionId)}
+                                            className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium"
+                                          >
+                                            Start
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => handleViewDetail(task)}
+                                          className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                          title="View Finding"
+                                        >
+                                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                          </svg>
+                                        </button>
+                                        <button
+                                          onClick={() => handleViewAction(task.actionId)}
+                                          className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                          title="View Action"
+                                        >
+                                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           )}
-                          <h3 className="text-sm sm:text-base font-semibold text-gray-800 break-words flex-1 min-w-0">
-                            {task.title}
-                          </h3>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {task.dueDate && (
-                              <span className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">
-                                Due: {formatDate(task.dueDate)}
-                              </span>
-                            )}
-                            {activeTab === 'reject' ? (
-                              <button
-                                onClick={() => handleStart(task.actionId)}
-                                className="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs sm:text-sm font-medium whitespace-nowrap min-w-[80px]"
-                              >
-                                Retry
-                              </button>
-                            ) : task.progressPercent === 100 ? (
-                              <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap min-w-[80px] text-center inline-block">
-                                Completed
-                              </span>
-                            ) : task.progressPercent > 0 ? (
-                              <button
-                                onClick={() => handleStart(task.actionId)}
-                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs sm:text-sm font-medium whitespace-nowrap min-w-[80px]"
-                              >
-                                Continue
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleStart(task.actionId)}
-                                className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs sm:text-sm font-medium whitespace-nowrap min-w-[80px]"
-                              >
-                                Start
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleViewDetail(task)}
-                              className="p-1.5 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
-                              title="View Finding Details"
-                            >
-                              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleViewAction(task.actionId, task.findingId)}
-                              className="p-1.5 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors flex-shrink-0"
-                              title="View Action Details"
-                            >
-                              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                            </button>
-                          </div>
                         </div>
-
-                        {/* Progress Bar */}
-                        {task.progressPercent > 0 && (
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs text-gray-600">Progress</span>
-                              <span className="text-xs font-medium text-gray-800">{task.progressPercent}%</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-1.5">
-                              <div
-                                className={`${getProgressColor(task.progressPercent)} h-1.5 rounded-full transition-all`}
-                                style={{ width: `${task.progressPercent}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
+                      );
+                    });
+                  })()}
                 </div>
               )}
             </div>
@@ -549,15 +755,13 @@ const AssignedTasks = () => {
 
         {/* Action Detail Modal */}
         {selectedActionId && (
-          <ActionDetailModal
+          <CAPAOwnerActionDetailModal
             isOpen={showActionDetailModal}
             onClose={() => {
               setShowActionDetailModal(false);
               setSelectedActionId(null);
-              setSelectedActionFindingId(null);
             }}
             actionId={selectedActionId}
-            findingId={selectedActionFindingId || undefined}
           />
         )}
 
