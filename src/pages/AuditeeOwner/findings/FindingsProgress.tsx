@@ -347,23 +347,18 @@ const FindingsProgress = () => {
     setSubmittingAssign(true);
 
     try {
-      // Build description with the specific root cause
-      let actionDescription = selectedFindingForAssign.description || '';
-      actionDescription += `\n\nAssigned Root Cause:\n• ${selectedRootCause.name} (${selectedRootCause.category})`;
-      if (selectedRootCause.description) {
-        actionDescription += `\n  Description: ${selectedRootCause.description}`;
-      }
-      
-      // Create action for this root cause
+      // Create action for this root cause with rootCauseId link
+      // Keep finding description separate, don't mix with root cause info
       await createAction({
         findingId: selectedFindingForAssign.findingId,
         title: `${selectedFindingForAssign.title} - ${selectedRootCause.name}`,
-        description: actionDescription,
+        description: selectedFindingForAssign.description || '', // Keep original finding description
         assignedTo: individualStaffId,
         assignedDeptId: selectedFindingForAssign.deptId || 0,
         progressPercent: 0,
         dueDate: new Date(individualDueDate).toISOString(),
         reviewFeedback: '',
+        rootCauseId: selectedRootCause.rootCauseId, // Link to root cause
       });
 
       // Mark this root cause as submitted and save assigned data

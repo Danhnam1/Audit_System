@@ -163,38 +163,37 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     setIsSavingRootCause(true);
     try {
       if (editingRootCauseId) {
-        // Update existing root cause - API requires ReasonReject field
-        // Find current root cause to get its status and reviewBy
+        // Update existing root cause - keep as Draft
         const currentRootCause = rootCauses.find(rc => rc.rootCauseId === editingRootCauseId);
         
         const rootCauseDto: Partial<CreateRootCauseDto> & { deptId?: number; findingId?: string; reasonReject?: string; reviewBy?: string } = {
           name: rootCauseName.trim(),
           description: rootCauseDescription.trim(),
-          status:  'Pending',
+          status: 'Draft', // Keep as draft when editing
           category: rootCauseCategory.trim(),
           deptId: finding.deptId || 0,
           findingId: findingId,
           reasonReject: editingReasonReject || '',
-          reviewBy: currentRootCause?.reviewBy || '', // Include reviewBy if exists
+          reviewBy: currentRootCause?.reviewBy || '',
         };
         
         console.log('📤 Updating root cause with payload:', rootCauseDto);
         await updateRootCause(editingRootCauseId, rootCauseDto as any);
-        showToast('Root cause updated and submitted for review!', 'success');
+        showToast('Root cause saved as draft!', 'success');
         setEditingRootCauseId(null);
       } else {
-        // Create new root cause with Pending status (submit directly)
+        // Create new root cause as Draft (not submitted yet)
         const rootCauseDto: CreateRootCauseDto & { deptId: number; findingId: string; category: string } = {
           name: rootCauseName.trim(),
           description: rootCauseDescription.trim(),
-          status: 'Pending',
+          status: 'Draft', // Save as draft instead of Pending
           category: rootCauseCategory.trim(),
           deptId: finding.deptId || 0,
           findingId: findingId,
         };
 
         await createRootCause(rootCauseDto as any);
-        showToast('Root cause submitted for review!', 'success');
+        showToast('Root cause saved as draft!', 'success');
       }
       
       setRootCauseName('');
@@ -212,6 +211,68 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       showToast('Failed to save root cause: ' + (err.message || 'Unknown error'), 'error');
     } finally {
       setIsSavingRootCause(false);
+    }
+  };
+  
+  // Submit all draft root causes at once
+  const handleSubmitAllRootCauses = async () => {
+    const draftRootCauses = rootCauses.filter(rc => rc.status?.toLowerCase() === 'draft');
+    
+    if (draftRootCauses.length === 0) {
+      showToast('No draft root causes to submit', 'error');
+      return;
+    }
+    
+    setIsProcessingReview(true);
+    try {
+      // Update all draft root causes to Pending status
+      await Promise.all(
+        draftRootCauses.map(async (rc) => {
+          const rootCauseDto: Partial<CreateRootCauseDto> & { deptId?: number; findingId?: string; reasonReject?: string; reviewBy?: string } = {
+            name: rc.name,
+            description: rc.description,
+            status: 'Pending', // Change from Draft to Pending
+            category: rc.category,
+            deptId: finding?.deptId || 0,
+            findingId: findingId,
+            reasonReject: rc.reasonReject || '',
+            reviewBy: rc.reviewBy || '',
+          };
+          await updateRootCause(rc.rootCauseId, rootCauseDto as any);
+        })
+      );
+      
+      showToast(`${draftRootCauses.length} root cause(s) submitted for review!`, 'success');
+      
+      // Reload all root causes
+      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+      const rootCausesList = res.data.$values || [];
+      setRootCauses(rootCausesList);
+    } catch (err: any) {
+      console.error('Error submitting root causes:', err);
+      showToast('Failed to submit root causes: ' + (err.message || 'Unknown error'), 'error');
+    } finally {
+      setIsProcessingReview(false);
+    }
+  };
+  
+  // Delete draft root cause
+  const handleDeleteRootCause = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this draft?')) {
+      return;
+    }
+    
+    try {
+      await apiClient.delete(`/RootCauses/${id}`);
+      showToast('Draft deleted successfully!', 'success');
+      
+      // Reload all root causes
+      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+      const rootCausesList = res.data.$values || [];
+      setRootCauses(rootCausesList);
+    } catch (err: any) {
+      console.error('Error deleting root cause:', err);
+      showToast('Failed to delete draft: ' + (err.message || 'Unknown error'), 'error');
     }
   };
   
@@ -658,7 +719,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                         </div>
                         <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Root Cause</label>
                       </div>
-                      {isAuditeeOwner && (
+                      {isAuditeeOwner && !rootCauses.some(rc => rc.status?.toLowerCase() === 'pending' || rc.status?.toLowerCase() === 'approved') && (
                         <button
                           onClick={() => setIsEditingRootCause(!isEditingRootCause)}
                           className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-semibold flex items-center gap-2"
@@ -757,10 +818,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                               </>
                             ) : (
                               <>
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                               Submit
+                               
+                               Save Draft
                               </>
                             )}
                           </button>
@@ -768,10 +827,33 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                       </div>
                     ) : (
                       <div className="space-y-3">
+                        {/* Submit All Drafts Button */}
+                        {isAuditeeOwner && rootCauses.some(rc => rc.status?.toLowerCase() === 'draft') && (
+                          <div className="mb-4 flex justify-end">
+                            <button
+                              onClick={handleSubmitAllRootCauses}
+                              disabled={isProcessingReview}
+                              className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:from-primary-700 hover:to-primary-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                              {isProcessingReview ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                  Submitting...
+                                </>
+                              ) : (
+                                <>
+                          
+                                  Submit All ({rootCauses.filter(rc => rc.status?.toLowerCase() === 'draft').length})
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
                         {/* Root Causes List */}
                         {rootCauses.length > 0 ? (
                           rootCauses.map((rc, index) => {
                             const statusLower = rc.status?.toLowerCase() || '';
+                            const isDraft = statusLower === 'draft';
                             const isPending = statusLower === 'pending' || statusLower === 'pendingreview';
                             const isApproved = statusLower === 'approved';
                             const isRejected = statusLower === 'rejected';
@@ -799,6 +881,11 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                     <h4 className="text-base font-bold text-gray-900">{rc.name}</h4>
                                   </div>
                                   <div className="flex items-center gap-2">
+                                    {isDraft && (
+                                      <span className="px-3 py-1 bg-gray-50 text-gray-600 text-xs font-semibold rounded-full border border-gray-300">
+                                        Draft
+                                      </span>
+                                    )}
                                     {isPending && (
                                       <span className="px-3 py-1 bg-amber-50 text-amber-600 text-xs font-semibold rounded-full border border-amber-200">
                                         Pending Review
@@ -844,6 +931,33 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   
                                   {/* Action Buttons */}
                                   <div className="flex items-center gap-2">
+                                    {/* Draft Actions - Edit and Delete */}
+                                    {isAuditeeOwner && isDraft && (
+                                      <>
+                                        <button
+                                          onClick={() => handleEditRootCause(rc)}
+                                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-semibold flex items-center gap-1"
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                          </svg>
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteRootCause(rc.rootCauseId);
+                                          }}
+                                          className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs font-semibold flex items-center gap-1"
+                                          title="Delete draft"
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                          </svg>
+                                        </button>
+                                      </>
+                                    )}
+                                    
                                     {/* Auditor Review Buttons - Any Auditor can review pending root causes */}
                                     {isAuditor && isPending && !isAuditeeOwner && (
                                       <>
