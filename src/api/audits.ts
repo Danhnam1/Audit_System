@@ -184,6 +184,15 @@ export const getAuditSummary = async (auditId: string): Promise<any> => {
   return apiClient.get(`/Audits/Summary/${auditId}`) as any;
 };
 
+// Findings & actions summary used for effectiveness evaluation
+// Swagger: GET /api/Audits/findings-actions-summary/{auditId}
+export const getAuditFindingsActionsSummary = async (auditId: string): Promise<any> => {
+  if (!auditId) {
+    throw new Error('auditId is required to load findings & actions summary');
+  }
+  return apiClient.get(`/Audits/findings-actions-summary/${encodeURIComponent(auditId)}`) as any;
+};
+
 // Full audit detail (plan, scope, findings, actions, documents...) for Stream 5
 export const getAuditFullDetail = async (auditId: string): Promise<any> => {
   if (!auditId) {

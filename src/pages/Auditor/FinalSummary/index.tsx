@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
 import { getAuditFullDetail, getAuditPlans } from "../../../api/audits";
+import { submitFinalReport, getReportRequestByAuditId } from "../../../api/reportRequest";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
+import { useNavigate } from "react-router-dom";
 
 type FullDetailResponse = {
   audit?: {
@@ -30,6 +32,7 @@ type FullDetailResponse = {
 export default function AuditorFinalSummaryPage() {
   const { user } = useAuth();
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
+  const navigate = useNavigate();
 
   const [audits, setAudits] = useState<Array<{ auditId: string; title: string }>>([]);
   const [selectedAuditId, setSelectedAuditId] = useState<string>("");
@@ -37,6 +40,14 @@ export default function AuditorFinalSummaryPage() {
 
   const [detail, setDetail] = useState<FullDetailResponse | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  
+  // State to track expanded images (Set of attachmentId/docId)
+  const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
+  
+  // State for report request
+  const [reportRequest, setReportRequest] = useState<{ status?: string; reportRequestId?: string; note?: string } | null>(null);
+  const [loadingReportRequest, setLoadingReportRequest] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Load list of audits for dropdown (GET /Audits)
   useEffect(() => {
@@ -65,6 +76,7 @@ export default function AuditorFinalSummaryPage() {
   useEffect(() => {
     if (!selectedAuditId) {
       setDetail(null);
+      setReportRequest(null);
       return;
     }
 
@@ -78,7 +90,29 @@ export default function AuditorFinalSummaryPage() {
       }
     };
 
+    const loadReportRequest = async () => {
+      setLoadingReportRequest(true);
+      try {
+        const rr = await getReportRequestByAuditId(selectedAuditId);
+        if (rr) {
+          setReportRequest({
+            status: rr.status,
+            reportRequestId: rr.reportRequestId,
+            note: rr.note,
+          });
+        } else {
+          setReportRequest(null);
+        }
+      } catch (error) {
+        console.error('Failed to load report request:', error);
+        setReportRequest(null);
+      } finally {
+        setLoadingReportRequest(false);
+      }
+    };
+
     loadDetail();
+    loadReportRequest();
   }, [selectedAuditId]);
 
   const audit = detail?.audit ?? {};
@@ -117,8 +151,115 @@ export default function AuditorFinalSummaryPage() {
     if (loadingDetail) {
       return "Loading audit information from full-detail API...";
     }
-    return "This screen only uses GET APIs. Data is read-only and reflects the current state of the audit record.";
+    
   }, [selectedAuditId, loadingDetail]);
+
+  // Helper: Check if file is an image
+  const isImage = (contentType?: string, fileName?: string): boolean => {
+    if (contentType) {
+      return contentType.startsWith("image/");
+    }
+    if (fileName) {
+      const ext = fileName.toLowerCase().split(".").pop();
+      return ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext || "");
+    }
+    return false;
+  };
+
+  // Helper: Toggle image expand/collapse
+  const toggleImageExpand = (id: string) => {
+    setExpandedImages(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Helper: Handle file download/view
+  const handleFileAction = (
+    file: { 
+      attachmentId?: string;
+      docId?: string;
+      blobPath?: string; 
+      filePath?: string;
+      contentType?: string;
+      fileName?: string;
+    }
+  ) => {
+    const fileId = file.attachmentId || file.docId;
+    const filePath = file.blobPath || file.filePath;
+    const fileName = file.fileName || "file";
+    const isImg = isImage(file.contentType, fileName);
+
+    // If it's an image, toggle expand instead of opening blobPath
+    if (isImg && fileId) {
+      toggleImageExpand(fileId);
+      return;
+    }
+
+    // For non-images, open blobPath directly
+    if (filePath) {
+      // blobPath should already be a full URL (from Firebase), so open it directly
+      window.open(filePath, "_blank");
+    } else {
+      alert("File path not available. Please contact support.");
+    }
+  };
+
+  // Handle submit final report
+  const handleSubmitReport = async () => {
+    if (!selectedAuditId) {
+      alert("Please select an audit first.");
+      return;
+    }
+
+    if (!window.confirm("Are you sure you want to submit this final audit summary report to Lead Auditor for review?")) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await submitFinalReport(selectedAuditId);
+      // Reload report request to get latest status
+      setTimeout(async () => {
+        try {
+          const rr = await getReportRequestByAuditId(selectedAuditId);
+          if (rr) {
+            setReportRequest({
+              status: rr.status,
+              reportRequestId: rr.reportRequestId,
+              note: rr.note,
+            });
+          }
+        } catch (error) {
+          console.error("Failed to reload report request:", error);
+        }
+      }, 500);
+      alert("Report submitted successfully! Waiting for Lead Auditor approval.");
+    } catch (error: any) {
+      console.error("Failed to submit report:", error);
+      const errorMessage = error?.response?.data?.message || error?.message || "Failed to submit report. Please try again.";
+      alert(errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Check if report can be submitted
+  const canSubmit = selectedAuditId && !reportRequest && !loadingReportRequest;
+  const isSubmitted = reportRequest?.status && 
+    ["PendingFirstApproval", "PendingSecondApproval", "Approved", "RejectedFirstLevel", "RejectedSecondLevel"].includes(reportRequest.status);
+  const isRejected =
+    reportRequest?.status === "RejectedFirstLevel" || reportRequest?.status === "RejectedSecondLevel";
+
+  const rejectionSourceLabel =
+    reportRequest?.status === "RejectedSecondLevel"
+      ? "Director"
+      : "Lead Auditor";
 
   return (
     <MainLayout user={layoutUser}>
@@ -127,33 +268,132 @@ export default function AuditorFinalSummaryPage() {
           title="Prepare Final Audit Summary Report"
           subtitle={headerSubtitle}
           rightContent={
-            <div className="flex flex-col items-start gap-1 md:items-end">
-              <label className="text-xs font-semibold uppercase tracking-wide text-gray-700">Audit</label>
-              <select
-                value={selectedAuditId}
-                onChange={e => setSelectedAuditId(e.target.value)}
-                className="min-w-[260px] px-3 py-1.5 border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-slate-900"
-              >
-                <option value="">{loadingAudits ? "Loading audits..." : "Select audit..."}</option>
-                {audits.map(a => (
-                  <option key={a.auditId} value={a.auditId}>
-                    {a.title}
-                  </option>
-                ))}
-              </select>
+            <div className="flex flex-col items-start gap-2 md:items-end">
+              <div className="flex flex-col items-start gap-1 md:items-end">
+                <label className="text-xs font-semibold uppercase tracking-wide text-gray-700">Audit</label>
+                <select
+                  value={selectedAuditId}
+                  onChange={e => setSelectedAuditId(e.target.value)}
+                  className="min-w-[260px] px-3 py-1.5 border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-slate-900"
+                  disabled={submitting}
+                >
+                  <option value="">{loadingAudits ? "Loading audits..." : "Select audit..."}</option>
+                  {audits.map(a => (
+                    <option key={a.auditId} value={a.auditId}>
+                      {a.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {selectedAuditId && (
+                <div className="flex items-center gap-2">
+                  {loadingReportRequest ? (
+                    <div className="text-xs text-gray-500">Checking status...</div>
+                  ) : isSubmitted ? (
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-gray-600">
+                        Status: <span className={`font-semibold ${
+                          reportRequest?.status === "Approved" ? "text-green-600" :
+                          reportRequest?.status === "RejectedFirstLevel" || reportRequest?.status === "RejectedSecondLevel" ? "text-red-600" :
+                          "text-primary-600"
+                        }`}>
+                          {reportRequest?.status === "PendingFirstApproval" ? "Pending Lead Auditor Review" :
+                           reportRequest?.status === "PendingSecondApproval" ? "Pending Director Approval" :
+                           reportRequest?.status === "Approved" ? "Approved" :
+                           reportRequest?.status === "RejectedFirstLevel" ? "Rejected - Revision Required" :
+                           reportRequest?.status === "RejectedSecondLevel" ? "Rejected - Revision Required" :
+                           reportRequest?.status}
+                        </span>
+                      </div>
+                      {(reportRequest?.status === "RejectedFirstLevel" || reportRequest?.status === "RejectedSecondLevel") && (
+                        <button
+                          onClick={handleSubmitReport}
+                          disabled={submitting}
+                          className="px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {submitting ? "Submitting..." : "Resubmit"}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleSubmitReport}
+                      disabled={!canSubmit || submitting}
+                      className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                    >
+                      {submitting ? (
+                        <>
+                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Submitting...
+                        </>
+                      ) : (
+                        "Submit to Lead Auditor"
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           }
         />
 
         {/* Content */}
         <section className="pb-2">
+          {selectedAuditId && isRejected && (
+            <div className="mb-4 bg-red-50 border border-red-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10">
+                    <span className="h-2 w-2 rounded-full bg-white" />
+                  </span>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide">
+                      Report rejected by {rejectionSourceLabel}
+                    </p>
+                    <p className="text-[11px] text-white/80">
+                      Please review the comments below and update findings, actions or documents before resubmitting.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/auditor/findings/audit/${encodeURIComponent(selectedAuditId)}`)
+                    }
+                    className="px-3 py-1.5 rounded-md bg-white/95 text-red-700 font-medium shadow-sm hover:bg-white transition-colors"
+                  >
+                    Go to Findings / Actions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/auditor/history-upload")}
+                    className="px-3 py-1.5 rounded-md border border-white/70 text-white font-medium hover:bg-white/10 transition-colors"
+                  >
+                    Go to Documents
+                  </button>
+                </div>
+              </div>
+              {reportRequest?.note && (
+                <div className="px-4 py-3 text-xs text-red-900 bg-red-50/70 border-t border-red-100">
+                  <p className="font-semibold mb-1">
+                    Rejection comments from {rejectionSourceLabel}
+                  </p>
+                  <p className="whitespace-pre-line">
+                    {reportRequest.note}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {!selectedAuditId ? (
             <div className="bg-white border border-dashed border-gray-300 rounded-lg p-8 text-center text-sm text-gray-500">
               Choose an audit from the dropdown above to load its full-detail information.
             </div>
           ) : loadingDetail ? (
-            <div className="bg-white border border-gray-200 rounded-lg p-8 flex items-center justify-center gap-3 text-sm text-gray-600">
-              <div className="h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <div className="bg-white border border-primary-200 rounded-lg p-8 flex items-center justify-center gap-3 text-sm text-primary-700">
+              <div className="h-5 w-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
               <span>Loading audit full-detail...</span>
             </div>
           ) : !detail ? (
@@ -165,15 +405,12 @@ export default function AuditorFinalSummaryPage() {
               {/* Left: main information */}
               <div className="space-y-6 lg:col-span-2">
                 {/* General information */}
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <h2 className="text-sm font-semibold text-gray-800 uppercase">General information</h2>
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">General information</h2>
                   </div>
                   <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 text-sm text-gray-700">
-                    <div>
-                      <p className="text-xs font-medium text-gray-500 uppercase">Audit ID</p>
-                      <p className="mt-1">{audit.auditId || "—"}</p>
-                    </div>
+                    
                     <div>
                       <p className="text-xs font-medium text-gray-500 uppercase">Title</p>
                       <p className="mt-1">{audit.title || "—"}</p>
@@ -194,9 +431,9 @@ export default function AuditorFinalSummaryPage() {
                 </div>
 
                 {/* Objectives & scope */}
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <h2 className="text-sm font-semibold text-gray-800 uppercase">Objectives & scope</h2>
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Objectives & scope</h2>
                   </div>
                   <div className="p-4 space-y-4 text-sm text-gray-700">
                     <div>
@@ -211,65 +448,138 @@ export default function AuditorFinalSummaryPage() {
                 </div>
 
                 {/* Findings and actions overview */}
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <h2 className="text-sm font-semibold text-gray-800 uppercase">Findings & actions overview</h2>
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Findings & actions overview</h2>
                   </div>
                   <div className="p-4 space-y-4 text-sm text-gray-700">
                     <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="rounded-lg bg-sky-50 border border-sky-100 py-2">
-                        <p className="text-[11px] font-semibold text-sky-700 uppercase tracking-wide">Findings</p>
-                        <p className="mt-1 text-xl font-semibold text-sky-900">{findingsCount}</p>
+                      <div className="rounded-lg bg-gradient-to-br from-primary-100 to-primary-50 border border-primary-300 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-primary-800 uppercase tracking-wide">Findings</p>
+                        <p className="mt-1 text-2xl font-bold text-primary-900">{findingsCount}</p>
                       </div>
-                      <div className="rounded-lg bg-emerald-50 border border-emerald-100 py-2">
-                        <p className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Actions</p>
-                        <p className="mt-1 text-xl font-semibold text-emerald-900">{actionsCount}</p>
+                      <div className="rounded-lg bg-gradient-to-br from-primary-200 to-primary-100 border border-primary-400 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-primary-900 uppercase tracking-wide">Actions</p>
+                        <p className="mt-1 text-2xl font-bold text-primary-900">{actionsCount}</p>
                       </div>
-                      <div className="rounded-lg bg-indigo-50 border border-indigo-100 py-2">
-                        <p className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wide">Documents</p>
-                        <p className="mt-1 text-xl font-semibold text-indigo-900">{documentsCount}</p>
+                      <div className="rounded-lg bg-gradient-to-br from-primary-100 to-primary-50 border border-primary-300 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-primary-800 uppercase tracking-wide">Documents</p>
+                        <p className="mt-1 text-2xl font-bold text-primary-900">{documentsCount}</p>
                       </div>
                     </div>
 
                     {findingsArr.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 uppercase mb-2">Sample findings</p>
-                        <ul className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      <div className="mt-3">
+                        <p className="text-[11px] font-semibold text-primary-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                          <span className="inline-block w-1 h-4 rounded-full bg-primary-500" />
+                          Sample findings (top {Math.min(findingsArr.length, 5)})
+                        </p>
+                        <ul className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                           {findingsArr.slice(0, 5).map((f: any) => {
                             const attachments = unwrapArray<any>(f.attachments);
                             return (
-                              <li key={f.findingId} className="border border-slate-200 rounded-md p-2 bg-slate-50/80">
-                                <p className="text-xs font-semibold text-slate-900">
+                              <li
+                                key={f.findingId}
+                                className="border border-primary-200 rounded-lg p-2.5 bg-gradient-to-br from-primary-50 to-white shadow-sm hover:shadow-md hover:border-primary-300 transition-shadow transition-colors"
+                              >
+                                <p className="text-xs font-semibold text-primary-900 flex items-center justify-between gap-2">
                                   {f.title || "Untitled finding"}
-                                </p>
-                                <p className="mt-0.5 text-[11px] text-gray-500 flex flex-wrap gap-1 items-center">
-                                  <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
-                                    {`Severity: ${f.severity || "N/A"}`}
+                                  <span className="inline-flex items-center rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-semibold text-primary-700">
+                                    FINDING
                                   </span>
-                                  <span className="text-[11px] text-slate-500 ml-1">
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-gray-600 flex flex-wrap gap-1 items-center">
+                                  <span className="inline-flex items-center rounded-full bg-red-100 border border-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-700 mr-1">
+                                    {f.severity || "N/A"}
+                                  </span>
+                                  <span className="text-[11px] text-primary-600">
                                     Department: {f.deptId ?? "N/A"}
                                   </span>
                                 </p>
                                 {f.description && (
-                                  <p className="mt-1 text-xs text-gray-700 line-clamp-2">{f.description}</p>
+                                  <p className="mt-1 text-[11px] text-gray-700 line-clamp-3">
+                                    {f.description}
+                                  </p>
                                 )}
 
                                 {attachments.length > 0 && (
-                                  <div className="mt-2 space-y-1">
-                                    <p className="text-[11px] font-semibold text-slate-600">
+                                  <div className="mt-2 space-y-1.5">
+                                    <p className="text-[11px] font-semibold text-primary-700">
                                       Attachments ({attachments.length})
                                     </p>
-                                    <ul className="space-y-0.5">
-                                      {attachments.slice(0, 3).map((att: any) => (
-                                        <li key={att.attachmentId} className="flex items-center justify-between text-[11px] text-slate-600">
-                                          <span className="truncate max-w-[180px]">
-                                            {att.fileName || "Attachment"}
-                                          </span>
-                                          <span className="ml-2 text-[10px] text-slate-400">
-                                            {att.contentType || ""} · {att.status || "Active"}
-                                          </span>
-                                        </li>
-                                      ))}
+                                    <ul className="space-y-1">
+                                      {attachments.slice(0, 3).map((att: any) => {
+                                        const attId = att.attachmentId || "";
+                                        const isImg = isImage(att.contentType, att.fileName);
+                                        const isExpanded = expandedImages.has(attId);
+                                        const filePath = att.blobPath || att.filePath;
+                                        return (
+                                      <li key={attId} className="border border-primary-200 rounded-md p-1.5 bg-white">
+                                            <button
+                                              onClick={() => handleFileAction(att)}
+                                              className="w-full flex items-center justify-between gap-2 text-left text-[11px] text-gray-700 hover:text-primary-600 transition-colors"
+                                              title={isImg ? "Click to expand/collapse image" : "Click to open file"}
+                                            >
+                                              <div className="flex-1 min-w-0">
+                                                <span className="truncate block font-medium">
+                                                  {att.fileName || "Attachment"}
+                                                </span>
+                                                <span className="text-[10px] text-primary-500 mt-0.5 block">
+                                                  {att.contentType || ""} · {att.status || "Active"}
+                                                </span>
+                                              </div>
+                                              {isImg && (
+                                                <svg
+                                                  className={`w-3 h-3 text-primary-400 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                              )}
+                                              {!isImg && filePath && (
+                                                <svg
+                                                  className="w-3 h-3 text-primary-400 flex-shrink-0"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                </svg>
+                                              )}
+                                            </button>
+                                            {isImg && isExpanded && filePath && (
+                                              <div className="mt-2 border-t border-primary-200 pt-2">
+                                                <div className="relative w-full">
+                                                  <img
+                                                    src={filePath}
+                                                    alt={att.fileName || "Image"}
+                                                    className="w-full h-auto rounded border border-primary-200 max-h-64 object-contain bg-primary-50"
+                                                    onError={(e) => {
+                                                      (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not available%3C/text%3E%3C/svg%3E";
+                                                    }}
+                                                  />
+                                                  <button
+                                                    onClick={() => toggleImageExpand(attId)}
+                                                    className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-primary-300 rounded p-1.5 shadow-sm transition-colors"
+                                                    title="Collapse image"
+                                                  >
+                                                    <svg
+                                                      className="w-4 h-4 text-primary-700"
+                                                      fill="none"
+                                                      stroke="currentColor"
+                                                      viewBox="0 0 24 24"
+                                                    >
+                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                                    </svg>
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </li>
+                                        );
+                                      })}
                                     </ul>
                                   </div>
                                 )}
@@ -281,28 +591,99 @@ export default function AuditorFinalSummaryPage() {
                     )}
 
                     {actionsArr.length > 0 && (
-                      <div className="pt-3 border-t border-dashed border-gray-200 space-y-1">
-                        <p className="text-xs font-medium text-gray-500 uppercase">Action attachments</p>
+                      <div className="pt-3 border-t border-dashed border-primary-200 space-y-1.5">
+                        <p className="text-[11px] font-semibold text-primary-800 uppercase tracking-wide flex items-center gap-1.5">
+                          <span className="inline-block w-1 h-4 rounded-full bg-primary-500" />
+                          Key actions & evidence
+                        </p>
                         <ul className="space-y-1 max-h-40 overflow-y-auto pr-1 text-xs text-gray-700">
                           {actionsArr.slice(0, 5).map((a: any) => {
                             const attachments = unwrapArray<any>(a.attachments);
                             if (attachments.length === 0) return null;
                             return (
-                              <li key={a.actionId} className="border border-slate-200 rounded-md p-2 bg-white">
-                                <p className="font-semibold text-slate-800 line-clamp-1">
+                              <li
+                                key={a.actionId}
+                                className="border border-primary-200 rounded-lg p-2.5 bg-gradient-to-br from-white to-primary-50/40 shadow-sm hover:shadow-md hover:border-primary-300 transition-shadow transition-colors"
+                              >
+                                <p className="font-semibold text-primary-900 line-clamp-1 flex items-center justify-between gap-2">
                                   {a.title || "Action"}
+                                  <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                    ACTION
+                                  </span>
                                 </p>
-                                <ul className="mt-1 space-y-0.5 text-[11px] text-slate-600">
-                                  {attachments.slice(0, 2).map((att: any) => (
-                                    <li key={att.attachmentId} className="flex items-center justify-between">
-                                      <span className="truncate max-w-[180px]">
-                                        {att.fileName || "Attachment"}
-                                      </span>
-                                      <span className="ml-2 text-[10px] text-slate-400">
-                                        {att.contentType || ""} · {att.status || "Active"}
-                                      </span>
-                                    </li>
-                                  ))}
+                                <ul className="mt-1 space-y-1 text-[11px] text-slate-600">
+                                  {attachments.slice(0, 2).map((att: any) => {
+                                    const attId = att.attachmentId || "";
+                                    const isImg = isImage(att.contentType, att.fileName);
+                                    const isExpanded = expandedImages.has(attId);
+                                    const filePath = att.blobPath || att.filePath;
+                                    return (
+                                      <li key={attId} className="border border-primary-200 rounded-md p-1.5 bg-white hover:bg-primary-50/50 transition-colors">
+                                        <button
+                                          onClick={() => handleFileAction(att)}
+                                          className="w-full flex items-center justify-between gap-2 text-left text-[11px] text-gray-700 hover:text-primary-700 transition-colors"
+                                          title={isImg ? "Click to expand/collapse image" : "Click to open file"}
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <span className="truncate block font-medium">
+                                              {att.fileName || "Attachment"}
+                                            </span>
+                                            <span className="text-[10px] text-primary-500 mt-0.5 block">
+                                              {att.contentType || ""} · {att.status || "Active"}
+                                            </span>
+                                          </div>
+                                          {isImg && (
+                                            <svg
+                                              className={`w-3 h-3 text-primary-400 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                          )}
+                                          {!isImg && filePath && (
+                                            <svg
+                                              className="w-3 h-3 text-primary-400 flex-shrink-0"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                            </svg>
+                                          )}
+                                        </button>
+                                        {isImg && isExpanded && filePath && (
+                                          <div className="mt-2 border-t border-primary-200 pt-2">
+                                            <div className="relative w-full">
+                                              <img
+                                                src={filePath}
+                                                alt={att.fileName || "Image"}
+                                                className="w-full h-auto rounded border border-primary-200 max-h-48 object-contain bg-primary-50"
+                                                onError={(e) => {
+                                                  (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not available%3C/text%3E%3C/svg%3E";
+                                                }}
+                                              />
+                                              <button
+                                                onClick={() => toggleImageExpand(attId)}
+                                                className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-primary-300 rounded p-1.5 shadow-sm transition-colors"
+                                                title="Collapse image"
+                                              >
+                                                <svg
+                                                  className="w-4 h-4 text-primary-700"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                                </svg>
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
                                 </ul>
                               </li>
                             );
@@ -314,26 +695,90 @@ export default function AuditorFinalSummaryPage() {
                 </div>
 
                 {/* Documents */}
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <h2 className="text-sm font-semibold text-gray-800 uppercase">Documents</h2>
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Documents</h2>
                   </div>
                   <div className="p-4 text-sm text-gray-700">
                     {documentsArr.length === 0 ? (
                       <p className="text-gray-500 text-xs">No documents recorded for this audit.</p>
                     ) : (
                       <ul className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                        {documentsArr.map((d: any) => (
-                          <li key={d.docId} className="flex items-center justify-between border border-gray-200 rounded-md px-3 py-2">
-                            <div>
-                              <p className="text-xs font-semibold text-gray-800">{d.title || d.documentType || "Document"}</p>
-                              <p className="text-[11px] text-gray-500">
-                                Type: {d.documentType || "N/A"} · Final: {String(d.isFinalVersion ?? false)}
-                              </p>
-                            </div>
-                            <span className="text-[11px] text-gray-400">{d.contentType || ""}</span>
-                          </li>
-                        ))}
+                        {documentsArr.map((d: any) => {
+                          const docId = d.docId || "";
+                          const isImg = isImage(d.contentType, d.title || d.fileName);
+                          const isExpanded = expandedImages.has(docId);
+                          const filePath = d.blobPath;
+                          return (
+                            <li key={docId} className="border border-primary-200 rounded-md p-2 bg-white">
+                              <button
+                                onClick={() => handleFileAction(d)}
+                                className="w-full flex items-center justify-between gap-2 text-left"
+                                title={isImg ? "Click to expand/collapse image" : "Click to open file"}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-gray-800 hover:text-primary-600 transition-colors">
+                                    {d.title || d.documentType || "Document"}
+                                  </p>
+                                  <p className="text-[11px] text-gray-500 mt-0.5">
+                                    Type: {d.documentType || "N/A"} · Final: {String(d.isFinalVersion ?? false)}
+                                  </p>
+                                  {d.contentType && (
+                                    <p className="text-[10px] text-gray-400 mt-0.5">{d.contentType}</p>
+                                  )}
+                                </div>
+                                {isImg && (
+                                  <svg
+                                    className={`w-3 h-3 text-primary-400 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                )}
+                                {!isImg && filePath && (
+                                  <svg
+                                    className="w-3 h-3 text-primary-400 flex-shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                )}
+                              </button>
+                              {isImg && isExpanded && filePath && (
+                                <div className="mt-2 border-t border-primary-200 pt-2">
+                                  <div className="relative w-full">
+                                    <img
+                                      src={filePath}
+                                      alt={d.title || "Document image"}
+                                      className="w-full h-auto rounded border border-primary-200 max-h-64 object-contain bg-primary-50"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not available%3C/text%3E%3C/svg%3E";
+                                      }}
+                                    />
+                                    <button
+                                      onClick={() => toggleImageExpand(docId)}
+                                      className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-primary-300 rounded p-1.5 shadow-sm transition-colors"
+                                      title="Collapse image"
+                                    >
+                                      <svg
+                                        className="w-4 h-4 text-primary-700"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
@@ -342,57 +787,36 @@ export default function AuditorFinalSummaryPage() {
 
               {/* Right column: workflow + snapshot from arrays */}
               <aside className="space-y-4">
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <h2 className="text-sm font-semibold text-gray-800 uppercase">Workflow status</h2>
-                  </div>
-                  <div className="p-4 text-sm text-gray-600 space-y-2">
-                    <p>
-                      Stream 5: <span className="font-medium">Audit Summary and Report Results Submission</span>.
-                    </p>
-                    <ol className="space-y-1 text-xs list-decimal list-inside">
-                      <li>Auditor prepares the final audit summary report (using this screen as reference).</li>
-                      <li>Lead Auditor reviews accuracy of the report.</li>
-                      <li>Director reviews, evaluates effectiveness and approves the final report.</li>
-                    </ol>
-                  </div>
-                </div>
+                
 
-                <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <h2 className="text-sm font-semibold text-gray-800 uppercase">Audit data snapshot</h2>
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Audit data snapshot</h2>
                   </div>
                   <div className="p-4 grid grid-cols-2 gap-3 text-xs text-gray-700">
-                    <div className="rounded-md bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-medium text-slate-600">Schedules</p>
-                      <p className="mt-0.5 text-lg font-semibold text-slate-900">{schedulesArr.length}</p>
+                    <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5 shadow-sm">
+                      <p className="text-[11px] font-medium text-primary-700">Schedules</p>
+                      <p className="mt-0.5 text-lg font-bold text-primary-900">{schedulesArr.length}</p>
                     </div>
-                    <div className="rounded-md bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-medium text-slate-600">Scope departments</p>
-                      <p className="mt-0.5 text-lg font-semibold text-slate-900">{scopeDepartmentsArr.length}</p>
+                    <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5 shadow-sm">
+                      <p className="text-[11px] font-medium text-primary-700">Scope departments</p>
+                      <p className="mt-0.5 text-lg font-bold text-primary-900">{scopeDepartmentsArr.length}</p>
                     </div>
-                    <div className="rounded-md bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-medium text-slate-600">Criteria mapped</p>
-                      <p className="mt-0.5 text-lg font-semibold text-slate-900">{criteriaArr.length}</p>
+                    <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5 shadow-sm">
+                      <p className="text-[11px] font-medium text-primary-700">Criteria mapped</p>
+                      <p className="mt-0.5 text-lg font-bold text-primary-900">{criteriaArr.length}</p>
                     </div>
-                    <div className="rounded-md bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-medium text-slate-600">Checklist templates</p>
-                      <p className="mt-0.5 text-lg font-semibold text-slate-900">{checklistArr.length}</p>
+                    <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5 shadow-sm">
+                      <p className="text-[11px] font-medium text-primary-700">Checklist templates</p>
+                      <p className="mt-0.5 text-lg font-bold text-primary-900">{checklistArr.length}</p>
                     </div>
-                    <div className="rounded-md bg-slate-50 px-3 py-2 col-span-2">
-                      <p className="text-[11px] font-medium text-slate-600">Team members</p>
-                      <p className="mt-0.5 text-lg font-semibold text-slate-900">{teamsArr.length}</p>
+                    <div className="rounded-md bg-gradient-to-br from-primary-100 to-primary-50 border border-primary-300 px-3 py-2.5 shadow-sm col-span-2">
+                      <p className="text-[11px] font-medium text-primary-800">Team members</p>
+                      <p className="mt-0.5 text-lg font-bold text-primary-900">{teamsArr.length}</p>
                     </div>
                   </div>
                 </div>
-
-                <div className="bg-sky-50 border border-sky-100 rounded-lg p-4 text-xs text-sky-900">
-                  <p className="font-semibold">Content guidance</p>
-                  <p className="mt-1">
-                    Use the information on this screen as the data basis for your final audit summary. The GET endpoint
-                    does not modify any data; it only presents the current state of the audit for reporting purposes.
-                  </p>
-                </div>
+                
               </aside>
             </div>
           )}

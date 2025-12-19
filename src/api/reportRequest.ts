@@ -1,0 +1,85 @@
+import { apiClient } from '../hooks/axios';
+
+export interface SubmitReportRequest {
+  auditId: string;
+}
+
+export interface ApproveReportRequest {
+  comment?: string;
+}
+
+export interface RejectReportRequest {
+  comment?: string;
+}
+
+export interface ViewReportRequest {
+  reportRequestId: string;
+  auditId: string;
+  requestedBy: string;
+  title?: string;
+  status: string;
+  filePath?: string;
+  requestedAt?: string;
+  completedAt?: string;
+  note?: string;
+}
+
+// Submit final report (Auditor)
+export const submitFinalReport = async (auditId: string): Promise<ViewReportRequest> => {
+  const res = await apiClient.post('/ReportRequest/final/submit', { auditId } as SubmitReportRequest);
+  return res?.data?.data ?? res?.data ?? res;
+};
+
+// Approve final report (Lead Auditor or Director)
+export const approveFinalReport = async (
+  reportRequestId: string,
+  comment?: string
+): Promise<ViewReportRequest> => {
+  const res = await apiClient.post(
+    `/ReportRequest/final/${encodeURIComponent(reportRequestId)}/approve`,
+    { comment: comment || '' } as ApproveReportRequest
+  );
+  return res?.data?.data ?? res?.data ?? res;
+};
+
+// Reject final report (Lead Auditor or Director)
+export const rejectFinalReport = async (
+  reportRequestId: string,
+  comment?: string
+): Promise<ViewReportRequest> => {
+  const res = await apiClient.post(
+    `/ReportRequest/final/${encodeURIComponent(reportRequestId)}/reject`,
+    { comment: comment || '' } as RejectReportRequest
+  );
+  return res?.data?.data ?? res?.data ?? res;
+};
+
+// Get all report requests
+export const getAllReportRequests = async (): Promise<ViewReportRequest[]> => {
+  const res = await apiClient.get('/ReportRequest');
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<ViewReportRequest[]>(res);
+};
+
+// Get report request by ID
+export const getReportRequestById = async (id: string): Promise<ViewReportRequest | null> => {
+  try {
+    const res = await apiClient.get(`/ReportRequest/${encodeURIComponent(id)}`);
+    return res?.data ?? res;
+  } catch (error) {
+    console.error('Failed to get report request:', error);
+    return null;
+  }
+};
+
+// Get report request by audit ID
+export const getReportRequestByAuditId = async (auditId: string): Promise<ViewReportRequest | null> => {
+  try {
+    const allRequests = await getAllReportRequests();
+    return allRequests.find(r => r.auditId === auditId) || null;
+  } catch (error) {
+    console.error('Failed to get report request by audit ID:', error);
+    return null;
+  }
+};
+

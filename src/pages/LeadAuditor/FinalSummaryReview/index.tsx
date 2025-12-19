@@ -1,202 +1,349 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
+import { getAllReportRequests, approveFinalReport, rejectFinalReport } from "../../../api/reportRequest";
+import { getAuditFullDetail } from "../../../api/audits";
+import { unwrap } from "../../../utils/normalize";
+import { PageHeader } from "../../../components";
 
-type AccuracyDecision = "ACCURATE" | "NEED_REVISION";
-
-// Mock summary data – will be replaced by API response later
-const mockFinalSummary = {
-  auditId: "ASM-2025-FT-01",
-  title: "Flight Training Safety & Quality Internal Audit 2025",
-  department: "Flight Training Department",
-  type: "Safety & Quality",
-  period: "01 Mar 2025 – 15 Mar 2025",
-  objectives:
-    "To assess compliance with ICAO Annex 1 and national regulations for flight crew training, and evaluate the effectiveness of the Academy's internal safety management arrangements in the training environment.",
-  scope:
-    "ATPL and MPL training programmes, instructor qualification and recurrent training, training records management and simulator training oversight.",
-  standards:
-    "ICAO Annex 1, national CAA regulations on flight crew licensing and training, Academy Flight Training Manual and SMS Manual.",
-  findingsSummary:
-    "18 findings: 2 Major, 9 Minor, 7 Observations. Major findings relate to incomplete training records and overdue recurrent training for two instructors.",
-  recommendations:
-    "Introduce automated reminders for recurrent training, improve digital record completeness checks and provide additional training to instructors on documentation quality.",
-  conclusion:
-    "The training organisation is broadly compliant, but documentation discipline and proactive safety assurance require improvement to fully meet best practice expectations.",
+type ReportRequest = {
+  reportRequestId: string;
+  auditId: string;
+  requestedBy: string;
+  title?: string;
+  status: string;
+  filePath?: string;
+  requestedAt?: string;
+  completedAt?: string;
+  note?: string;
 };
 
 export default function LeadAuditorFinalSummaryReviewPage() {
   const { user } = useAuth();
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const [decision, setDecision] = useState<AccuracyDecision | null>(null);
+  const [reportRequests, setReportRequests] = useState<ReportRequest[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedReportId, setSelectedReportId] = useState<string>("");
+  const [auditDetail, setAuditDetail] = useState<any>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const [decision, setDecision] = useState<"approve" | "reject" | null>(null);
   const [comments, setComments] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Load pending report requests (status: PendingFirstApproval)
+  useEffect(() => {
+    const loadReportRequests = async () => {
+      setLoading(true);
+      try {
+        const all = await getAllReportRequests();
+        // Filter for PendingFirstApproval (waiting for Lead Auditor)
+        const pending = all.filter(r => r.status === "PendingFirstApproval");
+        setReportRequests(pending);
+      } catch (error) {
+        console.error("Failed to load report requests:", error);
+        setReportRequests([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadReportRequests();
+    
+    // Auto-refresh every 30 seconds to catch new submissions
+    const interval = setInterval(loadReportRequests, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Load audit detail when report is selected
+  useEffect(() => {
+    if (!selectedReportId) {
+      setAuditDetail(null);
+      return;
+    }
+
+    const selectedReport = reportRequests.find(r => r.reportRequestId === selectedReportId);
+    if (!selectedReport) return;
+
+    const loadDetail = async () => {
+      setLoadingDetail(true);
+      try {
+        const res = await getAuditFullDetail(selectedReport.auditId);
+        setAuditDetail(res);
+      } catch (error) {
+        console.error("Failed to load audit detail:", error);
+        setAuditDetail(null);
+      } finally {
+        setLoadingDetail(false);
+      }
+    };
+
+    loadDetail();
+  }, [selectedReportId, reportRequests]);
+
   const handleSubmit = async () => {
-    if (!decision) return;
+    if (!selectedReportId || !decision) {
+      alert("Please select a report and make a decision.");
+      return;
+    }
+
+    const current = reportRequests.find(r => r.reportRequestId === selectedReportId);
+    if (!current) {
+      alert("This report is no longer available in the pending list. Please refresh and try again.");
+      return;
+    }
+    if (current.status !== "PendingFirstApproval") {
+      alert("This report is no longer pending Lead Auditor review. You cannot approve/reject it again.");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      // TODO: POST /api/audits/{auditId}/final-summary/lead-review
-      await new Promise(resolve => setTimeout(resolve, 600));
+      if (decision === "approve") {
+        await approveFinalReport(selectedReportId, comments);
+        alert("Report approved successfully! Forwarded to Director for final approval.");
+      } else {
+        await rejectFinalReport(selectedReportId, comments);
+        alert("Report rejected. Auditor will be notified to revise the report.");
+      }
+
+      // Reload report requests after a short delay to allow backend to update
+      setTimeout(async () => {
+        try {
+          const all = await getAllReportRequests();
+          const pending = all.filter(r => r.status === "PendingFirstApproval");
+          setReportRequests(pending);
+        } catch (error) {
+          console.error("Failed to reload report requests:", error);
+        }
+      }, 500);
+
+      // Reset form
+      setSelectedReportId("");
+      setDecision(null);
+      setComments("");
+      setAuditDetail(null);
+    } catch (error: any) {
+      console.error("Failed to submit decision:", error);
+      const errorMessage = error?.response?.data?.message || error?.message || "Failed to submit decision. Please try again.";
+      alert(errorMessage);
     } finally {
       setSubmitting(false);
     }
   };
 
+  // Selected report is resolved inside effects & handlers where needed
+  // (no separate memoized variable required at top-level)
+  const audit = auditDetail?.audit ?? {};
+
+  const unwrapArray = <T,>(value: any): T[] => {
+    if (Array.isArray(value)) return value as T[];
+    return unwrap<T>(value);
+  };
+
+  const findingsArr = auditDetail ? unwrapArray<any>(auditDetail.findings) : [];
+  const actionsArr = auditDetail ? unwrapArray<any>(auditDetail.actions) : [];
+
   return (
-    <MainLayout user={layoutUser} title="Final Summary Review (Stream 5)">
-      <div className="space-y-6">
-        {/* Header */}
-        <header className="bg-white border-b border-gray-200 shadow-sm">
-          <div className="px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">Lead Auditor – Final Summary Accuracy Review</h1>
-              <p className="mt-1 text-sm text-gray-500 max-w-2xl">
-                Check that the final summary report is accurate and fully reflects the audit evidence before sending it to
-                the Director.
-              </p>
-            </div>
-          </div>
-        </header>
+    <MainLayout user={layoutUser}>
+      <div className="px-4 sm:px-6 lg:px-8 pb-8 space-y-6">
+        <PageHeader
+          title="Final Summary Review"
+          subtitle="Review and approve/reject final audit summary reports submitted by Auditors."
+        />
 
-        {/* Content */}
-        <div className="px-4 sm:px-6 lg:px-8 grid gap-6 lg:grid-cols-3">
-          <section className="lg:col-span-2 space-y-4">
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-800 uppercase">Final audit summary report</h2>
-                <p className="mt-1 text-xs text-gray-500">
-                  Preview of the final summary prepared by the Auditor. This section currently shows mock data.
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Left: Report Requests List */}
+          <div className="lg:col-span-1">
+            <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+              <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                <h2 className="text-sm font-semibold text-white uppercase">Pending Reports</h2>
+                <p className="mt-1 text-xs text-white/80">
+                  {reportRequests.length} report{reportRequests.length !== 1 ? "s" : ""} waiting for review
                 </p>
               </div>
-            </div>
-            <div className="p-4 space-y-4 text-sm text-gray-700">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Audit</p>
-                  <p className="text-sm font-medium text-gray-900">{mockFinalSummary.auditId}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Department / Unit</p>
-                  <p className="text-sm text-gray-900">{mockFinalSummary.department}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Title</p>
-                  <p className="text-sm text-gray-900">{mockFinalSummary.title}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Type / Period</p>
-                  <p className="text-sm text-gray-900">
-                    {mockFinalSummary.type} · {mockFinalSummary.period}
-                  </p>
-                </div>
-              </div>
-
-              <div className="border-t border-gray-100 pt-3 space-y-3 text-xs leading-relaxed">
-                <div>
-                  <p className="font-semibold text-gray-700 uppercase">Objectives</p>
-                  <p className="text-gray-700">{mockFinalSummary.objectives}</p>
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-700 uppercase">Scope</p>
-                  <p className="text-gray-700">{mockFinalSummary.scope}</p>
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-700 uppercase">Standards / References</p>
-                  <p className="text-gray-700">{mockFinalSummary.standards}</p>
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-700 uppercase">Summary of findings</p>
-                  <p className="text-gray-700">{mockFinalSummary.findingsSummary}</p>
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-700 uppercase">Key recommendations</p>
-                  <p className="text-gray-700">{mockFinalSummary.recommendations}</p>
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-700 uppercase">Overall conclusion</p>
-                  <p className="text-gray-700">{mockFinalSummary.conclusion}</p>
-                </div>
+              <div className="p-4">
+                {loading ? (
+                  <div className="flex items-center justify-center py-8 text-sm text-primary-600">
+                    <div className="h-5 w-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mr-2" />
+                    Loading reports...
+                  </div>
+                ) : reportRequests.length === 0 ? (
+                  <div className="text-center py-8 text-sm text-gray-500">
+                    No pending reports at this time.
+                  </div>
+                ) : (
+                  <ul className="space-y-2 max-h-[600px] overflow-y-auto">
+                    {reportRequests.map((rr) => (
+                      <li key={rr.reportRequestId}>
+                        <button
+                          onClick={() => setSelectedReportId(rr.reportRequestId)}
+                          className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                            selectedReportId === rr.reportRequestId
+                              ? "bg-gradient-to-r from-primary-100 to-primary-50 border-primary-400 text-primary-900 shadow-sm"
+                              : "bg-white border-primary-200 hover:bg-primary-50 hover:border-primary-300"
+                          }`}
+                        >
+                          <p className="text-sm font-semibold text-gray-900 truncate">
+                            {rr.title || "Untitled audit report"}
+                          </p>
+                          {rr.requestedAt && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {new Date(rr.requestedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </div>
-        </section>
 
-        <aside className="space-y-4">
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-            <div className="px-4 py-3 border-b border-gray-100">
-              <h2 className="text-sm font-semibold text-gray-800 uppercase">Accuracy decision</h2>
-            </div>
-            <div className="p-4 space-y-3 text-sm text-gray-700">
-              <div className="space-y-2">
-                <p className="text-xs text-gray-500">
-                  Select your conclusion on whether the report is accurate compared with the audit file and applicable standards.
-                </p>
-                <div className="flex flex-col gap-2">
-                  <label className="inline-flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="decision"
-                      value="ACCURATE"
-                      checked={decision === "ACCURATE"}
-                      onChange={() => setDecision("ACCURATE")}
-                      className="text-blue-600 border-gray-300 focus:ring-blue-500"
-                    />
-                    <span>Report is accurate</span>
-                  </label>
-                  <label className="inline-flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="decision"
-                      value="NEED_REVISION"
-                      checked={decision === "NEED_REVISION"}
-                      onChange={() => setDecision("NEED_REVISION")}
-                      className="text-blue-600 border-gray-300 focus:ring-blue-500"
-                    />
-                    <span>Needs revision</span>
-                  </label>
+          {/* Right: Report Detail & Decision */}
+          <div className="lg:col-span-2 space-y-6">
+            {!selectedReportId ? (
+              <div className="bg-white border border-dashed border-gray-300 rounded-lg p-8 text-center text-sm text-gray-500">
+                Select a report from the list to review and make a decision.
+              </div>
+            ) : loadingDetail ? (
+              <div className="bg-white border border-primary-200 rounded-lg p-8 flex items-center justify-center gap-3 text-sm text-primary-700">
+                <div className="h-5 w-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                <span>Loading audit details...</span>
+              </div>
+            ) : !auditDetail ? (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+                Unable to load audit details. Please try again.
+              </div>
+            ) : (
+              <>
+                {/* Audit Summary */}
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Final Audit Summary Report</h2>
+                    <p className="mt-1 text-xs text-white/80">
+                      Report prepared by Auditor. Review for accuracy before forwarding to Director.
+                    </p>
+                  </div>
+                  <div className="p-4 space-y-4 text-sm text-gray-700">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      {/* <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase">Audit ID</p>
+                        <p className="mt-1 font-medium">{audit.auditId || "—"}</p>
+                      </div> */}
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase">Title</p>
+                        <p className="mt-1">{audit.title || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase">Type</p>
+                        <p className="mt-1">{audit.type || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase">Status</p>
+                        <p className="mt-1">{audit.status || "—"}</p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-gray-100 pt-3 space-y-3">
+                      <div>
+                        <p className="text-xs font-semibold text-gray-700 uppercase">Objectives</p>
+                        <p className="mt-1 text-gray-700 whitespace-pre-line">{audit.objective || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-700 uppercase">Scope</p>
+                        <p className="mt-1 text-gray-700 whitespace-pre-line">{audit.scope || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-700 uppercase">Summary of Findings</p>
+                        <p className="mt-1 text-gray-700">
+                          {findingsArr.length} finding{findingsArr.length !== 1 ? "s" : ""} recorded
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-700 uppercase">Actions</p>
+                        <p className="mt-1 text-gray-700">
+                          {actionsArr.length} action{actionsArr.length !== 1 ? "s" : ""} recorded
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-gray-700 uppercase">
-                  Lead auditor comments
-                </label>
-                <textarea
-                  rows={5}
-                  value={comments}
-                  onChange={e => setComments(e.target.value)}
-                  className="block w-full mt-1 border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  placeholder="Comments on figures, severity classification, alignment with ICAO/national regulations and completeness of scope."
-                />
-              </div>
+                {/* Decision Panel */}
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Review Decision</h2>
+                    <p className="mt-1 text-xs text-white/80">
+                      Verify accuracy and completeness before forwarding to Director or requesting revision.
+                    </p>
+                  </div>
+                  <div className="p-4 space-y-4">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-gray-700 uppercase">Decision</p>
+                      <div className="flex flex-col gap-3">
+                        <label className="inline-flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="decision"
+                            value="approve"
+                            checked={decision === "approve"}
+                            onChange={() => setDecision("approve")}
+                            className="text-primary-600 border-gray-300 focus:ring-primary-500"
+                          />
+                          <span className="text-sm text-gray-700">Approve & forward to Director</span>
+                        </label>
+                        <label className="inline-flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="decision"
+                            value="reject"
+                            checked={decision === "reject"}
+                            onChange={() => setDecision("reject")}
+                            className="text-primary-600 border-gray-300 focus:ring-primary-500"
+                          />
+                          <span className="text-sm text-gray-700">Reject & request revision</span>
+                        </label>
+                      </div>
+                    </div>
 
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={!decision || submitting}
-                className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md shadow-sm hover:bg-blue-700 disabled:opacity-60"
-              >
-                {submitting
-                  ? "Submitting..."
-                  : decision === "ACCURATE"
-                  ? "Confirm accurate & forward to Director"
-                  : "Send revision request to Auditor"}
-              </button>
-            </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-semibold text-gray-700 uppercase">
+                        Lead Auditor Comments
+                      </label>
+                      <textarea
+                        rows={5}
+                        value={comments}
+                        onChange={(e) => setComments(e.target.value)}
+                        className="block w-full mt-1 border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                        placeholder="Comments on accuracy, completeness, alignment with standards, or revision requirements..."
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleSubmit}
+                      disabled={!decision || submitting}
+                      className="w-full px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-md shadow-sm hover:bg-primary-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                    >
+                      {submitting ? (
+                        <>
+                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Submitting...
+                        </>
+                      ) : decision === "approve" ? (
+                        "Approve & Forward to Director"
+                      ) : (
+                        "Reject & Request Revision"
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-xs text-blue-900">
-            <p className="font-semibold">Lead Auditor role in Stream 5</p>
-            <p className="mt-1">
-              Ensure the final summary fairly represents audit evidence, aligns with aviation accreditation standards and
-              does not omit significant safety or quality risks before submission to the Director.
-            </p>
-          </div>
-        </aside>
-      </div>
+        </div>
       </div>
     </MainLayout>
   );
