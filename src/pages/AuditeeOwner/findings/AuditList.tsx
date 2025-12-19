@@ -99,6 +99,20 @@ const AuditeeOwnerAuditList = () => {
         console.log('🔍 Fetching findings for department:', deptId);
         const findings = await getFindingsByDepartment(deptId);
         console.log('📦 Findings from API:', findings);
+        console.log('📦 Total findings count:', findings?.length || 0);
+        
+        // Log each finding's status
+        if (findings && findings.length > 0) {
+          findings.forEach((f: Finding, index: number) => {
+            console.log(`Finding ${index + 1}:`, {
+              findingId: f.findingId,
+              title: f.title,
+              status: f.status,
+              auditId: f.auditId,
+              deptId: f.deptId
+            });
+          });
+        }
 
         if (!findings || findings.length === 0) {
           console.log('⚠️ No findings found');
@@ -110,14 +124,23 @@ const AuditeeOwnerAuditList = () => {
         // Filter out archived findings
         const activeFindings = findings.filter((f: Finding) => {
           const statusLower = (f.status || '').toLowerCase().trim();
-          return statusLower !== 'archived';
+          const isArchived = statusLower === 'archived';
+          if (isArchived) {
+            console.log(`🚫 Filtering out archived finding: ${f.title} (status: "${f.status}")`);
+          }
+          return !isArchived;
         });
+        
+        console.log('✅ Active findings after filtering archived:', activeFindings.length);
 
         // Group findings by auditId
         const auditMap = new Map<string, Finding[]>();
         activeFindings.forEach((finding: Finding) => {
-          const auditId = finding.auditId;
-          if (auditId) {
+          // Try to get auditId from multiple possible locations
+          const auditId = finding.auditId || (finding as any).audit?.auditId;
+          if (!auditId) {
+            console.log('⚠️ Finding without auditId:', finding);
+          } else {
             if (!auditMap.has(auditId)) {
               auditMap.set(auditId, []);
             }
@@ -126,17 +149,30 @@ const AuditeeOwnerAuditList = () => {
         });
 
         console.log('📊 Grouped audits:', Array.from(auditMap.keys()));
+        console.log('📊 Total unique audits:', auditMap.size);
+        auditMap.forEach((findings, auditId) => {
+          console.log(`  - Audit ${auditId}: ${findings.length} findings`);
+        });
 
         // Load audit info and create audit cards
         const auditPromises = Array.from(auditMap.entries()).map(async ([auditId, auditFindings]) => {
           try {
             console.log(`📥 Fetching audit info for ${auditId}...`);
+            
+            // Get initial audit data from finding (as fallback)
+            const findingWithAudit = auditFindings.find(f => (f as any).audit);
+            const nestedAuditData = findingWithAudit ? (findingWithAudit as any).audit : null;
+            
             const auditData = await getAuditPlanById(auditId);
             console.log(`📋 Raw audit data for ${auditId}:`, auditData);
             console.log(`🔍 Available fields in audit data:`, Object.keys(auditData));
             console.log(`📊 Full audit data structure:`, JSON.stringify(auditData, null, 2));
+            
+            if (nestedAuditData) {
+              console.log(`📋 Nested audit data from finding:`, nestedAuditData);
+            }
 
-            // Try multiple possible field names for title
+            // Try multiple possible field names for title (with nested audit data as fallback)
             let auditTitle = auditData.title ||
               auditData.Title ||
               auditData.name ||
@@ -147,6 +183,8 @@ const AuditeeOwnerAuditList = () => {
               auditData.audit?.name ||
               auditData.audit?.Name ||
               auditData.audit?.auditTitle ||
+              nestedAuditData?.title ||
+              nestedAuditData?.Title ||
               '';
 
             if (!auditTitle) {
@@ -161,37 +199,49 @@ const AuditeeOwnerAuditList = () => {
               auditData.auditType ||
               auditData.audit?.type ||
               auditData.audit?.Type ||
-              auditData.audit?.auditType || '';
+              auditData.audit?.auditType ||
+              nestedAuditData?.type ||
+              nestedAuditData?.Type || '';
 
             const status = auditData.status ||
               auditData.Status ||
               auditData.auditStatus ||
               auditData.audit?.status ||
               auditData.audit?.Status ||
+              nestedAuditData?.status ||
+              nestedAuditData?.Status ||
               'Unknown';
 
             const scope = auditData.scope ||
               auditData.Scope ||
               auditData.auditScope ||
               auditData.audit?.scope ||
+              nestedAuditData?.scope ||
+              nestedAuditData?.Scope ||
               '';
 
             const objective = auditData.objective ||
               auditData.Objective ||
               auditData.goal ||
               auditData.audit?.objective ||
+              nestedAuditData?.objective ||
+              nestedAuditData?.Objective ||
               '';
 
             const createdAt = auditData.createdAt ||
               auditData.CreatedAt ||
               auditData.created ||
               auditData.audit?.createdAt ||
+              nestedAuditData?.createdAt ||
+              nestedAuditData?.CreatedAt ||
               '';
 
             const createdBy = auditData.createdBy ||
               auditData.CreatedBy ||
               auditData.createdByUser?.fullName ||
               auditData.audit?.createdBy ||
+              nestedAuditData?.createdBy ||
+              nestedAuditData?.CreatedBy ||
               '';
 
             const auditCard: AuditCard = {
@@ -201,8 +251,8 @@ const AuditeeOwnerAuditList = () => {
               scope: scope,
               status: status,
               findingCount: auditFindings.length,
-              startDate: auditData.startDate || auditData.audit?.startDate,
-              endDate: auditData.endDate || auditData.audit?.endDate,
+              startDate: auditData.startDate || auditData.audit?.startDate || nestedAuditData?.startDate,
+              endDate: auditData.endDate || auditData.audit?.endDate || nestedAuditData?.endDate,
               createdAt: createdAt,
               createdBy: createdBy,
               objective: objective,
@@ -227,20 +277,23 @@ const AuditeeOwnerAuditList = () => {
         const auditResults = await Promise.all(auditPromises);
         const validAudits: AuditCard[] = auditResults.filter((audit): audit is AuditCard => audit !== null);
 
-        // Filter out audits with status "Archived" (case-insensitive)
+        // Filter out audits with status "Archived" or "Inactive"
         const nonArchivedAudits = validAudits.filter((audit) => {
           const status = audit.status || '';
           const statusLower = String(status).toLowerCase().trim();
 
-          const isArchived = statusLower === 'archived' ||
-            statusLower === 'archive' ||
-            statusLower.includes('archived');
+          // Filter out "Archived" and "Inactive" status
+          const shouldFilter = statusLower === 'archived' || 
+                               statusLower === 'archive' || 
+                               statusLower === 'inactive';
 
-          if (isArchived) {
-            console.log(`🚫 Filtering out archived audit: ${audit.auditTitle} (status: "${status}")`);
+          if (shouldFilter) {
+            console.log(`🚫 Filtering out audit: ${audit.auditTitle} (status: "${status}")`);
+          } else {
+            console.log(`✅ Keeping audit: ${audit.auditTitle} (status: "${status}")`);
           }
 
-          return !isArchived;
+          return !shouldFilter;
         });
 
         console.log('🎯 Final audits to display (excluding archived):', {

@@ -29,13 +29,8 @@ const FindingsProgress = () => {
   const [selectedFindingForAssign, setSelectedFindingForAssign] = useState<Finding | null>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [staffMembers, setStaffMembers] = useState<Array<{ userId: string; fullName: string; email?: string }>>([]);
-  const [selectedStaff, setSelectedStaff] = useState<string[]>([]);
-  const [dueDate, setDueDate] = useState('');
   const [loadingStaff, setLoadingStaff] = useState(false);
   const [submittingAssign, setSubmittingAssign] = useState(false);
-  const [showAssignConfirmModal, setShowAssignConfirmModal] = useState(false);
-  const [selectedStaffError, setSelectedStaffError] = useState('');
-  const [dueDateError, setDueDateError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [selectedActionFindingId, setSelectedActionFindingId] = useState<string | null>(null);
@@ -54,10 +49,22 @@ const FindingsProgress = () => {
   // New states for root cause assignment
   const [findingRootCauses, setFindingRootCauses] = useState<any[]>([]); // Root causes of selected finding
   const [loadingRootCauses, setLoadingRootCauses] = useState(false);
-  const [rootCauseStaffMap, setRootCauseStaffMap] = useState<Record<number, string>>({}); // rootCauseId -> staffId
-  const [rootCauseAssignError, setRootCauseAssignError] = useState('');
+  const [submittedRootCauseIds, setSubmittedRootCauseIds] = useState<Set<number>>(new Set()); // Track submitted root causes
+  const [assignedRootCauseData, setAssignedRootCauseData] = useState<Record<number, { staffId: string; staffName: string; dueDate: string }>>({}); // Track assigned data
+  
+  // Individual root cause assignment modal
+  const [showIndividualAssignModal, setShowIndividualAssignModal] = useState(false);
+  const [selectedRootCause, setSelectedRootCause] = useState<any>(null);
+  const [individualStaffId, setIndividualStaffId] = useState('');
+  const [individualDueDate, setIndividualDueDate] = useState('');
+  const [individualStaffError, setIndividualStaffError] = useState('');
+  const [individualDateError, setIndividualDateError] = useState('');
+  
+  // Description view modal
+  const [showDescriptionModal, setShowDescriptionModal] = useState(false);
+  const [selectedDescription, setSelectedDescription] = useState<{name: string; description: string; category?: string} | null>(null);
 
-    // Helper function to get status badge color
+  // Helper function to get status badge color
   const getStatusBadgeColor = (status: string) => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
   };
@@ -196,8 +203,16 @@ const FindingsProgress = () => {
         let filteredFindings = allFindings;
         if (auditIdFromState) {
           console.log(`🔍 Filtering findings by auditId: ${auditIdFromState}`);
+          console.log(`📦 All findings from API:`, allFindings);
+          
           filteredFindings = allFindings.filter((finding: Finding) => {
-            const findingAuditId = finding.auditId || (finding as any).AuditId || (finding as any).auditPlanId;
+            // Try multiple possible locations for auditId
+            const findingAuditId = finding.auditId || 
+                                   (finding as any).AuditId || 
+                                   (finding as any).auditPlanId ||
+                                   (finding as any).audit?.auditId;
+            
+            console.log(`  - Finding ${finding.findingId}: auditId = ${findingAuditId}`);
             return String(findingAuditId) === String(auditIdFromState);
           });
           console.log(`✅ Filtered findings: ${filteredFindings.length} out of ${allFindings.length} for audit ${auditIdFromState}`);
@@ -264,35 +279,19 @@ const FindingsProgress = () => {
   };
 
 
-  // Toggle staff selection for a root cause
-  const handleSelectStaffForRootCause = (rootCauseId: number, staffId: string) => {
-    setRootCauseStaffMap(prev => ({
-      ...prev,
-      [rootCauseId]: staffId
-    }));
-    
-    // Add staff to selected list if not already there
-    if (!selectedStaff.includes(staffId)) {
-      setSelectedStaff(prev => [...prev, staffId]);
-    }
-    
-    // Clear errors
-    if (rootCauseAssignError) setRootCauseAssignError('');
-    if (selectedStaffError) setSelectedStaffError('');
-  };
-
-
-
   // Load root causes for the selected finding
   const loadFindingRootCauses = async (findingId: string) => {
     setLoadingRootCauses(true);
     try {
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
       const rootCauses = res.data.$values || [];
-      // Only show approved root causes
-      const approvedRootCauses = rootCauses.filter((rc: any) => rc.status?.toLowerCase() === 'approved');
+      // Only show approved root causes that haven't been submitted yet
+      const approvedRootCauses = rootCauses.filter((rc: any) => 
+        rc.status?.toLowerCase() === 'approved' && !submittedRootCauseIds.has(rc.rootCauseId)
+      );
+      
       setFindingRootCauses(approvedRootCauses);
-      console.log('📝 Loaded root causes for assignment:', approvedRootCauses);
+      console.log('📝 Loaded unassigned root causes:', approvedRootCauses.length, 'Submitted:', submittedRootCauseIds.size);
     } catch (err) {
       console.error('Error loading root causes:', err);
       setFindingRootCauses([]);
@@ -325,174 +324,121 @@ const FindingsProgress = () => {
     }
   };
 
-  // Handle assign finding - show confirmation first
-  const handleAssign = () => {
-    // Reset errors
-    setSelectedStaffError('');
-    setDueDateError('');
-
-    // Validate fields
-    let hasError = false;
-
-    if (!selectedStaff || selectedStaff.length === 0) {
-      setSelectedStaffError('Please select at least one staff member');
-      hasError = true;
-    }
-
-    if (!dueDate) {
-      setDueDateError('Please select a due date');
-      hasError = true;
-    } else if (selectedFindingForAssign) {
-      // Validate due date
-      const dueDateObj = new Date(dueDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      // Check if due date is in the past
-      if (dueDateObj < today) {
-        setDueDateError('Due date cannot be in the past');
-        hasError = true;
-      }
-      
-      // Check if due date exceeds finding deadline
-      if (selectedFindingForAssign.deadline) {
-        const findingDeadline = new Date(selectedFindingForAssign.deadline);
-        findingDeadline.setHours(23, 59, 59, 999); // End of day
-        
-        if (dueDateObj > findingDeadline) {
-          const deadlineStr = formatDate(selectedFindingForAssign.deadline);
-          setDueDateError(`Due date cannot exceed finding deadline (${deadlineStr})`);
-          hasError = true;
-        }
-      }
-    }
-
-    if (!selectedFindingForAssign) {
-      // This shouldn't happen, but handle it silently
+  // Assign single root cause immediately
+  const handleAssignSingleRootCause = async () => {
+    console.log('🎯 handleAssignSingleRootCause called');
+    console.log('Finding:', selectedFindingForAssign);
+    console.log('Root Cause:', selectedRootCause);
+    console.log('Staff ID:', individualStaffId);
+    console.log('Due Date:', individualDueDate);
+    
+    if (!selectedFindingForAssign || !selectedRootCause) {
+      console.error('❌ Missing selectedFindingForAssign or selectedRootCause');
+      toast.error('Please select a finding and root cause');
       return;
     }
 
-    // If validation passes, show confirmation modal
-    if (!hasError) {
-      setShowAssignConfirmModal(true);
-    }
-  };
-
-  // Confirm and actually assign finding (create action)
-  const handleConfirmAssign = async () => {
-    if (!selectedFindingForAssign) {
+    if (!individualStaffId || !individualDueDate) {
+      console.error('❌ Missing individualStaffId or individualDueDate');
+      toast.error('Please select CAPA owner and due date');
       return;
     }
 
-    // Validate that all root causes are assigned if there are any
-    if (findingRootCauses.length > 0) {
-      const unassignedRootCauses = findingRootCauses.filter(
-        rc => !rootCauseStaffMap[rc.rootCauseId]
-      );
-      
-      if (unassignedRootCauses.length > 0) {
-        setRootCauseAssignError(`Please assign all ${findingRootCauses.length} root causes to staff members`);
-        setShowAssignConfirmModal(false);
-        return;
-      }
-    }
-
-    setShowAssignConfirmModal(false);
     setSubmittingAssign(true);
 
     try {
-      // First, mark finding as received
-      await markFindingAsReceived(selectedFindingForAssign.findingId);
+      // Build description with the specific root cause
+      let actionDescription = selectedFindingForAssign.description || '';
+      actionDescription += `\n\nAssigned Root Cause:\n• ${selectedRootCause.name} (${selectedRootCause.category})`;
+      if (selectedRootCause.description) {
+        actionDescription += `\n  Description: ${selectedRootCause.description}`;
+      }
       
-      // Get unique staff IDs from root cause assignments
-      const assignedStaffIds = new Set(Object.values(rootCauseStaffMap));
-      
-      // Group root causes by assigned staff
-      const staffRootCausesMap: Record<string, any[]> = {};
-      Object.entries(rootCauseStaffMap).forEach(([rootCauseId, staffId]) => {
-        if (!staffRootCausesMap[staffId]) {
-          staffRootCausesMap[staffId] = [];
-        }
-        const rootCause = findingRootCauses.find(rc => rc.rootCauseId === parseInt(rootCauseId));
-        if (rootCause) {
-          staffRootCausesMap[staffId].push(rootCause);
-        }
+      // Create action for this root cause
+      await createAction({
+        findingId: selectedFindingForAssign.findingId,
+        title: `${selectedFindingForAssign.title} - ${selectedRootCause.name}`,
+        description: actionDescription,
+        assignedTo: individualStaffId,
+        assignedDeptId: selectedFindingForAssign.deptId || 0,
+        progressPercent: 0,
+        dueDate: new Date(individualDueDate).toISOString(),
+        reviewFeedback: '',
       });
-      
-      // Create actions for each staff member with their assigned root causes
-      const actionPromises = Array.from(assignedStaffIds).map(staffId => {
-        const assignedRootCauses = staffRootCausesMap[staffId] || [];
-        
-        // Build description with assigned root causes
-        let actionDescription = selectedFindingForAssign.description || '';
-        if (assignedRootCauses.length > 0) {
-          actionDescription += '\n\n Assigned Root Causes:\n' + 
-            assignedRootCauses.map((rc, index) => 
-              `${index + 1}. ${rc.name} (${rc.category})`
-            ).join('\n');
-        }
-        
-        return createAction({
-          findingId: selectedFindingForAssign.findingId,
-          title: selectedFindingForAssign.title,
-          description: actionDescription,
-          assignedTo: staffId,
-          assignedDeptId: selectedFindingForAssign.deptId || 0,
-          progressPercent: 0,
-          dueDate: new Date(dueDate).toISOString(),
-          reviewFeedback: '',
-        });
-      });
-      
-      // Wait for all actions to be created
-      await Promise.all(actionPromises);
 
-      // Reset form and close modal
-      const assignedStaffCount = new Set(Object.values(rootCauseStaffMap)).size;
-      const rootCauseCount = findingRootCauses.length;
+      // Mark this root cause as submitted and save assigned data
+      const newSubmittedIds = new Set(submittedRootCauseIds);
+      newSubmittedIds.add(selectedRootCause.rootCauseId);
+      setSubmittedRootCauseIds(newSubmittedIds);
+
+      const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
+      setAssignedRootCauseData(prev => ({
+        ...prev,
+        [selectedRootCause.rootCauseId]: {
+          staffId: individualStaffId,
+          staffName: staffName,
+          dueDate: individualDueDate
+        }
+      }));
+
+      // Check if all root causes are now assigned
+      const allRootCausesRes = await apiClient.get(`/RootCauses/by-finding/${selectedFindingForAssign.findingId}`);
+      const allRootCauses = (allRootCausesRes.data.$values || []).filter((rc: any) => rc.status?.toLowerCase() === 'approved');
+      const allAssigned = allRootCauses.every((rc: any) => newSubmittedIds.has(rc.rootCauseId));
       
-      setSelectedStaff([]);
-      setDueDate('');
-      setSelectedStaffError('');
-      setDueDateError('');
-      setSelectedFindingForAssign(null);
-      setShowAssignModal(false);
-      setRootCauseStaffMap({});
-      setFindingRootCauses([]);
-      setRootCauseAssignError('');
+      // Mark finding as received if all root causes assigned
+      if (allAssigned) {
+        await markFindingAsReceived(selectedFindingForAssign.findingId);
+      }
+
+      // Close individual modal
+      setShowIndividualAssignModal(false);
       
-      // Show success toast
-      toast.success(`Finding assigned successfully to ${assignedStaffCount} staff member${assignedStaffCount > 1 ? 's' : ''} with ${rootCauseCount} root cause${rootCauseCount > 1 ? 's' : ''}`);
+      const remainingCount = allRootCauses.length - newSubmittedIds.size;
       
-      // Reload findings and assigned users
+      if (allAssigned) {
+        toast.success(`Action created for ${staffName}. All root causes assigned! Finding marked as Received.`);
+        // Close assign modal completely
+        handleCloseAssignModal();
+      } else {
+        toast.success(`Action created for ${staffName}. ${remainingCount} root cause${remainingCount > 1 ? 's' : ''} remaining.`);
+        // Keep all root causes in the list to show assigned status
+      }
+      
+      // Reload findings with assigned users and root cause status
       const deptId = getUserDeptId();
       if (deptId) {
-        const data = await getFindingsByDepartment(deptId);
-        setFindings(data);
-        await loadAssignedUsers(data);
-        await loadRootCauseStatus(data);
+        const allFindings = await getFindingsByDepartment(deptId);
+        
+        // Filter by auditId if needed
+        let filteredData = allFindings;
+        if (auditIdFromState) {
+          filteredData = allFindings.filter((finding: Finding) => {
+            const findingAuditId = finding.auditId || (finding as any).audit?.auditId;
+            return String(findingAuditId) === String(auditIdFromState);
+          });
+        }
+        
+        setFindings(filteredData);
+        await loadAssignedUsers(filteredData);
+        await loadRootCauseStatus(filteredData);
       }
     } catch (err: any) {
       console.error('Error creating action:', err);
-      // Show error toast
-      toast.error(err?.message || 'Failed to assign finding');
-      // Also show error in UI
-      setRootCauseAssignError(err?.message || 'Failed to create action');
+      const errorMsg = err.response?.data?.message || err.message || 'Failed to create action';
+      toast.error(errorMsg);
     } finally {
       setSubmittingAssign(false);
     }
   };
 
+  // Confirm and actually assign finding (create action)
   // Handle close assign modal
   const handleCloseAssignModal = () => {
-    setSelectedStaff([]);
-    setDueDate('');
-    setSelectedStaffError('');
-    setDueDateError('');
     setSelectedFindingForAssign(null);
-    setRootCauseStaffMap({});
     setFindingRootCauses([]);
-    setRootCauseAssignError('');
+    setSubmittedRootCauseIds(new Set()); // Reset submitted tracking
+    setAssignedRootCauseData({}); // Reset assigned data
     setShowAssignModal(false);
   };
 
@@ -781,9 +727,6 @@ const FindingsProgress = () => {
                                         setShowAssignModal(true);
                                         loadStaffMembers(finding.deptId);
                                         loadFindingRootCauses(finding.findingId);
-                                        // Reset root cause assignments
-                                        setRootCauseStaffMap({});
-                                        setRootCauseAssignError('');
                                       }}
                                       className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
                                       title="All root causes approved - ready to assign"
@@ -893,7 +836,7 @@ const FindingsProgress = () => {
           />
         )}
 
-        {/* Assign Finding Modal */}
+        {/* Assign Finding Modal - Root Causes Table */}
         {showAssignModal && selectedFindingForAssign && (
           <div className="fixed inset-0 z-50 overflow-y-auto">
             {/* Backdrop */}
@@ -905,12 +848,15 @@ const FindingsProgress = () => {
             {/* Modal */}
             <div className="flex min-h-full items-center justify-center p-4">
               <div
-                className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto"
+                className="relative bg-white rounded-xl shadow-xl w-full max-w-4xl mx-auto max-h-[90vh] flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
                 <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between z-10">
-                  <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Assign Finding</h2>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Assign Root Causes</h2>
+                    <p className="text-sm text-gray-500 mt-1">{selectedFindingForAssign.title}</p>
+                  </div>
                   <button
                     onClick={handleCloseAssignModal}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -922,19 +868,240 @@ const FindingsProgress = () => {
                 </div>
 
                 {/* Body */}
-                <div className="p-4 sm:p-6 space-y-4">
-                  {/* Finding Title */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                      Finding
-                    </label>
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                      <p className="text-sm font-medium text-gray-900">{selectedFindingForAssign.title}</p>
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                  {/* Loading State */}
+                  {loadingRootCauses ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                        <p className="text-sm text-gray-600">Loading root causes...</p>
+                      </div>
                     </div>
+                  ) : findingRootCauses.length === 0 ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-8 text-center">
+                      <svg className="w-16 h-16 text-amber-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <p className="text-sm text-amber-700 font-medium mb-2">No approved root causes found</p>
+                      <p className="text-xs text-amber-600">Root causes must be approved before assignment</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="mb-4 flex items-center justify-between">
+                        <p className="text-sm text-gray-600">
+                          Total: <span className="font-semibold text-gray-900">{findingRootCauses.length}</span> root cause(s)
+                        </p>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded font-medium">
+                            {findingRootCauses.length} Pending Assignment
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Root Causes Table */}
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                STT
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Root Cause
+                              </th>
+                         
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Assigned To
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Due Date
+                              </th>
+                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Action
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {findingRootCauses.map((rootCause, index) => {
+                              const isAssigned = submittedRootCauseIds.has(rootCause.rootCauseId);
+                              const assignedData = assignedRootCauseData[rootCause.rootCauseId];
+                              
+                              return (
+                                <tr key={rootCause.rootCauseId} className={isAssigned ? 'bg-green-50' : 'hover:bg-gray-50'}>
+                                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                    {index + 1}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-sm font-medium text-gray-900">{rootCause.name}</p>
+                                      {isAssigned && (
+                                        <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
+                                          Assigned
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                              
+                                  <td className="px-4 py-3 text-sm text-gray-700">
+                                    {assignedData ? (
+                                      <div className="flex items-center gap-1">
+                                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span className="text-green-700 font-medium">{assignedData.staffName}</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-400 italic">Not assigned</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-700">
+                                    {assignedData ? (
+                                      <span className="text-gray-900">{new Date(assignedData.dueDate).toLocaleDateString()}</span>
+                                    ) : (
+                                      <span className="text-gray-400 italic">-</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-center">
+                                    <div className="flex items-center justify-center gap-2">
+                                      <button
+                                        onClick={() => {
+                                          setSelectedDescription({
+                                            name: rootCause.name,
+                                            description: rootCause.description || 'No description available',
+                                            category: rootCause.category
+                                          });
+                                          setShowDescriptionModal(true);
+                                        }}
+                                        className="p-1.5 rounded-lg  hover:bg-purple-50 border border-blue-200 transition-colors"
+                                        title="View Details"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                      </button>
+                                      {!isAssigned ? (
+                                        <button
+                                          onClick={() => {
+                                            setSelectedRootCause(rootCause);
+                                            setIndividualStaffId('');
+                                            setIndividualDueDate('');
+                                            setIndividualStaffError('');
+                                            setIndividualDateError('');
+                                            setShowIndividualAssignModal(true);
+                                          }}
+                                          className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-primary-600 text-white hover:bg-primary-700"
+                                        >
+                                          Assign
+                                        </button>
+                                      ) : (
+                                        <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 cursor-not-allowed">
+                                          Assigned
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="sticky bottom-0 bg-white border-t border-gray-200 px-4 sm:px-6 py-4 flex justify-end">
+                  <button
+                    onClick={handleCloseAssignModal}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Individual Root Cause Assignment Modal */}
+        {showIndividualAssignModal && selectedRootCause && (
+          <div className="fixed inset-0 z-[60] overflow-y-auto">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => setShowIndividualAssignModal(false)}
+            />
+
+            {/* Modal */}
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div
+                className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 rounded-t-xl">
+                  <h3 className="text-lg font-semibold text-white">Assign Root Cause</h3>
+                  <p className="text-sm text-primary-100 mt-1">{selectedRootCause.name}</p>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 space-y-4">
+                  {/* Root Cause Info */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-gray-700 uppercase mb-1">Category</p>
+                    <p className="text-sm text-gray-900">{selectedRootCause.category}</p>
+                    {selectedRootCause.description && (
+                      <>
+                        <p className="text-xs font-semibold text-gray-700 uppercase mt-2 mb-1">Description</p>
+                        <p className="text-sm text-gray-900">{selectedRootCause.description}</p>
+                      </>
+                    )}
                   </div>
-  {/* Due Date */}
+
+                  {/* CAPA Owner Selection */}
+  
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Assign to CAPA Owner <span className="text-red-500">*</span>
+                    </label>
+                    {loadingStaff ? (
+                      <div className="flex items-center gap-2 py-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                        <span className="text-sm text-gray-500">Loading CAPA owners...</span>
+                      </div>
+                    ) : staffMembers.length === 0 ? (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                        <p className="text-sm text-red-700">No CAPA owners found in this department</p>
+                      </div>
+                    ) : (
+                      <select
+                        value={individualStaffId}
+                        onChange={(e) => {
+                          setIndividualStaffId(e.target.value);
+                          if (individualStaffError) setIndividualStaffError('');
+                        }}
+                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                          individualStaffError ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                      >
+                        <option value="">-- Select CAPA Owner --</option>
+                        {staffMembers.map((staff) => (
+                          <option key={staff.userId} value={staff.userId}>
+                            {staff.fullName} {staff.email ? `(${staff.email})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {individualStaffError && (
+                      <p className="mt-1 text-xs text-red-600">{individualStaffError}</p>
+                    )}
+                  </div>
+
+                  {/* Due Date */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Due Date <span className="text-red-500">*</span>
                     </label>
                     {selectedFindingForAssign?.deadline && (
@@ -944,156 +1111,87 @@ const FindingsProgress = () => {
                     )}
                     <input
                       type="date"
-                      value={dueDate}
+                      value={individualDueDate}
                       onChange={(e) => {
-                        setDueDate(e.target.value);
-                        if (dueDateError) setDueDateError('');
+                        setIndividualDueDate(e.target.value);
+                        if (individualDateError) setIndividualDateError('');
                       }}
                       min={new Date().toISOString().split('T')[0]}
                       max={selectedFindingForAssign?.deadline ? new Date(selectedFindingForAssign.deadline).toISOString().split('T')[0] : undefined}
                       className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                        dueDateError ? 'border-red-300' : 'border-gray-300'
+                        individualDateError ? 'border-red-300' : 'border-gray-300'
                       }`}
                     />
-                    {dueDateError && (
-                      <p className="mt-1 text-xs text-red-600">{dueDateError}</p>
+                    {individualDateError && (
+                      <p className="mt-1 text-xs text-red-600">{individualDateError}</p>
                     )}
-                    {selectedFindingForAssign?.deadline && !dueDateError && (
+                    {selectedFindingForAssign?.deadline && !individualDateError && (
                       <p className="mt-1 text-xs text-gray-500">
                         Must be on or before finding deadline
                       </p>
                     )}
                   </div>
-                  {/* Root Cause Assignment Section */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
-                      Root Cause Assignment <span className="text-red-500">*</span>
-                    </label>
-                    <p className="text-xs text-gray-500 mb-3">
-                      Assign each root cause to a CAPA owner
-                    </p>
-                    
-                    {loadingRootCauses ? (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
-                        <span className="text-sm text-gray-500">Loading root causes...</span>
-                      </div>
-                    ) : loadingStaff ? (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
-                        <span className="text-sm text-gray-500">Loading CAPA owners...</span>
-                      </div>
-                    ) : findingRootCauses.length === 0 ? (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
-                        <svg className="w-10 h-10 text-amber-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                        <p className="text-sm text-amber-700 font-medium">No approved root causes found</p>
-                        <p className="text-xs text-amber-600 mt-1">Please ensure root causes are approved before assigning</p>
-                      </div>
-                    ) : staffMembers.length === 0 ? (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                        <svg className="w-10 h-10 text-red-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <p className="text-sm text-red-700 font-medium">No CAPA Owners found</p>
-                        <p className="text-xs text-red-600 mt-1">Please add CAPA owners to this department first</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {findingRootCauses.map((rootCause, index) => {
-                          const assignedStaffId = rootCauseStaffMap[rootCause.rootCauseId];
-                          const assignedStaff = staffMembers.find(s => s.userId === assignedStaffId);
-                          
-                          return (
-                            <div 
-                              key={rootCause.rootCauseId} 
-                              className={`border rounded-lg p-3 ${
-                                assignedStaffId 
-                                  ? 'border-green-400 bg-green-50' 
-                                  : 'border-gray-300 bg-gray-50'
-                              }`}
-                            >
-                              {/* Root Cause Info */}
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-sm font-bold text-primary-600">#{index + 1}</span>
-                                <h4 className="text-sm font-medium text-gray-900">{rootCause.name}</h4>
-                                <span className="text-xs text-gray-500">• {rootCause.category}</span>
-                                {assignedStaffId && (
-                                  <span className="ml-auto text-xs text-green-700 flex items-center gap-1">
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                    Assigned
-                                  </span>
-                                )}
-                              </div>
-                              {rootCause.description && (
-                                <p className="text-xs text-gray-600 mb-2">{rootCause.description}</p>
-                              )}
-
-                              {/* Staff Selection */}
-                              <label className="block text-xs text-gray-600 mb-1">Assign to CAPA Owner:</label>
-                              <select
-                                value={assignedStaffId || ''}
-                                onChange={(e) => handleSelectStaffForRootCause(rootCause.rootCauseId, e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-                              >
-                                <option value="">-- Select CAPA Owner --</option>
-                                {staffMembers.map((staff) => (
-                                  <option key={staff.userId} value={staff.userId}>
-                                    {staff.fullName} {staff.email ? `(${staff.email})` : ''}
-                                  </option>
-                                ))}
-                              </select>
-                              {assignedStaff && (
-                                <div className="mt-2 text-xs text-green-700">
-                                  ✓ {assignedStaff.fullName}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Assignment Summary */}
-                    {findingRootCauses.length > 0 && (
-                      <div className={`mt-3 border rounded p-2 text-xs ${
-                        Object.keys(rootCauseStaffMap).length === findingRootCauses.length
-                          ? 'border-green-400 bg-green-50 text-green-700'
-                          : 'border-gray-300 bg-gray-50 text-gray-600'
-                      }`}>
-                        <span className="font-medium">
-                          {Object.keys(rootCauseStaffMap).length} of {findingRootCauses.length} root causes assigned
-                        </span>
-                        {Object.keys(rootCauseStaffMap).length === findingRootCauses.length && (
-                          <span className="ml-2">✓ All root causes have been assigned</span>
-                        )}
-                        {rootCauseAssignError && (
-                          <p className="mt-1 text-red-600">⚠ {rootCauseAssignError}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                
                 </div>
 
                 {/* Footer */}
-                <div className="sticky bottom-0 bg-white border-t border-gray-200 px-4 sm:px-6 py-4 flex justify-end gap-3">
+                <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end gap-3">
                   <button
-                    onClick={handleCloseAssignModal}
-                    disabled={submittingAssign}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    onClick={() => setShowIndividualAssignModal(false)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
-                    onClick={handleAssign}
-                    disabled={submittingAssign || selectedStaff.length === 0}
-                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => {
+                      // Validate
+                      let hasError = false;
+                      
+                      if (!individualStaffId) {
+                        setIndividualStaffError('Please select a CAPA owner');
+                        hasError = true;
+                      }
+                      
+                      if (!individualDueDate) {
+                        setIndividualDateError('Please select a due date');
+                        hasError = true;
+                      } else {
+                        const dueDateObj = new Date(individualDueDate);
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        
+                        if (dueDateObj < today) {
+                          setIndividualDateError('Due date cannot be in the past');
+                          hasError = true;
+                        }
+                        
+                        if (selectedFindingForAssign?.deadline) {
+                          const findingDeadline = new Date(selectedFindingForAssign.deadline);
+                          findingDeadline.setHours(23, 59, 59, 999);
+                          
+                          if (dueDateObj > findingDeadline) {
+                            const deadlineStr = formatDate(selectedFindingForAssign.deadline);
+                            setIndividualDateError(`Due date cannot exceed finding deadline (${deadlineStr})`);
+                            hasError = true;
+                          }
+                        }
+                      }
+                      
+                      if (!hasError) {
+                        // Create action immediately
+                        handleAssignSingleRootCause();
+                      }
+                    }}
+                    disabled={!individualStaffId || !individualDueDate || submittingAssign}
+                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    {submittingAssign ? 'Assigning...' : 'Assign'}
+                    {submittingAssign ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        Creating Action...
+                      </>
+                    ) : (
+                      'Assign'
+                    )}
                   </button>
                 </div>
               </div>
@@ -1101,46 +1199,7 @@ const FindingsProgress = () => {
           </div>
         )}
 
-        {/* Assign Confirmation Modal */}
-        {showAssignConfirmModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-              onClick={() => setShowAssignConfirmModal(false)}
-            />
-            
-            {/* Modal */}
-            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
-              <div className="p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Confirm Assign
-                </h3>
-                <p className="text-sm text-gray-600 mb-6">
-                  Are you sure you want to assign this finding? The finding will be marked as received and an action will be created.
-                </p>
-                
-                <div className="flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowAssignConfirmModal(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmAssign}
-                    disabled={submittingAssign}
-                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {submittingAssign ? 'Assigning...' : 'Yes, Assign'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+
 
         {/* Action Detail Modal */}
         {selectedActionId && (
@@ -1401,6 +1460,92 @@ const FindingsProgress = () => {
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Description View Modal */}
+        {showDescriptionModal && selectedDescription && (
+          <div className="fixed inset-0 z-[70] overflow-y-auto">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => {
+                setShowDescriptionModal(false);
+                setSelectedDescription(null);
+              }}
+            />
+
+            {/* Modal */}
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div
+                className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="bg-blue-600 px-6 py-4 rounded-t-xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-white">Root Cause Details</h3>
+                        <p className="text-sm text-purple-100 mt-1">{selectedDescription.name}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowDescriptionModal(false);
+                        setSelectedDescription(null);
+                      }}
+                      className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 space-y-4">
+                  {/* Category Badge */}
+                  {selectedDescription.category && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
+                      <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                        {selectedDescription.category}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Description</label>
+                    <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4 shadow-inner">
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
+                        {selectedDescription.description}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end">
+                  <button
+                    onClick={() => {
+                      setShowDescriptionModal(false);
+                      setSelectedDescription(null);
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             </div>

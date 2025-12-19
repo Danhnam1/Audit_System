@@ -72,17 +72,42 @@ const AssignedTasks = () => {
           const findings = await Promise.all(findingPromises);
           const validFindings = findings.filter((f): f is any => f !== null);
           
+          console.log('📋 Valid findings:', validFindings);
+          
           // Filter actions: only include those whose finding has matching auditId
           const findingIdsForAudit = validFindings
             .filter((f: any) => {
-              const findingAuditId = f.auditId || f.AuditId || f.auditPlanId;
+              // Handle nested audit structure (f.audit.auditId)
+              const findingAuditId = f.auditId || 
+                                    f.AuditId || 
+                                    f.auditPlanId ||
+                                    f.audit?.auditId ||
+                                    f.audit?.AuditId;
+              
+              console.log(`🔍 Finding ${f.findingId} -> Audit ID: ${findingAuditId}, Looking for: ${auditIdFromState}`);
+              
               return String(findingAuditId) === String(auditIdFromState);
             })
             .map((f: any) => f.findingId);
           
+          console.log(`📌 Findings for audit ${auditIdFromState}:`, findingIdsForAudit);
+          
           actions = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
           
           console.log(`✅ Filtered actions: ${actions.length} out of ${allActions.length} for audit ${auditIdFromState}`);
+          
+          // Remove duplicate actions by actionId
+          const uniqueActionIds = new Set<string>();
+          actions = actions.filter((a: any) => {
+            if (uniqueActionIds.has(a.actionId)) {
+              console.log(`🚫 Removing duplicate action: ${a.actionId}`);
+              return false;
+            }
+            uniqueActionIds.add(a.actionId);
+            return true;
+          });
+          
+          console.log(`✅ After removing duplicates: ${actions.length} unique actions`);
         }
         
         // Map API actions to Task interface
@@ -242,11 +267,26 @@ const AssignedTasks = () => {
           const validFindings = findings.filter((f): f is any => f !== null);
           const findingIdsForAudit = validFindings
             .filter((f: any) => {
-              const findingAuditId = f.auditId || f.AuditId || f.auditPlanId;
+              // Handle nested audit structure (f.audit.auditId)
+              const findingAuditId = f.auditId || 
+                                    f.AuditId || 
+                                    f.auditPlanId ||
+                                    f.audit?.auditId ||
+                                    f.audit?.AuditId;
               return String(findingAuditId) === String(auditIdFromState);
             })
             .map((f: any) => f.findingId);
           actions = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
+          
+          // Remove duplicate actions by actionId
+          const uniqueActionIds = new Set<string>();
+          actions = actions.filter((a: any) => {
+            if (uniqueActionIds.has(a.actionId)) {
+              return false;
+            }
+            uniqueActionIds.add(a.actionId);
+            return true;
+          });
         }
         
         const mappedTasks: Task[] = actions.map((action) => {

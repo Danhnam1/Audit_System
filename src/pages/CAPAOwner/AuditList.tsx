@@ -76,6 +76,7 @@ const CAPAOwnerAuditList = () => {
         const findingPromises = uniqueFindingIds.map(async (findingId: string) => {
           try {
             const finding = await getFindingById(findingId);
+            console.log(`✅ Loaded finding1111 ${findingId}:`, finding);
             return finding;
           } catch (err) {
             console.error(`❌ Error loading finding ${findingId}:`, err);
@@ -90,7 +91,15 @@ const CAPAOwnerAuditList = () => {
         // Group actions by auditId (from findings)
         const auditMap = new Map<string, any[]>();
         validFindings.forEach((finding: any) => {
-          const auditId = finding.auditId || finding.AuditId || finding.auditPlanId;
+          // Handle nested audit structure (finding.audit.auditId)
+          const auditId = finding.auditId || 
+                         finding.AuditId || 
+                         finding.auditPlanId ||
+                         finding.audit?.auditId ||
+                         finding.audit?.AuditId;
+          
+          console.log(`📌 Finding ${finding.findingId} -> Audit ID: ${auditId}`);
+          
           if (auditId) {
             // Find all actions for this finding
             const relatedActions = actions.filter((a: any) => a.findingId === finding.findingId);
@@ -98,6 +107,8 @@ const CAPAOwnerAuditList = () => {
               auditMap.set(auditId, []);
             }
             auditMap.get(auditId)!.push(...relatedActions);
+          } else {
+            console.warn(`⚠️ No audit ID found for finding:`, finding);
           }
         });
 
