@@ -88,18 +88,22 @@ export const prepareCompleteUpdatePayload = async (params: {
     basicPayload,
     formState,
     departments,
-    ownerOptions,
+    ownerOptions: _ownerOptions, // Not used: AuditeeOwner is a system role, not part of auditTeam
     currentUserId,
     user,
     sensitiveAreasMaster: providedMaster
   } = params;
   
   // Fetch or use provided sensitive areas master list
+  // Always fetch if we have sensitive areas data (either in sensitiveAreas or sensitiveAreasByDept)
   let sensitiveAreasMaster: DepartmentSensitiveAreaDto[] = providedMaster || [];
-  if (!providedMaster && formState.sensitiveFlag && formState.sensitiveAreas?.length > 0) {
+  const hasSensitiveData = formState.sensitiveFlag || 
+                           (formState.sensitiveAreas && formState.sensitiveAreas.length > 0) ||
+                           (formState.sensitiveAreasByDept && Object.keys(formState.sensitiveAreasByDept).length > 0);
+  
+  if (!providedMaster && hasSensitiveData) {
     try {
       sensitiveAreasMaster = await getDepartmentSensitiveAreas();
-      console.log('[prepareCompleteUpdatePayload] Fetched sensitive areas master:', sensitiveAreasMaster.length);
     } catch (err) {
       console.error('[prepareCompleteUpdatePayload] Failed to fetch sensitive areas master:', err);
     }
@@ -132,38 +136,8 @@ export const prepareCompleteUpdatePayload = async (params: {
     }
   });
 
-  // Add owners (skip if already added as auditor)
-  if (formState.level === 'academy') {
-    const uniqueOwnerIds = Array.from(new Set(ownerOptions.map((o: any) => String(o.userId)).filter(Boolean)));
-    uniqueOwnerIds.forEach((uid) => {
-      const normalizedUid = String(uid).toLowerCase().trim();
-      if (!addedUserIds.has(normalizedUid)) {
-        addedUserIds.add(normalizedUid);
-        teamMembers.push({
-          userId: uid,
-          roleInTeam: 'AuditeeOwner',
-          isLead: false,
-          status: 'Active',
-        });
-      }
-    });
-  } else {
-    const ownersForDepts = ownerOptions.filter((o: any) => formState.selectedDeptIds.includes(String(o.deptId ?? '')));
-    ownersForDepts.forEach((owner: any) => {
-      if (owner.userId) {
-        const normalizedUid = String(owner.userId).toLowerCase().trim();
-        if (!addedUserIds.has(normalizedUid)) {
-          addedUserIds.add(normalizedUid);
-          teamMembers.push({
-            userId: String(owner.userId),
-            roleInTeam: 'AuditeeOwner',
-            isLead: false,
-            status: 'Active',
-          });
-        }
-      }
-    });
-  }
+  // Note: AuditeeOwner is a system role, not part of auditTeam
+  // Do not add AuditeeOwner to teamMembers
 
   // Prepare schedules
   const schedulePairs = [
@@ -188,18 +162,69 @@ export const prepareCompleteUpdatePayload = async (params: {
     status: 'Active',
   }));
 
-  // Prepare scope departments with DepartmentSensitiveAreaIds
+  // Prepare scope departments with sensitive fields (SensitiveFlag, Areas, DepartmentSensitiveAreaIds)
   // Map sensitive area names from formState to their IDs using master list
   const scopeDepartments = deptIdsToAttach.map((deptId: string) => {
+    const deptIdNum = Number(deptId);
     const sensitiveAreaIds: string[] = [];
+    const areasForThisDept: string[] = [];
     
-    if (formState.sensitiveFlag && formState.sensitiveAreas && Array.isArray(formState.sensitiveAreas)) {
-      // formState.sensitiveAreas is array of strings like "areaName - deptName"
-      // We need to match these to master list and get IDs for this department
-      const deptIdNum = Number(deptId);
-      
+    // Check if this department is marked as sensitive
+    // sensitiveDeptIds can be array of strings or numbers
+    const isSensitiveDept = formState.sensitiveDeptIds && 
+      Array.isArray(formState.sensitiveDeptIds) && 
+      formState.sensitiveDeptIds.some((id: any) => {
+        const idNum = typeof id === 'string' ? Number(id) : id;
+        return idNum === deptIdNum || String(id) === String(deptIdNum) || String(id) === deptId;
+      });
+    
+    // Check if this department has sensitive areas data (from sensitiveAreasByDept)
+    const hasSensitiveAreasData = formState.sensitiveAreasByDept && 
+      formState.sensitiveAreasByDept[deptIdNum] && 
+      Array.isArray(formState.sensitiveAreasByDept[deptIdNum]) &&
+      formState.sensitiveAreasByDept[deptIdNum].length > 0;
+    
+    // Department is sensitive if: (1) marked in sensitiveDeptIds AND sensitiveFlag is true, OR (2) has sensitiveAreasByDept data
+    const hasSensitiveFlag = (formState.sensitiveFlag && isSensitiveDept) || hasSensitiveAreasData;
+    
+    // Priority 1: Use sensitiveAreasByDept if available (more accurate, already mapped by department)
+    if (hasSensitiveAreasData) {
+      const deptAreas = formState.sensitiveAreasByDept[deptIdNum];
+      if (Array.isArray(deptAreas) && deptAreas.length > 0) {
+        deptAreas.forEach((areaName: string) => {
+          if (!areaName || typeof areaName !== 'string') return;
+          
+          const trimmedArea = areaName.trim();
+          if (trimmedArea && !areasForThisDept.includes(trimmedArea)) {
+            areasForThisDept.push(trimmedArea);
+          }
+          
+          // Find matching area in master list to get ID
+          const matchingArea = sensitiveAreasMaster.find((master) => {
+            const masterDeptId = Number(master.deptId);
+            if (masterDeptId !== deptIdNum) return false;
+            const masterAreaName = master.sensitiveArea || '';
+            return masterAreaName === trimmedArea || 
+                   masterAreaName.trim() === trimmedArea ||
+                   trimmedArea.includes(masterAreaName) ||
+                   masterAreaName.includes(trimmedArea);
+          });
+          
+          if (matchingArea && matchingArea.id) {
+            const areaIdStr = String(matchingArea.id);
+            if (!sensitiveAreaIds.includes(areaIdStr)) {
+              sensitiveAreaIds.push(areaIdStr);
+            }
+          }
+        });
+      }
+    }
+    // Priority 2: Fallback to formState.sensitiveAreas (array of strings like "areaName - deptName" or just "areaName")
+    else if (hasSensitiveFlag && formState.sensitiveAreas && Array.isArray(formState.sensitiveAreas)) {
       formState.sensitiveAreas.forEach((areaStr: string) => {
-        // Find matching area in master list
+        if (!areaStr || typeof areaStr !== 'string') return;
+        
+        // Find matching area in master list for this department
         const matchingArea = sensitiveAreasMaster.find((master) => {
           const masterDeptId = Number(master.deptId);
           if (masterDeptId !== deptIdNum) return false;
@@ -212,22 +237,52 @@ export const prepareCompleteUpdatePayload = async (params: {
           const expectedFormat1 = `${masterAreaName} - ${masterDeptName}`;
           const expectedFormat2 = masterAreaName;
           
-          return areaStr === expectedFormat1 || areaStr === expectedFormat2 || areaStr.includes(masterAreaName);
+          const matches = areaStr === expectedFormat1 || 
+                         areaStr === expectedFormat2 || 
+                         areaStr.includes(masterAreaName) ||
+                         masterAreaName.includes(areaStr);
+          
+          if (matches && masterAreaName && !areasForThisDept.includes(masterAreaName)) {
+            areasForThisDept.push(masterAreaName);
+          }
+          
+          return matches;
         });
         
         if (matchingArea && matchingArea.id) {
-          // Backend expects Guid (string). Keep original string.
-          sensitiveAreaIds.push(String(matchingArea.id));
+          const areaIdStr = String(matchingArea.id);
+          // Backend expects Guid (string). Avoid duplicates.
+          if (!sensitiveAreaIds.includes(areaIdStr)) {
+            sensitiveAreaIds.push(areaIdStr);
+          }
         }
       });
     }
     
-    console.log(`[prepareCompleteUpdatePayload] Dept ${deptId} sensitiveAreaIds:`, sensitiveAreaIds);
+    // Serialize areas array to JSON string (backend expects string, max 1000 chars)
+    // Backend requires Areas field even if empty, so always provide a value
+    let areasString: string = '';
+    if (areasForThisDept.length > 0) {
+      const areasJson = JSON.stringify(areasForThisDept);
+      // Ensure it doesn't exceed 1000 chars
+      if (areasJson.length <= 1000) {
+        areasString = areasJson;
+      } else {
+        // Fallback to comma-separated if too long
+        areasString = areasForThisDept.join(', ').substring(0, 1000);
+      }
+    }
+    
+    // Backend requires DepartmentSensitiveAreaIds field even if empty, so always provide an array
+    // Use empty array if no sensitive areas, otherwise use the IDs
+    const departmentSensitiveAreaIdsArray = sensitiveAreaIds.length > 0 ? sensitiveAreaIds : [];
     
     return {
       deptId: Number(deptId),
       status: 'Active',
-      departmentSensitiveAreaIds: sensitiveAreaIds,
+      sensitiveFlag: hasSensitiveFlag || false,
+      areas: areasString, // Always send string (empty if no areas)
+      departmentSensitiveAreaIds: departmentSensitiveAreaIdsArray, // Always send array (empty if no IDs)
     };
   });
 

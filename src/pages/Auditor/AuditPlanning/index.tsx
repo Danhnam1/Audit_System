@@ -927,7 +927,14 @@ const SQAStaffAuditPlanning = () => {
 
         try {
           const teams = await getAuditTeam();
-          setAuditTeams(Array.isArray(teams) ? teams : []);
+          // Filter out AuditeeOwner from audit teams
+          const filteredTeams = Array.isArray(teams) 
+            ? teams.filter((m: any) => {
+                const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+                return role !== 'auditeeowner';
+              })
+            : [];
+          setAuditTeams(filteredTeams);
         } catch (e) {
           console.error("Failed to load audit teams", e);
         }
@@ -2333,8 +2340,72 @@ const SQAStaffAuditPlanning = () => {
         existingPlans
       );
 
+      // Load sensitive areas from API and add to details
+      try {
+        const sensitiveDepts = await getSensitiveDepartments(auditId);
+        
+        if (sensitiveDepts && sensitiveDepts.length > 0) {
+          const sensitiveFlag = sensitiveDepts.some((sd: any) => sd.sensitiveFlag === true);
+          const allAreas = new Set<string>();
+          const sensitiveAreasByDept: Record<number, string[]> = {};
+          const sensitiveDeptIds: string[] = [];
+          
+          sensitiveDepts.forEach((sd: any) => {
+            const deptId = Number(sd.deptId);
+            
+            if (sd.sensitiveFlag === true) {
+              sensitiveDeptIds.push(String(deptId));
+            }
+            
+            let areasArray: string[] = [];
+            if (Array.isArray(sd.Areas)) {
+              areasArray = sd.Areas;
+            } else if (sd.Areas && typeof sd.Areas === "string") {
+              try {
+                const parsed = JSON.parse(sd.Areas);
+                areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+              } catch {
+                areasArray = [sd.Areas];
+              }
+            } else if (sd.Areas?.$values && Array.isArray(sd.Areas.$values)) {
+              areasArray = sd.Areas.$values;
+            } else if (Array.isArray(sd.areas)) {
+              areasArray = sd.areas;
+            } else if (sd.areas && typeof sd.areas === "string") {
+              try {
+                const parsed = JSON.parse(sd.areas);
+                areasArray = Array.isArray(parsed) ? parsed : [sd.areas];
+              } catch {
+                areasArray = [sd.areas];
+              }
+            } else if (sd.areas?.$values && Array.isArray(sd.areas.$values)) {
+              areasArray = sd.areas.$values;
+            }
+            
+            if (deptId && areasArray.length > 0) {
+              sensitiveAreasByDept[deptId] = areasArray
+                .filter((area: string) => area && typeof area === "string" && area.trim())
+                .map((a: string) => a.trim());
+              
+              areasArray.forEach((area: string) => {
+                if (area && typeof area === "string" && area.trim()) {
+                  allAreas.add(area.trim());
+                }
+              });
+            }
+          });
+          
+          // Add sensitive data to details
+          detailsWithId.sensitiveFlag = sensitiveFlag;
+          detailsWithId.sensitiveAreas = Array.from(allAreas);
+          detailsWithId.sensitiveAreasByDept = sensitiveAreasByDept;
+          detailsWithId.sensitiveDeptIds = sensitiveDeptIds;
+        }
+      } catch (sensitiveErr) {
+        console.error('[handleEditPlan] Failed to load sensitive areas:', sensitiveErr);
+      }
       
-      // Use formState.loadPlanForEdit with the best-effort details
+      // Use formState.loadPlanForEdit with the best-effort details (including sensitive data)
       formState.loadPlanForEdit(detailsWithId);
 
       // Wait a bit to ensure state is updated
@@ -2349,7 +2420,12 @@ const SQAStaffAuditPlanning = () => {
       if (originalAuditorIds.length === 0) {
         try {
           const teamsByAudit = await getAuditTeam();
-          const teamIds = (teamsByAudit || [])
+          // Filter out AuditeeOwner from audit teams
+          const filteredTeams = (teamsByAudit || []).filter((t: any) => {
+            const role = String(t.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+            return role !== 'auditeeowner';
+          });
+          const teamIds = filteredTeams
             .filter((t: any) => String(t.auditId || t.auditPlanId || t.planId) === String(auditId))
             .map((t: any) => String(t.userId || t.id || t.$id || "").trim())
             .filter(Boolean);
@@ -2422,7 +2498,8 @@ const SQAStaffAuditPlanning = () => {
             }))
           );
 
-          // Merge: original selected + available (avoid duplicates)
+          // Merge: original selected + available + all other auditors (to ensure all auditors are shown)
+          // This ensures auditors that were previously selected but removed are still visible in dropdown
           const originalIds = new Set(
             originalSelectedAuditors.map((u: any) =>
               String(u.userId || u.id || u.$id || "")
@@ -2430,22 +2507,43 @@ const SQAStaffAuditPlanning = () => {
                 .trim()
             )
           );
+          const availableIds = new Set(
+            availableAuditors.map((u: any) =>
+              String(u.userId || u.id || u.$id || "")
+                .toLowerCase()
+                .trim()
+            )
+          );
+          
+          // Add available auditors that are not in original selected
           const additionalAvailable = availableAuditors.filter((u: any) => {
             const userId = String(u.userId || u.id || u.$id || "")
               .toLowerCase()
               .trim();
             return !originalIds.has(userId);
           });
+          
+          // Add all other auditors that are not in original selected and not in available
+          // This ensures auditors that were removed are still visible
+          const otherAuditors = allAuditors.filter((u: any) => {
+            const userId = String(u.userId || u.id || u.$id || "")
+              .toLowerCase()
+              .trim();
+            return !originalIds.has(userId) && !availableIds.has(userId);
+          });
 
           const mergedAuditors = [
             ...originalSelectedAuditors,
             ...additionalAvailable,
+            ...otherAuditors,
           ];
           console.log(
             "[handleEditPlan] Manually merged auditors - original:",
             originalSelectedAuditors.length,
             "available:",
             availableAuditors.length,
+            "other:",
+            otherAuditors.length,
             "merged:",
             mergedAuditors.length
           );
@@ -3075,39 +3173,8 @@ const SQAStaffAuditPlanning = () => {
             );
           });
 
-          if (formState.level === "academy") {
-            const uniqueOwnerIds = Array.from(
-              new Set(
-                ownerOptions.map((o: any) => String(o.userId)).filter(Boolean)
-              )
-            );
-            uniqueOwnerIds.forEach((uid) => {
-              calls.push(
-                addTeamMember({
-                  auditId: String(newAuditId),
-                  userId: uid,
-                  roleInTeam: "AuditeeOwner",
-                  isLead: false,
-                })
-              );
-            });
-          } else {
-            const ownersForDepts = ownerOptions.filter((o: any) =>
-              formState.selectedDeptIds.includes(String(o.deptId ?? ""))
-            );
-            ownersForDepts.forEach((owner: any) => {
-              if (owner.userId) {
-                calls.push(
-                  addTeamMember({
-                    auditId: String(newAuditId),
-                    userId: String(owner.userId),
-                    roleInTeam: "AuditeeOwner",
-                    isLead: false,
-                  })
-                );
-              }
-            });
-          }
+          // Note: AuditeeOwner is a system role, not part of auditTeam
+          // Do not add AuditeeOwner to auditTeam
 
           if (calls.length) {
             await Promise.allSettled(calls);
@@ -3154,7 +3221,14 @@ const SQAStaffAuditPlanning = () => {
       // Refresh audit teams (needed for visiblePlans calculation)
       try {
         const teams = await getAuditTeam();
-        setAuditTeams(Array.isArray(teams) ? teams : []);
+        // Filter out AuditeeOwner from audit teams
+        const filteredTeams = Array.isArray(teams) 
+          ? teams.filter((m: any) => {
+              const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+              return role !== 'auditeeowner';
+            })
+          : [];
+        setAuditTeams(filteredTeams);
       } catch (teamErr) {
         console.error("Failed to refresh audit teams", teamErr);
       }
@@ -3181,6 +3255,18 @@ const SQAStaffAuditPlanning = () => {
 
       // Save edit mode state before resetting form
       const wasEditMode = formState.isEditMode;
+      
+      // If modal is open and we just updated, refresh the plan details
+      if (wasEditMode && showDetailsModal && selectedPlanDetails) {
+        const currentAuditId = selectedPlanDetails.auditId || selectedPlanDetails.id;
+        if (currentAuditId) {
+          try {
+            await handleViewDetails(String(currentAuditId));
+          } catch (refreshErr) {
+            console.error("Failed to refresh plan details after update:", refreshErr);
+          }
+        }
+      }
       
       // Reset form (closes form after successful creation)
       formState.resetForm();

@@ -536,8 +536,8 @@ export default function AuditorFinalSummaryPage() {
 
                 {/* Charts Section - Findings & Actions Summary */}
                 {findingsActionsSummary && (
-                  <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-                    <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
                       <h2 className="text-sm font-semibold text-white uppercase">Findings & Actions Summary Charts</h2>
                     </div>
                     <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -848,78 +848,78 @@ export default function AuditorFinalSummaryPage() {
                                     </p>
                                     <ul className="space-y-1">
                                       {attachments.slice(0, 3).map((att: any) => {
-                                        const attId = att.attachmentId || "";
-                                        const isImg = isImage(att.contentType, att.fileName);
-                                        const isExpanded = expandedImages.has(attId);
-                                        const filePath = att.blobPath || att.filePath;
-                                        return (
+                                    const attId = att.attachmentId || "";
+                                    const isImg = isImage(att.contentType, att.fileName);
+                                    const isExpanded = expandedImages.has(attId);
+                                    const filePath = att.blobPath || att.filePath;
+                                    return (
                                           <li key={attId} className="border border-emerald-200 rounded-md p-1.5 bg-white">
-                                            <button
-                                              onClick={() => handleFileAction(att)}
+                                        <button
+                                          onClick={() => handleFileAction(att)}
                                               className="w-full flex items-center justify-between gap-2 text-left text-[11px] text-gray-700 hover:text-emerald-600 transition-colors"
-                                              title={isImg ? "Click to expand/collapse image" : "Click to open file"}
-                                            >
-                                              <div className="flex-1 min-w-0">
-                                                <span className="truncate block font-medium">
-                                                  {att.fileName || "Attachment"}
-                                                </span>
+                                          title={isImg ? "Click to expand/collapse image" : "Click to open file"}
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <span className="truncate block font-medium">
+                                              {att.fileName || "Attachment"}
+                                            </span>
                                                 <span className="text-[10px] text-emerald-500 mt-0.5 block">
-                                                  {att.contentType || ""} · {att.status || "Active"}
-                                                </span>
-                                              </div>
-                                              {isImg && (
-                                                <svg
+                                              {att.contentType || ""} · {att.status || "Active"}
+                                            </span>
+                                          </div>
+                                          {isImg && (
+                                            <svg
                                                   className={`w-3 h-3 text-emerald-400 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
-                                                  fill="none"
-                                                  stroke="currentColor"
-                                                  viewBox="0 0 24 24"
-                                                >
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                                </svg>
-                                              )}
-                                              {!isImg && filePath && (
-                                                <svg
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                          )}
+                                          {!isImg && filePath && (
+                                            <svg
                                                   className="w-3 h-3 text-emerald-400 flex-shrink-0"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                            </svg>
+                                          )}
+                                        </button>
+                                        {isImg && isExpanded && filePath && (
+                                              <div className="mt-2 border-t border-emerald-200 pt-2">
+                                            <div className="relative w-full">
+                                              <img
+                                                src={filePath}
+                                                alt={att.fileName || "Image"}
+                                                    className="w-full h-auto rounded border border-emerald-200 max-h-64 object-contain bg-emerald-50"
+                                                onError={(e) => {
+                                                  (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not available%3C/text%3E%3C/svg%3E";
+                                                }}
+                                              />
+                                              <button
+                                                onClick={() => toggleImageExpand(attId)}
+                                                    className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-emerald-300 rounded p-1.5 shadow-sm transition-colors"
+                                                title="Collapse image"
+                                              >
+                                                <svg
+                                                      className="w-4 h-4 text-emerald-700"
                                                   fill="none"
                                                   stroke="currentColor"
                                                   viewBox="0 0 24 24"
                                                 >
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                                                 </svg>
-                                              )}
-                                            </button>
-                                            {isImg && isExpanded && filePath && (
-                                              <div className="mt-2 border-t border-emerald-200 pt-2">
-                                                <div className="relative w-full">
-                                                  <img
-                                                    src={filePath}
-                                                    alt={att.fileName || "Image"}
-                                                    className="w-full h-auto rounded border border-emerald-200 max-h-64 object-contain bg-emerald-50"
-                                                    onError={(e) => {
-                                                      (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not available%3C/text%3E%3C/svg%3E";
-                                                    }}
-                                                  />
-                                                  <button
-                                                    onClick={() => toggleImageExpand(attId)}
-                                                    className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-emerald-300 rounded p-1.5 shadow-sm transition-colors"
-                                                    title="Collapse image"
-                                                  >
-                                                    <svg
-                                                      className="w-4 h-4 text-emerald-700"
-                                                      fill="none"
-                                                      stroke="currentColor"
-                                                      viewBox="0 0 24 24"
-                                                    >
-                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                                                    </svg>
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            )}
-                                          </li>
-                                        );
-                                      })}
-                                    </ul>
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
                                   </div>
                                 )}
                               </li>
