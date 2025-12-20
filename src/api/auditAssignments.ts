@@ -203,8 +203,15 @@ export const updateActualAuditDate = async (
   assignmentId: string,
   actualAuditDate: string // Format: YYYY-MM-DD
 ): Promise<AuditAssignment> => {
-  const dateObj = new Date(actualAuditDate + 'T00:00:00');
-  const payload = toPascalCase({ actualAuditDate: dateObj.toISOString() });
+  // Parse the date string and create a date at local midnight to avoid timezone issues
+  const [year, month, day] = actualAuditDate.split('-').map(Number);
+  const dateObj = new Date(year, month - 1, day, 0, 0, 0, 0);
+  
+  // Format as ISO string but ensure it represents the correct date
+  // Use local date components to create UTC date at midnight
+  const isoString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00.000Z`;
+  
+  const payload = toPascalCase({ actualAuditDate: isoString });
   const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/actual-audit-date`, payload);
   return res;
 };
