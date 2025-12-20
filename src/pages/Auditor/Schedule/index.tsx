@@ -1,306 +1,340 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MainLayout } from '../../../layouts';
-import { useAuth } from '../../../contexts';
-import { getAuditTeam } from '../../../api/auditTeam';
-import { getAuditSchedules } from '../../../api/auditSchedule';
-import { getAuditPlanById } from '../../../api/audits';
-import { DataTable, type TableColumn } from '../../../components/DataTable';
-import { getStatusColor } from '../../../constants';
+import { getMyAssignments } from '../../../api/auditAssignments';
 import { unwrap } from '../../../utils/normalize';
 
-interface ScheduleItem {
-  scheduleId: string;
+interface Assignment {
+  assignmentId: string;
   auditId: string;
-  auditTitle: string;
-  milestoneName: string;
-  dueDate: string;
-  status: string;
+  deptId: number;
+  auditorId: string;
   notes?: string;
+  assignedAt: string;
+  status: string;
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  estimatedDuration: number | null;
+  actualAuditDate: string | null;
+  reasonReject?: string | null;
+  auditTitle: string;
+  departmentName: string;
+  auditorName: string;
 }
 
 const AuditorSchedule = () => {
-  const { user } = useAuth();
-  const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(false);
-  const [query, setQuery] = useState('');
+  const [currentDate, setCurrentDate] = useState(new Date());
 
-  // Get current user ID
-  const currentUserId = useMemo(() => {
-    if (!user) return null;
-    return (user as any)?.userId ?? (user as any)?.id ?? (user as any)?.$id ?? null;
-  }, [user]);
+  // Helper function to format date for Set
+  const formatDateForSet = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  // Load schedules for all audit plans where auditor is assigned
+  // Load assignments
   useEffect(() => {
-    const loadSchedules = async () => {
-      if (!currentUserId) return;
-
+    const loadAssignments = async () => {
       setLoading(true);
       try {
-        // Get all audit teams to find audits where current user is assigned
-        const teams = await getAuditTeam();
-        const teamsArray = Array.isArray(teams) ? teams : unwrap(teams) || [];
-
-        // Filter teams where current user is a member
-        const normalizedCurrentUserId = String(currentUserId).toLowerCase().trim();
-        const myAuditIds = new Set<string>();
-
-        teamsArray.forEach((team: any) => {
-          const memberUserId = team?.userId ?? team?.id ?? team?.$id;
-          if (!memberUserId) return;
-
-          const memberNorm = String(memberUserId).toLowerCase().trim();
-          if (memberNorm !== normalizedCurrentUserId) return;
-
-          // Collect audit IDs from various possible fields
-          const candidates = [team.auditId, team.auditPlanId, team.planId]
-            .filter((v: any) => v != null)
-            .map((v: any) => String(v).trim())
-            .filter(Boolean);
-
-          candidates.forEach((id) => {
-            myAuditIds.add(id);
-            myAuditIds.add(id.toLowerCase());
-          });
-        });
-
-        if (myAuditIds.size === 0) {
-          setSchedules([]);
-          setLoading(false);
-          return;
+        const response = await getMyAssignments();
+        console.log('Schedule API response:', response);
+        
+        // Handle $values structure
+        let assignmentsData: Assignment[] = [];
+        if (response?.$values && Array.isArray(response.$values)) {
+          assignmentsData = response.$values;
+        } else if (Array.isArray(response)) {
+          assignmentsData = response;
+        } else {
+          // Try unwrap if it's wrapped
+          const unwrapped = unwrap<Assignment>(response);
+          assignmentsData = Array.isArray(unwrapped) ? unwrapped : [];
         }
-
-        // Load schedules for each audit
-        const allSchedules: ScheduleItem[] = [];
-
-        for (const auditId of Array.from(myAuditIds)) {
-          try {
-            // Get audit plan details to get title
-            let auditTitle = auditId;
-            try {
-              const auditPlan = await getAuditPlanById(auditId);
-              auditTitle = auditPlan?.title || auditPlan?.audit?.title || auditId;
-            } catch (err) {
-              console.warn(`Failed to load audit plan ${auditId}:`, err);
-            }
-
-            // Get schedules for this audit
-            const schedulesResponse = await getAuditSchedules(auditId);
-            const schedulesArray = unwrap(schedulesResponse) || [];
-
-            schedulesArray.forEach((schedule: any) => {
-              allSchedules.push({
-                scheduleId: schedule?.scheduleId || schedule?.id || `schedule_${auditId}_${allSchedules.length}`,
-                auditId: auditId,
-                auditTitle: auditTitle,
-                milestoneName: schedule?.milestoneName || schedule?.milestone || 'N/A',
-                dueDate: schedule?.dueDate || '',
-                status: schedule?.status || 'Planned',
-                notes: schedule?.notes || '',
-              });
-            });
-          } catch (err) {
-            console.warn(`Failed to load schedules for audit ${auditId}:`, err);
-          }
-        }
-
-        // Sort by due date (earliest first)
-        allSchedules.sort((a, b) => {
-          const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-          const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-          return dateA - dateB;
-        });
-
-        setSchedules(allSchedules);
+        
+        console.log('Parsed assignments:', assignmentsData);
+        setAssignments(assignmentsData);
       } catch (error) {
-        console.error('Failed to load schedules:', error);
-        setSchedules([]);
+        console.error('Failed to load assignments:', error);
+        setAssignments([]);
       } finally {
         setLoading(false);
       }
     };
 
-    loadSchedules();
-  }, [currentUserId]);
+    loadAssignments();
+  }, []);
 
-  // Filter schedules based on search query
-  const filteredSchedules = useMemo(() => {
-    if (!query.trim()) return schedules;
+  // Get all dates that should be highlighted
+  const highlightedDates = useMemo(() => {
+    const plannedDates = new Set<string>(); // Blue dates (planned range)
+    const actualDates = new Set<string>(); // Orange dates (actual audit dates)
 
-    const lowerQuery = query.toLowerCase().trim();
-    return schedules.filter(
-      (schedule) =>
-        schedule.auditTitle.toLowerCase().includes(lowerQuery) ||
-        schedule.auditId.toLowerCase().includes(lowerQuery) ||
-        schedule.milestoneName.toLowerCase().includes(lowerQuery) ||
-        (schedule.notes && schedule.notes.toLowerCase().includes(lowerQuery))
-    );
-  }, [schedules, query]);
+    assignments.forEach((assignment) => {
+      // Add planned date range (blue)
+      if (assignment.plannedStartDate && assignment.plannedEndDate) {
+        let start = new Date(assignment.plannedStartDate);
+        let end = new Date(assignment.plannedEndDate);
+        
+        // Handle case where end date is before start date (swap them)
+        if (end < start) {
+          [start, end] = [end, start];
+        }
+        
+        const current = new Date(start);
+        // Set time to 00:00:00 to avoid timezone issues
+        current.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999); // Include the end date
+        
+        while (current <= end) {
+          const dateStr = formatDateForSet(current);
+          plannedDates.add(dateStr);
+          current.setDate(current.getDate() + 1);
+        }
+      }
 
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'N/A';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
+      // Add actual audit date (orange)
+      if (assignment.actualAuditDate) {
+        const actualDate = new Date(assignment.actualAuditDate);
+        actualDate.setHours(0, 0, 0, 0);
+        const dateStr = formatDateForSet(actualDate);
+        actualDates.add(dateStr);
+      }
+    });
+
+    console.log('Highlighted dates:', { 
+      plannedDates: Array.from(plannedDates), 
+      actualDates: Array.from(actualDates) 
+    });
+
+    return { plannedDates, actualDates };
+  }, [assignments]);
+
+  // Get calendar days for current month
+  const calendarDays = useMemo(() => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    
+    // First day of month
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    // Day of week for first day (0 = Sunday, 6 = Saturday)
+    const startDayOfWeek = firstDay.getDay();
+    
+    // Get days from previous month to fill the first week
+    const days: Array<{
+      date: Date;
+      isCurrentMonth: boolean;
+      isToday: boolean;
+      isPlanned: boolean;
+      isActual: boolean;
+    }> = [];
+    
+    // Previous month days
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      const date = new Date(year, month - 1, prevMonthLastDay - i);
+      const dateStr = formatDateForSet(date);
+      days.push({
+        date,
+        isCurrentMonth: false,
+        isToday: false,
+        isPlanned: highlightedDates.plannedDates.has(dateStr),
+        isActual: highlightedDates.actualDates.has(dateStr),
       });
-    } catch {
-      return dateString;
     }
-  };
-
-  // Check if date is overdue
-  const isOverdue = (dateString: string, status: string) => {
-    if (!dateString || status === 'Completed') return false;
-    try {
-      const dueDate = new Date(dateString);
+    
+    // Current month days
+    for (let day = 1; day <= lastDay.getDate(); day++) {
+      const date = new Date(year, month, day);
+      const dateStr = formatDateForSet(date);
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      dueDate.setHours(0, 0, 0, 0);
-      return dueDate < today;
-    } catch {
-      return false;
+      const isToday =
+        date.getFullYear() === today.getFullYear() &&
+        date.getMonth() === today.getMonth() &&
+        date.getDate() === today.getDate();
+      
+      days.push({
+        date,
+        isCurrentMonth: true,
+        isToday,
+        isPlanned: highlightedDates.plannedDates.has(dateStr),
+        isActual: highlightedDates.actualDates.has(dateStr),
+      });
     }
+    
+    // Next month days to fill the last week
+    const remainingDays = 42 - days.length; // 6 weeks * 7 days
+    for (let day = 1; day <= remainingDays; day++) {
+      const date = new Date(year, month + 1, day);
+      const dateStr = formatDateForSet(date);
+      days.push({
+        date,
+        isCurrentMonth: false,
+        isToday: false,
+        isPlanned: highlightedDates.plannedDates.has(dateStr),
+        isActual: highlightedDates.actualDates.has(dateStr),
+      });
+    }
+    
+    return days;
+  }, [currentDate, highlightedDates]);
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  const goToPreviousMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   };
 
-  const columns: TableColumn<ScheduleItem>[] = [
-    {
-      key: 'no',
-      header: 'No.',
-      cellClassName: 'whitespace-nowrap',
-      render: (_, index) => (
-        <span className="text-sm text-gray-700">{index + 1}</span>
-      ),
-    },
-    {
-      key: 'auditTitle',
-      header: 'Audit Plan',
-      render: (row) => (
-        <div className="max-w-[280px]">
-          <p className="text-ms font-bold text-black">{row.auditTitle}</p>
-          <p className="text-xs text-[#5b6166] mt-0.5">{row.auditId}</p>
-        </div>
-      ),
-    },
-    {
-      key: 'milestoneName',
-      header: 'Milestone',
-      render: (row) => (
-        <span className="text-ms text-[#5b6166]">
-          {row.milestoneName}
-        </span>
-      ),
-    },
-    {
-      key: 'dueDate',
-      header: 'Due Date',
-      cellClassName: 'whitespace-nowrap',
-      render: (row) => {
-        const overdue = isOverdue(row.dueDate, row.status);
-        return (
-          <div>
-            <p className={`text-ms font-medium ${overdue ? 'text-red-600' : 'text-[#5b6166]'}`}>
-              {formatDate(row.dueDate)}
-            </p>
-            {overdue && (
-              <p className="text-xs text-red-500 mt-0.5">Overdue</p>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      cellClassName: 'whitespace-nowrap',
-      render: (row) => {
-        const displayStatus = isOverdue(row.dueDate, row.status) ? 'Overdue' : row.status;
-        return (
-          <span
-            className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(displayStatus)}`}
-          >
-            {displayStatus}
-          </span>
-        );
-      },
-      align: 'center',
-    },
-    {
-      key: 'notes',
-      header: 'Notes',
-      render: (row) => (
-        <p className="text-ms text-[#5b6166] max-w-[300px] truncate" title={row.notes || ''}>
-          {row.notes || '—'}
-        </p>
-      ),
-    },
-  ];
+  const goToNextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+
+  const goToToday = () => {
+    setCurrentDate(new Date());
+  };
+
+  const formatDate = (date: Date): string => {
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  };
 
   return (
     <MainLayout>
-      {/* Header */}
-      <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-6 animate-slideInLeft">
-        <div className="px-6 py-4">
-          <h1 className="text-2xl font-bold text-black">Audit Schedule</h1>
-          <p className="text-[#5b6166] text-sm mt-1">
-            View schedules and milestones for your assigned audit plans
-          </p>
+      <div className="space-y-6 p-6">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg p-6 text-white">
+          <h1 className="text-3xl font-bold mb-2">Audit Schedule</h1>
+          <p className="text-blue-100">View your assigned audit schedules and dates</p>
         </div>
-      </div>
 
-      <div className="px-6 pb-6 space-y-6">
-        {/* Search bar */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4 animate-slideInRight animate-delay-100">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 relative">
-              <input
-                type="text"
-                placeholder="Search by audit title, ID, milestone, or notes..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="w-full px-4 py-2.5 pl-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
-              />
-              <svg
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
+        {/* Calendar Navigation */}
+        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-3 max-w-2xl mx-auto">
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={goToPreviousMonth}
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-            </div>
-            {query && (
+            </button>
+            
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-800">
+                {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+              </h2>
               <button
-                onClick={() => setQuery('')}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                onClick={goToToday}
+                className="px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-xs font-medium"
               >
-                Clear
+                Today
               </button>
-            )}
+            </div>
+            
+            <button
+              onClick={goToNextMonth}
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
+            >
+              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
-        </div>
 
-        {/* Table card */}
-        <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200">
-          <div className="bg-white p-4">
-            <DataTable<ScheduleItem>
-              columns={columns}
-              data={filteredSchedules}
-              loading={loading}
-              loadingMessage="Loading schedules..."
-              emptyState="No schedules found for your assigned audit plans."
-              rowKey={(row) => row.scheduleId}
-              getRowClassName={() => 'border-b border-gray-100 transition-colors hover:bg-gray-50'}
-            />
+          {/* Legend */}
+          <div className="flex items-center gap-3 mb-3 pb-2 border-b border-gray-200">
+            <div className="flex items-center gap-1">
+              <div className="w-2.5 h-2.5 rounded bg-blue-500"></div>
+              <span className="text-xs text-gray-600">Planned</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2.5 h-2.5 rounded bg-orange-500"></div>
+              <span className="text-xs text-gray-600">Actual</span>
+            </div>
           </div>
+
+          {/* Calendar Grid */}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-3 text-gray-600">Loading schedule...</span>
+            </div>
+          ) : calendarDays.length > 0 ? (
+            <>
+              {/* Day headers */}
+              <div className="grid grid-cols-7 gap-1 mb-1.5">
+                {dayNames.map((day) => (
+                  <div
+                    key={day}
+                    className="text-center font-medium text-gray-600 py-0.5 text-xs"
+                  >
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Calendar days */}
+              <div className="grid grid-cols-7 gap-1">
+                {calendarDays.map((day, index) => {
+                  const dateStr = formatDateForSet(day.date);
+                  const isPlanned = highlightedDates.plannedDates.has(dateStr);
+                  const isActual = highlightedDates.actualDates.has(dateStr);
+                  
+                  let bgColor = '';
+                  let textColor = 'text-gray-700';
+                  
+                  if (!day.isCurrentMonth) {
+                    textColor = 'text-gray-300';
+                  } else if (isActual) {
+                    // Actual date takes priority (orange)
+                    bgColor = 'bg-orange-500';
+                    textColor = 'text-white font-semibold';
+                  } else if (isPlanned) {
+                    // Planned date range (blue)
+                    bgColor = 'bg-blue-500';
+                    textColor = 'text-white';
+                  } else if (day.isToday) {
+                    bgColor = 'bg-gray-100';
+                    textColor = 'text-blue-600 font-semibold';
+                  }
+
+                  return (
+                    <div
+                      key={index}
+                      className={`
+                        aspect-square p-0.5 rounded border transition-all
+                        ${day.isCurrentMonth ? 'border-gray-200' : 'border-transparent'}
+                        ${day.isToday && !isPlanned && !isActual ? 'border-blue-500 border-2' : ''}
+                        ${bgColor || 'hover:bg-gray-50'}
+                        ${textColor}
+                        ${day.isCurrentMonth ? 'cursor-pointer' : 'cursor-default'}
+                        flex flex-col items-center justify-center
+                      `}
+                      title={day.isCurrentMonth ? formatDate(day.date) : ''}
+                    >
+                      <span className="text-xs font-medium leading-tight">{day.date.getDate()}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-gray-500">No calendar data available</p>
+            </div>
+          )}
         </div>
       </div>
     </MainLayout>
@@ -308,4 +342,3 @@ const AuditorSchedule = () => {
 };
 
 export default AuditorSchedule;
-
