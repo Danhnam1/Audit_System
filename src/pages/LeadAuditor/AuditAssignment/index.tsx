@@ -77,6 +77,9 @@ export default function AuditAssignment() {
   const [auditors, setAuditors] = useState<Auditor[]>([]);
   const [selectedAuditorIds, setSelectedAuditorIds] = useState<string[]>([]);
   const [notes, setNotes] = useState<string>('');
+  const [plannedStartDate, setPlannedStartDate] = useState<string>('');
+  const [plannedEndDate, setPlannedEndDate] = useState<string>('');
+  const [estimatedDuration, setEstimatedDuration] = useState<number | ''>('');
   const [loadingAuditors, setLoadingAuditors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -309,6 +312,9 @@ export default function AuditAssignment() {
     setSelectedDepartment(null);
     setSelectedAuditorIds([]);
     setNotes('');
+    setPlannedStartDate('');
+    setPlannedEndDate('');
+    setEstimatedDuration('');
     setAuditors([]);
     setShowConfirmModal(false);
   };
@@ -457,6 +463,34 @@ export default function AuditAssignment() {
       return;
     }
     
+    // Validate dates if provided
+    const selectedAudit = audits.find(a => a.auditId === selectedAuditId);
+    if (plannedStartDate || plannedEndDate) {
+      if (!plannedStartDate || !plannedEndDate) {
+        toast.error('Both planned start date and end date are required');
+        return;
+      }
+      
+      const startDate = new Date(plannedStartDate);
+      const endDate = new Date(plannedEndDate);
+      
+      if (endDate < startDate) {
+        toast.error('Planned end date must be after start date');
+        return;
+      }
+      
+      // Validate dates are within audit plan timeframe
+      if (selectedAudit) {
+        const auditStart = new Date(selectedAudit.startDate);
+        const auditEnd = new Date(selectedAudit.endDate);
+        
+        if (startDate < auditStart || endDate > auditEnd) {
+          toast.error(`Planned dates must be within audit timeframe: ${auditStart.toLocaleDateString()} - ${auditEnd.toLocaleDateString()}`);
+          return;
+        }
+      }
+    }
+    
     // Determine if current department has sensitive areas
     const isSensitiveDept = !!(
       selectedDepartment.sensitiveFlag ||
@@ -487,6 +521,9 @@ export default function AuditAssignment() {
           auditorId: selectedAuditorIds[0],
           notes: notes || '',
           status: 'Assigned',
+          plannedStartDate: plannedStartDate || undefined,
+          plannedEndDate: plannedEndDate || undefined,
+          estimatedDuration: estimatedDuration ? Number(estimatedDuration) : undefined,
         });
         if (!isSensitiveDept) {
           toast.success('Auditor assigned successfully!');

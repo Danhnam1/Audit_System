@@ -77,6 +77,13 @@ export const getMyFindings = async (): Promise<Finding[]> => {
   return unwrap<Finding>(res);
 };
 
+// Get my witnessed findings (where current user is assigned as witness)
+export const getMyWitnessedFindings = async (): Promise<Finding[]> => {
+  const res = await apiClient.get(`/Findings/my-witnessed`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Finding>(res);
+};
+
 // Get finding by ID
 export const getFindingById = async (findingId: string): Promise<Finding> => {
   return apiClient.get(`/Findings/${findingId}`) as any;

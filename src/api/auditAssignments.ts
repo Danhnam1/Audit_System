@@ -11,6 +11,12 @@ export interface AuditAssignment {
   auditTitle?: string;
   departmentName?: string;
   auditorName?: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  estimatedDuration?: number;
+  actualStartDate?: string;
+  actualEndDate?: string;
+  rejectionReason?: string;
 }
 
 export interface CreateAuditAssignmentDto {
@@ -19,6 +25,9 @@ export interface CreateAuditAssignmentDto {
   auditorId: string;
   notes?: string;
   status: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  estimatedDuration?: number;
 }
 
 export interface BulkCreateAuditAssignmentDto {
@@ -197,4 +206,30 @@ export const bulkCreateAuditAssignments = async (dto: BulkCreateAuditAssignmentD
     }
   }
   return [];
+};
+
+// Accept schedule - Update actual audit date
+export const acceptSchedule = async (
+  assignmentId: string,
+  actualStartDate: string,
+  actualEndDate: string
+): Promise<AuditAssignment> => {
+  const payload = {
+    ActualStartDate: actualStartDate,
+    ActualEndDate: actualEndDate
+  };
+  const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/actual-audit-date`, payload);
+  return res;
+};
+
+// Reject schedule
+export const rejectSchedule = async (
+  assignmentId: string,
+  rejectionReason: string
+): Promise<AuditAssignment> => {
+  const payload = {
+    RejectionReason: rejectionReason
+  };
+  const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/reject-schedule`, payload);
+  return res;
 };
