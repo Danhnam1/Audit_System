@@ -23,6 +23,7 @@ interface Assignment {
 }
 
 const AuditorSchedule = () => {
+  console.log('AuditorSchedule component rendering');
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -325,9 +326,16 @@ const AuditorSchedule = () => {
     }
   };
 
+  console.log('AuditorSchedule render - assignments:', assignments.length, 'loading:', loading);
+  
+  // Early return for debugging - remove after fixing
+  if (typeof window !== 'undefined') {
+    console.log('Component is rendering in browser');
+  }
+  
   return (
     <MainLayout>
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 bg-white">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg p-6 text-white">
           <h1 className="text-3xl font-bold mb-2">Audit Schedule</h1>
