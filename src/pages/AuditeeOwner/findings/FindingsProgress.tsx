@@ -398,6 +398,13 @@ const FindingsProgress = () => {
     setSubmittingAssign(true);
 
     try {
+      // Validate deptId - must be a valid positive number
+      if (!selectedFindingForAssign.deptId || selectedFindingForAssign.deptId <= 0) {
+        toast.error('Invalid department ID. Please ensure the finding has a valid department.');
+        setSubmittingAssign(false);
+        return;
+      }
+
       // Create action for this root cause with rootCauseId link
       // Keep finding description separate, don't mix with root cause info
       await createAction({
@@ -405,7 +412,7 @@ const FindingsProgress = () => {
         title: `${selectedFindingForAssign.title} - ${selectedRootCause.name}`,
         description: selectedFindingForAssign.description || '', // Keep original finding description
         assignedTo: individualStaffId,
-        assignedDeptId: selectedFindingForAssign.deptId || 0,
+        assignedDeptId: selectedFindingForAssign.deptId, // Only send if valid (> 0)
         progressPercent: 0,
         dueDate: new Date(individualDueDate).toISOString(),
         reviewFeedback: '',

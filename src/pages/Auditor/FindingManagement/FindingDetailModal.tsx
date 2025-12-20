@@ -3,7 +3,7 @@ import { getFindingById, type Finding } from '../../../api/findings';
 import { getAttachments, type Attachment } from '../../../api/attachments';
 import { getUserById } from '../../../api/adminUsers';
 import { getDepartmentById } from '../../../api/departments';
-import { createRootCause, type CreateRootCauseDto, updateRootCause, approveRootCause, rejectRootCause, getRootCauseLogs, type RootCauseLog } from '../../../api/rootCauses';
+import { createRootCause, type CreateRootCauseDto, updateRootCause, approveRootCause, rejectRootCause, getRootCauseLogs } from '../../../api/rootCauses';
 import useAuthStore from '../../../store/useAuthStore';
 import apiClient from '../../../api/client';
 
@@ -947,7 +947,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   <div className="mt-3 pl-10 border-l-2 border-gray-300 pl-4">
                                     <h5 className="text-xs font-semibold text-gray-600 mb-2 uppercase">History</h5>
                                     <div className="space-y-2">
-                                      {rc.history.map((log: any, logIndex: number) => {
+                                      {rc.history.map((log: any) => {
                                         let oldData: any = {};
                                         let newData: any = {};
                                         

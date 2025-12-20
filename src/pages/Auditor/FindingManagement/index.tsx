@@ -123,7 +123,11 @@ const SQAStaffFindingManagement = () => {
             const auditTitle = audit.title || audit.name || auditData.title || auditData.name || auditAssignments[0]?.auditTitle || 'Department Audit';
             const status = audit.status || audit.Status || auditData.status || auditData.Status || auditAssignments[0]?.status || 'Unknown';
             const scope = audit.scope || audit.Scope || auditData.scope || auditData.Scope || '';
-            const startDate = audit.startDate || audit.StartDate || auditData.startDate || auditData.StartDate || '';
+            // Try to get startDate from audit, if not available, try from first assignment's plannedStartDate
+            let startDate = audit.startDate || audit.StartDate || auditData.startDate || auditData.StartDate || '';
+            if (!startDate && auditAssignments.length > 0) {
+              startDate = auditAssignments[0]?.plannedStartDate || '';
+            }
             const endDate = audit.endDate || audit.EndDate || auditData.endDate || auditData.EndDate || '';
             const objective = audit.objective || audit.Objective || auditData.objective || auditData.Objective || '';
             
@@ -154,12 +158,17 @@ const SQAStaffFindingManagement = () => {
               auditType: '',
               status: firstAssignment?.status || 'Unknown',
               departmentCount: uniqueDeptIds.size,
+              startDate: firstAssignment?.plannedStartDate || '',
             };
           }
         });
 
         const auditResults = await Promise.all(auditPromises);
         const validAudits: AuditCard[] = auditResults.filter((audit): audit is AuditCard => audit !== null);
+        
+        // Get today's date at midnight for comparison
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
         
         // Filter out audits with status "Archived" or "Inactive" (case-insensitive)
         const activeAudits = validAudits.filter((audit) => {
@@ -176,16 +185,42 @@ const SQAStaffFindingManagement = () => {
           
           if (isArchived || isInactive) {
             console.log(`🚫 Filtering out closed audit: ${audit.auditTitle} (status: "${status}")`);
+            return false;
           }
           
-          return !isArchived && !isInactive;
+          // Filter out future audits - only show audits that have started (startDate <= today)
+          if (audit.startDate) {
+            try {
+              const startDate = new Date(audit.startDate);
+              startDate.setHours(0, 0, 0, 0);
+              
+              // Only show if startDate is today or in the past
+              if (startDate > today) {
+                console.log(`🚫 Filtering out future audit: ${audit.auditTitle} (startDate: ${audit.startDate})`);
+                return false;
+              }
+            } catch (err) {
+              console.warn(`⚠️ Invalid startDate for audit ${audit.auditTitle}:`, audit.startDate);
+              // If we can't parse the date, include it to be safe
+            }
+          } else {
+            // If no startDate, check if there's a plannedStartDate from assignments
+            // For now, if no startDate at all, we'll include it
+            console.log(`⚠️ Audit ${audit.auditTitle} has no startDate, including it`);
+          }
+          
+          return true;
         });
         
-        console.log('🎯 Final audits to display (excluding archived/inactive):', {
+        console.log('🎯 Final audits to display (excluding archived/inactive/future):', {
           total: validAudits.length,
           active: activeAudits.length,
           removed: validAudits.length - activeAudits.length,
-          audits: activeAudits.map(a => ({ title: a.auditTitle, status: a.status }))
+          audits: activeAudits.map(a => ({ 
+            title: a.auditTitle, 
+            status: a.status,
+            startDate: a.startDate 
+          }))
         });
         
         // Debug: Log all statuses to see what we're getting
