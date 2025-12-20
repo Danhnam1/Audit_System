@@ -140,6 +140,13 @@ export const getAuditAssignmentsByDepartment = async (deptId: number): Promise<A
   return [];
 };
 
+// Get assignments by department ID using POST method
+export const getAuditAssignmentsByDepartmentPost = async (deptId: number): Promise<any> => {
+  const res: any = await apiClient.post('/AuditAssignment/by-department', { deptId });
+  // Return the full response so component can parse it
+  return res;
+};
+
 // Create new audit assignment
 export const createAuditAssignment = async (dto: CreateAuditAssignmentDto): Promise<AuditAssignment> => {
   const pascalDto = toPascalCase(dto);

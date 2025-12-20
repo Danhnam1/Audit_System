@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { MainLayout } from '../../layouts';
 import { useAuth } from '../../contexts';
 import { PageHeader } from '../../components';
-import { getAuditAssignmentsByDepartment } from '../../api/auditAssignments';
+import { getAuditAssignmentsByDepartmentPost } from '../../api/auditAssignments';
 import { getDepartmentById } from '../../api/departments';
 import { unwrap } from '../../utils/normalize';
 import { toast } from 'react-toastify';
+import { useDeptId } from '../../store/useAuthStore';
 import ScanQRContent from './ScanQRContent';
 
 interface AuditAssignment {
@@ -17,6 +18,8 @@ interface AuditAssignment {
   actualAuditDate?: string | null;
   auditTitle?: string;
   departmentName?: string;
+  auditorName?: string;
+  status?: string;
 }
 
 interface CalendarDay {
@@ -27,6 +30,7 @@ interface CalendarDay {
   audits: Array<{
     auditId: string;
     auditTitle: string;
+    auditorName?: string;
     date: string;
     type: 'planned' | 'actual';
   }>;
@@ -34,19 +38,37 @@ interface CalendarDay {
 
 const AuditScheduleCalendar = () => {
   const { user } = useAuth();
+  const deptId = useDeptId();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [assignments, setAssignments] = useState<AuditAssignment[]>([]);
   const [department, setDepartment] = useState<{ deptId: number; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [showScanQRModal, setShowScanQRModal] = useState(false);
 
-  // Get department from user
+  // Get department from deptId hook
   useEffect(() => {
     const loadDepartment = async () => {
       try {
-        // Try to get department from user object
+        console.log('👤 User object:', user);
+        console.log('📋 deptId from hook:', deptId);
+        
+        // Try to get department from deptId hook first
+        if (deptId) {
+          console.log('📋 Loading department with deptId:', deptId);
+          const dept = await getDepartmentById(deptId);
+          console.log('✅ Department loaded:', dept);
+          setDepartment({
+            deptId: dept.deptId || deptId,
+            name: dept.name || 'Department',
+          });
+          return;
+        }
+        
+        // Fallback: try to get department from user object
         if (user?.deptId) {
+          console.log('📋 Loading department with user.deptId:', user.deptId);
           const dept = await getDepartmentById(user.deptId);
+          console.log('✅ Department loaded:', dept);
           setDepartment({
             deptId: dept.deptId || user.deptId,
             name: dept.name || 'Department',
@@ -54,8 +76,8 @@ const AuditScheduleCalendar = () => {
           return;
         }
 
-        // If no deptId in user, try to get from assignments
-        // This is a fallback - ideally user should have deptId
+        // If no deptId found
+        console.warn('⚠️ No deptId found in hook or user object');
         toast.warning('Department information not found. Please contact administrator.');
       } catch (error) {
         console.error('Failed to load department:', error);
@@ -64,7 +86,7 @@ const AuditScheduleCalendar = () => {
     };
 
     loadDepartment();
-  }, [user]);
+  }, [deptId, user]);
 
   // Load assignments and schedules
   useEffect(() => {
@@ -73,22 +95,51 @@ const AuditScheduleCalendar = () => {
 
       setLoading(true);
       try {
-        // Get assignments for this department
-        const assignmentsResponse: any = await getAuditAssignmentsByDepartment(department.deptId);
+        // Get assignments for this department using POST method
+        const assignmentsResponse: any = await getAuditAssignmentsByDepartmentPost(department.deptId);
+        console.log('📦 Raw API response:', assignmentsResponse);
+        
         let assignmentsData: AuditAssignment[] = [];
         
-        if (Array.isArray(assignmentsResponse)) {
-          assignmentsData = assignmentsResponse;
-        } else if (assignmentsResponse?.$values && Array.isArray(assignmentsResponse.$values)) {
+        if (assignmentsResponse?.$values && Array.isArray(assignmentsResponse.$values)) {
           assignmentsData = assignmentsResponse.$values;
-        } else if (assignmentsResponse?.data && Array.isArray(assignmentsResponse.data)) {
-          assignmentsData = assignmentsResponse.data;
+          console.log('✅ Found $values array:', assignmentsData.length, 'items');
+        } else if (Array.isArray(assignmentsResponse)) {
+          assignmentsData = assignmentsResponse;
+          console.log('✅ Response is direct array:', assignmentsData.length, 'items');
+        } else if (assignmentsResponse?.data) {
+          const data = assignmentsResponse.data;
+          if (data?.$values && Array.isArray(data.$values)) {
+            assignmentsData = data.$values;
+            console.log('✅ Found data.$values:', assignmentsData.length, 'items');
+          } else if (Array.isArray(data)) {
+            assignmentsData = data;
+            console.log('✅ Found data array:', assignmentsData.length, 'items');
+          }
         } else {
           const unwrapped = unwrap<AuditAssignment>(assignmentsResponse);
           assignmentsData = Array.isArray(unwrapped) ? unwrapped : [];
+          console.log('✅ Used unwrap fallback:', assignmentsData.length, 'items');
         }
 
-        setAssignments(assignmentsData);
+        console.log('📋 Parsed assignments:', assignmentsData);
+        
+        // Filter only assignments with status "Assigned"
+        const assignedOnly = assignmentsData.filter(a => {
+          const status = (a.status || '').trim();
+          console.log('Checking assignment status:', status, '=== "Assigned"?', status === 'Assigned');
+          return status === 'Assigned';
+        });
+        
+        console.log('✅ Filtered Assigned assignments:', assignedOnly.length, 'items');
+        console.log('📅 Assignments with dates:', assignedOnly.map(a => ({
+          auditTitle: a.auditTitle,
+          plannedStartDate: a.plannedStartDate,
+          plannedEndDate: a.plannedEndDate,
+          status: a.status
+        })));
+        
+        setAssignments(assignedOnly);
       } catch (error) {
         console.error('Failed to load audit data:', error);
         toast.error('Failed to load audit schedule');
@@ -121,61 +172,73 @@ const AuditScheduleCalendar = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Create map of dates to audits
+    // Create map of dates to audits - only for Assigned status
     const dateToAuditsMap = new Map<string, Array<{
       auditId: string;
       auditTitle: string;
+      auditorName?: string;
       date: string;
       type: 'planned' | 'actual';
     }>>();
 
+    console.log('🗓️ Processing assignments for calendar:', assignments.length);
+    
     assignments.forEach((assignment) => {
-      const auditTitle = assignment.auditTitle || 'Audit';
-      
-      // Add planned dates
-      if (assignment.plannedStartDate && assignment.plannedEndDate) {
-        let start = new Date(assignment.plannedStartDate);
-        let end = new Date(assignment.plannedEndDate);
-        
-        if (end < start) {
-          [start, end] = [end, start];
-        }
-        
-        const current = new Date(start);
-        current.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        
-        while (current <= end) {
-          const dateStr = formatDateForSet(current);
-          if (!dateToAuditsMap.has(dateStr)) {
-            dateToAuditsMap.set(dateStr, []);
-          }
-          dateToAuditsMap.get(dateStr)!.push({
-            auditId: assignment.auditId,
-            auditTitle,
-            date: dateStr,
-            type: 'planned',
-          });
-          current.setDate(current.getDate() + 1);
-        }
+      // Only process assignments with status "Assigned"
+      const status = (assignment.status || '').trim();
+      if (status !== 'Assigned') {
+        console.log('⏭️ Skipping assignment with status:', status);
+        return;
       }
-
-      // Add actual audit date
+      
+      const auditTitle = assignment.auditTitle || 'Audit';
+      const auditorName = assignment.auditorName || 'Unknown Auditor';
+      
+      console.log('📅 Processing assignment:', {
+        auditTitle,
+        actualAuditDate: assignment.actualAuditDate
+      });
+      
+      // Chỉ tô màu xanh cho ngày có actualAuditDate
       if (assignment.actualAuditDate) {
-        const actualDate = new Date(assignment.actualAuditDate);
+        let actualDate: Date;
+        
+        if (typeof assignment.actualAuditDate === 'string') {
+          // Extract YYYY-MM-DD from ISO string (e.g., "2025-12-30T00:00:00" -> "2025-12-30")
+          const dateMatch = assignment.actualAuditDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (dateMatch) {
+            actualDate = new Date(parseInt(dateMatch[1]), parseInt(dateMatch[2]) - 1, parseInt(dateMatch[3]));
+          } else {
+            actualDate = new Date(assignment.actualAuditDate);
+          }
+        } else {
+          actualDate = new Date(assignment.actualAuditDate);
+        }
+        
         actualDate.setHours(0, 0, 0, 0);
         const dateStr = formatDateForSet(actualDate);
+        
         if (!dateToAuditsMap.has(dateStr)) {
           dateToAuditsMap.set(dateStr, []);
         }
         dateToAuditsMap.get(dateStr)!.push({
           auditId: assignment.auditId,
           auditTitle,
+          auditorName,
           date: dateStr,
-          type: 'actual',
+          type: 'planned', // Dùng type 'planned' để tô màu xanh
         });
+        console.log('✅ Added actual audit date:', dateStr, 'for', auditTitle);
+      } else {
+        console.log('⚠️ Assignment missing actualAuditDate');
       }
     });
+
+    console.log('🗓️ Date to audits map:', Array.from(dateToAuditsMap.entries()).map(([date, audits]) => ({
+      date,
+      count: audits.length,
+      audits: audits.map(a => ({ title: a.auditTitle, auditor: a.auditorName }))
+    })));
 
     // Previous month days
     const prevMonthLastDay = new Date(year, month, 0).getDate();
@@ -284,9 +347,9 @@ const AuditScheduleCalendar = () => {
 
         {/* Calendar */}
         <div className="px-4 sm:px-6">
-          <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-md border border-gray-200 p-5 max-w-3xl mx-auto">
             {loading ? (
-              <div className="flex items-center justify-center py-12">
+              <div className="flex items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 <span className="ml-3 text-gray-600">Loading schedule...</span>
               </div>
@@ -296,7 +359,7 @@ const AuditScheduleCalendar = () => {
                 <div className="flex items-center justify-between mb-4">
                   <button
                     onClick={goToPreviousMonth}
-                    className="p-2 hover:bg-gray-100 rounded transition-colors"
+                    className="p-1.5 hover:bg-gray-100 rounded transition-colors"
                   >
                     <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -304,7 +367,7 @@ const AuditScheduleCalendar = () => {
                   </button>
                   
                   <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-semibold text-gray-800">
+                    <h2 className="text-lg font-semibold text-gray-800">
                       {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
                     </h2>
                     <button
@@ -317,7 +380,7 @@ const AuditScheduleCalendar = () => {
                   
                   <button
                     onClick={goToNextMonth}
-                    className="p-2 hover:bg-gray-100 rounded transition-colors"
+                    className="p-1.5 hover:bg-gray-100 rounded transition-colors"
                   >
                     <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -326,14 +389,10 @@ const AuditScheduleCalendar = () => {
                 </div>
 
                 {/* Legend */}
-                <div className="flex items-center gap-4 mb-4 pb-3 border-b border-gray-200">
+                <div className="flex items-center gap-4 mb-3 pb-2 border-b border-gray-200">
                   <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-blue-500"></div>
+                    <div className="w-3.5 h-3.5 rounded bg-blue-500"></div>
                     <span className="text-sm text-gray-600">Planned Date</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded bg-orange-500"></div>
-                    <span className="text-sm text-gray-600">Actual Audit Date</span>
                   </div>
                 </div>
 
@@ -351,18 +410,26 @@ const AuditScheduleCalendar = () => {
 
                   {/* Calendar days */}
                   {calendarDays.map((day, index) => {
+                    const dateStr = formatDateForSet(day.date);
                     const hasPlanned = day.audits.some(a => a.type === 'planned');
-                    const hasActual = day.audits.some(a => a.type === 'actual');
+                    
+                    // Debug for current month days with audits
+                    if (day.isCurrentMonth && day.hasAudit) {
+                      console.log(`📅 Day ${day.date.getDate()}/${day.date.getMonth() + 1}/${day.date.getFullYear()}:`, {
+                        dateStr,
+                        hasPlanned,
+                        auditsCount: day.audits.length,
+                        audits: day.audits.map(a => ({ title: a.auditTitle, auditor: a.auditorName, type: a.type }))
+                      });
+                    }
                     
                     let bgColor = '';
                     let textColor = 'text-gray-700';
                     
                     if (!day.isCurrentMonth) {
                       textColor = 'text-gray-300';
-                    } else if (hasActual) {
-                      bgColor = 'bg-orange-500';
-                      textColor = 'text-white font-semibold';
                     } else if (hasPlanned) {
+                      // Tô màu xanh cho ngày có actualAuditDate
                       bgColor = 'bg-blue-500';
                       textColor = 'text-white';
                     } else if (day.isToday) {
@@ -370,17 +437,29 @@ const AuditScheduleCalendar = () => {
                       textColor = 'text-blue-600 font-semibold';
                     }
 
-                    const tooltipText = day.audits.length > 0
-                      ? day.audits.map(a => a.auditTitle).join(', ')
-                      : formatDate(day.date);
+                    // Build tooltip text with auditor name and audit title
+                    let tooltipText = '';
+                    if (day.audits.length > 0) {
+                      const tooltipParts = day.audits.map(a => {
+                        if (a.auditorName && a.auditTitle) {
+                          return `${a.auditorName} - ${a.auditTitle}`;
+                        } else if (a.auditTitle) {
+                          return a.auditTitle;
+                        }
+                        return 'Audit';
+                      });
+                      tooltipText = tooltipParts.join('\n');
+                    } else {
+                      tooltipText = formatDate(day.date);
+                    }
 
                     return (
                       <div
                         key={index}
                         className={`
-                          aspect-square p-1 rounded border transition-all relative group
+                          min-h-[60px] p-2 rounded border transition-all relative group
                           ${day.isCurrentMonth ? 'border-gray-200' : 'border-transparent'}
-                          ${day.isToday && !hasPlanned && !hasActual ? 'border-blue-500 border-2' : ''}
+                          ${day.isToday && !hasPlanned ? 'border-blue-500 border-2' : ''}
                           ${bgColor || 'hover:bg-gray-50'}
                           ${textColor}
                           flex flex-col items-center justify-center
@@ -388,25 +467,42 @@ const AuditScheduleCalendar = () => {
                         `}
                         title={tooltipText}
                       >
-                        <span className="text-sm font-medium">{day.date.getDate()}</span>
+                        <span className="text-base font-medium leading-tight">{day.date.getDate()}</span>
                         {day.hasAudit && (
-                          <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 flex gap-0.5">
-                            {day.audits.map((audit, idx) => (
+                          <div className="absolute bottom-1.5 left-1/2 transform -translate-x-1/2 flex gap-1">
+                            {day.audits.map((_, idx) => (
                               <div
                                 key={idx}
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  audit.type === 'actual' ? 'bg-orange-300' : 'bg-blue-300'
-                                }`}
+                                className="w-2 h-2 rounded-full bg-blue-300"
                               />
                             ))}
                           </div>
                         )}
                         {/* Tooltip */}
                         {day.hasAudit && day.isCurrentMonth && (
-                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                            {tooltipText}
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 px-4 py-3 bg-gray-900 text-white text-sm rounded-lg shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 min-w-[280px] max-w-sm">
+                            <div className="space-y-2">
+                              {day.audits.map((audit, idx) => (
+                                <div key={idx} className={idx > 0 ? 'pt-2 border-t border-gray-700' : ''}>
+                                  {audit.auditorName && (
+                                    <div className="font-bold text-white text-base mb-1 flex items-center gap-2">
+                                      <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                      </svg>
+                                      {audit.auditorName}
+                                    </div>
+                                  )}
+                                  <div className="text-gray-200 text-sm leading-relaxed flex items-start gap-2">
+                                    <svg className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                    <span>{audit.auditTitle}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                             <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                              <div className="border-4 border-transparent border-t-gray-900"></div>
+                              <div className="border-8 border-transparent border-t-gray-900"></div>
                             </div>
                           </div>
                         )}
