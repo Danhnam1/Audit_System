@@ -457,6 +457,13 @@ export default function AuditAssignment() {
       return;
     }
     
+    // Determine if current department has sensitive areas
+    const isSensitiveDept = !!(
+      selectedDepartment.sensitiveFlag ||
+      selectedDepartment.hasSensitiveAreas ||
+      (selectedDepartment.sensitiveAreas && selectedDepartment.sensitiveAreas.length > 0)
+    );
+
     setSubmitting(true);
     try {
       // Use bulk API if multiple auditors, otherwise single API
@@ -467,7 +474,11 @@ export default function AuditAssignment() {
           auditorIds: selectedAuditorIds,
           notes: notes || '',
         });
-        toast.success(`Successfully assigned ${result.length} auditor(s) to department.`);
+        // For non-sensitive departments, show success immediately.
+        // For sensitive departments, show success only after QR codes are issued.
+        if (!isSensitiveDept) {
+          toast.success(`Successfully assigned ${result.length} auditor(s) to department.`);
+        }
       } else {
         // Single auditor - use existing API
         await createAuditAssignment({
@@ -477,42 +488,38 @@ export default function AuditAssignment() {
           notes: notes || '',
           status: 'Assigned',
         });
-        toast.success('Auditor assigned successfully!');
+        if (!isSensitiveDept) {
+          toast.success('Auditor assigned successfully!');
+        }
       }
       
-
-      // Only issue QR codes when department is sensitive
-      const isSensitiveDept = !!(
-        selectedDepartment.sensitiveFlag ||
-        selectedDepartment.hasSensitiveAreas ||
-        (selectedDepartment.sensitiveAreas && selectedDepartment.sensitiveAreas.length > 0)
-      );
 
       if (isSensitiveDept) {
+        // Add checklist items from template to this audit and department
+        try {
+          console.log(
+            '📝 Adding checklist items from template - AuditId:',
+            selectedAuditId,
+            'DeptId:',
+            selectedDepartment.deptId
+          );
+          await createAuditChecklistItemsFromTemplate(
+            selectedAuditId,
+            selectedDepartment.deptId
+          );
+          console.log('✅ Checklist items added successfully');
+        } catch (checklistError: any) {
+          console.error('Failed to add checklist items:', checklistError);
+          // Do not block assignment if checklist creation fails
+        }
 
-      // Add checklist items from template to this audit and department
-      try {
-        console.log('📝 Adding checklist items from template - AuditId:', selectedAuditId, 'DeptId:', selectedDepartment.deptId);
-        await createAuditChecklistItemsFromTemplate(selectedAuditId, selectedDepartment.deptId);
-        console.log('✅ Checklist items added successfully');
-        // toast.success('Checklist items added from template');
-      } catch (checklistError: any) {
-        console.error('Failed to add checklist items:', checklistError);
-        // Don't fail the whole assignment if checklist fails, just warn
-        // toast.warning('Assignment successful, but failed to add checklist items. Please add manually.');
-      }
-      
-      // Always issue QR codes after assignment (not just for sensitive areas)
-
-      // Get audit details for dates
-      const audit = audits.find(a => a.auditId === selectedAuditId);
-      if (audit && audit.startDate && audit.endDate) {
-          // Show QR grant modal to issue QR codes for assigned auditors (mandatory for sensitive)
+        // Always show QR modal for sensitive departments.
+        // Backend is responsible for calculating a valid QR validity window,
+        // even if audit start / end dates are missing.
         setShowQrGrantModal(true);
         setQrGrantResults([]);
-        // Don't close assign modal yet, will close after QR grant
+        // Don't close assign modal yet, will close after QR grant flow finishes.
         return;
-        }
       }
       
       // Non-sensitive or missing audit dates -> just close
@@ -887,10 +894,16 @@ export default function AuditAssignment() {
                   {/* Departments List */}
                   {departments.length > 0 && (
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-                      <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-                        <h2 className="text-lg font-medium text-gray-900">
-                          Departments ({departments.length})
-                        </h2>
+                      <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                        <div>
+                          <h2 className="text-lg font-medium text-gray-900">
+                            Departments ({departments.length})
+                          </h2>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Departments with <span className="font-semibold text-amber-700">Sensitive areas</span> are
+                            highlighted for your attention.
+                          </p>
+                        </div>
                       </div>
                       <div className="divide-y divide-gray-200">
                         {departments.map((dept) => {
@@ -906,16 +919,45 @@ export default function AuditAssignment() {
                                 .map((a) => [String(a.auditorId), a.auditorName || 'N/A'])
                             ).values()
                           );
+
+                          // Determine if this department has sensitive areas
+                          const isSensitiveDept = !!(
+                            dept.sensitiveFlag ||
+                            dept.hasSensitiveAreas ||
+                            (dept.sensitiveAreas && dept.sensitiveAreas.length > 0)
+                          );
                           
                           return (
                             <div
                               key={dept.deptId}
-                              className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                              className={`px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer ${
+                                isSensitiveDept ? 'border-l-4 border-l-amber-500 bg-amber-50/40' : ''
+                              }`}
                               onClick={() => handleViewDepartmentAssignments(dept)}
                             >
-                              <div className="flex items-center justify-between">
+                              <div className="flex items-center justify-between gap-4">
                                 <div className="flex-1">
-                                  <h3 className="text-base font-medium text-gray-900">{dept.name}</h3>
+                                  <div className="flex items-center gap-2">
+                                    <h3 className="text-base font-medium text-gray-900">{dept.name}</h3>
+                                    {isSensitiveDept && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                                        <svg
+                                          className="w-3.5 h-3.5"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M12 9v2m0 4h.01M5.07 19h13.86L12 5 5.07 19z"
+                                          />
+                                        </svg>
+                                        Sensitive area
+                                      </span>
+                                    )}
+                                  </div>
                                   {isAssigned && auditorNames.length > 0 && (
                                     <p className="text-sm text-gray-600 mt-1">
                                       Auditor{auditorNames.length > 1 ? 's' : ''}: {auditorNames.join(', ')}
