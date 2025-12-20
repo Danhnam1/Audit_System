@@ -23,6 +23,7 @@ const CAPAOwnerActionDetailModal = ({
   const [assignedToUser, setAssignedToUser] = useState<AdminUserDto | null>(null);
   const [rootCause, setRootCause] = useState<RootCause | null>(null);
   const [loadingRootCause, setLoadingRootCause] = useState(false);
+  const [showResponsiblePersonModal, setShowResponsiblePersonModal] = useState(false);
 
   useEffect(() => {
     if (isOpen && actionId) {
@@ -253,7 +254,7 @@ const CAPAOwnerActionDetailModal = ({
                   if (!hasRootCauseFromApi && !legacyRootCauseName) return null;
                   
                   return (
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 hover:bg-purple-100 transition-colors">
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 ">
                       <div className="flex items-start gap-3 mb-3">
                         <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center flex-shrink-0">
                           <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -353,7 +354,10 @@ const CAPAOwnerActionDetailModal = ({
                 {/* Details Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Responsible Person */}
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 hover:bg-purple-100 transition-colors md:col-span-2">
+                  <div 
+                    className={`bg-purple-50 border border-purple-200 rounded-lg p-6 hover:bg-purple-100 transition-colors md:col-span-2 ${assignedToUser ? 'cursor-pointer' : ''}`}
+                    onClick={() => assignedToUser && setShowResponsiblePersonModal(true)}
+                  >
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
                         <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -560,6 +564,91 @@ const CAPAOwnerActionDetailModal = ({
           </div>
         </div>
       </div>
+
+      {/* Responsible Person Detail Modal */}
+      {showResponsiblePersonModal && assignedToUser && (
+      <div className="fixed inset-0 z-[60] overflow-y-auto">
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+          onClick={() => setShowResponsiblePersonModal(false)}
+        />
+
+        {/* Modal */}
+        <div className="flex min-h-full items-center justify-center p-4">
+          <div
+            className="relative bg-white rounded-xl shadow-lg w-full max-w-2xl mx-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-purple-600 text-white p-6 rounded-t-xl">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+                  <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold mb-1">Responsible Person Details</h3>
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-8 space-y-4">
+              {/* Full Name */}
+              {assignedToUser.fullName && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-5">
+                  <label className="block text-xs font-bold text-purple-700 uppercase tracking-wide mb-2">Full Name</label>
+                  <p className="text-xl font-bold text-gray-900">{assignedToUser.fullName}</p>
+                </div>
+              )}
+
+              {/* Email */}
+              {assignedToUser.email && (
+                <div className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Email</label>
+                  </div>
+                  <p className="text-base font-semibold text-gray-900 pl-[52px]">{assignedToUser.email}</p>
+                </div>
+              )}
+
+
+              {/* Role */}
+              {assignedToUser.roleName && (
+                <div className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                      </svg>
+                    </div>
+                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Role</label>
+                  </div>
+                  <p className="text-base font-semibold text-gray-900 pl-[52px]">{assignedToUser.roleName}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 rounded-b-xl flex justify-end">
+              <button
+                onClick={() => setShowResponsiblePersonModal(false)}
+                className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      )}
     </div>
   );
 };

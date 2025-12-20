@@ -543,11 +543,7 @@ const ActionReview = () => {
                               <div className="text-sm font-semibold text-gray-900 group-hover:text-primary-700">
                                 {audit.title}
                               </div>
-                              {/* {audit.objective && (
-                                <div className="text-xs text-gray-500 mt-1 truncate max-w-xs">
-                                  {audit.objective}
-                                </div>
-                              )} */}
+                           
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                               <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getAuditTypeBadgeColor(audit.type)}`}>
