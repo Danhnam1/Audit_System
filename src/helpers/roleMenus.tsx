@@ -63,7 +63,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
           children: [
             { icon: <ReportsIcon />, label: 'Reports', path: `${ROUTES.AUDITOR}/reports` },
             { icon: <HiOutlineUpload />, label: 'History Upload', path: `${ROUTES.AUDITOR}/history-upload` },
-            { icon: <DocumentIcon />, label: 'Final Summary (Flow 5)', path: `${ROUTES.AUDITOR}/final-summary` },
+            { icon: <DocumentIcon />, label: 'Final Summary', path: `${ROUTES.AUDITOR}/final-summary` },
           ],
         },
         {
@@ -104,7 +104,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <AuditIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
         { icon: <ClockIcon />, label: 'Extension Requests', path: '/director/extension-requests' },
         { icon: <ArchiveIcon />, label: 'Archived History', path: '/director/archived-history' },
-        { icon: <DocumentIcon />, label: 'Final Summary & Effectiveness (Flow 5)', path: '/director/final-summary' },
+        { icon: <DocumentIcon />, label: 'Final Summary & Effectiveness', path: '/director/final-summary' },
         // { icon: <AuditIcon />, label: 'Review Audit Results', path: '/director/review-results' },
         // { icon: <ReportsIcon />, label: 'Summary Report', path: '/director/summary-report' },
       ];
@@ -116,7 +116,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <AuditIcon />, label: 'Audit Assignment', path: '/auditor/audit-assignment' },
         { icon: <DocumentIcon />, label: 'Review Reports', path: '/lead-auditor/lead-reports' },
         { icon: <ClipboardCheckIcon />, label: 'Action Review', path: '/lead-auditor/action-review' },
-        { icon: <DocumentIcon />, label: 'Final Summary Review (Flow 5)', path: '/lead-auditor/final-summary-review' },
+        { icon: <DocumentIcon />, label: 'Final Summary Review ', path: '/lead-auditor/final-summary-review' },
         { icon: <ArchiveIcon />, label: 'Archived History', path: '/lead-auditor/archived-history' },
       ];
 

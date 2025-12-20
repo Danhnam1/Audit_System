@@ -3,7 +3,7 @@ import { getFindingById, type Finding } from '../../../api/findings';
 import { getAttachments, type Attachment } from '../../../api/attachments';
 import { getUserById } from '../../../api/adminUsers';
 import { getDepartmentById } from '../../../api/departments';
-import { createRootCause, type CreateRootCauseDto, updateRootCause, approveRootCause, rejectRootCause } from '../../../api/rootCauses';
+import { createRootCause, type CreateRootCauseDto, updateRootCause, approveRootCause, rejectRootCause, getRootCauseLogs, type RootCauseLog } from '../../../api/rootCauses';
 import useAuthStore from '../../../store/useAuthStore';
 import apiClient from '../../../api/client';
 
@@ -117,13 +117,26 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
         }
       }
 
-      // Fetch all root causes by finding ID
+      // Fetch all root causes by finding ID with their history
       try {
         const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
         const rootCausesList = res.data.$values || [];
         console.log('Loaded root causes for finding:', findingId, rootCausesList);
         
-        setRootCauses(rootCausesList);
+        // Fetch history for each root cause
+        const rootCausesWithHistory = await Promise.all(
+          rootCausesList.map(async (rc: any) => {
+            try {
+              const logs = await getRootCauseLogs(rc.rootCauseId);
+              return { ...rc, history: logs };
+            } catch (err) {
+              console.error('Error loading history for root cause:', rc.rootCauseId, err);
+              return { ...rc, history: [] };
+            }
+          })
+        );
+        
+        setRootCauses(rootCausesWithHistory);
       } catch (err) {
         console.error('Error loading root causes:', err);
         setRootCauses([]);
@@ -173,7 +186,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           category: rootCauseCategory.trim(),
           deptId: finding.deptId || 0,
           findingId: findingId,
-          reasonReject: editingReasonReject || '',
+          // reasonReject: editingReasonReject || '',
           reviewBy: currentRootCause?.reviewBy || '',
         };
         
@@ -235,7 +248,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
             category: rc.category,
             deptId: finding?.deptId || 0,
             findingId: findingId,
-            reasonReject: rc.reasonReject || '',
+            // reasonReject: rc.reasonReject || '',
             reviewBy: rc.reviewBy || '',
           };
           await updateRootCause(rc.rootCauseId, rootCauseDto as any);
@@ -921,6 +934,65 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   </div>
                                 )}
                                 
+                                {/* History - Inline Display */}
+                                {rc.history && rc.history.length > 0 && (
+                                  <div className="mt-3 pl-10 border-l-2 border-gray-300 pl-4">
+                                    <h5 className="text-xs font-semibold text-gray-600 mb-2 uppercase">History</h5>
+                                    <div className="space-y-2">
+                                      {rc.history.map((log: any, logIndex: number) => {
+                                        let oldData: any = {};
+                                        let newData: any = {};
+                                        
+                                        try {
+                                          oldData = JSON.parse(log.oldValue || '{}');
+                                          newData = JSON.parse(log.newValue || '{}');
+                                        } catch (e) {
+                                          console.error('Error parsing log values:', e);
+                                        }
+                                        
+                                        // Only show Name, Description, ReasonReject changes
+                                        const relevantFields = ['Name', 'Description', 'ReasonReject'];
+                                        const changes: Array<{ field: string; oldValue: any; newValue: any }> = [];
+                                        
+                                        relevantFields.forEach(field => {
+                                          if (oldData[field] !== newData[field]) {
+                                            changes.push({
+                                              field: field,
+                                              oldValue: oldData[field],
+                                              newValue: newData[field]
+                                            });
+                                          }
+                                        });
+                                        
+                                        if (changes.length === 0) return null;
+                                        
+                                        return (
+                                          <div key={log.logId} className="bg-gray-50 border border-gray-200 rounded p-3 text-xs">
+                                            <div className="text-gray-500 mb-2">
+                                              {new Date(log.performedAt).toLocaleString('en-US', {
+                                                month: 'short',
+                                                day: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                              })}
+                                            </div>
+                                            {changes.map((change, idx) => (
+                                              <div key={idx} className="mb-2 last:mb-0">
+                                                <span className="font-medium text-gray-700">{change.field}:</span>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                  <span className="text-gray-500">{change.oldValue || 'empty'}</span>
+                                                  <span className="text-gray-400">→</span>
+                                                  <span className="text-gray-900 font-medium">{change.newValue || 'empty'}</span>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                
                                 <div className="flex items-center justify-between gap-4 mt-3 pl-10">
                                   <span className="flex items-center gap-1 text-xs text-gray-500">
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1399,6 +1471,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     </div>
   );
 };
+
 
 export default FindingDetailModal;
 

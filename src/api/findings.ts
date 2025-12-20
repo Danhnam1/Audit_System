@@ -49,6 +49,14 @@ export interface Finding {
   reviewerId?: string;
   source?: string;
   externalAuditorName?: string;
+  audit?: {
+    auditId: string;
+    title: string;
+    type: string;
+    scope?: string;
+    status?: string;
+  };
+  attachments?: any;
 }
 
 // Get all findings

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MainLayout } from '../../layouts';
 import { getMyWitnessedFindings, type Finding } from '../../api/findings';
-import { getAuditPlanById } from '../../api/audits';
 import { getSeverityColor } from '../../constants/statusColors';
 import WitnessedFindingDetailModal from '../Shared/WitnessedFindingDetailModal';
 
@@ -10,12 +9,20 @@ interface FindingWithAudit extends Finding {
   auditType?: string;
 }
 
+interface GroupedFindings {
+  auditId: string;
+  auditTitle: string;
+  auditType: string;
+  findings: FindingWithAudit[];
+}
+
 const MyWitnessed = () => {
   const [findings, setFindings] = useState<FindingWithAudit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [expandedAudits, setExpandedAudits] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchWitnessedFindings = async () => {
@@ -26,26 +33,12 @@ const MyWitnessed = () => {
         const witnessedFindings = await getMyWitnessedFindings();
         console.log('Witnessed Findings:', witnessedFindings);
 
-        // Fetch audit details for each finding
-        const findingsWithAudit = await Promise.all(
-          witnessedFindings.map(async (finding) => {
-            try {
-              const audit = await getAuditPlanById(finding.auditId);
-              return {
-                ...finding,
-                auditTitle: audit?.title,
-                auditType: audit?.type,
-              };
-            } catch (err) {
-              console.error(`Error fetching audit ${finding.auditId}:`, err);
-              return {
-                ...finding,
-                auditTitle: 'N/A',
-                auditType: 'N/A',
-              };
-            }
-          })
-        );
+        // API already returns audit object, just extract the needed fields
+        const findingsWithAudit = witnessedFindings.map((finding) => ({
+          ...finding,
+          auditTitle: finding.audit?.title || 'N/A',
+          auditType: finding.audit?.type || 'N/A',
+        }));
 
         setFindings(findingsWithAudit);
         setError(null);
@@ -72,6 +65,41 @@ const MyWitnessed = () => {
     setShowDetailModal(true);
   };
 
+  const toggleAudit = (auditId: string) => {
+    setExpandedAudits((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(auditId)) {
+        newSet.delete(auditId);
+      } else {
+        newSet.add(auditId);
+      }
+      return newSet;
+    });
+  };
+
+  // Group findings by audit
+  const groupedFindings: GroupedFindings[] = findings.reduce((acc, finding) => {
+    const existingGroup = acc.find((g) => g.auditId === finding.auditId);
+    if (existingGroup) {
+      existingGroup.findings.push(finding);
+    } else {
+      acc.push({
+        auditId: finding.auditId,
+        auditTitle: finding.auditTitle || 'N/A',
+        auditType: finding.auditType || 'N/A',
+        findings: [finding],
+      });
+    }
+    return acc;
+  }, [] as GroupedFindings[]);
+
+  // Expand all by default on first load
+  useEffect(() => {
+    if (groupedFindings.length > 0 && expandedAudits.size === 0) {
+      setExpandedAudits(new Set(groupedFindings.map((g) => g.auditId)));
+    }
+  }, [groupedFindings.length]);
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -96,118 +124,140 @@ const MyWitnessed = () => {
             <p className="text-gray-600 text-lg">You are not assigned as a witness for any findings.</p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-white">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Witnessed Findings ({findings.length})
-              </h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-100 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
-                      No.
-                    </th>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
-                      Title
-                    </th>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
-                      Audit
-                    </th>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
-                      Severity
-                    </th>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
-                      Deadline
-                    </th>
-                    <th className="px-6 py-4 text-center text-sm font-bold text-black uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white">
-                  {findings.map((finding, idx) => {
-                    const daysRemaining = finding.deadline ? calculateDaysRemaining(finding.deadline) : null;
-                    return (
-                      <tr key={finding.findingId} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4">
-                          <span className="text-sm text-gray-700">{idx + 1}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm font-medium text-gray-900">{finding.title}</div>
-                          <div className="text-sm text-[#5b6166] line-clamp-1">{finding.description}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900">{finding.auditTitle || 'N/A'}</div>
-                          <div className="text-xs text-[#5b6166]">{finding.auditType || 'N/A'}</div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getSeverityColor(finding.severity)}`}>
-                            {finding.severity}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            finding.status === 'Open' 
-                              ? 'bg-blue-100 text-blue-700'
-                              : finding.status === 'Received'
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : finding.status === 'Closed'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            {finding.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          {finding.deadline ? (
-                            <div>
-                              <div className="text-sm text-gray-900">
-                                {new Date(finding.deadline).toLocaleDateString('vi-VN')}
-                              </div>
-                              {daysRemaining !== null && (
-                                <div className={`text-xs font-medium ${
-                                  daysRemaining < 0 
-                                    ? 'text-red-600'
-                                    : daysRemaining <= 3
-                                    ? 'text-orange-600'
-                                    : 'text-gray-600'
-                                }`}>
-                                  {daysRemaining < 0 
-                                    ? `${Math.abs(daysRemaining)} days overdue`
-                                    : `${daysRemaining} days left`
-                                  }
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-[#5b6166]">No deadline</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-center">
-                            <button
-                              onClick={() => handleViewDetail(finding.findingId)}
-                              className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-colors flex items-center gap-1"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                              View
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+          <div className="space-y-4">
+            {groupedFindings.map((group) => {
+              const isExpanded = expandedAudits.has(group.auditId);
+              return (
+                <div key={group.auditId} className="bg-white rounded-xl shadow-md overflow-hidden">
+                  {/* Audit Header */}
+                  <button
+                    onClick={() => toggleAudit(group.auditId)}
+                    className="w-full px-6 py-4 flex items-center justify-between bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 transition-colors border-b border-blue-200"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center justify-center w-10 h-10 bg-blue-600 text-white rounded-lg font-bold">
+                        {group.findings.length}
+                      </div>
+                      <div className="text-left">
+                        <h3 className="text-lg font-bold text-gray-900">{group.auditTitle}</h3>
+                        <p className="text-sm text-gray-600">{group.auditType}</p>
+                      </div>
+                    </div>
+                    <svg
+                      className={`w-6 h-6 text-gray-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Findings Table */}
+                  {isExpanded && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-100 border-b border-gray-200">
+                          <tr>
+                            <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
+                              No.
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
+                              Title
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
+                              Severity
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
+                              Status
+                            </th>
+                            <th className="px-6 py-4 text-left text-sm font-bold text-black uppercase tracking-wider">
+                              Deadline
+                            </th>
+                            <th className="px-6 py-4 text-center text-sm font-bold text-black uppercase tracking-wider">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white">
+                          {group.findings.map((finding, idx) => {
+                            const daysRemaining = finding.deadline ? calculateDaysRemaining(finding.deadline) : null;
+                            return (
+                              <tr key={finding.findingId} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                                <td className="px-6 py-4">
+                                  <span className="text-sm text-gray-700">{idx + 1}</span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="text-sm font-medium text-gray-900">{finding.title}</div>
+                                  <div className="text-sm text-[#5b6166] line-clamp-1">{finding.description}</div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getSeverityColor(finding.severity)}`}>
+                                    {finding.severity}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                    finding.status === 'Open' 
+                                      ? 'bg-blue-100 text-blue-700'
+                                      : finding.status === 'Received'
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : finding.status === 'Closed'
+                                      ? 'bg-green-100 text-green-700'
+                                      : 'bg-gray-100 text-gray-700'
+                                  }`}>
+                                    {finding.status}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {finding.deadline ? (
+                                    <div>
+                                      <div className="text-sm text-gray-900">
+                                        {new Date(finding.deadline).toLocaleDateString('vi-VN')}
+                                      </div>
+                                      {daysRemaining !== null && (
+                                        <div className={`text-xs font-medium ${
+                                          daysRemaining < 0 
+                                            ? 'text-red-600'
+                                            : daysRemaining <= 3
+                                            ? 'text-orange-600'
+                                            : 'text-gray-600'
+                                        }`}>
+                                          {daysRemaining < 0 
+                                            ? `${Math.abs(daysRemaining)} days overdue`
+                                            : `${daysRemaining} days left`
+                                          }
+                                        </div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-sm text-[#5b6166]">No deadline</span>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center justify-center">
+                                    <button
+                                      onClick={() => handleViewDetail(finding.findingId)}
+                                      className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-colors flex items-center gap-1"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                      View
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

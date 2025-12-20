@@ -112,3 +112,27 @@ export const sendRootCauseForReview = async (id: number): Promise<void> => {
 export const deleteRootCause = async (id: number): Promise<void> => {
   await apiClient.delete(`/RootCauses/${id}`);
 };
+
+// Audit Log interfaces
+export interface RootCauseLog {
+  logId: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  oldValue: string;
+  newValue: string;
+  role: string;
+  performedBy: string;
+  performedAt: string;
+}
+
+// Get audit logs for root cause
+export const getRootCauseLogs = async (entityId: string): Promise<RootCauseLog[]> => {
+  try {
+    const res = await apiClient.get(`/RootCauses/${entityId}/audit-logs/update`);
+    return res.data.$values || [];
+  } catch (err) {
+    console.error('Error fetching root cause logs:', err);
+    return [];
+  }
+};
