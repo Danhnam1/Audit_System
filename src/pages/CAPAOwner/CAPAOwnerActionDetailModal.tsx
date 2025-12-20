@@ -145,11 +145,11 @@ const CAPAOwnerActionDetailModal = ({
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
         <div
-          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-hidden animate-slideUp"
+          className="relative bg-white rounded-xl shadow-lg w-full max-w-4xl max-h-[95vh] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header with Gradient */}
-          <div className="sticky top-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 sm:px-8 py-6 shadow-lg z-10">
+          <div className="sticky top-0 bg-primary-600 px-6 sm:px-8 py-6 border-b border-primary-700 z-10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
@@ -174,7 +174,7 @@ const CAPAOwnerActionDetailModal = ({
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-gradient-to-b from-gray-50 to-white max-h-[calc(95vh-120px)]">
+          <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-white max-h-[calc(95vh-120px)]">
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
@@ -183,7 +183,7 @@ const CAPAOwnerActionDetailModal = ({
                 </div>
               </div>
             ) : error ? (
-              <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-5 mb-6 shadow-sm">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-5 mb-6">
                 <div className="flex items-start gap-3">
                   <svg className="w-6 h-6 text-orange-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -194,7 +194,7 @@ const CAPAOwnerActionDetailModal = ({
             ) : action ? (
               <div className="space-y-6">
                 {/* Title and Status */}
-                <div className="bg-gradient-to-r from-primary-50 to-blue-50 border-l-4 border-primary-600 p-6 rounded-r-xl shadow-md">
+                <div className="bg-gray-50 border-l-4 border-primary-600 p-6 rounded-r-lg">
                   <div className="flex items-start gap-3 mb-4">
                     <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center flex-shrink-0">
                       <svg className="w-6 h-6 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -209,11 +209,11 @@ const CAPAOwnerActionDetailModal = ({
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3 pl-[52px]">
-                    <span className={`px-4 py-2 rounded-xl text-sm font-bold shadow-sm border-2 ${getStatusColor(action.status)}`}>
+                    <span className={`px-4 py-2 rounded-lg text-sm font-medium border ${getStatusColor(action.status)}`}>
                       {action.status}
                     </span>
                     {action.progressPercent > 0 && (
-                      <span className="px-4 py-2 rounded-xl text-sm font-bold bg-primary-100 text-primary-700 border-2 border-primary-200 shadow-sm">
+                      <span className="px-4 py-2 rounded-lg text-sm font-medium bg-primary-100 text-primary-700 border border-primary-200">
                         {action.progressPercent}% Complete
                       </span>
                     )}
@@ -253,7 +253,7 @@ const CAPAOwnerActionDetailModal = ({
                   if (!hasRootCauseFromApi && !legacyRootCauseName) return null;
                   
                   return (
-                    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-2 border-purple-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 hover:bg-purple-100 transition-colors">
                       <div className="flex items-start gap-3 mb-3">
                         <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center flex-shrink-0">
                           <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -299,7 +299,7 @@ const CAPAOwnerActionDetailModal = ({
 
                 {/* Description */}
                 {action.description && (
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+                  <div className="bg-white border border-gray-200 rounded-lg p-6 hover:bg-gray-50 transition-colors">
                     <div className="flex items-start gap-3 mb-3">
                       <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
                         <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -325,7 +325,7 @@ const CAPAOwnerActionDetailModal = ({
 
                 {/* Progress Bar */}
                 {action.progressPercent > 0 && (
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md">
+                  <div className="bg-white border border-gray-200 rounded-lg p-6">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center">
@@ -340,7 +340,7 @@ const CAPAOwnerActionDetailModal = ({
                     <div className="relative">
                       <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner">
                         <div
-                          className="bg-gradient-to-r from-primary-500 to-primary-600 h-4 rounded-full transition-all duration-500 relative overflow-hidden"
+                          className="bg-primary-600 h-4 rounded-full transition-all duration-500"
                           style={{ width: `${action.progressPercent}%` }}
                         >
                           <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
@@ -353,7 +353,7 @@ const CAPAOwnerActionDetailModal = ({
                 {/* Details Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Responsible Person */}
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-2 border-purple-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow md:col-span-2">
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 hover:bg-purple-100 transition-colors md:col-span-2">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
                         <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -368,7 +368,7 @@ const CAPAOwnerActionDetailModal = ({
                   </div>
 
                   {/* Created Date */}
-                  <div className="bg-gradient-to-br from-green-50 to-green-100/50 border-2 border-green-200 rounded-xl p-6 shadow-md">
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-6">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
                         <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -383,7 +383,7 @@ const CAPAOwnerActionDetailModal = ({
                   </div>
 
                   {/* Due Date */}
-                  <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 border-2 border-orange-200 rounded-xl p-6 shadow-md">
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 bg-orange-200 rounded-lg flex items-center justify-center">
                         <svg className="w-6 h-6 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -399,7 +399,7 @@ const CAPAOwnerActionDetailModal = ({
 
                   {/* Closed Date - Full Width (if exists) */}
                   {action.closedAt && (
-                    <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-gray-200 rounded-xl p-6 shadow-md md:col-span-2">
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 md:col-span-2">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center">
                           <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -417,7 +417,7 @@ const CAPAOwnerActionDetailModal = ({
 
                 {/* Attachments */}
                 {action.findingId && (
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+                  <div className="bg-white border border-gray-200 rounded-lg p-6 hover:bg-gray-50 transition-colors">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="w-10 h-10 bg-indigo-200 rounded-lg flex items-center justify-center">
                         <svg className="w-6 h-6 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -456,7 +456,7 @@ const CAPAOwnerActionDetailModal = ({
                             return (
                               <div
                                 key={attachment.attachmentId}
-                                className="bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-gray-200 rounded-xl overflow-hidden hover:border-primary-300 hover:shadow-lg transition-all"
+                                className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden hover:border-primary-300 transition-colors"
                               >
                                 {/* Image Header */}
                                 <div className="p-4 border-b-2 border-gray-200 bg-white">
@@ -490,7 +490,7 @@ const CAPAOwnerActionDetailModal = ({
                                   <img
                                     src={filePath}
                                     alt={attachment.fileName}
-                                    className="w-full h-auto max-h-96 object-contain rounded-xl border-2 border-gray-200 bg-white cursor-pointer hover:opacity-90 transition-opacity shadow-md"
+                                    className="w-full h-auto max-h-96 object-contain rounded-lg border border-gray-200 bg-white cursor-pointer hover:opacity-90 transition-opacity"
                                     onError={(e) => {
                                       const target = e.target as HTMLImageElement;
                                       target.style.display = 'none';
@@ -516,7 +516,7 @@ const CAPAOwnerActionDetailModal = ({
                           return (
                             <div
                               key={attachment.attachmentId}
-                              className="bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-gray-200 rounded-xl p-4 hover:bg-gray-100 hover:border-primary-300 transition-all shadow-sm"
+                              className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:bg-gray-100 hover:border-primary-300 transition-colors"
                             >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3 flex-1 min-w-0">

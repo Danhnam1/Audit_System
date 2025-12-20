@@ -444,7 +444,7 @@ const ActionReview = () => {
       {!selectedAuditId && !selectedDeptId && !selectedFindingId && (
         <div className="bg-white border-b border-primary-100 shadow-sm mb-4 sm:mb-6 ml-6">
                     <div className="px-4 sm:px-6 py-4 sm:py-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-blue-600">Action Review</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-black-600">Action Review</h1>
           </div>
         </div>
       )}
@@ -543,11 +543,11 @@ const ActionReview = () => {
                               <div className="text-sm font-semibold text-gray-900 group-hover:text-primary-700">
                                 {audit.title}
                               </div>
-                              {audit.objective && (
+                              {/* {audit.objective && (
                                 <div className="text-xs text-gray-500 mt-1 truncate max-w-xs">
                                   {audit.objective}
                                 </div>
-                              )}
+                              )} */}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                               <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getAuditTypeBadgeColor(audit.type)}`}>

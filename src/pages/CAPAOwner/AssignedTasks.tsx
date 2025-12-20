@@ -614,8 +614,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                                 <div className="flex-1">
                                   <h3 className="text-sm font-semibold text-gray-900">{findingTitle}</h3>
                                   <p className="text-xs text-gray-500 mt-0.5">
-                                    {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} assigned • Finding ID: {findingId.substring(0, 8)}...
-                                  </p>
+                                    {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} assigned                        </p>
                                 </div>
                               </div>
                             </div>
@@ -636,7 +635,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                                           </div>
                                           <div className="flex-1 min-w-0">
                                             <h4 className="text-sm font-semibold text-gray-900 truncate">{task.title}</h4>
-                                            <p className="text-xs text-gray-500 mt-1">ID: {task.actionId}</p>
+                                            {/* <p className="text-xs text-gray-500 mt-1">ID: {task.actionId}</p> */}
                                           </div>
                                         </div>
                                       </div>

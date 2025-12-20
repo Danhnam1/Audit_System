@@ -7,7 +7,7 @@ import { useUserId } from '../../../store/useAuthStore';
 interface CompliantModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (response?: any) => void;
   checklistItem: {
     auditItemId: string;
     auditId: string;
@@ -254,7 +254,8 @@ const CompliantModal = ({
       setFiles([]);
       setFileError('');
       
-      onSuccess?.();
+      // Pass response to onSuccess callback
+      onSuccess?.(response);
       onClose();
     } catch (err: any) {
       console.error('Error marking item as compliant:', err);
