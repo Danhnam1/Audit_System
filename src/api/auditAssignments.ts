@@ -160,17 +160,6 @@ export const deleteAuditAssignment = async (assignmentId: string): Promise<void>
   await apiClient.delete(`/AuditAssignment/${assignmentId}`);
 };
 
-// Update actual audit date
-export const updateActualAuditDate = async (
-  assignmentId: string,
-  actualAuditDate: string
-): Promise<AuditAssignment> => {
-  const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/actual-audit-date`, {
-    actualAuditDate,
-  });
-  return res;
-};
-
 // Get my assignments (for current auditor)
 export const getMyAssignments = async (): Promise<any> => {
   try {
@@ -214,4 +203,27 @@ export const bulkCreateAuditAssignments = async (dto: BulkCreateAuditAssignmentD
     }
   }
   return [];
+};
+
+// Update actual audit date
+export const updateActualAuditDate = async (
+  assignmentId: string,
+  actualAuditDate: string // Format: YYYY-MM-DD
+): Promise<AuditAssignment> => {
+  // Convert date string (YYYY-MM-DD) to ISO format for DateTime
+  // Add time component to ensure proper date parsing
+  const dateObj = new Date(actualAuditDate + 'T00:00:00');
+  const pascalDto = toPascalCase({ actualAuditDate: dateObj.toISOString() });
+  const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/actual-audit-date`, pascalDto);
+  return res;
+};
+
+// Reject assignment
+export const rejectAssignment = async (
+  assignmentId: string,
+  reasonReject: string
+): Promise<AuditAssignment> => {
+  const pascalDto = toPascalCase({ reasonReject });
+  const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/reject-schedule`, pascalDto);
+  return res;
 };
