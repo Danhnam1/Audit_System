@@ -81,6 +81,7 @@ import { PermissionPreviewPanel } from "./components/PlanForm/PermissionPreviewP
 // import { DRLTemplateViewer } from "./components/PlanForm/DRLTemplateViewer";
 import { DRLTemplateHistory } from "./components/DRLTemplateHistory";
 import { AuditorAssignmentsView } from "../../LeadAuditor/SpecifyCreatePlan/components/AuditorAssignmentsView";
+// import RevisionChangesTab from "./components/RevisionChangesTab";
 
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
@@ -128,7 +129,7 @@ const SQAStaffAuditPlanning = () => {
   const pageSize = 7;
 
   // Tab state for main view
-  const [activeMainTab, setActiveMainTab] = useState<"plans" | "drl-templates" | "assignments">(
+  const [activeMainTab, setActiveMainTab] = useState<"plans" | "drl-templates" | "assignments" | "revision-changes">(
     "plans"
   );
 
@@ -3945,6 +3946,11 @@ const SQAStaffAuditPlanning = () => {
             </div>
           </div>
         )}
+
+        {/* Tab Content: Revision Changes
+        // {activeMainTab === "revision-changes" && (
+        //   <RevisionChangesTab />
+        // )} */}
 
         {/* Tab Content: Plan Assignments */}
         {activeMainTab === "assignments" && (

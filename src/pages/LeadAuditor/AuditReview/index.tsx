@@ -17,11 +17,15 @@ import { getAuditCriteria } from '../../../api/auditCriteria';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { getAuditSchedules } from '../../../api/auditSchedule';
 import { toast } from 'react-toastify';
+import { EditScheduleAndTeamModal } from './components/EditScheduleAndTeamModal';
+import { updateAuditSchedule, addAuditSchedule, deleteAuditSchedule } from '../../../api/auditSchedule';
+import { addTeamMember, deleteTeamMember } from '../../../api/auditTeam';
 
 const SQAHeadAuditReview = () => {
   const { user } = useAuth();
   const [selectedPlanFull, setSelectedPlanFull] = useState<any | null>(null);
   const [pendingPlans, setPendingPlans] = useState<any[]>([]);
+  const [pendingDirectorPlans, setPendingDirectorPlans] = useState<any[]>([]);
   const [approvedPlans, setApprovedPlans] = useState<any[]>([]);
   const [rejectedPlans, setRejectedPlans] = useState<any[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
@@ -30,7 +34,13 @@ const SQAHeadAuditReview = () => {
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'pending-director' | 'approved' | 'rejected'>('pending');
+  const [showEditScheduleTeamModal, setShowEditScheduleTeamModal] = useState(false);
+  const [editingAuditId, setEditingAuditId] = useState<string | null>(null);
+  const [pendingChanges, setPendingChanges] = useState<{
+    schedules: any[];
+    teamMembers: any[];
+  } | null>(null);
 
   // Filter state
   const [filterDepartment, setFilterDepartment] = useState<string>('');
@@ -55,19 +65,37 @@ const SQAHeadAuditReview = () => {
   let list: any = unwrap(resPlans);
 
       // Split into Pending, Approved, Rejected
+      // Improved logic to distinguish between:
+      // - PendingReview: Waiting for Lead Auditor review
+      // - PendingDirectorApproval: Waiting for Director approval (already forwarded)
+      // - Approved/InProgress: Director has approved
+      // - Rejected: Director has rejected
       const isPending = (s: string) => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '');
-        return v.includes('pendingreview');
+        // Only plans waiting for Lead Auditor review (not yet forwarded to Director)
+        return v.includes('pendingreview') && !v.includes('pendingdirector');
+      };
+      const isPendingDirectorApproval = (s: string) => {
+        const v = String(s || '').toLowerCase().replace(/\s+/g, '');
+        // Plans forwarded to Director, waiting for approval/rejection
+        return v.includes('pendingdirectorapproval') || v.includes('pendingdirector');
       };
       const isApproved = (s: string) => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '');
-        return v.includes('approved') || v.includes('approve') || v.includes('pendingdirectorapproval') || v.includes('pendingdirector');
+        // Director has approved - status is Approved or InProgress (after Director approval)
+        // Exclude PendingDirectorApproval (that's still waiting)
+        const isApprovedStatus = (v === 'approved' || v === 'approve') && !v.includes('pending');
+        const isInProgress = (v === 'inprogress' || v === 'in progress');
+        return isApprovedStatus || isInProgress;
       };
       const isRejected = (s: string) => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '');
-        return v === 'rejected' || v.includes('reject');
+        // Director has rejected
+        return v === 'rejected' || (v.includes('reject') && !v.includes('pending'));
       };
+      
       const pending = list.filter((p: any) => isPending(p.status || p.state));
+      const pendingDirector = list.filter((p: any) => isPendingDirectorApproval(p.status || p.state));
       const approved = list.filter((p: any) => isApproved(p.status || p.state));
       const rejected = list.filter((p: any) => isRejected(p.status || p.state));
       // normalize departments list from API
@@ -141,6 +169,7 @@ const SQAHeadAuditReview = () => {
       };
 
       const pendingNormalized = pending.map(normalizeForList);
+      const pendingDirectorNormalized = pendingDirector.map(normalizeForList);
       const approvedNormalized = approved.map(normalizeForList);
       const rejectedNormalized = rejected.map(normalizeForList);
       
@@ -153,6 +182,7 @@ const SQAHeadAuditReview = () => {
       
       // Store all plans (will be filtered later)
       setPendingPlans(pendingNormalized.sort(sortByNewest));
+      setPendingDirectorPlans(pendingDirectorNormalized.sort(sortByNewest));
       setApprovedPlans(approvedNormalized.sort(sortByNewest));
       setRejectedPlans(rejectedNormalized.sort(sortByNewest));
       const usersArr = Array.isArray(adminUsers) ? adminUsers : [];
@@ -166,6 +196,7 @@ const SQAHeadAuditReview = () => {
     } catch (err) {
       console.error('Failed to load audit plans for review', err);
       setPendingPlans([]);
+      setPendingDirectorPlans([]);
       setApprovedPlans([]);
       setRejectedPlans([]);
     } finally {
@@ -298,14 +329,57 @@ const SQAHeadAuditReview = () => {
     return filtered;
   }, [rejectedPlans, filterDepartment, sortDateOrder, filterStatus]);
 
+  // Filter for pending director plans
+  const filteredPendingDirectorPlans = useMemo(() => {
+    let filtered = pendingDirectorPlans.filter((plan: any) => {
+      // Department filter
+      if (filterDepartment) {
+        const scopeArr = plan.scopeDepartments || [];
+        const hasDept = Array.isArray(scopeArr)
+          ? scopeArr.some((d: any) => {
+              const deptId = String(d.deptId || d.id || d.$id || d.departmentId || '');
+              return deptId === String(filterDepartment);
+            })
+          : false;
+        if (!hasDept) return false;
+      }
+
+      // Status filter
+      if (filterStatus) {
+        const planStatus = plan.status || plan.state || '';
+        if (String(planStatus) !== filterStatus) return false;
+      }
+
+      return true;
+    });
+
+    // Sort by date if sortDateOrder is set
+    if (sortDateOrder) {
+      filtered = filtered.sort((a: any, b: any) => {
+        const dateA = a.startDate ? new Date(a.startDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const dateB = b.startDate ? new Date(b.startDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        if (sortDateOrder === 'desc') {
+          return dateB - dateA; // Newest first
+        } else if (sortDateOrder === 'asc') {
+          return dateA - dateB; // Oldest first
+        }
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [pendingDirectorPlans, filterDepartment, sortDateOrder, filterStatus]);
+
   // Get current filtered plans based on active tab
   const currentFilteredPlans = 
     activeTab === 'pending' ? filteredPendingPlans :
+    activeTab === 'pending-director' ? filteredPendingDirectorPlans :
     activeTab === 'approved' ? filteredApprovedPlans :
     filteredRejectedPlans;
   
   const currentTotalPlans = 
     activeTab === 'pending' ? pendingPlans.length :
+    activeTab === 'pending-director' ? pendingDirectorPlans.length :
     activeTab === 'approved' ? approvedPlans.length :
     rejectedPlans.length;
 
@@ -330,16 +404,116 @@ const SQAHeadAuditReview = () => {
 
   const handleReject = async (auditId: string, comment?: string) => {
     try {
+      // Include pending changes in rejection comment if any
+      let rejectionComment = comment || '';
+      if (pendingChanges && (pendingChanges.schedules.length > 0 || pendingChanges.teamMembers.length > 0)) {
+        const changesSummary: string[] = [];
+        
+        if (pendingChanges.schedules.length > 0) {
+          changesSummary.push('\n\nSchedule Changes:');
+          pendingChanges.schedules.forEach((change: any) => {
+            if (change.action === 'add') {
+              changesSummary.push(`- Added: ${change.data?.milestoneName} (Due: ${change.data?.dueDate})`);
+            } else if (change.action === 'update') {
+              changesSummary.push(`- Updated: ${change.data?.milestoneName} (Due: ${change.data?.dueDate})`);
+            } else if (change.action === 'delete') {
+              changesSummary.push(`- Deleted: Schedule ID ${change.scheduleId}`);
+            }
+          });
+        }
+        
+        if (pendingChanges.teamMembers.length > 0) {
+          changesSummary.push('\nTeam Changes:');
+          pendingChanges.teamMembers.forEach((change: any) => {
+            if (change.action === 'add') {
+              changesSummary.push(`- Added: User ID ${change.data?.userId} (Role: ${change.data?.roleInTeam})`);
+            } else if (change.action === 'delete') {
+              changesSummary.push(`- Removed: Team Member ID ${change.teamId}`);
+            }
+          });
+        }
+        
+        rejectionComment = (comment || '') + changesSummary.join('\n');
+      }
+      
       // Lead Auditor declines the plan content (separate endpoint from Director reject)
-      await declinedPlanContent(auditId, { comment });
+      await declinedPlanContent(auditId, { comment: rejectionComment });
       await loadPlans();
       toast.success('Plan rejected successfully.');
       setSelectedPlanFull(null);
+      setPendingChanges(null);
     } catch (err: any) {
       console.error('Failed to reject plan', err);
       const errorMessage =
         err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to reject plan: ' + errorMessage);
+    }
+  };
+
+  const handleEditScheduleAndTeam = (auditId: string) => {
+    setEditingAuditId(auditId);
+    setShowEditScheduleTeamModal(true);
+  };
+
+  const handleSaveScheduleAndTeam = async (changes: {
+    schedules: Array<{ scheduleId?: string; action: 'add' | 'update' | 'delete'; data?: any }>;
+    teamMembers: Array<{ teamId?: string; action: 'add' | 'delete'; data?: any }>;
+  }) => {
+    if (!editingAuditId) return;
+
+    try {
+      // Apply schedule changes
+      for (const scheduleChange of changes.schedules) {
+        if (scheduleChange.action === 'add') {
+          await addAuditSchedule({
+            auditId: editingAuditId,
+            milestoneName: scheduleChange.data!.milestoneName,
+            dueDate: scheduleChange.data!.dueDate,
+            notes: scheduleChange.data!.notes || '',
+            status: scheduleChange.data!.status || 'Pending',
+          });
+        } else if (scheduleChange.action === 'update' && scheduleChange.scheduleId) {
+          await updateAuditSchedule(scheduleChange.scheduleId, {
+            milestoneName: scheduleChange.data!.milestoneName,
+            dueDate: scheduleChange.data!.dueDate,
+            notes: scheduleChange.data!.notes || '',
+            status: scheduleChange.data!.status || 'Pending',
+          });
+        } else if (scheduleChange.action === 'delete' && scheduleChange.scheduleId) {
+          await deleteAuditSchedule(scheduleChange.scheduleId);
+        }
+      }
+
+      // Apply team changes
+      for (const teamChange of changes.teamMembers) {
+        if (teamChange.action === 'add') {
+          await addTeamMember({
+            auditId: editingAuditId,
+            userId: teamChange.data!.userId,
+            roleInTeam: teamChange.data!.roleInTeam || 'Auditor',
+            isLead: teamChange.data!.isLead || false,
+          });
+        } else if (teamChange.action === 'delete' && teamChange.teamId) {
+          await deleteTeamMember(teamChange.teamId);
+        }
+      }
+
+      // Store changes for potential rejection
+      setPendingChanges({
+        schedules: changes.schedules,
+        teamMembers: changes.teamMembers,
+      });
+
+      // Reload plan details to show updated data
+      if (selectedPlanFull && String(selectedPlanFull.auditId || selectedPlanFull.id) === editingAuditId) {
+        await handleSelectPlan(editingAuditId);
+      }
+
+      toast.success('Schedule and team updated successfully');
+    } catch (error: any) {
+      console.error('Failed to save schedule and team changes:', error);
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to save changes');
+      throw error;
     }
   };
 
@@ -447,6 +621,7 @@ const SQAHeadAuditReview = () => {
       // update plans list with department name derived from normalized details
       const deptNames = ((normalized.scopeDepartments?.values || []) as any).map((d: any) => d.deptName || d.name).filter(Boolean);
       setPendingPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
+      setPendingDirectorPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
       setApprovedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
       setRejectedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
     } catch (err) {
@@ -459,8 +634,9 @@ const SQAHeadAuditReview = () => {
 
   // Calculate stats
   const stats = {
-    total: pendingPlans.length + approvedPlans.length + rejectedPlans.length,
+    total: pendingPlans.length + pendingDirectorPlans.length + approvedPlans.length + rejectedPlans.length,
     pending: pendingPlans.length,
+    pendingDirector: pendingDirectorPlans.length,
     approved: approvedPlans.length,
     rejected: rejectedPlans.length,
   };
@@ -477,7 +653,7 @@ const SQAHeadAuditReview = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -509,7 +685,21 @@ const SQAHeadAuditReview = () => {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Approved</p>
+                <p className="text-sm text-gray-600">Pending Director</p>
+                <p className="text-3xl font-bold text-orange-600">{stats.pendingDirector}</p>
+              </div>
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Director Approved</p>
                 <p className="text-3xl font-bold text-green-600">{stats.approved}</p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -523,7 +713,7 @@ const SQAHeadAuditReview = () => {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Rejected</p>
+                <p className="text-sm text-gray-600">Director Rejected</p>
                 <p className="text-3xl font-bold text-red-600">{stats.rejected}</p>
               </div>
               <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
@@ -538,7 +728,7 @@ const SQAHeadAuditReview = () => {
         {/* Status Tabs */}
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden mb-6">
           <div className="px-6 py-4 border-b border-primary-100">
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setActiveTab('pending')}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -550,6 +740,16 @@ const SQAHeadAuditReview = () => {
                 Pending Review
               </button>
               <button
+                onClick={() => setActiveTab('pending-director')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'pending-director'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Pending Director <span className="ml-1">({stats.pendingDirector})</span>
+              </button>
+              <button
                 onClick={() => setActiveTab('approved')}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                   activeTab === 'approved'
@@ -557,7 +757,7 @@ const SQAHeadAuditReview = () => {
                     : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                Approved
+                Director Approved ({stats.approved})
               </button>
               <button
                 onClick={() => setActiveTab('rejected')}
@@ -567,7 +767,7 @@ const SQAHeadAuditReview = () => {
                     : 'bg-white text-gray-800 border border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                Rejected
+                Director Rejected ({stats.rejected})
               </button>
             </div>
           </div>
@@ -577,7 +777,10 @@ const SQAHeadAuditReview = () => {
           <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
             <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
               <h2 className="text-lg font-semibold text-white">
-                {activeTab === 'pending' ? 'Pending Audit Plans' : activeTab === 'approved' ? 'Approved Audit Plans' : 'Rejected Audit Plans'}
+                {activeTab === 'pending' ? 'Pending Audit Plans' : 
+                 activeTab === 'pending-director' ? 'Pending Director Approval' :
+                 activeTab === 'approved' ? 'Director Approved Plans' : 
+                 'Director Rejected Plans'}
               </h2>
             </div>
 
@@ -595,7 +798,10 @@ const SQAHeadAuditReview = () => {
             />
 
             <AuditReviewList
-              title={activeTab === 'pending' ? 'Pending Audit Plans' : activeTab === 'approved' ? 'Approved Audit Plans' : 'Rejected Audit Plans'}
+              title={activeTab === 'pending' ? 'Pending Audit Plans' : 
+                     activeTab === 'pending-director' ? 'Pending Director Approval' :
+                     activeTab === 'approved' ? 'Director Approved Plans' : 
+                     'Director Rejected Plans'}
               plans={currentFilteredPlans}
               onSelect={(id) => void handleSelectPlan(id)}
               getDepartmentName={(id:any)=> getDepartmentName(id, departments)}
@@ -608,7 +814,10 @@ const SQAHeadAuditReview = () => {
             <PlanDetailsModal
               showModal={true}
               selectedPlanDetails={selectedPlanFull}
-              onClose={() => setSelectedPlanFull(null)}
+              onClose={() => {
+                setSelectedPlanFull(null);
+                setPendingChanges(null);
+              }}
               // Chỉ cho phép hành động khi bất kỳ field status nào chứa PendingReview
               {
                 ...(() => {
@@ -628,8 +837,14 @@ const SQAHeadAuditReview = () => {
                     normalize(s).includes('pendingreview')
                   );
 
+                  const auditId = selectedPlanFull?.auditId || selectedPlanFull?.id;
+                  
                   return isPendingReview
-                    ? { onForwardToDirector: handleForwardToDirector, onRejectPlan: handleReject }
+                    ? { 
+                        onForwardToDirector: handleForwardToDirector, 
+                        onRejectPlan: handleReject,
+                        onEditScheduleAndTeam: auditId ? () => handleEditScheduleAndTeam(String(auditId)) : undefined,
+                      }
                     : {};
                 })()
               }
@@ -646,6 +861,21 @@ const SQAHeadAuditReview = () => {
             />
             {/* Inline review panel removed to avoid duplicate UI behind the modal. Actions are available in the modal. */}
           </>
+        )}
+
+        {/* Edit Schedule & Team Modal */}
+        {showEditScheduleTeamModal && editingAuditId && (
+          <EditScheduleAndTeamModal
+            showModal={showEditScheduleTeamModal}
+            auditId={editingAuditId}
+            onClose={() => {
+              setShowEditScheduleTeamModal(false);
+              setEditingAuditId(null);
+            }}
+            onSave={handleSaveScheduleAndTeam}
+            originalSchedules={selectedPlanFull?.schedules?.values || []}
+            originalTeamMembers={selectedPlanFull?.auditTeams?.values || []}
+          />
         )}
       </div>
     </MainLayout>
