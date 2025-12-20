@@ -71,6 +71,7 @@ const DepartmentHeadEvidenceDetail = lazy(() => import("../pages/AuditeeOwner/Ev
 const DepartmentHeadFindingsProgress = lazy(() => import("../pages/AuditeeOwner/findings/FindingsProgress"));
 const DepartmentHeadCAPAManagement = lazy(() => import("../pages/AuditeeOwner/CAPAManagement"));
 const AuditeeOwnerScanQR = lazy(() => import("../pages/AuditeeOwner/ScanQR"));
+const AuditScheduleCalendar = lazy(() => import("../pages/AuditeeOwner/AuditScheduleCalendar"));
 const AuditeeOwnerAuditChecklist = lazy(() => import("../pages/AuditeeOwner/checklist/AuditChecklist"));
 const AuditeeOwnerMyWitnessed = lazy(() => import("../pages/AuditeeOwner/MyWitnessed"));
 
@@ -545,6 +546,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <AuditeeOwnerScanQR />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditee-owner/audit-schedule"
+                element={
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
+                        <AuditScheduleCalendar />
                     </ProtectedRoute>
                 }
             />
