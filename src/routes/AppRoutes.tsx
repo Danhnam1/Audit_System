@@ -54,6 +54,7 @@ const DepartmentStaffUploadEvidence = lazy(() => import("../pages/CAPAOwner/Uplo
 const DepartmentStaffTodoList = lazy(() => import("../pages/CAPAOwner/TodoList"));
 const DepartmentStaffFindingsProgress = lazy(() => import("../pages/CAPAOwner/FindingsProgress"));
 const DepartmentStaffCheckDeadlines = lazy(() => import("../pages/CAPAOwner/CheckDeadlines"));
+const CAPAOwnerMyWitnessed = lazy(() => import("../pages/CAPAOwner/MyWitnessed"));
 
 // Auditee Owner pages (formerly Department Head)
 // Removed DepartmentHeadWelcome (file deleted)
@@ -71,6 +72,7 @@ const DepartmentHeadFindingsProgress = lazy(() => import("../pages/AuditeeOwner/
 const DepartmentHeadCAPAManagement = lazy(() => import("../pages/AuditeeOwner/CAPAManagement"));
 const AuditeeOwnerScanQR = lazy(() => import("../pages/AuditeeOwner/ScanQR"));
 const AuditeeOwnerAuditChecklist = lazy(() => import("../pages/AuditeeOwner/checklist/AuditChecklist"));
+const AuditeeOwnerMyWitnessed = lazy(() => import("../pages/AuditeeOwner/MyWitnessed"));
 
 // Director pages
 const DirectorDashboard = lazy(() => import("../pages/Director/Dashboard"));
@@ -422,6 +424,14 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
+            <Route
+                path="/capa-owner/my-witnessed"
+                element={
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
+                        <CAPAOwnerMyWitnessed />
+                    </ProtectedRoute>
+                }
+            />
         
 
             {/* Protected routes - Auditee Owner */}
@@ -535,6 +545,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
                         <AuditeeOwnerScanQR />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/auditee-owner/my-witnessed"
+                element={
+                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
+                        <AuditeeOwnerMyWitnessed />
                     </ProtectedRoute>
                 }
             />

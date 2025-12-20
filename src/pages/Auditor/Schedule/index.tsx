@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MainLayout } from '../../../layouts';
-import { getMyAssignments } from '../../../api/auditAssignments';
+import { getMyAssignments, updateActualAuditDate, rejectAssignment } from '../../../api/auditAssignments';
 import { unwrap } from '../../../utils/normalize';
+import { toast } from 'react-toastify';
 
 interface Assignment {
   assignmentId: string;
@@ -22,9 +23,16 @@ interface Assignment {
 }
 
 const AuditorSchedule = () => {
+  console.log('AuditorSchedule component rendering');
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   // Helper function to format date for Set
   const formatDateForSet = (date: Date): string => {
@@ -67,14 +75,15 @@ const AuditorSchedule = () => {
     loadAssignments();
   }, []);
 
-  // Get all dates that should be highlighted
+  // Get all dates that should be highlighted and map dates to assignments
   const highlightedDates = useMemo(() => {
     const plannedDates = new Set<string>(); // Blue dates (planned range)
     const actualDates = new Set<string>(); // Orange dates (actual audit dates)
+    const dateToAssignmentMap = new Map<string, Assignment>(); // Map date string to assignment
 
     assignments.forEach((assignment) => {
-      // Add planned date range (blue)
-      if (assignment.plannedStartDate && assignment.plannedEndDate) {
+      // Only add planned dates if status is "Assigned" and no actualAuditDate yet
+      if (assignment.status === 'Assigned' && !assignment.actualAuditDate && assignment.plannedStartDate && assignment.plannedEndDate) {
         let start = new Date(assignment.plannedStartDate);
         let end = new Date(assignment.plannedEndDate);
         
@@ -91,6 +100,8 @@ const AuditorSchedule = () => {
         while (current <= end) {
           const dateStr = formatDateForSet(current);
           plannedDates.add(dateStr);
+          // Map this date to the assignment
+          dateToAssignmentMap.set(dateStr, assignment);
           current.setDate(current.getDate() + 1);
         }
       }
@@ -109,7 +120,17 @@ const AuditorSchedule = () => {
       actualDates: Array.from(actualDates) 
     });
 
-    return { plannedDates, actualDates };
+    return { plannedDates, actualDates, dateToAssignmentMap };
+  }, [assignments]);
+
+  // Get assignments with status "Assigned" for sidebar (exclude those with actualAuditDate)
+  const assignedSchedules = useMemo(() => {
+    return assignments.filter(a => 
+      a.status === 'Assigned' && 
+      a.plannedStartDate && 
+      a.plannedEndDate && 
+      !a.actualAuditDate
+    );
   }, [assignments]);
 
   // Get calendar days for current month
@@ -210,17 +231,164 @@ const AuditorSchedule = () => {
     });
   };
 
+  const formatDateShort = (dateStr: string | null): string => {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  // Handle click on planned date (blue dates)
+  const handleDateClick = (date: Date, dateStr: string) => {
+    const assignment = highlightedDates.dateToAssignmentMap.get(dateStr);
+    if (assignment && !assignment.actualAuditDate && assignment.status === 'Assigned') {
+      setSelectedDate(date);
+      setSelectedAssignment(assignment);
+      setShowConfirmModal(true);
+    }
+  };
+
+  // Handle confirm actual audit date
+  const handleConfirmActualDate = async () => {
+    if (!selectedAssignment || !selectedDate) return;
+
+    setSubmitting(true);
+    try {
+      const dateStr = formatDateForSet(selectedDate);
+      await updateActualAuditDate(selectedAssignment.assignmentId, dateStr);
+      toast.success('Actual audit date updated successfully!');
+      setShowConfirmModal(false);
+      setSelectedDate(null);
+      setSelectedAssignment(null);
+      
+      // Reload assignments
+      const response = await getMyAssignments();
+      let assignmentsData: Assignment[] = [];
+      if (response?.$values && Array.isArray(response.$values)) {
+        assignmentsData = response.$values;
+      } else if (Array.isArray(response)) {
+        assignmentsData = response;
+      } else {
+        const unwrapped = unwrap<Assignment>(response);
+        assignmentsData = Array.isArray(unwrapped) ? unwrapped : [];
+      }
+      setAssignments(assignmentsData);
+    } catch (error: any) {
+      console.error('Failed to update actual audit date:', error);
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to update actual audit date');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle reject assignment
+  const handleRejectAssignment = (assignment: Assignment) => {
+    setSelectedAssignment(assignment);
+    setRejectReason('');
+    setShowRejectModal(true);
+  };
+
+  // Handle confirm reject
+  const handleConfirmReject = async () => {
+    if (!selectedAssignment || !rejectReason.trim()) {
+      toast.error('Please enter a reason for rejection');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await rejectAssignment(selectedAssignment.assignmentId, rejectReason.trim());
+      toast.success('Assignment rejected successfully!');
+      setShowRejectModal(false);
+      setSelectedAssignment(null);
+      setRejectReason('');
+      
+      // Reload assignments
+      const response = await getMyAssignments();
+      let assignmentsData: Assignment[] = [];
+      if (response?.$values && Array.isArray(response.$values)) {
+        assignmentsData = response.$values;
+      } else if (Array.isArray(response)) {
+        assignmentsData = response;
+      } else {
+        const unwrapped = unwrap<Assignment>(response);
+        assignmentsData = Array.isArray(unwrapped) ? unwrapped : [];
+      }
+      setAssignments(assignmentsData);
+    } catch (error: any) {
+      console.error('Failed to reject assignment:', error);
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to reject assignment');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  console.log('AuditorSchedule render - assignments:', assignments.length, 'loading:', loading);
+  
+  // Early return for debugging - remove after fixing
+  if (typeof window !== 'undefined') {
+    console.log('Component is rendering in browser');
+  }
+  
   return (
     <MainLayout>
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 bg-white">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg p-6 text-white">
           <h1 className="text-3xl font-bold mb-2">Audit Schedule</h1>
           <p className="text-blue-100">View your assigned audit schedules and dates</p>
         </div>
 
-        {/* Calendar Navigation */}
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 p-3 max-w-2xl mx-auto">
+        {/* Main Content - Sidebar + Calendar */}
+        <div className="flex gap-6">
+          {/* Left Sidebar - Assignments List */}
+          <div className="w-80 flex-shrink-0">
+            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 sticky top-6">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">Assigned Schedules</h3>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                </div>
+              ) : assignedSchedules.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">No assigned schedules</p>
+              ) : (
+                <div className="space-y-3 max-h-[calc(100vh-250px)] overflow-y-auto">
+                  {assignedSchedules.map((assignment) => (
+                    <div
+                      key={assignment.assignmentId}
+                      className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-gray-900 text-sm mb-1 truncate">
+                            {assignment.auditTitle}
+                          </h4>
+                          <p className="text-xs text-gray-600">
+                            {formatDateShort(assignment.plannedStartDate)} - {formatDateShort(assignment.plannedEndDate)}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">{assignment.departmentName}</p>
+                        </div>
+                        <button
+                          onClick={() => handleRejectAssignment(assignment)}
+                          className="flex-shrink-0 px-2 py-1 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Calendar */}
+          <div className="flex-1 flex justify-center">
+            {/* Calendar Navigation */}
+            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-3 max-w-2xl w-full">
           <div className="flex items-center justify-between mb-3">
             <button
               onClick={goToPreviousMonth}
@@ -310,16 +478,20 @@ const AuditorSchedule = () => {
                     textColor = 'text-blue-600 font-semibold';
                   }
 
+                  // Check if this date can be clicked (planned date without actual date, status = Assigned)
+                  const canClick = isPlanned && !isActual && day.isCurrentMonth && highlightedDates.dateToAssignmentMap.has(dateStr);
+
                   return (
                     <div
                       key={index}
+                      onClick={() => canClick && handleDateClick(day.date, dateStr)}
                       className={`
                         aspect-square p-0.5 rounded border transition-all
                         ${day.isCurrentMonth ? 'border-gray-200' : 'border-transparent'}
                         ${day.isToday && !isPlanned && !isActual ? 'border-blue-500 border-2' : ''}
                         ${bgColor || 'hover:bg-gray-50'}
                         ${textColor}
-                        ${day.isCurrentMonth ? 'cursor-pointer' : 'cursor-default'}
+                        ${canClick ? 'cursor-pointer hover:ring-2 hover:ring-blue-300' : day.isCurrentMonth ? 'cursor-default' : 'cursor-default'}
                         flex flex-col items-center justify-center
                       `}
                       title={day.isCurrentMonth ? formatDate(day.date) : ''}
@@ -336,7 +508,234 @@ const AuditorSchedule = () => {
             </div>
           )}
         </div>
+          </div>
+        </div>
       </div>
+
+      {/* Confirm Actual Audit Date Modal */}
+      {showConfirmModal && selectedDate && selectedAssignment && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => {
+              if (!submitting) {
+                setShowConfirmModal(false);
+                setSelectedDate(null);
+                setSelectedAssignment(null);
+              }
+            }}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Confirm Actual Audit Date
+                </h3>
+                <button
+                  onClick={() => {
+                    if (!submitting) {
+                      setShowConfirmModal(false);
+                      setSelectedDate(null);
+                      setSelectedAssignment(null);
+                    }
+                  }}
+                  disabled={submitting}
+                  className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Assignment Info */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Audit
+                  </label>
+                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                    {selectedAssignment.auditTitle}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                    {selectedAssignment.departmentName}
+                  </p>
+                </div>
+
+                {/* Selected Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Selected Date
+                  </label>
+                  <p className="text-sm text-gray-900 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200 font-medium">
+                    {formatDate(selectedDate)}
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800">
+                    Are you sure you want to set <strong>{formatDate(selectedDate)}</strong> as the actual audit date for this assignment?
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!submitting) {
+                      setShowConfirmModal(false);
+                      setSelectedDate(null);
+                      setSelectedAssignment(null);
+                    }
+                  }}
+                  disabled={submitting}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmActualDate}
+                  disabled={submitting}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Updating...
+                    </>
+                  ) : (
+                    'Confirm'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Assignment Modal */}
+      {showRejectModal && selectedAssignment && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => {
+              if (!submitting) {
+                setShowRejectModal(false);
+                setSelectedAssignment(null);
+                setRejectReason('');
+              }
+            }}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Reject Assignment
+                </h3>
+                <button
+                  onClick={() => {
+                    if (!submitting) {
+                      setShowRejectModal(false);
+                      setSelectedAssignment(null);
+                      setRejectReason('');
+                    }
+                  }}
+                  disabled={submitting}
+                  className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Assignment Info */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Audit
+                  </label>
+                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                    {selectedAssignment.auditTitle}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Schedule
+                  </label>
+                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                    {formatDateShort(selectedAssignment.plannedStartDate)} - {formatDateShort(selectedAssignment.plannedEndDate)}
+                  </p>
+                </div>
+
+                {/* Reject Reason */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Reason for Rejection <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    placeholder="Please provide a reason for rejecting this assignment..."
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!submitting) {
+                      setShowRejectModal(false);
+                      setSelectedAssignment(null);
+                      setRejectReason('');
+                    }
+                  }}
+                  disabled={submitting}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReject}
+                  disabled={submitting || !rejectReason.trim()}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Rejecting...
+                    </>
+                  ) : (
+                    'Reject'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 };

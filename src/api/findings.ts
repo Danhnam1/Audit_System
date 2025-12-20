@@ -49,6 +49,14 @@ export interface Finding {
   reviewerId?: string;
   source?: string;
   externalAuditorName?: string;
+  audit?: {
+    auditId: string;
+    title: string;
+    type: string;
+    scope?: string;
+    status?: string;
+  };
+  attachments?: any;
 }
 
 // Get all findings
@@ -73,6 +81,13 @@ export const getFindingsByCreator = async (createdBy: string): Promise<Finding[]
 // Get my findings (for Auditor to see their own findings)
 export const getMyFindings = async (): Promise<Finding[]> => {
   const res = await apiClient.get(`/Findings/my-findings`) as any;
+  const { unwrap } = await import('../utils/normalize');
+  return unwrap<Finding>(res);
+};
+
+// Get my witnessed findings (where current user is assigned as witness)
+export const getMyWitnessedFindings = async (): Promise<Finding[]> => {
+  const res = await apiClient.get(`/Findings/my-witnessed`) as any;
   const { unwrap } = await import('../utils/normalize');
   return unwrap<Finding>(res);
 };

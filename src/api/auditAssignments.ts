@@ -11,6 +11,13 @@ export interface AuditAssignment {
   auditTitle?: string;
   departmentName?: string;
   auditorName?: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  estimatedDuration?: number;
+  actualStartDate?: string;
+  actualEndDate?: string;
+  actualAuditDate?: string;
+  rejectionReason?: string;
 }
 
 export interface CreateAuditAssignmentDto {
@@ -73,7 +80,6 @@ export const getAuditAssignments = async (): Promise<AuditAssignment[]> => {
 // Get assignments by audit ID
 export const getAuditAssignmentsByAudit = async (auditId: string): Promise<AuditAssignment[]> => {
   const res: any = await apiClient.get(`/AuditAssignment/audit/${auditId}`);
-  // apiClient from hooks/axios returns response.data, so res is already the data
   if (res?.$values && Array.isArray(res.$values)) {
     return res.$values;
   }
@@ -95,7 +101,6 @@ export const getAuditAssignmentsByAudit = async (auditId: string): Promise<Audit
 // Get assignments by auditor ID
 export const getAuditAssignmentsByAuditor = async (auditorId: string): Promise<AuditAssignment[]> => {
   const res: any = await apiClient.get(`/AuditAssignment/auditor/${auditorId}`);
-  // apiClient from hooks/axios returns response.data, so res is already the data
   if (res?.$values && Array.isArray(res.$values)) {
     return res.$values;
   }
@@ -117,7 +122,6 @@ export const getAuditAssignmentsByAuditor = async (auditorId: string): Promise<A
 // Get assignments by department ID
 export const getAuditAssignmentsByDepartment = async (deptId: number): Promise<AuditAssignment[]> => {
   const res: any = await apiClient.get(`/AuditAssignment/department/${deptId}`);
-  // apiClient from hooks/axios returns response.data, so res is already the data
   if (res?.$values && Array.isArray(res.$values)) {
     return res.$values;
   }
@@ -140,7 +144,6 @@ export const getAuditAssignmentsByDepartment = async (deptId: number): Promise<A
 export const createAuditAssignment = async (dto: CreateAuditAssignmentDto): Promise<AuditAssignment> => {
   const pascalDto = toPascalCase(dto);
   const res: any = await apiClient.post('/AuditAssignment', pascalDto);
-  // apiClient from hooks/axios returns response.data, so res is already the data
   return res;
 };
 
@@ -151,7 +154,6 @@ export const updateAuditAssignment = async (
 ): Promise<AuditAssignment> => {
   const pascalDto = toPascalCase(dto);
   const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}`, pascalDto);
-  // apiClient from hooks/axios returns response.data, so res is already the data
   return res;
 };
 
@@ -163,18 +165,11 @@ export const deleteAuditAssignment = async (assignmentId: string): Promise<void>
 // Get my assignments (for current auditor)
 export const getMyAssignments = async (): Promise<any> => {
   try {
-    // apiClient uses axios interceptor that returns response.data
-    // But we need to handle the case where response might still be full axios response
     const res: any = await apiClient.get('/AuditAssignment/my-assignments');
-    
-    // If interceptor worked, res should be response.data already
-    // But if we got full response, extract data
     let data = res;
     if (res?.data && res?.status) {
-      // This is full axios response, get the data
       data = res.data;
     }
-    
     return data;
   } catch (error) {
     console.error('Error in getMyAssignments:', error);
@@ -185,8 +180,6 @@ export const getMyAssignments = async (): Promise<any> => {
 // Bulk create audit assignments (assign multiple auditors at once)
 export const bulkCreateAuditAssignments = async (dto: BulkCreateAuditAssignmentDto): Promise<AuditAssignment[]> => {
   const res: any = await apiClient.post('/AuditAssignment/bulk', dto);
-  
-  // Handle $values structure
   if (res?.$values && Array.isArray(res.$values)) {
     return res.$values;
   }
@@ -203,4 +196,25 @@ export const bulkCreateAuditAssignments = async (dto: BulkCreateAuditAssignmentD
     }
   }
   return [];
+};
+
+// Update actual audit date (accept schedule)
+export const updateActualAuditDate = async (
+  assignmentId: string,
+  actualAuditDate: string // Format: YYYY-MM-DD
+): Promise<AuditAssignment> => {
+  const dateObj = new Date(actualAuditDate + 'T00:00:00');
+  const payload = toPascalCase({ actualAuditDate: dateObj.toISOString() });
+  const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/actual-audit-date`, payload);
+  return res;
+};
+
+// Reject assignment schedule with reason
+export const rejectAssignment = async (
+  assignmentId: string,
+  reasonReject: string
+): Promise<AuditAssignment> => {
+  const payload = toPascalCase({ reasonReject });
+  const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/reject-schedule`, payload);
+  return res;
 };

@@ -466,6 +466,34 @@ export default function AuditAssignment() {
       return;
     }
     
+    // Validate dates if provided
+    const selectedAudit = audits.find(a => a.auditId === selectedAuditId);
+    if (plannedStartDate || plannedEndDate) {
+      if (!plannedStartDate || !plannedEndDate) {
+        toast.error('Both planned start date and end date are required');
+        return;
+      }
+      
+      const startDate = new Date(plannedStartDate);
+      const endDate = new Date(plannedEndDate);
+      
+      if (endDate < startDate) {
+        toast.error('Planned end date must be after start date');
+        return;
+      }
+      
+      // Validate dates are within audit plan timeframe
+      if (selectedAudit) {
+        const auditStart = new Date(selectedAudit.startDate);
+        const auditEnd = new Date(selectedAudit.endDate);
+        
+        if (startDate < auditStart || endDate > auditEnd) {
+          toast.error(`Planned dates must be within audit timeframe: ${auditStart.toLocaleDateString()} - ${auditEnd.toLocaleDateString()}`);
+          return;
+        }
+      }
+    }
+    
     // Determine if current department has sensitive areas
     const isSensitiveDept = !!(
       selectedDepartment.sensitiveFlag ||
@@ -1166,8 +1194,6 @@ export default function AuditAssignment() {
 
                       const minDate = qrValidityFrom ? formatDateForInput(qrValidityFrom) : '';
                       const maxDate = qrValidityTo ? formatDateForInput(qrValidityTo) : '';
-                      const plannedStartDateStr = plannedStartDate || '';
-                      const plannedEndDateStr = plannedEndDate || '';
 
                       return (
                         <>
@@ -1204,16 +1230,16 @@ export default function AuditAssignment() {
                               type="date"
                               value={plannedEndDate}
                               onChange={(e) => setPlannedEndDate(e.target.value)}
-                              min={plannedStartDateStr || minDate}
+                              min={plannedStartDate || minDate}
                               max={maxDate}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
                             />
-                            {(minDate || maxDate || plannedStartDateStr) && (
+                            {(minDate || maxDate || plannedStartDate) && (
                               <p className="text-xs text-gray-500 mt-1">
-                                {plannedStartDateStr && maxDate
-                                  ? `From ${plannedStartDateStr} to ${maxDate}`
-                                  : plannedStartDateStr
-                                  ? `From ${plannedStartDateStr}`
+                                {plannedStartDate && maxDate
+                                  ? `From ${plannedStartDate} to ${maxDate}`
+                                  : plannedStartDate
+                                  ? `From ${plannedStartDate}`
                                   : minDate && maxDate
                                   ? `Between ${minDate} and ${maxDate}`
                                   : minDate
