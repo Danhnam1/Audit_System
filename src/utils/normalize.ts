@@ -48,9 +48,14 @@ export const normalizePlanDetails = (raw: any, { departments, criteriaList, user
   );
 
   const userLookup = (id: any) => users.find((u: any) => String(u.userId) === String(id));
+  // Filter out AuditeeOwner from audit teams
   const auditTeams: AuditTeamMember[] = Array.from(
     new Map(
       unwrap<any>(raw?.auditTeams)
+        .filter((member: any) => {
+          const role = String(member.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+          return role !== 'auditeeowner';
+        })
         .map((member: any) => ({
           ...member,
           fullName: member.fullName || userLookup(member.userId)?.fullName || `User ID: ${member.userId}`,

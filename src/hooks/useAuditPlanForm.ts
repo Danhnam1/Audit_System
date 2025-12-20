@@ -30,6 +30,7 @@ export const useAuditPlanForm = () => {
   const [sensitiveAreas, setSensitiveAreas] = useState<string[]>([]);
   const [sensitiveNotes, setSensitiveNotes] = useState<string>('');
   const [sensitiveDeptIds, setSensitiveDeptIds] = useState<string[]>([]);
+  const [sensitiveAreasByDept, setSensitiveAreasByDept] = useState<Record<number, string[]>>({});
 
   // Step 3: Checklist (multi-select)
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
@@ -65,6 +66,7 @@ export const useAuditPlanForm = () => {
     setSensitiveAreas([]);
     setSensitiveNotes('');
     setSensitiveDeptIds([]);
+    setSensitiveAreasByDept({});
     setSelectedLeadId('');
     setSelectedAuditorIds([]);
     setSelectedOwnerId('');
@@ -98,6 +100,7 @@ export const useAuditPlanForm = () => {
     setSensitiveAreas([]);
     setSensitiveNotes('');
     setSensitiveDeptIds([]);
+    setSensitiveAreasByDept({});
     setSelectedLeadId('');
     setSelectedAuditorIds([]);
     setSelectedOwnerId('');
@@ -124,20 +127,92 @@ export const useAuditPlanForm = () => {
     setIsEditMode(true);
     setEditingAuditId(auditIdValue);
     setShowForm(true);
-    setCurrentStep(1);
+    setCurrentStep(1); // Always start from step 1 when editing
     
     console.log('📝 After setting - isEditMode: true, editingAuditId:', auditIdValue);
 
-    // Step 1: Basic info
-    setTitle(details.title || details.audit?.title || '');
-    setAuditType(details.type || details.audit?.type || 'Internal');
-    setGoal(details.objective || details.audit?.objective || '');
+    // Step 1: Basic info - ensure all values are properly formatted
+    const titleValue = details.title || details.audit?.title || '';
+    const auditTypeValue = details.type || details.audit?.type || 'Internal';
+    const goalValue = details.objective || details.audit?.objective || '';
+    
+    // Parse dates properly - handle ISO strings and ensure YYYY-MM-DD format
     const startDate = details.startDate || details.audit?.startDate;
     const endDate = details.endDate || details.audit?.endDate;
-    setPeriodFrom(startDate ? (startDate.split('T')[0] || startDate) : '');
-    setPeriodTo(endDate ? (endDate.split('T')[0] || endDate) : '');
+    
+    let periodFromValue = '';
+    let periodToValue = '';
+    
+    if (startDate) {
+      try {
+        // Handle ISO string format (e.g., "2025-01-15T10:00:00Z")
+        if (typeof startDate === 'string' && startDate.includes('T')) {
+          periodFromValue = startDate.split('T')[0];
+        } else if (typeof startDate === 'string') {
+          // Already in YYYY-MM-DD format
+          periodFromValue = startDate;
+        } else {
+          // If it's a Date object or other format, try to convert
+          const date = new Date(startDate);
+          if (!isNaN(date.getTime())) {
+            periodFromValue = date.toISOString().split('T')[0];
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse startDate:', startDate, e);
+      }
+    }
+    
+    if (endDate) {
+      try {
+        // Handle ISO string format (e.g., "2025-01-15T10:00:00Z")
+        if (typeof endDate === 'string' && endDate.includes('T')) {
+          periodToValue = endDate.split('T')[0];
+        } else if (typeof endDate === 'string') {
+          // Already in YYYY-MM-DD format
+          periodToValue = endDate;
+        } else {
+          // If it's a Date object or other format, try to convert
+          const date = new Date(endDate);
+          if (!isNaN(date.getTime())) {
+            periodToValue = date.toISOString().split('T')[0];
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse endDate:', endDate, e);
+      }
+    }
+    
+    setTitle(titleValue);
+    setAuditType(auditTypeValue);
+    setGoal(goalValue);
+    setPeriodFrom(periodFromValue);
+    setPeriodTo(periodToValue);
     setDrlFileName(details.drlFileName || '');
     setDrlFile(null);
+    
+    console.log('📝 Step 1 values loaded:', {
+      title: titleValue,
+      auditType: auditTypeValue,
+      goal: goalValue,
+      periodFrom: periodFromValue,
+      periodTo: periodToValue,
+      originalStartDate: startDate,
+      originalEndDate: endDate,
+    });
+    
+    // Debug: Check if dates are valid for validation
+    if (periodFromValue && periodToValue) {
+      const fromDate = new Date(periodFromValue);
+      const toDate = new Date(periodToValue);
+      const daysDiff = Math.floor((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
+      console.log('📝 Date validation check:', {
+        fromDate: fromDate.toISOString(),
+        toDate: toDate.toISOString(),
+        daysDiff,
+        isValid: !isNaN(fromDate.getTime()) && !isNaN(toDate.getTime()) && daysDiff >= 0,
+      });
+    }
     
     // Step 2: Scope
     const scope = details.scope || details.audit?.scope;
@@ -279,6 +354,128 @@ export const useAuditPlanForm = () => {
       setDraftReportDue('');
       setCapaDue('');
     }
+    
+    // Load sensitive areas data from details or API
+    // Check if details already have sensitive data loaded
+    if (details.sensitiveFlag !== undefined || details.sensitiveAreas || details.sensitiveAreasByDept || details.sensitiveDeptIds) {
+      // Use sensitive data from details if available
+      setSensitiveFlag(details.sensitiveFlag || false);
+      const sensitiveAreasArray = Array.isArray(details.sensitiveAreas) ? details.sensitiveAreas : [];
+      setSensitiveAreas(sensitiveAreasArray);
+      
+      // Load sensitiveAreasByDept if available from details
+      let areasByDept: Record<number, string[]> = {};
+      if (details.sensitiveAreasByDept && typeof details.sensitiveAreasByDept === 'object') {
+        Object.keys(details.sensitiveAreasByDept).forEach((key) => {
+          const deptId = Number(key);
+          if (!isNaN(deptId)) {
+            const areas = details.sensitiveAreasByDept[deptId];
+            if (Array.isArray(areas) && areas.length > 0) {
+              areasByDept[deptId] = areas;
+            }
+          }
+        });
+      }
+      
+      // Always try to parse sensitiveAreas to create sensitiveAreasByDept if sensitiveAreas has data
+      // This ensures we have department-specific mapping even if API didn't return it
+      // Format: "areaName - deptName" or just "areaName"
+      if (sensitiveAreasArray.length > 0) {
+        // Get departments list to match deptName
+        const deptList = details.scopeDepartments?.values || details.scopeDepartments || [];
+        const deptNameToIdMap = new Map<string, number>();
+        
+        deptList.forEach((sd: any) => {
+          const deptId = Number(sd.deptId || sd.DeptId || sd.id);
+          // Try multiple sources for department name
+          const deptName = sd.departmentName || 
+                          sd.deptName || 
+                          sd.name || 
+                          sd.Name ||
+                          sd.dept?.name ||
+                          sd.dept?.departmentName ||
+                          sd.dept?.deptName ||
+                          '';
+          
+          if (!isNaN(deptId) && deptName) {
+            const normalizedName = deptName.toLowerCase().trim();
+            if (!deptNameToIdMap.has(normalizedName)) {
+              deptNameToIdMap.set(normalizedName, deptId);
+            }
+          }
+        });
+        
+        sensitiveAreasArray.forEach((areaStr: string) => {
+          if (!areaStr || typeof areaStr !== 'string') return;
+          
+          // Try to parse format "areaName - deptName"
+          const parts = areaStr.split(' - ');
+          
+          if (parts.length >= 2) {
+            const areaName = parts[0].trim();
+            const deptName = parts.slice(1).join(' - ').trim(); // Handle multiple " - " in deptName
+            
+            const deptId = deptNameToIdMap.get(deptName.toLowerCase());
+            
+            if (deptId && areaName) {
+              if (!areasByDept[deptId]) {
+                areasByDept[deptId] = [];
+              }
+              if (!areasByDept[deptId].includes(areaName)) {
+                areasByDept[deptId].push(areaName);
+              }
+            }
+          } else {
+            // If no " - " separator, try to match with all departments
+            // This is less accurate but better than nothing
+            const areaName = areaStr.trim();
+            if (areaName) {
+              // Try to find matching department from scopeDepartments
+              deptList.forEach((sd: any) => {
+                const deptId = Number(sd.deptId);
+                if (!isNaN(deptId)) {
+                  if (!areasByDept[deptId]) {
+                    areasByDept[deptId] = [];
+                  }
+                  if (!areasByDept[deptId].includes(areaName)) {
+                    areasByDept[deptId].push(areaName);
+                  }
+                }
+              });
+            }
+          }
+        });
+      }
+      
+      if (Object.keys(areasByDept).length > 0) {
+        setSensitiveAreasByDept(areasByDept);
+      }
+      
+      // Extract sensitiveDeptIds - prioritize from details.sensitiveDeptIds
+      if (details.sensitiveDeptIds && Array.isArray(details.sensitiveDeptIds) && details.sensitiveDeptIds.length > 0) {
+        setSensitiveDeptIds(details.sensitiveDeptIds.map((id: any) => String(id)));
+      } else if (Object.keys(areasByDept).length > 0) {
+        // Extract from parsed sensitiveAreasByDept
+        const deptIds = Object.keys(areasByDept).map(id => String(id));
+        setSensitiveDeptIds(deptIds);
+      } else if (details.scopeDepartments?.values?.length > 0) {
+        // Check scopeDepartments for sensitiveFlag
+        const sensitiveDeptIdsFromScope: string[] = [];
+        details.scopeDepartments.values.forEach((sd: any) => {
+          if (sd.sensitiveFlag === true || sd.sensitiveFlag === 'true') {
+            sensitiveDeptIdsFromScope.push(String(sd.deptId));
+          }
+        });
+        if (sensitiveDeptIdsFromScope.length > 0) {
+          setSensitiveDeptIds(sensitiveDeptIdsFromScope);
+          setSensitiveFlag(true);
+        }
+      }
+      
+      if (details.sensitiveNotes) {
+        setSensitiveNotes(details.sensitiveNotes);
+      }
+    }
   };
 
   return {
@@ -325,6 +522,8 @@ export const useAuditPlanForm = () => {
     setSensitiveNotes,
     sensitiveDeptIds,
     setSensitiveDeptIds,
+    sensitiveAreasByDept,
+    setSensitiveAreasByDept,
     
     // Step 3
     selectedTemplateIds,

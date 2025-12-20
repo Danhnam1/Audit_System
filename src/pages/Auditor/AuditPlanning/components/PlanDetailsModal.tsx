@@ -217,43 +217,16 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     loadSharedCriteria();
   }, [showModal, selectedPlanDetails]);
 
-  // Build a list of audit team members to render. If Auditee Owners are not present
-  // in `selectedPlanDetails.auditTeams.values`, try to supplement them from `ownerOptions`.
+  // Build a list of audit team members to render. Filter out AuditeeOwner immediately.
   const auditTeamsFromDetails: any[] = Array.isArray(selectedPlanDetails.auditTeams?.values)
-    ? selectedPlanDetails.auditTeams.values
+    ? selectedPlanDetails.auditTeams.values.filter((m: any) => {
+        const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+        return role !== 'auditeeowner';
+      })
     : [];
 
-  const ownerUserIdsInTeam = new Set(auditTeamsFromDetails.map((m) => String(m.userId)));
-
-  // Determine owners relevant for this plan: if scope is 'Department', pick owners whose deptId
-  // matches any selected scope department; if scope is 'Academy' pick all provided ownerOptions.
-  const relevantOwners: any[] = (ownerOptions || []).filter((o: any) => {
-    if (!o) return false;
-    if (!selectedPlanDetails) return false;
-    const scope = String(selectedPlanDetails.scope || '').toLowerCase();
-    const ownerDeptId = o.deptId ?? o.departmentId ?? o.deptID ?? o.dept?.id;
-    if (scope === 'department') {
-      const deptIds = (selectedPlanDetails.scopeDepartments?.values || []).map((d: any) => String(d.deptId));
-      return deptIds.length === 0 ? false : deptIds.includes(String(ownerDeptId));
-    }
-    return true;
-  });
-
-  const missingOwners = relevantOwners
-    .filter((o) => {
-      const uid = o.userId ?? o.id ?? o.$id;
-      return !ownerUserIdsInTeam.has(String(uid));
-    })
-    .map((o) => {
-      const uid = o.userId ?? o.id ?? o.$id;
-      return {
-        userId: uid,
-        fullName: o.fullName || o.name || `User ${uid}`,
-        roleInTeam: 'AuditeeOwner',
-        isLead: false,
-        email: o.email,
-      };
-    });
+  // Note: AuditeeOwner is a system role, not part of auditTeam
+  // Do not add AuditeeOwner to audit team display
 
   // Build user lookup map from auditorOptions and ownerOptions
   const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
@@ -338,7 +311,12 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     };
   });
 
-  const combinedAuditTeam = [...enrichedAuditTeam, ...missingOwners];
+  // Only include team members that are NOT AuditeeOwner
+  // Filter out AuditeeOwner from enrichedAuditTeam and don't include missingOwners
+  const combinedAuditTeam = enrichedAuditTeam.filter((m: any) => {
+    const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+    return role !== 'auditeeowner';
+  });
 
   const modalContent = (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] overflow-hidden">
@@ -709,7 +687,11 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               </div>
               <div className="space-y-2">
                 {combinedAuditTeam
-                  .filter((m: any) => String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '') !== 'auditeeowner')
+                  .filter((m: any) => {
+                    // Double-check: filter out AuditeeOwner one more time
+                    const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+                    return role !== 'auditeeowner';
+                  })
                   .sort((a: any, b: any) => {
                     // Sort: Lead Auditor first, then others
                     if (a.isLead && !b.isLead) return -1;
@@ -740,11 +722,16 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                               Lead Auditor
                             </span>
                           )}
-                          {member.roleInTeam && !member.isLead && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getBadgeVariant('primary-light')}`}>
-                              {member.roleInTeam}
-                            </span>
-                          )}
+                          {member.roleInTeam && !member.isLead && (() => {
+                            const role = String(member.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+                            // Don't display AuditeeOwner role
+                            if (role === 'auditeeowner') return null;
+                            return (
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getBadgeVariant('primary-light')}`}>
+                                {member.roleInTeam}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>

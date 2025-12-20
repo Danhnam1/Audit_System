@@ -35,6 +35,9 @@ export interface BulkCreateAuditAssignmentDto {
   deptId: number;
   auditorIds: string[]; // Array of auditor IDs
   notes?: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  estimatedDuration?: number;
 }
 
 // Helper to convert to PascalCase for .NET API

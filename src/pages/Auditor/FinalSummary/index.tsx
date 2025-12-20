@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
-import { getAuditFullDetail, getAuditPlans } from "../../../api/audits";
+import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsActionsSummary } from "../../../api/audits";
 import { submitFinalReport, getReportRequestByAuditId } from "../../../api/reportRequest";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
 import { useNavigate } from "react-router-dom";
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 
 type FullDetailResponse = {
   audit?: {
@@ -41,6 +42,14 @@ export default function AuditorFinalSummaryPage() {
   const [detail, setDetail] = useState<FullDetailResponse | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   
+  // State for Summary API data
+  const [summaryData, setSummaryData] = useState<any>(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+  
+  // State for Findings-Actions-Summary API data (for charts)
+  const [findingsActionsSummary, setFindingsActionsSummary] = useState<any>(null);
+  const [loadingFindingsActionsSummary, setLoadingFindingsActionsSummary] = useState(false);
+  
   // State to track expanded images (Set of attachmentId/docId)
   const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
   
@@ -72,21 +81,48 @@ export default function AuditorFinalSummaryPage() {
     loadAudits();
   }, []);
 
-  // Load full-detail when user selects an audit (GET /Audits/{id}/full-detail)
+  // Load all 3 APIs when user selects an audit
   useEffect(() => {
     if (!selectedAuditId) {
       setDetail(null);
+      setSummaryData(null);
+      setFindingsActionsSummary(null);
       setReportRequest(null);
       return;
     }
 
-    const loadDetail = async () => {
+    const loadAllData = async () => {
+      // Load full-detail (for actions and general info)
       setLoadingDetail(true);
       try {
         const res = await getAuditFullDetail(selectedAuditId);
         setDetail(res as FullDetailResponse);
+      } catch (error) {
+        console.error('Failed to load full detail:', error);
       } finally {
         setLoadingDetail(false);
+      }
+
+      // Load Summary (for findings details)
+      setLoadingSummary(true);
+      try {
+        const summaryRes = await getAuditSummary(selectedAuditId);
+        setSummaryData(summaryRes);
+      } catch (error) {
+        console.error('Failed to load summary:', error);
+      } finally {
+        setLoadingSummary(false);
+      }
+
+      // Load Findings-Actions-Summary (for charts)
+      setLoadingFindingsActionsSummary(true);
+      try {
+        const fasRes = await getAuditFindingsActionsSummary(selectedAuditId);
+        setFindingsActionsSummary(fasRes);
+      } catch (error) {
+        console.error('Failed to load findings-actions-summary:', error);
+      } finally {
+        setLoadingFindingsActionsSummary(false);
       }
     };
 
@@ -111,7 +147,7 @@ export default function AuditorFinalSummaryPage() {
       }
     };
 
-    loadDetail();
+    loadAllData();
     loadReportRequest();
   }, [selectedAuditId]);
 
@@ -128,7 +164,19 @@ export default function AuditorFinalSummaryPage() {
   const criteriaArr = detail ? unwrapArray<any>(detail.auditCriteriaMap) : [];
   const checklistArr = detail ? unwrapArray<any>(detail.auditChecklistTemplateMap) : [];
   const teamsArr = detail ? unwrapArray<any>(detail.teams) : [];
-  const findingsArr = detail ? unwrapArray<any>(detail.findings) : [];
+  
+  // Get findings from Summary API (more detailed) - avoid duplication
+  const summaryFindings = summaryData?.findingsInAudit ? unwrapArray<any>(summaryData.findingsInAudit) : [];
+  const findingsFromSummary = summaryFindings.length > 0 && summaryFindings[0]?.findings 
+    ? unwrapArray<any>(summaryFindings[0].findings) 
+    : [];
+  
+  // Fallback to full-detail findings if Summary doesn't have them
+  const findingsArr = findingsFromSummary.length > 0 
+    ? findingsFromSummary 
+    : (detail ? unwrapArray<any>(detail.findings) : []);
+  
+  // Get actions from full-detail (Summary doesn't have actions)
   const actionsArr = detail ? unwrapArray<any>(detail.actions) : [];
   const documentsArr = detail ? unwrapArray<any>(detail.documents) : [];
 
@@ -140,9 +188,48 @@ export default function AuditorFinalSummaryPage() {
     return from || to;
   }, [audit.startDate, audit.endDate]);
 
-  const findingsCount = findingsArr.length;
+  // Use counts from Summary API if available, otherwise count arrays
+  const findingsCount = summaryData?.totalFindings ?? findingsArr.length;
   const actionsCount = actionsArr.length;
-  const documentsCount = documentsArr.length;
+  
+  // Prepare chart data from findings-actions-summary
+  const findingsSeverityChartData = useMemo(() => {
+    if (!findingsActionsSummary) return [];
+    return [
+      { name: 'Major', value: findingsActionsSummary.findingMajor || 0, color: '#ef4444' },
+      { name: 'Medium', value: findingsActionsSummary.findingMedium || 0, color: '#f59e0b' },
+      { name: 'Minor', value: findingsActionsSummary.findingMinor || 0, color: '#10b981' },
+    ].filter(item => item.value > 0);
+  }, [findingsActionsSummary]);
+  
+  const actionsStatusChartData = useMemo(() => {
+    if (!findingsActionsSummary) return [];
+    return [
+      { name: 'Completed', value: findingsActionsSummary.completedActions || 0, color: '#10b981' },
+      { name: 'Overdue', value: findingsActionsSummary.overdueActions || 0, color: '#ef4444' },
+    ].filter(item => item.value > 0);
+  }, [findingsActionsSummary]);
+  
+  const actionsSeverityBreakdownData = useMemo(() => {
+    if (!findingsActionsSummary) return [];
+    return [
+      { 
+        severity: 'Major', 
+        completed: findingsActionsSummary.completedActionsMajor || 0,
+        overdue: findingsActionsSummary.overdueActionsMajor || 0,
+      },
+      { 
+        severity: 'Medium', 
+        completed: findingsActionsSummary.completedActionsMedium || 0,
+        overdue: findingsActionsSummary.overdueActionsMedium || 0,
+      },
+      { 
+        severity: 'Minor', 
+        completed: findingsActionsSummary.completedActionsMinor || 0,
+        overdue: findingsActionsSummary.overdueActionsMinor || 0,
+      },
+    ].filter(item => item.completed > 0 || item.overdue > 0);
+  }, [findingsActionsSummary]);
 
   const headerSubtitle = useMemo(() => {
     if (!selectedAuditId) {
@@ -391,10 +478,10 @@ export default function AuditorFinalSummaryPage() {
             <div className="bg-white border border-dashed border-gray-300 rounded-lg p-8 text-center text-sm text-gray-500">
               Choose an audit from the dropdown above to load its full-detail information.
             </div>
-          ) : loadingDetail ? (
+          ) : (loadingDetail || loadingSummary || loadingFindingsActionsSummary) ? (
             <div className="bg-white border border-primary-200 rounded-lg p-8 flex items-center justify-center gap-3 text-sm text-primary-700">
               <div className="h-5 w-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
-              <span>Loading audit full-detail...</span>
+              <span>Loading audit data...</span>
             </div>
           ) : !detail ? (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
@@ -447,24 +534,117 @@ export default function AuditorFinalSummaryPage() {
                   </div>
                 </div>
 
-                {/* Findings and actions overview */}
+                {/* Charts Section - Findings & Actions Summary */}
+                {findingsActionsSummary && (
                 <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
                   <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
-                    <h2 className="text-sm font-semibold text-white uppercase">Findings & actions overview</h2>
+                      <h2 className="text-sm font-semibold text-white uppercase">Findings & Actions Summary Charts</h2>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Findings Severity Pie Chart */}
+                      {findingsSeverityChartData.length > 0 && (
+                        <div>
+                          <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase">Findings by Severity</h3>
+                          <div style={{ width: '100%', height: 250 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={findingsSeverityChartData}
+                                  cx="50%"
+                                  cy="50%"
+                                  labelLine={false}
+                                  label={(props: any) => {
+                                    const { name, value, percent } = props;
+                                    return `${name}: ${value} (${((percent as number) * 100).toFixed(0)}%)`;
+                                  }}
+                                  outerRadius={80}
+                                  fill="#8884d8"
+                                  dataKey="value"
+                                >
+                                  {findingsSeverityChartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Actions Status Pie Chart */}
+                      {actionsStatusChartData.length > 0 && (
+                        <div>
+                          <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase">Actions Status</h3>
+                          <div style={{ width: '100%', height: 250 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={actionsStatusChartData}
+                                  cx="50%"
+                                  cy="50%"
+                                  labelLine={false}
+                                  label={(props: any) => {
+                                    const { name, value, percent } = props;
+                                    return `${name}: ${value} (${((percent as number) * 100).toFixed(0)}%)`;
+                                  }}
+                                  outerRadius={80}
+                                  fill="#8884d8"
+                                  dataKey="value"
+                                >
+                                  {actionsStatusChartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Actions by Severity Breakdown Bar Chart */}
+                      {actionsSeverityBreakdownData.length > 0 && (
+                        <div className="md:col-span-2">
+                          <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase">Actions Breakdown by Severity</h3>
+                          <div style={{ width: '100%', height: 250 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={actionsSeverityBreakdownData}>
+                                <XAxis dataKey="severity" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                <Bar dataKey="completed" fill="#10b981" name="Completed" />
+                                <Bar dataKey="overdue" fill="#ef4444" name="Overdue" />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Findings Section - Separate and Clear */}
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-to-r from-red-500 to-red-600 rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Findings</h2>
                   </div>
                   <div className="p-4 space-y-4 text-sm text-gray-700">
                     <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="rounded-lg bg-gradient-to-br from-primary-100 to-primary-50 border border-primary-300 py-3 shadow-sm">
-                        <p className="text-[11px] font-semibold text-primary-800 uppercase tracking-wide">Findings</p>
-                        <p className="mt-1 text-2xl font-bold text-primary-900">{findingsCount}</p>
+                      <div className="rounded-lg bg-gradient-to-br from-red-100 to-red-50 border border-red-300 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-red-800 uppercase tracking-wide">Total Findings</p>
+                        <p className="mt-1 text-2xl font-bold text-red-900">{findingsCount}</p>
                       </div>
-                      <div className="rounded-lg bg-gradient-to-br from-primary-200 to-primary-100 border border-primary-400 py-3 shadow-sm">
-                        <p className="text-[11px] font-semibold text-primary-900 uppercase tracking-wide">Actions</p>
-                        <p className="mt-1 text-2xl font-bold text-primary-900">{actionsCount}</p>
+                      <div className="rounded-lg bg-gradient-to-br from-red-100 to-red-50 border border-red-300 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-red-800 uppercase tracking-wide">Open</p>
+                        <p className="mt-1 text-2xl font-bold text-red-900">{summaryData?.openFindings ?? 0}</p>
                       </div>
-                      <div className="rounded-lg bg-gradient-to-br from-primary-100 to-primary-50 border border-primary-300 py-3 shadow-sm">
-                        <p className="text-[11px] font-semibold text-primary-800 uppercase tracking-wide">Documents</p>
-                        <p className="mt-1 text-2xl font-bold text-primary-900">{documentsCount}</p>
+                      <div className="rounded-lg bg-gradient-to-br from-red-100 to-red-50 border border-red-300 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-red-800 uppercase tracking-wide">Closed</p>
+                        <p className="mt-1 text-2xl font-bold text-red-900">{summaryData?.closedFindings ?? 0}</p>
                       </div>
                     </div>
 
@@ -590,51 +770,106 @@ export default function AuditorFinalSummaryPage() {
                       </div>
                     )}
 
+                  </div>
+                </div>
+
+                {/* Actions Section - Separate and Clear */}
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Actions</h2>
+                  </div>
+                  <div className="p-4 space-y-4 text-sm text-gray-700">
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-50 border border-emerald-300 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">Total Actions</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-900">{actionsCount}</p>
+                      </div>
+                      <div className="rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-50 border border-emerald-300 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">Completed</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-900">{findingsActionsSummary?.completedActions ?? 0}</p>
+                      </div>
+                      <div className="rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-50 border border-emerald-300 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">Overdue</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-900">{findingsActionsSummary?.overdueActions ?? 0}</p>
+                      </div>
+                    </div>
+
                     {actionsArr.length > 0 && (
-                      <div className="pt-3 border-t border-dashed border-primary-200 space-y-1.5">
-                        <p className="text-[11px] font-semibold text-primary-800 uppercase tracking-wide flex items-center gap-1.5">
-                          <span className="inline-block w-1 h-4 rounded-full bg-primary-500" />
-                          Key actions & evidence
+                      <div className="mt-3">
+                        <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                          <span className="inline-block w-1 h-4 rounded-full bg-emerald-500" />
+                          Actions List ({actionsArr.length})
                         </p>
-                        <ul className="space-y-1 max-h-40 overflow-y-auto pr-1 text-xs text-gray-700">
-                          {actionsArr.slice(0, 5).map((a: any) => {
+                        <ul className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                          {actionsArr.map((a: any) => {
                             const attachments = unwrapArray<any>(a.attachments);
-                            if (attachments.length === 0) return null;
                             return (
                               <li
                                 key={a.actionId}
-                                className="border border-primary-200 rounded-lg p-2.5 bg-gradient-to-br from-white to-primary-50/40 shadow-sm hover:shadow-md hover:border-primary-300 transition-shadow transition-colors"
+                                className="border border-emerald-200 rounded-lg p-2.5 bg-gradient-to-br from-emerald-50 to-white shadow-sm hover:shadow-md hover:border-emerald-300 transition-shadow transition-colors"
                               >
-                                <p className="font-semibold text-primary-900 line-clamp-1 flex items-center justify-between gap-2">
-                                  {a.title || "Action"}
-                                  <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                <p className="text-xs font-semibold text-emerald-900 flex items-center justify-between gap-2">
+                                  {a.title || "Untitled action"}
+                                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                                     ACTION
                                   </span>
                                 </p>
-                                <ul className="mt-1 space-y-1 text-[11px] text-slate-600">
-                                  {attachments.slice(0, 2).map((att: any) => {
+                                <p className="mt-0.5 text-[11px] text-gray-600 flex flex-wrap gap-1 items-center">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                    a.status === 'Completed' || a.status === 'Approved' 
+                                      ? 'bg-green-100 text-green-700 border border-green-200' 
+                                      : a.status === 'Overdue' || a.status === 'Rejected'
+                                      ? 'bg-red-100 text-red-700 border border-red-200'
+                                      : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                  }`}>
+                                    {a.status || "N/A"}
+                                  </span>
+                                  {a.progressPercent !== undefined && (
+                                    <span className="text-[11px] text-emerald-600">
+                                      Progress: {a.progressPercent}%
+                                    </span>
+                                  )}
+                                  {a.dueDate && (
+                                    <span className="text-[11px] text-gray-500">
+                                      Due: {new Date(a.dueDate).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </p>
+                                {a.description && (
+                                  <p className="mt-1 text-[11px] text-gray-700 line-clamp-2">
+                                    {a.description}
+                                  </p>
+                                )}
+
+                                {attachments.length > 0 && (
+                                  <div className="mt-2 space-y-1.5">
+                                    <p className="text-[11px] font-semibold text-emerald-700">
+                                      Attachments ({attachments.length})
+                                    </p>
+                                    <ul className="space-y-1">
+                                      {attachments.slice(0, 3).map((att: any) => {
                                     const attId = att.attachmentId || "";
                                     const isImg = isImage(att.contentType, att.fileName);
                                     const isExpanded = expandedImages.has(attId);
                                     const filePath = att.blobPath || att.filePath;
                                     return (
-                                      <li key={attId} className="border border-primary-200 rounded-md p-1.5 bg-white hover:bg-primary-50/50 transition-colors">
+                                          <li key={attId} className="border border-emerald-200 rounded-md p-1.5 bg-white">
                                         <button
                                           onClick={() => handleFileAction(att)}
-                                          className="w-full flex items-center justify-between gap-2 text-left text-[11px] text-gray-700 hover:text-primary-700 transition-colors"
+                                              className="w-full flex items-center justify-between gap-2 text-left text-[11px] text-gray-700 hover:text-emerald-600 transition-colors"
                                           title={isImg ? "Click to expand/collapse image" : "Click to open file"}
                                         >
                                           <div className="flex-1 min-w-0">
                                             <span className="truncate block font-medium">
                                               {att.fileName || "Attachment"}
                                             </span>
-                                            <span className="text-[10px] text-primary-500 mt-0.5 block">
+                                                <span className="text-[10px] text-emerald-500 mt-0.5 block">
                                               {att.contentType || ""} · {att.status || "Active"}
                                             </span>
                                           </div>
                                           {isImg && (
                                             <svg
-                                              className={`w-3 h-3 text-primary-400 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                                  className={`w-3 h-3 text-emerald-400 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
                                               fill="none"
                                               stroke="currentColor"
                                               viewBox="0 0 24 24"
@@ -644,7 +879,7 @@ export default function AuditorFinalSummaryPage() {
                                           )}
                                           {!isImg && filePath && (
                                             <svg
-                                              className="w-3 h-3 text-primary-400 flex-shrink-0"
+                                                  className="w-3 h-3 text-emerald-400 flex-shrink-0"
                                               fill="none"
                                               stroke="currentColor"
                                               viewBox="0 0 24 24"
@@ -654,23 +889,23 @@ export default function AuditorFinalSummaryPage() {
                                           )}
                                         </button>
                                         {isImg && isExpanded && filePath && (
-                                          <div className="mt-2 border-t border-primary-200 pt-2">
+                                              <div className="mt-2 border-t border-emerald-200 pt-2">
                                             <div className="relative w-full">
                                               <img
                                                 src={filePath}
                                                 alt={att.fileName || "Image"}
-                                                className="w-full h-auto rounded border border-primary-200 max-h-48 object-contain bg-primary-50"
+                                                    className="w-full h-auto rounded border border-emerald-200 max-h-64 object-contain bg-emerald-50"
                                                 onError={(e) => {
                                                   (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not available%3C/text%3E%3C/svg%3E";
                                                 }}
                                               />
                                               <button
                                                 onClick={() => toggleImageExpand(attId)}
-                                                className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-primary-300 rounded p-1.5 shadow-sm transition-colors"
+                                                    className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-emerald-300 rounded p-1.5 shadow-sm transition-colors"
                                                 title="Collapse image"
                                               >
                                                 <svg
-                                                  className="w-4 h-4 text-primary-700"
+                                                      className="w-4 h-4 text-emerald-700"
                                                   fill="none"
                                                   stroke="currentColor"
                                                   viewBox="0 0 24 24"
@@ -685,6 +920,8 @@ export default function AuditorFinalSummaryPage() {
                                     );
                                   })}
                                 </ul>
+                                  </div>
+                                )}
                               </li>
                             );
                           })}

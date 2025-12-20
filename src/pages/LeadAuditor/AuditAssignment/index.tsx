@@ -79,7 +79,7 @@ export default function AuditAssignment() {
   const [notes, setNotes] = useState<string>('');
   const [plannedStartDate, setPlannedStartDate] = useState<string>('');
   const [plannedEndDate, setPlannedEndDate] = useState<string>('');
-  const [estimatedDuration, setEstimatedDuration] = useState<number | ''>('');
+  const [estimatedDuration, setEstimatedDuration] = useState<number>(0);
   const [loadingAuditors, setLoadingAuditors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -288,6 +288,9 @@ export default function AuditAssignment() {
     const auditId = selectedAuditId || dept.auditIds[0] || '';
     setSelectedAuditorIds([]);
     setNotes('');
+    setPlannedStartDate('');
+    setPlannedEndDate('');
+    setEstimatedDuration(0);
     setIsAssignModalOpen(true);
     loadAuditors(auditId);
   };
@@ -314,7 +317,7 @@ export default function AuditAssignment() {
     setNotes('');
     setPlannedStartDate('');
     setPlannedEndDate('');
-    setEstimatedDuration('');
+    setEstimatedDuration(0);
     setAuditors([]);
     setShowConfirmModal(false);
   };
@@ -500,6 +503,14 @@ export default function AuditAssignment() {
 
     setSubmitting(true);
     try {
+      // Convert date format to ISO string
+      const formatDateForAPI = (dateString: string): string | undefined => {
+        if (!dateString) return undefined;
+        // date input returns "YYYY-MM-DD", convert to ISO string
+        const date = new Date(dateString);
+        return isNaN(date.getTime()) ? undefined : date.toISOString();
+      };
+
       // Use bulk API if multiple auditors, otherwise single API
       if (selectedAuditorIds.length > 1) {
         const result = await bulkCreateAuditAssignments({
@@ -507,6 +518,9 @@ export default function AuditAssignment() {
           deptId: selectedDepartment.deptId,
           auditorIds: selectedAuditorIds,
           notes: notes || '',
+          plannedStartDate: formatDateForAPI(plannedStartDate),
+          plannedEndDate: formatDateForAPI(plannedEndDate),
+          estimatedDuration: estimatedDuration > 0 ? estimatedDuration : undefined,
         });
         // For non-sensitive departments, show success immediately.
         // For sensitive departments, show success only after QR codes are issued.
@@ -521,9 +535,9 @@ export default function AuditAssignment() {
           auditorId: selectedAuditorIds[0],
           notes: notes || '',
           status: 'Assigned',
-          plannedStartDate: plannedStartDate || undefined,
-          plannedEndDate: plannedEndDate || undefined,
-          estimatedDuration: estimatedDuration ? Number(estimatedDuration) : undefined,
+          plannedStartDate: formatDateForAPI(plannedStartDate),
+          plannedEndDate: formatDateForAPI(plannedEndDate),
+          estimatedDuration: estimatedDuration > 0 ? estimatedDuration : undefined,
         });
         if (!isSensitiveDept) {
           toast.success('Auditor assigned successfully!');
@@ -1051,120 +1065,262 @@ export default function AuditAssignment() {
           />
           
           {/* Modal */}
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Assign Auditor
-                </h3>
-                <button
-                  onClick={handleCloseModal}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 flex-shrink-0">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Assign Auditor
+              </h3>
+              <button
+                onClick={handleCloseModal}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-              <div className="space-y-4">
-                {/* Department Info */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Department
-                  </label>
-                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                    {selectedDepartment.name}
-                  </p>
-                </div>
+            {/* Scrollable Content */}
+            <div className="overflow-y-auto flex-1 px-6 py-4">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Left Column - Main Content */}
+                <div className="lg:col-span-2 space-y-5">
+                  {/* Department & Audit Info */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Department
+                      </label>
+                      <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                        {selectedDepartment.name}
+                      </p>
+                    </div>
 
-                {/* Audit Info (read-only since we're viewing a specific audit) */}
-                {selectedAuditId && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Audit
-                    </label>
-                    <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                      {audits.find(a => a.auditId === selectedAuditId)?.title || `Audit ${selectedAuditId.substring(0, 8)}...`}
-                    </p>
+                    {/* Audit Info (read-only since we're viewing a specific audit) */}
+                    {selectedAuditId && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Audit
+                        </label>
+                        <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                          {audits.find(a => a.auditId === selectedAuditId)?.title || `Audit ${selectedAuditId.substring(0, 8)}...`}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
 
-                {/* Sensitive flag check - will be updated after assignment */}
-
-                {/* Auditor Selection (multi-select, demo) */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Auditor(s)
-                  </label>
-                  {loadingAuditors ? (
-                    <div className="flex items-center justify-center py-4">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
-                      <span className="ml-2 text-sm text-gray-600">Loading auditors...</span>
-                    </div>
-                  ) : auditors.length === 0 ? (
-                    <p className="text-sm text-gray-500 py-2">No auditors available</p>
-                  ) : (
-                    <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3">
-                      {auditors.map((auditor) => {
-                        const id = String(auditor.userId);
-                        const checked = selectedAuditorIds.includes(id);
-                        return (
-                          <label
-                            key={id}
-                            className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 hover:bg-primary-50 transition"
-                          >
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                                checked={checked}
-                                onChange={(e) => {
-                                  const next = e.target.checked
-                                    ? Array.from(new Set([...selectedAuditorIds, id]))
-                                    : selectedAuditorIds.filter((x) => x !== id);
-                                  setSelectedAuditorIds(next);
-                                }}
-                              />
-                              <div className="text-sm">
-                                <p className="font-semibold text-gray-900">{auditor.fullName || 'Unknown'}</p>
-                                <p className="text-gray-600">{auditor.email || 'N/A'}</p>
+                  {/* Auditor Selection (multi-select, demo) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Auditor(s)
+                    </label>
+                    {loadingAuditors ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+                        <span className="ml-2 text-sm text-gray-600">Loading auditors...</span>
+                      </div>
+                    ) : auditors.length === 0 ? (
+                      <p className="text-sm text-gray-500 py-4 text-center bg-gray-50 rounded-lg border border-gray-200">No auditors available</p>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+                        {auditors.map((auditor) => {
+                          const id = String(auditor.userId);
+                          const checked = selectedAuditorIds.includes(id);
+                          return (
+                            <label
+                              key={id}
+                              className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 hover:bg-white transition cursor-pointer border border-transparent hover:border-gray-200"
+                            >
+                              <div className="flex items-center gap-3 flex-1">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? Array.from(new Set([...selectedAuditorIds, id]))
+                                      : selectedAuditorIds.filter((x) => x !== id);
+                                    setSelectedAuditorIds(next);
+                                  }}
+                                />
+                                <div className="text-sm flex-1">
+                                  <p className="font-medium text-gray-900">{auditor.fullName || 'Unknown'}</p>
+                                  <p className="text-gray-500 text-xs">{auditor.email || 'N/A'}</p>
+                                </div>
                               </div>
-                            </div>
-                            {checked && (
-                              <span className="text-xs text-primary-700 bg-primary-50 px-2 py-1 rounded-full border border-primary-100">
-                                Selected
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">You can select multiple auditors (demo UI).</p>
+                              {checked && (
+                                <span className="text-xs font-medium text-primary-700 bg-primary-100 px-2.5 py-1 rounded-full border border-primary-200">
+                                  Selected
+                                </span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">You can select multiple auditors.</p>
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notes <span className="text-gray-500 font-normal">(optional)</span>
+                    </label>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={4}
+                      placeholder="Enter notes..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                    />
+                  </div>
                 </div>
 
-                {/* Notes */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Notes
-                  </label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={4}
-                    placeholder="Enter notes (optional)"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                  />
+                {/* Right Column - Schedule Section */}
+                <div className="lg:col-span-1">
+                  <div className="bg-gray-50 rounded-lg border border-gray-200 p-5 sticky top-0">
+                    <h4 className="text-base font-semibold text-gray-900 mb-4">Schedule</h4>
+                    
+                    {/* Helper function to format Date to YYYY-MM-DD */}
+                    {(() => {
+                      const formatDateForInput = (date: Date | null): string => {
+                        if (!date) return '';
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                      };
+
+                      const minDate = qrValidityFrom ? formatDateForInput(qrValidityFrom) : '';
+                      const maxDate = qrValidityTo ? formatDateForInput(qrValidityTo) : '';
+
+                      return (
+                        <>
+                          {/* Planned Start Date */}
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Planned Start Date
+                            </label>
+                            <input
+                              type="date"
+                              value={plannedStartDate}
+                              onChange={(e) => setPlannedStartDate(e.target.value)}
+                              min={minDate}
+                              max={maxDate}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
+                            />
+                            {(minDate || maxDate) && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                {minDate && maxDate 
+                                  ? `Between ${minDate} and ${maxDate}`
+                                  : minDate 
+                                  ? `From ${minDate}`
+                                  : `Until ${maxDate}`}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Planned End Date */}
+                          <div className="mb-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Planned End Date
+                            </label>
+                            <input
+                              type="date"
+                              value={plannedEndDate}
+                              onChange={(e) => setPlannedEndDate(e.target.value)}
+                              min={plannedStartDate || minDate}
+                              max={maxDate}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
+                            />
+                            {(minDate || maxDate || plannedStartDate) && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                {plannedStartDate && maxDate
+                                  ? `From ${plannedStartDate} to ${maxDate}`
+                                  : plannedStartDate
+                                  ? `From ${plannedStartDate}`
+                                  : minDate && maxDate
+                                  ? `Between ${minDate} and ${maxDate}`
+                                  : minDate
+                                  ? `From ${minDate}`
+                                  : `Until ${maxDate}`}
+                              </p>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
+
+                    {/* Estimated Duration */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Estimated Duration <span className="text-gray-500 font-normal">(days)</span>
+                      </label>
+                      {(() => {
+                        // Calculate total days between Planned Start Date and Planned End Date
+                        const calculateTotalDays = (): number | undefined => {
+                          if (!plannedStartDate || !plannedEndDate) return undefined;
+                          const start = new Date(plannedStartDate);
+                          const end = new Date(plannedEndDate);
+                          if (isNaN(start.getTime()) || isNaN(end.getTime())) return undefined;
+                          const diffTime = end.getTime() - start.getTime();
+                          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                          return diffDays >= 0 ? diffDays : undefined;
+                        };
+
+                        const totalDays = calculateTotalDays();
+                        const currentValue = estimatedDuration || 0;
+                        // Max value should be strictly less than totalDays, so max = totalDays - 0.5 (since step is 0.5)
+                        const maxValue = totalDays !== undefined ? totalDays - 0.5 : undefined;
+
+                        return (
+                          <>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              max={maxValue}
+                              value={estimatedDuration || ''}
+                              onChange={(e) => {
+                                const value = Number(e.target.value) || 0;
+                                if (value < 0) {
+                                  setEstimatedDuration(0);
+                                } else if (totalDays !== undefined && value >= totalDays) {
+                                  // Strictly less than totalDays
+                                  setEstimatedDuration(Math.max(0, totalDays - 0.5));
+                                } else {
+                                  setEstimatedDuration(value);
+                                }
+                              }}
+                              placeholder="Enter days"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
+                            />
+                            {plannedStartDate && plannedEndDate && totalDays !== undefined && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Must be less than {totalDays} day(s) (between start and end date)
+                              </p>
+                            )}
+                            {totalDays !== undefined && currentValue >= totalDays && (
+                              <p className="text-xs text-red-500 mt-1">
+                                Duration must be less than {totalDays} day(s)
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 p-6 pt-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex-shrink-0">
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 bg-white hover:bg-gray-100 transition-colors font-medium"
                 >
                   Cancel
                 </button>
@@ -1172,7 +1328,7 @@ export default function AuditAssignment() {
                   type="button"
                   onClick={handleAssignClick}
                   disabled={selectedAuditorIds.length === 0 || loadingAuditors || submitting}
-                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-5 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium shadow-sm"
                 >
                   {submitting ? (
                     <>
@@ -1186,7 +1342,6 @@ export default function AuditAssignment() {
               </div>
             </div>
           </div>
-        </div>
       )}
 
       {/* Confirmation Modal */}
