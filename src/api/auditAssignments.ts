@@ -160,6 +160,17 @@ export const deleteAuditAssignment = async (assignmentId: string): Promise<void>
   await apiClient.delete(`/AuditAssignment/${assignmentId}`);
 };
 
+// Update actual audit date
+export const updateActualAuditDate = async (
+  assignmentId: string,
+  actualAuditDate: string
+): Promise<AuditAssignment> => {
+  const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/actual-audit-date`, {
+    actualAuditDate,
+  });
+  return res;
+};
+
 // Get my assignments (for current auditor)
 export const getMyAssignments = async (): Promise<any> => {
   try {

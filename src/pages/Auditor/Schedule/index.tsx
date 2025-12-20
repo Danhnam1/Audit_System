@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MainLayout } from '../../../layouts';
-import { getMyAssignments } from '../../../api/auditAssignments';
+import { getMyAssignments, updateActualAuditDate } from '../../../api/auditAssignments';
 import { unwrap } from '../../../utils/normalize';
+import { toast } from 'react-toastify';
 
 interface Assignment {
   assignmentId: string;
@@ -25,6 +26,10 @@ const AuditorSchedule = () => {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Helper function to format date for Set
   const formatDateForSet = (date: Date): string => {
@@ -67,14 +72,15 @@ const AuditorSchedule = () => {
     loadAssignments();
   }, []);
 
-  // Get all dates that should be highlighted
+  // Get all dates that should be highlighted and map dates to assignments
   const highlightedDates = useMemo(() => {
     const plannedDates = new Set<string>(); // Blue dates (planned range)
     const actualDates = new Set<string>(); // Orange dates (actual audit dates)
+    const dateToAssignmentMap = new Map<string, Assignment>(); // Map date string to assignment
 
     assignments.forEach((assignment) => {
-      // Add planned date range (blue)
-      if (assignment.plannedStartDate && assignment.plannedEndDate) {
+      // Only add planned dates if assignment doesn't have actualAuditDate yet
+      if (!assignment.actualAuditDate && assignment.plannedStartDate && assignment.plannedEndDate) {
         let start = new Date(assignment.plannedStartDate);
         let end = new Date(assignment.plannedEndDate);
         
@@ -91,6 +97,8 @@ const AuditorSchedule = () => {
         while (current <= end) {
           const dateStr = formatDateForSet(current);
           plannedDates.add(dateStr);
+          // Map this date to the assignment
+          dateToAssignmentMap.set(dateStr, assignment);
           current.setDate(current.getDate() + 1);
         }
       }
@@ -109,7 +117,7 @@ const AuditorSchedule = () => {
       actualDates: Array.from(actualDates) 
     });
 
-    return { plannedDates, actualDates };
+    return { plannedDates, actualDates, dateToAssignmentMap };
   }, [assignments]);
 
   // Get calendar days for current month
@@ -208,6 +216,49 @@ const AuditorSchedule = () => {
       month: 'long',
       day: 'numeric',
     });
+  };
+
+  // Handle click on planned date (blue dates)
+  const handleDateClick = (date: Date, dateStr: string) => {
+    const assignment = highlightedDates.dateToAssignmentMap.get(dateStr);
+    if (assignment && !assignment.actualAuditDate) {
+      setSelectedDate(date);
+      setSelectedAssignment(assignment);
+      setShowConfirmModal(true);
+    }
+  };
+
+  // Handle confirm actual audit date
+  const handleConfirmActualDate = async () => {
+    if (!selectedAssignment || !selectedDate) return;
+
+    setSubmitting(true);
+    try {
+      const dateStr = formatDateForSet(selectedDate);
+      await updateActualAuditDate(selectedAssignment.assignmentId, dateStr);
+      toast.success('Actual audit date updated successfully!');
+      setShowConfirmModal(false);
+      setSelectedDate(null);
+      setSelectedAssignment(null);
+      
+      // Reload assignments
+      const response = await getMyAssignments();
+      let assignmentsData: Assignment[] = [];
+      if (response?.$values && Array.isArray(response.$values)) {
+        assignmentsData = response.$values;
+      } else if (Array.isArray(response)) {
+        assignmentsData = response;
+      } else {
+        const unwrapped = unwrap<Assignment>(response);
+        assignmentsData = Array.isArray(unwrapped) ? unwrapped : [];
+      }
+      setAssignments(assignmentsData);
+    } catch (error: any) {
+      console.error('Failed to update actual audit date:', error);
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to update actual audit date');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -310,16 +361,20 @@ const AuditorSchedule = () => {
                     textColor = 'text-blue-600 font-semibold';
                   }
 
+                  // Check if this date can be clicked (planned date without actual date)
+                  const canClick = isPlanned && !isActual && day.isCurrentMonth && highlightedDates.dateToAssignmentMap.has(dateStr);
+
                   return (
                     <div
                       key={index}
+                      onClick={() => canClick && handleDateClick(day.date, dateStr)}
                       className={`
                         aspect-square p-0.5 rounded border transition-all
                         ${day.isCurrentMonth ? 'border-gray-200' : 'border-transparent'}
                         ${day.isToday && !isPlanned && !isActual ? 'border-blue-500 border-2' : ''}
                         ${bgColor || 'hover:bg-gray-50'}
                         ${textColor}
-                        ${day.isCurrentMonth ? 'cursor-pointer' : 'cursor-default'}
+                        ${canClick ? 'cursor-pointer hover:ring-2 hover:ring-blue-300' : day.isCurrentMonth ? 'cursor-pointer' : 'cursor-default'}
                         flex flex-col items-center justify-center
                       `}
                       title={day.isCurrentMonth ? formatDate(day.date) : ''}
@@ -337,6 +392,119 @@ const AuditorSchedule = () => {
           )}
         </div>
       </div>
+
+      {/* Confirm Actual Audit Date Modal */}
+      {showConfirmModal && selectedDate && selectedAssignment && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => {
+              if (!submitting) {
+                setShowConfirmModal(false);
+                setSelectedDate(null);
+                setSelectedAssignment(null);
+              }
+            }}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Confirm Actual Audit Date
+                </h3>
+                <button
+                  onClick={() => {
+                    if (!submitting) {
+                      setShowConfirmModal(false);
+                      setSelectedDate(null);
+                      setSelectedAssignment(null);
+                    }
+                  }}
+                  disabled={submitting}
+                  className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Assignment Info */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Audit
+                  </label>
+                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                    {selectedAssignment.auditTitle}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                    {selectedAssignment.departmentName}
+                  </p>
+                </div>
+
+                {/* Selected Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Selected Date
+                  </label>
+                  <p className="text-sm text-gray-900 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200 font-medium">
+                    {formatDate(selectedDate)}
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800">
+                    Are you sure you want to set <strong>{formatDate(selectedDate)}</strong> as the actual audit date for this assignment?
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!submitting) {
+                      setShowConfirmModal(false);
+                      setSelectedDate(null);
+                      setSelectedAssignment(null);
+                    }
+                  }}
+                  disabled={submitting}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmActualDate}
+                  disabled={submitting}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Updating...
+                    </>
+                  ) : (
+                    'Confirm'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 };
