@@ -4,8 +4,11 @@ import React from 'react';
 interface Row {
   auditId: string;
   title: string;
-  status: string;
+  status: string; // Backend status (InProgress)
+  displayStatus: string; // Frontend display (Waiting)
   createdBy: string;
+  rawStatus?: string;
+  isDirectorApproved?: boolean;
 }
 
 interface Props {
@@ -18,6 +21,7 @@ interface Props {
   onView: (auditId: string) => void;
   onApprove: (auditId: string) => void;
   onReject: (auditId: string) => void;
+  onEditScheduleAndTeam?: (auditId: string) => void;
   actionLoading: string;
   actionMsg: string | null;
   getStatusColor: (status: string) => string;
@@ -33,10 +37,19 @@ const AuditReportsTable: React.FC<Props> = ({
   onView,
   onApprove,
   onReject,
+  onEditScheduleAndTeam,
   actionLoading,
   actionMsg,
   getStatusColor
 }) => {
+  // Check if status allows editing schedule and team (Director approved)
+  // Button hiển thị khi:
+  // 1. status = "Approved" && có Director approval
+  // 2. HOẶC có extension request (revision request) đã được Director approve (isDirectorApproved = true)
+  const canEditScheduleAndTeam = (_status: string, _rawStatus?: string, isDirectorApproved?: boolean) => {
+    // Nếu có Director approval (bao gồm cả extension request đã approved), cho phép edit
+    return isDirectorApproved === true;
+  };
   return (
     <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
       <div className="bg-white p-4">
@@ -78,13 +91,13 @@ const AuditReportsTable: React.FC<Props> = ({
                 <tr key={r.auditId} className="border-b border-gray-100 transition-colors hover:bg-gray-50">
                   <td className="px-4 py-4 text-sm text-gray-700 whitespace-nowrap">{idx + 1}</td>
                   <td className="px-6 py-4"><span className="text-ms font-bold text-black">{r.title}</span></td>
-                  <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>{r.status}</span></td>
+                  <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>{r.displayStatus}</span></td>
                   <td className="px-6 py-4 whitespace-nowrap"><span className="text-ms text-[#5b6166]">{r.createdBy || '—'}</span></td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex gap-2 items-center justify-center">
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-2 items-center justify-center">
                       <button
                         onClick={() => onView(r.auditId)}
-                        className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                        className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
                         title="View Details"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,21 +105,39 @@ const AuditReportsTable: React.FC<Props> = ({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                       </button>
+                      {canEditScheduleAndTeam(r.status, r.rawStatus, r.isDirectorApproved) && onEditScheduleAndTeam && (
+                        <button
+                          onClick={() => onEditScheduleAndTeam(r.auditId)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all duration-200 bg-gradient-to-r from-indigo-600 via-blue-600 to-blue-700 hover:from-indigo-700 hover:via-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg active:scale-95 border border-blue-400/30 hover:border-blue-300/50"
+                          title="Edit Schedule & Team - Update audit schedule and team members"
+                        >
+                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          <span className="whitespace-nowrap">Edit Schedule & Team</span>
+                        </button>
+                      )}
                       {needsDecision(r.status) && (
                         <>
                           <button
                             onClick={() => onApprove(r.auditId)}
                             disabled={actionLoading === r.auditId}
-                            className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-green-600 hover:bg-green-700 text-white"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-md hover:shadow-lg active:scale-95 disabled:active:scale-100 border border-green-500/30"
                           >
-                            {actionLoading === r.auditId ? 'Approving...' : 'Approve'}
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            <span>{actionLoading === r.auditId ? 'Approving...' : 'Approve'}</span>
                           </button>
                           <button
                             onClick={() => onReject(r.auditId)}
                             disabled={actionLoading === r.auditId}
-                            className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-700 text-white"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-md hover:shadow-lg active:scale-95 disabled:active:scale-100 border border-red-500/30"
                           >
-                            {actionLoading === r.auditId ? 'Rejecting...' : 'Reject'}
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            <span>{actionLoading === r.auditId ? 'Rejecting...' : 'Reject'}</span>
                           </button>
                         </>
                       )}

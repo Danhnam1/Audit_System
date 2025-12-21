@@ -84,6 +84,11 @@ export const getAuditPlans = async (): Promise<any> => {
   return apiClient.get('/Audits') as any;
 };
 
+// Get all audit reports (for Lead Auditor)
+export const getAuditReports = async (): Promise<any> => {
+  return apiClient.get('/AuditReports') as any;
+};
+
 // Get full audit plan details by ID
 export const getAuditPlanById = async (auditId: string): Promise<any> => {
   try {
@@ -217,7 +222,8 @@ export const exportAuditPdf = async (auditId: string): Promise<Blob> => {
   return apiClient.get(`/Audits/ExportPdf/${auditId}`, { responseType: 'blob' } as any) as any;
 };
 
-// Submit audit to Lead Auditor
+// Submit audit REPORT to Lead Auditor (creates ReportRequest with status "Pending")
+// This API generates PDF and creates a ReportRequest record
 export const submitAudit = async (auditId: string): Promise<any> => {
   return apiClient.post(`/Audits/Submit/${auditId}`) as any;
 };
@@ -248,16 +254,84 @@ export const rejectAuditReport = async (
 };
 
 export const getAuditReportNote = async (auditId: string): Promise<string> => {
-  if (!auditId) return '';
-  const url = `/AuditReports/Note/${encodeURIComponent(auditId)}`;
-  const res = await apiClient.get(url) as any;
-  const data = res?.data ?? res;
-  if (data == null) return '';
-  if (typeof data === 'string') return data;
-  if (typeof data === 'object') {
-    return String(data.note ?? data.reason ?? data.comment ?? data.message ?? '');
+  if (!auditId) {
+    console.warn('[API] getAuditReportNote: auditId is empty');
+    return '';
   }
-  return String(data);
+  
+  const url = `/AuditReports/Note/${encodeURIComponent(auditId)}`;
+  
+  if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+    console.log(`[API] 📡 Calling GET ${url} for audit ${auditId}`);
+  }
+  
+  try {
+    const res = await apiClient.get(url) as any;
+    
+    if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+      console.log(`[API] 📥 Response from ${url}:`, {
+        status: res?.status,
+        data: res?.data,
+        fullResponse: res
+      });
+    }
+    
+    const data = res?.data ?? res;
+    if (data == null) {
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        console.warn(`[API] ⚠️ No data in response from ${url}`);
+      }
+      return '';
+    }
+    
+    if (typeof data === 'string') {
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        console.log(`[API] ✅ Got string note (length: ${data.length})`);
+      }
+      return data;
+    }
+    
+    if (typeof data === 'object') {
+      // Backend returns { Reason: note } (capital R), so check both cases
+      const note = String(
+        data.Reason ?? // Backend returns Reason (capital R)
+        data.reason ?? // Fallback lowercase
+        data.Note ??   // Alternative capital N
+        data.note ??   // Fallback lowercase
+        data.comment ?? 
+        data.Comment ??
+        data.message ?? 
+        data.Message ??
+        ''
+      );
+      
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        console.log(`[API] ✅ Parsed note from object:`, {
+          hasReason: !!data.Reason,
+          hasreason: !!data.reason,
+          hasNote: !!data.Note,
+          hasnote: !!data.note,
+          noteLength: note.length,
+          notePreview: note.substring(0, 50),
+          allKeys: Object.keys(data)
+        });
+      }
+      
+      return note;
+    }
+    
+    return String(data);
+  } catch (error: any) {
+    console.error(`[API] ❌ Error calling ${url}:`, {
+      auditId,
+      error: error?.message || error,
+      status: error?.response?.status,
+      statusText: error?.response?.statusText,
+      data: error?.response?.data,
+      url: error?.config?.url || url
+    });
+    throw error;
+  }
 };
 
 // Archive audit
@@ -317,6 +391,7 @@ export default {
   addAuditScopeDepartment,
   getAuditScopeDepartments,
   getAuditPlans,
+  getAuditReports,
   getAuditPlanById,
   updateAuditPlan,
   updateAuditPlanFull,

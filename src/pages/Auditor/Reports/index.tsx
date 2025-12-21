@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { getStatusColor } from '../../../constants';
 import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../components';
-import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote, archiveAudit } from '../../../api/audits';
+import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
+import { getReportRequestByAuditId, type ViewReportRequest } from '../../../api/reportRequest';
 import { getDepartments } from '../../../api/departments';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
 import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
@@ -39,6 +40,7 @@ const SQAStaffReports = () => {
   const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
+  const [reportRequests, setReportRequests] = useState<Record<string, ViewReportRequest>>({});
   
   // Extension request states
   const [extensionRequests, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
@@ -331,6 +333,30 @@ const SQAStaffReports = () => {
         : [];
       setDepartments(deptList);
       
+      // Load ReportRequest status cho tất cả audits
+      try {
+        const reportRequestsMap: Record<string, ViewReportRequest> = {};
+        await Promise.all(
+          filtered.map(async (audit: any) => {
+            const auditId = String(audit.auditId || audit.id || audit.$id || '').trim();
+            if (auditId) {
+              try {
+                const reportRequest = await getReportRequestByAuditId(auditId);
+                if (reportRequest) {
+                  reportRequestsMap[auditId] = reportRequest;
+                }
+              } catch (err) {
+                // Ignore errors for individual report requests
+                console.debug(`Failed to load report request for audit ${auditId}:`, err);
+              }
+            }
+          })
+        );
+        setReportRequests(reportRequestsMap);
+      } catch (err) {
+        console.error('Failed to load report requests', err);
+      }
+      
       const firstId = filtered?.[0]?.auditId || filtered?.[0]?.id || filtered?.[0]?.$id || '';
       if (firstId) setSelectedAuditId(String(firstId));
       else {
@@ -350,30 +376,139 @@ const SQAStaffReports = () => {
   // Fetch reject notes for any audits already marked Returned/Rejected
   useEffect(() => {
     const arr = Array.isArray(audits) ? audits : [];
+    
+    // Debug logging
+    if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+      console.log('[Reports] Checking for reject notes:', {
+        auditsCount: arr.length,
+        reportRequestsCount: Object.keys(reportRequests).length,
+        reportRequests: Object.keys(reportRequests).map(id => ({
+          auditId: id,
+          status: reportRequests[id]?.status
+        }))
+      });
+    }
+    
+    // Check both audit status and ReportRequest status
     const returnedIds = arr
       .filter((audit: any) => {
+        const auditId = String(audit.auditId || audit.id || audit.$id || '');
+        
+        // Check audit status
         const state = audit.status || audit.state || audit.approvalStatus;
         const norm = String(state || '').toLowerCase();
-        return norm.includes('reject') || norm.includes('return');
+        const isAuditRejected = norm.includes('reject') || norm.includes('return');
+        
+        // Check ReportRequest status (priority - this is the source of truth)
+        const reportRequest = reportRequests[auditId];
+        const reportStatus = reportRequest?.status || '';
+        const isReportRejected = String(reportStatus).toLowerCase() === 'returned';
+        
+        // If ReportRequest exists and status is Returned, definitely need to load note
+        if (isReportRejected) {
+          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+            console.log(`[Reports] Found Returned ReportRequest for audit ${auditId}:`, {
+              auditId,
+              reportStatus,
+              hasNote: !!(rejectNotes[auditId])
+            });
+          }
+          return true;
+        }
+        
+        // Otherwise check audit status
+        return isAuditRejected;
       })
       .map((audit: any) => String(audit.auditId || audit.id || audit.$id || ''))
       .filter(Boolean);
 
-    const missing = returnedIds.filter((id) => !(id in rejectNotes));
-    if (!missing.length) return;
+    // Also check reportRequests directly for any Returned status
+    Object.keys(reportRequests).forEach(auditId => {
+      const reportRequest = reportRequests[auditId];
+      if (reportRequest && String(reportRequest.status || '').toLowerCase() === 'returned') {
+        if (!returnedIds.includes(auditId)) {
+          returnedIds.push(auditId);
+          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+            console.log(`[Reports] Added audit ${auditId} from reportRequests (status: ${reportRequest.status})`);
+          }
+        }
+      }
+    });
+
+    const missing = returnedIds.filter((id) => !(id in rejectNotes) || !rejectNotes[id] || rejectNotes[id].trim().length === 0);
+    
+    if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+      console.log('[Reports] Reject notes check result:', {
+        returnedIds,
+        missing,
+        existingNotes: Object.keys(rejectNotes)
+      });
+    }
+    
+    if (!missing.length) {
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        console.log('[Reports] No missing reject notes to load');
+      }
+      return;
+    }
 
     let cancelled = false;
     const loadNotes = async () => {
-      const results = await Promise.allSettled(missing.map((id) => getAuditReportNote(id)));
-      if (cancelled) return;
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        console.log(`[Reports] 🚀 Starting to load reject notes for ${missing.length} audit(s):`, missing);
+      }
+      
+      const results = await Promise.allSettled(missing.map((id) => {
+        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+          console.log(`[Reports] 📞 Calling getAuditReportNote for audit ${id}`);
+        }
+        return getAuditReportNote(id);
+      }));
+      
+      if (cancelled) {
+        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+          console.log('[Reports] ⏸️ Cancelled loading reject notes');
+        }
+        return;
+      }
+      
       const patch: Record<string, string> = {};
       results.forEach((res, idx) => {
         if (res.status === 'fulfilled') {
-          patch[missing[idx]] = res.value ?? '';
+          const note = res.value ?? '';
+          patch[missing[idx]] = note;
+          // Log để debug
+          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+            console.log(`[Reports] ✅ Loaded reject note for audit ${missing[idx]}:`, {
+              auditId: missing[idx],
+              hasNote: !!note,
+              noteLength: note.length,
+              notePreview: note.substring(0, 50),
+              fullNote: note
+            });
+          }
+        } else {
+          const error = res.reason as any;
+          console.error(`[Reports] ❌ Failed to load reject note for audit ${missing[idx]}:`, {
+            auditId: missing[idx],
+            error: error?.message || error,
+            status: error?.response?.status,
+            statusText: error?.response?.statusText,
+            data: error?.response?.data,
+            url: error?.config?.url || `/AuditReports/Note/${missing[idx]}`
+          });
         }
       });
+      
       if (Object.keys(patch).length) {
+        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+          console.log(`[Reports] 💾 Saving ${Object.keys(patch).length} reject note(s) to state:`, patch);
+        }
         setRejectNotes((prev) => ({ ...prev, ...patch }));
+      } else {
+        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+          console.warn('[Reports] ⚠️ No reject notes were loaded successfully');
+        }
       }
     };
 
@@ -381,7 +516,7 @@ const SQAStaffReports = () => {
     return () => {
       cancelled = true;
     };
-  }, [audits, rejectNotes]);
+  }, [audits, rejectNotes, reportRequests]); // Added reportRequests to dependencies
 
   // Load charts when audit changes
   useEffect(() => {
@@ -497,9 +632,34 @@ const SQAStaffReports = () => {
     // Only consider as rejected if it's explicitly "rejected" or "returned", not "submitted"
     return (v === 'rejected' || v === 'returned' || v.includes('rejected') || v.includes('returned')) && !v.includes('submit');
   };
-  const isSubmittedStatus = (s: any) => {
+  const isSubmittedStatus = (s: any, auditId?: string) => {
+    // Check status từ ReportRequest trước (priority - this is the source of truth)
+    if (auditId) {
+      const reportRequest = reportRequests[auditId];
+      if (reportRequest && reportRequest.status) {
+        const reportStatus = String(reportRequest.status || '').toLowerCase().replace(/\s+/g, '');
+        // If ReportRequest exists and has status, use it
+        // Pending = submitted (waiting for review)
+        // Approved = submitted and approved
+        // Returned = rejected, NOT submitted
+        if (reportStatus === 'pending' || reportStatus === 'approved') {
+          return true; // These are submitted statuses
+        }
+        if (reportStatus === 'returned') {
+          return false; // Returned is rejected, not submitted
+        }
+      }
+    }
+    
+    // Fallback: Check status từ Audit
     const v = String(s || '').toLowerCase().replace(/\s+/g, '');
-    return v.includes('submitted');
+    const auditStatusMatch = v.includes('submitted') || 
+           v === 'pendingreview' || 
+           v === 'pending' ||
+           v.includes('pendingreview') ||
+           v.includes('pending');
+    
+    return auditStatusMatch;
   };
 
   const selectedAuditRow = useMemo(() => {
@@ -544,10 +704,44 @@ const SQAStaffReports = () => {
     try {
       setSubmitLoading(true);
       await submitAudit(selectedAuditId);
-      toast.success('Submit successfully.');
+      
+      // Sau khi submit thành công, cập nhật ReportRequest status ngay lập tức
+      // Backend sẽ trả về "Pending" sau khi submit
+      const newStatus = 'Pending';
+      
+      // Update reportRequests immediately để button chuyển về "Submitted" ngay
+      setReportRequests(prev => ({
+        ...prev,
+        [selectedAuditId]: {
+          ...prev[selectedAuditId],
+          auditId: selectedAuditId,
+          status: newStatus
+        } as ViewReportRequest
+      }));
+      
+      // Clear reject note since report has been resubmitted
+      setRejectNotes(prev => {
+        const updated = { ...prev };
+        delete updated[selectedAuditId];
+        return updated;
+      });
+      
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        console.log('[Reports] ✅ Submit successful, updated ReportRequest immediately:', {
+          auditId: selectedAuditId,
+          status: newStatus,
+          timestamp: Date.now()
+        });
+      }
+      
+      toast.success(`Submit successfully. Status: ${newStatus}`);
       setShowSubmitModal(false);
-      // After submit, this list only shows Open audits so we refresh to remove the submitted one
-      await reloadReports();
+      
+      // Reload reports after a delay để sync với backend
+      // Nhưng giữ lại status "Pending" đã set ở trên
+      setTimeout(async () => {
+        await reloadReports();
+      }, 1500);
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
@@ -614,17 +808,6 @@ const SQAStaffReports = () => {
       // Không cần reloadReports ở đây để tránh phải reload lại trang mới thấy trạng thái Uploaded
       // và cũng tránh việc state uploadedAudits bị ghi đè bởi dữ liệu cũ từ API.
       setUploadedAudits(prev => new Set(prev).add(auditId));
-      
-      // Archive audit after successful upload
-      try {
-        await archiveAudit(auditIdRaw);
-        console.log('Audit archived successfully');
-        // Reload reports after successful archive
-        await reloadReports();
-      } catch (archiveErr) {
-        console.error('Failed to archive audit:', archiveErr);
-        // Don't show error to user, just log it
-      }
     } catch (err) {
       console.error('Upload signed report failed', err);
       const errorMessage = 'Upload failed. Please try again.';
@@ -697,28 +880,62 @@ const SQAStaffReports = () => {
       const id = String(a.auditId || a.id || a.$id || `audit_${idx}`);
       const title = a.title || a.name || `Audit ${idx + 1}`;
       const type = a.type || a.auditType || a.category || '—';
-      const rawStatus = a.status || a.state || a.approvalStatus || '—';
+      
+      // Ưu tiên lấy status từ ReportRequest nếu có, nếu không thì lấy từ Audit
+      const reportRequest = reportRequests[id];
+      const rawStatus = reportRequest?.status || a.status || a.state || a.approvalStatus || '—';
       const norm = String(rawStatus).toLowerCase().replace(/\s+/g, '');
       let status: string;
-      if (norm.includes('return') || norm.includes('reject')) {
-        status = 'Returned';
-      } else if (norm.includes('approve') || norm.includes('complete') || norm.includes('closed')) {
-        status = 'Closed';
-      } else if (norm.includes('submit') || norm.includes('submitted') || norm.includes('underreview')) {
-        status = 'Submitted';
-      } else if (norm.includes('open') || norm === 'inprogress' || norm.includes('draft')) {
-        status = 'In Progress';
+      
+      // Nếu có ReportRequest, ưu tiên hiển thị status từ ReportRequest (Pending, Approved, Returned)
+      if (reportRequest?.status) {
+        const reportStatus = String(reportRequest.status).toLowerCase().replace(/\s+/g, '');
+        if (reportStatus === 'pending') {
+          status = 'Pending';
+        } else if (reportStatus === 'approved') {
+          status = 'Approved';
+        } else if (reportStatus === 'returned') {
+          status = 'Returned';
+        } else {
+          status = reportRequest.status; // Giữ nguyên nếu không match
+        }
       } else {
-        status = rawStatus;
+        // Fallback về logic cũ nếu không có ReportRequest
+        if (norm.includes('return') || norm.includes('reject')) {
+          status = 'Returned';
+        } else if (norm.includes('approve') || norm.includes('complete') || norm.includes('closed')) {
+          status = 'Closed';
+        } else if (norm.includes('submit') || norm.includes('submitted') || norm.includes('underreview')) {
+          status = 'Submitted';
+        } else if (norm.includes('open') || norm === 'inprogress' || norm.includes('draft')) {
+          status = 'In Progress';
+        } else {
+          status = rawStatus;
+        }
       }
       const createdRaw = a.createdAt || a.startDate || a.createdDate || a.start;
       const createdDate = createdRaw ? new Date(createdRaw).toISOString().slice(0, 10) : '';
       const createdBy = getCreatedByLabel(a);
       const findings = (findingsMap[id] ?? a.totalFindings ?? a.findingsCount ?? a.findingCount ?? 0) as number;
       // const capas = a.capaCount ?? a.capaTotal ?? 0;
-      return { id, auditId: id, title, type, status, findings, createdDate, createdBy };
+      // Check if audit has been submitted (has ReportRequest)
+      const hasReportRequest = !!reportRequests[id];
+      const reportRequestStatus = reportRequests[id]?.status || '';
+      
+      return { 
+        id, 
+        auditId: id, 
+        title, 
+        type, 
+        status, 
+        findings, 
+        createdDate, 
+        createdBy,
+        hasReportRequest, // Flag để hiển thị indicator
+        reportRequestStatus // Status từ ReportRequest để hiển thị
+      };
     });
-  }, [audits, findingsMap, adminUsers]);
+  }, [audits, findingsMap, adminUsers, reportRequests]);
 
   const filteredReportRows = useMemo(() => {
     let rows = reportRows;
@@ -855,6 +1072,7 @@ const SQAStaffReports = () => {
                   <th className="px-6 py-4 text-center text-sm font-bold text-black">Status</th>
                   <th className="px-6 py-4 text-center text-sm font-bold text-black">Findings</th>
                   <th className="px-6 py-4 text-center text-sm font-bold text-black">Created By</th>
+                  {/* <th className="px-6 py-4 text-center text-sm font-bold text-black">Submitted</th> */}
                   <th className="px-6 py-4 text-center text-sm font-bold text-black">Actions</th>
                 </tr>
               </thead>
@@ -867,6 +1085,20 @@ const SQAStaffReports = () => {
                     <td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 text-sm font-semibold">{report.findings || 0}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap text-center"><span className="text-ms text-[#5b6166]">{report.createdBy || '—'}</span></td>
+                    {/* <td className="px-6 py-4 whitespace-nowrap text-center">
+                      {report.hasReportRequest ? (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-xs font-medium text-green-700">
+                            {report.reportRequestStatus || 'Submitted'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td> */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-2 flex-wrap">
                         <button
@@ -1020,58 +1252,65 @@ const SQAStaffReports = () => {
         {/* Summary section - clearer, card-based UI; show after View */}
         {showSummary && (
           <div ref={summaryRef} className="bg-white rounded-xl border border-primary-100 shadow-md p-6 scroll-mt-24">
-            {/* Extension Approved Banner */}
+            
+            {/* Reject Note Alert - Show when audit is rejected */}
             {(() => {
-              const requests = extensionRequests[selectedAuditId] || [];
-              const approvedRequest = requests.find(r => r.status === 'Approved');
-              if (!approvedRequest) return null;
+              const key = String(selectedAuditRow?.auditId || selectedAuditId || '');
+              const noteFromApi = key ? rejectNotes[key] : '';
+              const hasRejectNote = noteFromApi && noteFromApi.trim().length > 0;
+              const isRejected = isRejectedStatus(selectedAuditRow?.status) || 
+                                String(reportRequests[key]?.status || '').toLowerCase() === 'returned';
               
-              return (
-                <div className="mb-4 bg-green-50 border border-green-200 rounded-xl shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10">
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </span>
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide">
-                          Extension Request Approved by Director
-                        </p>
-                        <p className="text-[11px] text-white/80">
-                          Your extension request has been approved. Please update overdue checklist items and resubmit the report.
+              if (isRejected && hasRejectNote) {
+                return (
+                  <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg shadow-sm">
+                    <div className="flex items-start gap-3">
+                      
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="text-base font-semibold text-red-900">
+                            Report Rejected by Lead Auditor
+                          </h3>
+                          
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-red-200">
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                            {noteFromApi.length > 200 
+                              ? `${noteFromApi.substring(0, 200)}...` 
+                              : noteFromApi}
+                          </p>
+                        </div>
+                        <p className="text-xs text-red-700 mt-2">
+                          Please review the feedback above and resubmit your report after making necessary corrections.
                         </p>
                       </div>
                     </div>
-                    <button
-                      onClick={handleUpdateOverdueItems}
-                      disabled={updatingOverdue === selectedAuditId}
-                      className="px-3 py-1.5 rounded-md bg-white/95 text-green-700 font-medium shadow-sm hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      {updatingOverdue === selectedAuditId ? (
-                        <>
-                          <div className="h-4 w-4 border-2 border-green-700 border-t-transparent rounded-full animate-spin" />
-                          Updating...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                          Update Overdue Items
-                        </>
-                      )}
-                    </button>
                   </div>
-                  {approvedRequest.responseComment && (
-                    <div className="px-4 py-3 text-xs text-green-900 bg-green-50/70 border-t border-green-100">
-                      <p className="font-semibold mb-1">Director's Response:</p>
-                      <p className="whitespace-pre-line">{approvedRequest.responseComment}</p>
+                );
+              }
+              
+              // Show loading state if rejected but note is still loading
+              if (isRejected && !hasRejectNote) {
+                return (
+                  <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded-r-lg shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-shrink-0">
+                        <div className="w-8 h-8 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-yellow-900">
+                          Loading rejection reason...
+                        </p>
+                        <p className="text-xs text-yellow-700 mt-1">
+                          Please wait while we fetch the feedback from Lead Auditor.
+                        </p>
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
+                  </div>
+                );
+              }
+              
+              return null;
             })()}
 
             <div className="flex items-center justify-between mb-4">
@@ -1119,10 +1358,24 @@ const SQAStaffReports = () => {
                 })()}
                 {(() => {
                   const st = selectedAuditRow?.status || selectedAuditRow?.state || selectedAuditRow?.approvalStatus;
-                  const submitted = isSubmittedStatus(st);
-                  const completed = isCompletedStatus(st);
-                  const rejected = isRejectedStatus(st);
                   const auditIdStr = String(selectedAuditId || '').trim();
+                  
+                  // Get ReportRequest status để check chính xác (source of truth)
+                  const reportRequest = reportRequests[auditIdStr];
+                  const reportStatus = reportRequest?.status || '';
+                  
+                  // Check status từ cả Audit và ReportRequest
+                  // Ưu tiên ReportRequest status nếu có (source of truth)
+                  const statusToCheck = reportStatus || st;
+                  
+                  // Check rejected first - if ReportRequest status is "Returned", it's rejected
+                  const isReportRejected = String(reportStatus).toLowerCase() === 'returned';
+                  const rejected = isReportRejected || isRejectedStatus(statusToCheck);
+                  
+                  // Check submitted - if ReportRequest status is "Pending" or "Approved", it's submitted
+                  // Pass auditIdStr to isSubmittedStatus so it can check reportRequests directly
+                  const submitted = isSubmittedStatus(statusToCheck, auditIdStr);
+                  const completed = isCompletedStatus(statusToCheck);
                   const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
                   
                   // Don't show submit button if user is Lead Auditor or status is Closed
@@ -1130,20 +1383,53 @@ const SQAStaffReports = () => {
                     return null;
                   }
                   
-                  const disabled = submitLoading || !selectedAuditId || submitted;
-                  const label = submitLoading
-                    ? 'sending...'
-                    : submitted
-                      ? 'Submitted'
+                  // Check if reject note is available
+                  const key = String(selectedAuditId || '').trim();
+                  const hasRejectNote = key && rejectNotes[key] && rejectNotes[key].trim().length > 0;
+                  
+                  // Disable if:
+                  // 1. Loading
+                  // 2. No audit selected
+                  // 3. Submitted (but not rejected) - đã submit và đang chờ review
+                  // 4. Rejected but no reject note available yet (waiting for note to load)
+                  const disabled = submitLoading || !selectedAuditId || (submitted && !rejected) || (rejected && !hasRejectNote);
+                  
+                  // Debug logging
+                  if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+                    console.log('[Reports] 🔘 Button state:', {
+                      auditId: auditIdStr,
+                      reportStatus,
+                      statusToCheck,
+                      submitted,
+                      rejected,
+                      isReportRejected,
+                      disabled,
+                      hasRejectNote,
+                      hasReportRequest: !!reportRequest,
+                      reportRequestStatus: reportRequest?.status
+                    });
+                  }
+                  
+                  let label = submitLoading
+                    ? 'Submitting...'
+                    : submitted && !rejected
+                      ? reportStatus ? `Submitted (${reportStatus})` : 'Submitted'
                       : rejected
-                        ? 'Resubmit to Lead Auditor'
+                        ? hasRejectNote 
+                          ? 'Resubmit to Lead Auditor'
+                          : 'Loading reject reason...'
                         : 'Submit to Lead Auditor';
                   
                   return (
                     <button
                       onClick={() => setShowSubmitModal(true)}
                       disabled={disabled}
-                      className={`px-3 py-2 rounded-md text-sm font-medium shadow-sm ${disabled ? 'bg-amber-300 cursor-not-allowed' : 'bg-amber-500 hover:bg-amber-600'} text-white`}
+                      className={`px-3 py-2 rounded-md text-sm font-medium shadow-sm transition-all ${
+                        disabled 
+                          ? 'bg-amber-300 cursor-not-allowed text-white' 
+                          : 'bg-amber-500 hover:bg-amber-600 text-white'
+                      }`}
+                      title={disabled && submitted && !rejected ? 'Report has been submitted and is pending review' : undefined}
                     >
                       {label}
                     </button>

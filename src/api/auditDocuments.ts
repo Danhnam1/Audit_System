@@ -12,11 +12,13 @@ export async function uploadAuditDocument(auditId: string, file: File) {
   return res.data;
 }
 
-export async function uploadMultipleAuditDocuments(auditId: string, files: File[]) {
+export async function uploadMultipleAuditDocuments(auditId: string, files: File[], documentType: string = 'Signed Report') {
   const form = new FormData();
   files.forEach((file) => {
     form.append('files', file);
   });
+  // Backend requires documentType field
+  form.append('documentType', documentType);
   const url = `/AuditDocuments/upload-multiple/${encodeURIComponent(auditId)}`;
   const res = await apiClient.post(url, form, {
     headers: {
