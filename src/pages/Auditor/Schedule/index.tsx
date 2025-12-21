@@ -266,6 +266,25 @@ const AuditorSchedule = () => {
   };
 
   // Handle click on planned date (blue dates)
+  // Helper function to check if a date is valid for an assignment
+  const isDateValidForAssignment = (date: Date, assignment: Assignment): boolean => {
+    if (!assignment.plannedEndDate || !assignment.estimatedDuration) {
+      return true; // If no duration requirement, allow any date
+    }
+    
+    const plannedEndDate = new Date(assignment.plannedEndDate);
+    plannedEndDate.setHours(0, 0, 0, 0);
+    
+    const selectedDateNormalized = new Date(date);
+    selectedDateNormalized.setHours(0, 0, 0, 0);
+    
+    // Calculate days from selected date to planned end date (inclusive)
+    const daysAvailable = Math.floor((plannedEndDate.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const requiredDuration = assignment.estimatedDuration;
+    
+    return daysAvailable >= requiredDuration;
+  };
+
   const handleDateClick = (date: Date, dateStr: string) => {
     const assignmentsForDate = highlightedDates.dateToAssignmentsMap.get(dateStr) || [];
     // Filter only assignments that are still valid (status = Assigned, no actualAuditDate)
@@ -275,17 +294,43 @@ const AuditorSchedule = () => {
     
     if (validAssignments.length === 0) return;
     
+    // Filter assignments that have enough days from selected date to planned end date
+    const validAssignmentsWithDuration = validAssignments.filter(a => isDateValidForAssignment(date, a));
+    
+    if (validAssignmentsWithDuration.length === 0) {
+      // Show error message explaining why this date cannot be selected
+      const invalidAssignments = validAssignments.filter(a => !isDateValidForAssignment(date, a));
+      if (invalidAssignments.length > 0) {
+        const assignment = invalidAssignments[0]; // Show details for first invalid assignment
+        if (assignment.plannedEndDate && assignment.estimatedDuration) {
+          const plannedEndDate = new Date(assignment.plannedEndDate);
+          plannedEndDate.setHours(0, 0, 0, 0);
+          const selectedDateNormalized = new Date(date);
+          selectedDateNormalized.setHours(0, 0, 0, 0);
+          const daysAvailable = Math.floor((plannedEndDate.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          
+          toast.error(
+            `Insufficient time: Only ${daysAvailable} day(s) remaining, but ${assignment.estimatedDuration} day(s) required. Please select an earlier date.`,
+            { autoClose: 4000 }
+          );
+        } else {
+          toast.error('Insufficient time to complete audit. Please select an earlier date.', { autoClose: 4000 });
+        }
+      }
+      return;
+    }
+    
     // Normalize date to local midnight to avoid timezone issues
     const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
     setSelectedDate(normalizedDate);
     
     // If only one assignment, go directly to confirm modal
-    if (validAssignments.length === 1) {
-      setSelectedAssignment(validAssignments[0]);
+    if (validAssignmentsWithDuration.length === 1) {
+      setSelectedAssignment(validAssignmentsWithDuration[0]);
       setShowConfirmModal(true);
     } else {
       // Multiple assignments - show selection modal
-      setAvailableAssignments(validAssignments);
+      setAvailableAssignments(validAssignmentsWithDuration);
       setShowSelectAssignmentModal(true);
     }
   };
@@ -300,6 +345,26 @@ const AuditorSchedule = () => {
   // Handle confirm actual audit date
   const handleConfirmActualDate = async () => {
     if (!selectedAssignment || !selectedDate) return;
+
+    // Validate: Check if selected date allows enough days until PlannedEndDate
+    if (selectedAssignment.plannedEndDate && selectedAssignment.estimatedDuration) {
+      const plannedEndDate = new Date(selectedAssignment.plannedEndDate);
+      plannedEndDate.setHours(0, 0, 0, 0);
+      
+      const selectedDateNormalized = new Date(selectedDate);
+      selectedDateNormalized.setHours(0, 0, 0, 0);
+      
+      // Calculate days from selected date to planned end date (inclusive)
+      const daysAvailable = Math.floor((plannedEndDate.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const requiredDuration = selectedAssignment.estimatedDuration;
+      
+      if (daysAvailable < requiredDuration) {
+        toast.error(
+          `Insufficient time: Only ${daysAvailable} day(s) remaining, but ${requiredDuration} day(s) required.`
+        );
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -538,7 +603,12 @@ const AuditorSchedule = () => {
                   // Check if this date can be clicked (planned date without actual date, status = Assigned)
                   const plannedAssignments = highlightedDates.dateToAssignmentsMap.get(dateStr) || [];
                   const validAssignments = plannedAssignments.filter(a => a.status === 'Assigned' && !a.actualAuditDate);
+                  // Check if date is valid for at least one assignment (has enough duration)
+                  const hasValidAssignment = validAssignments.some(a => isDateValidForAssignment(day.date, a));
+                  // Allow clicking on all planned dates, but show error if invalid
                   const canClick = isPlanned && !isActual && day.isCurrentMonth && validAssignments.length > 0;
+                  // Visual indicator for invalid dates (not enough duration)
+                  const isInvalidDate = canClick && !hasValidAssignment;
 
                   // Get tooltip text for actual dates (orange) - show department names
                   let tooltipText = '';
@@ -568,7 +638,7 @@ const AuditorSchedule = () => {
                         ${bgColor || 'hover:bg-gray-50'}
                         ${textColor}
                         ${opacityClass}
-                        ${canClick ? 'cursor-pointer hover:ring-2 hover:ring-blue-300' : day.isCurrentMonth ? 'cursor-default' : 'cursor-default'}
+                        ${canClick ? (isInvalidDate ? 'cursor-pointer hover:ring-2 hover:ring-red-300' : 'cursor-pointer hover:ring-2 hover:ring-blue-300') : day.isCurrentMonth ? 'cursor-default' : 'cursor-default'}
                         flex flex-col items-center justify-center
                         ${isActual ? 'relative group' : ''}
                       `}
