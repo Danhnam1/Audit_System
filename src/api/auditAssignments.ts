@@ -212,7 +212,6 @@ export const updateActualAuditDate = async (
 ): Promise<AuditAssignment> => {
   // Parse the date string and create a date at local midnight to avoid timezone issues
   const [year, month, day] = actualAuditDate.split('-').map(Number);
-  const dateObj = new Date(year, month - 1, day, 0, 0, 0, 0);
   
   // Format as ISO string but ensure it represents the correct date
   // Use local date components to create UTC date at midnight

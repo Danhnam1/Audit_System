@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAuth } from '../../contexts';
 import useAuthStore, { useUserId } from '../../store/useAuthStore';
 import { getAdminUsers, getUserById } from '../../api/adminUsers';
 import { scanAccessGrant, verifyCode, type ScanAccessGrantResponse } from '../../api/accessGrant';
@@ -14,7 +13,6 @@ interface ScanQRContentProps {
 }
 
 export default function ScanQRContent({ onClose }: ScanQRContentProps) {
-  const { user } = useAuth();
   const authStore = useAuthStore();
   const userIdFromToken = useUserId();
   const navigate = useNavigate();
