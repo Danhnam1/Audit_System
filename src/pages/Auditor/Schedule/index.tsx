@@ -310,11 +310,11 @@ const AuditorSchedule = () => {
           const daysAvailable = Math.floor((plannedEndDate.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24)) + 1;
           
           toast.error(
-            `Insufficient time: Only ${daysAvailable} day(s) remaining, but ${assignment.estimatedDuration} day(s) required. Please select an earlier date.`,
-            { autoClose: 4000 }
+            `Only ${daysAvailable} day(s) left, need ${assignment.estimatedDuration} day(s).`,
+            { autoClose: 3000 }
           );
         } else {
-          toast.error('Insufficient time to complete audit. Please select an earlier date.', { autoClose: 4000 });
+          toast.error('Insufficient time. Select earlier date.', { autoClose: 3000 });
         }
       }
       return;
@@ -360,7 +360,7 @@ const AuditorSchedule = () => {
       
       if (daysAvailable < requiredDuration) {
         toast.error(
-          `Insufficient time: Only ${daysAvailable} day(s) remaining, but ${requiredDuration} day(s) required.`
+          `Only ${daysAvailable} day(s) left, need ${requiredDuration} day(s).`
         );
         return;
       }
