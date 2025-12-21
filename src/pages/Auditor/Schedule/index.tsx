@@ -310,11 +310,11 @@ const AuditorSchedule = () => {
           const daysAvailable = Math.floor((plannedEndDate.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24)) + 1;
           
           toast.error(
-            `Only ${daysAvailable} day(s) left, need ${assignment.estimatedDuration} day(s).`,
-            { autoClose: 3000 }
+            `Insufficient time: Only ${daysAvailable} day(s) remaining, but ${assignment.estimatedDuration} day(s) required. Please select an earlier date.`,
+            { autoClose: 4000 }
           );
         } else {
-          toast.error('Insufficient time. Select earlier date.', { autoClose: 3000 });
+          toast.error('Insufficient time to complete audit. Please select an earlier date.', { autoClose: 4000 });
         }
       }
       return;
@@ -360,7 +360,7 @@ const AuditorSchedule = () => {
       
       if (daysAvailable < requiredDuration) {
         toast.error(
-          `Only ${daysAvailable} day(s) left, need ${requiredDuration} day(s).`
+          `Insufficient time: Only ${daysAvailable} day(s) remaining, but ${requiredDuration} day(s) required.`
         );
         return;
       }
@@ -457,7 +457,7 @@ const AuditorSchedule = () => {
         <div className="flex gap-6">
           {/* Left Sidebar - Assignments List */}
           <div className="w-80 flex-shrink-0">
-            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 sticky top-6">
+            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-2 sticky top-6 mx-8">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Assigned Schedules</h3>
               {loading ? (
                 <div className="flex items-center justify-center py-8">
