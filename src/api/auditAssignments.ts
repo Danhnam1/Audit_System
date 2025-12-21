@@ -231,3 +231,32 @@ export const rejectAssignment = async (
   const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/reject-schedule`, payload);
   return res;
 };
+
+// Create audit assignment request
+export interface CreateAuditAssignmentRequestDto {
+  auditId: string;
+  deptId: number;
+  auditAssignmentId: string;
+  reasonRequest: string;
+  actualAuditDate: string; // ISO string format
+}
+
+export const createAuditAssignmentRequest = async (
+  dto: CreateAuditAssignmentRequestDto
+): Promise<any> => {
+  const payload = toPascalCase(dto);
+  const res: any = await apiClient.post('/AuditAssignmentRequest', payload);
+  return res;
+};
+
+// Get audit assignment requests by assignment ID
+export const getAuditAssignmentRequests = async (auditAssignmentId: string): Promise<any> => {
+  const res: any = await apiClient.get(`/AuditAssignmentRequest/assignment/${auditAssignmentId}`);
+  return res;
+};
+
+// Get all audit assignment requests
+export const getAllAuditAssignmentRequests = async (): Promise<any> => {
+  const res: any = await apiClient.get('/AuditAssignmentRequest');
+  return res;
+};

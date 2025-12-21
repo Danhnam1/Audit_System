@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MainLayout } from '../../../layouts';
-import { getMyAssignments, updateActualAuditDate, rejectAssignment } from '../../../api/auditAssignments';
+import { getMyAssignments, updateActualAuditDate, rejectAssignment, createAuditAssignmentRequest, getAllAuditAssignmentRequests } from '../../../api/auditAssignments';
+import { useUserId } from '../../../store/useAuthStore';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 
@@ -24,17 +25,21 @@ interface Assignment {
 
 const AuditorSchedule = () => {
   console.log('AuditorSchedule component rendering');
+  const userIdFromToken = useUserId();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showSelectAssignmentModal, setShowSelectAssignmentModal] = useState(false);
+  const [showRequestModal, setShowRequestModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
   const [availableAssignments, setAvailableAssignments] = useState<Assignment[]>([]);
   const [rejectReason, setRejectReason] = useState('');
+  const [requestReason, setRequestReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [allRequests, setAllRequests] = useState<any[]>([]); // All requests from API
 
   // Helper function to format date for Set
   const formatDateForSet = (date: Date): string => {
@@ -76,6 +81,153 @@ const AuditorSchedule = () => {
 
     loadAssignments();
   }, []);
+
+  // Load all requests
+  const loadAllRequests = async () => {
+    try {
+      const response = await getAllAuditAssignmentRequests();
+      console.log('📥 API Response:', response);
+      let requests: any[] = [];
+      
+      if (response?.$values && Array.isArray(response.$values)) {
+        requests = response.$values;
+      } else if (Array.isArray(response)) {
+        requests = response;
+      } else if (response?.data) {
+        const data = response.data;
+        if (data?.$values && Array.isArray(data.$values)) {
+          requests = data.$values;
+        } else if (Array.isArray(data)) {
+          requests = data;
+        }
+      }
+      
+      console.log('📋 Parsed requests:', requests);
+      console.log('📋 Pending requests:', requests.filter((r: any) => r.status === 'Pending'));
+      setAllRequests(requests);
+    } catch (error) {
+      console.error('Failed to load requests:', error);
+      setAllRequests([]);
+    }
+  };
+
+  useEffect(() => {
+    loadAllRequests();
+  }, []);
+
+  // Create a Set of dates that have pending requests (prevent clicking)
+  const datesWithPendingRequests = useMemo(() => {
+    const blockedDates = new Set<string>();
+    
+    console.log('🔍 Calculating blocked dates...', {
+      userIdFromToken,
+      allRequestsCount: allRequests.length,
+      assignmentsCount: assignments.length
+    });
+    
+    if (!userIdFromToken) {
+      console.log('❌ No userIdFromToken');
+      return blockedDates;
+    }
+    
+    if (allRequests.length === 0) {
+      console.log('❌ No requests loaded');
+      return blockedDates;
+    }
+    
+    const currentUserId = String(userIdFromToken || '').toLowerCase();
+    console.log('👤 Current user ID:', currentUserId);
+    
+    // For each pending request, get the date and check if it matches any assignment's actualAuditDate
+    allRequests.forEach((req: any) => {
+      console.log('🔎 Checking request:', {
+        requestId: req.requestId,
+        status: req.status,
+        auditId: req.auditId,
+        deptId: req.deptId,
+        createdBy: req.createdBy,
+        actualAuditDate: req.actualAuditDate
+      });
+      
+      // Only check Pending requests
+      if (req.status !== 'Pending') {
+        console.log('  ⏭️  Status is not Pending:', req.status);
+        return;
+      }
+      
+      // Must match current user
+      const reqCreatedBy = String(req.createdBy || '').toLowerCase();
+      if (reqCreatedBy !== currentUserId) {
+        console.log('  ⏭️  User mismatch:', reqCreatedBy, 'vs', currentUserId);
+        return;
+      }
+      
+      // Get the date from request
+      if (!req.actualAuditDate) {
+        console.log('  ⏭️  No actualAuditDate');
+        return;
+      }
+      
+      const reqDate1 = formatDateForSet(new Date(req.actualAuditDate));
+      const reqDate2 = req.actualAuditDate.split('T')[0];
+      console.log('  📅 Request dates:', reqDate1, reqDate2);
+      
+      // Check if this request matches any assignment
+      // Block the assignment's actualAuditDate if there's ANY pending request for this assignment
+      // (same auditId, deptId, user) - regardless of the request's date
+      assignments.forEach((assignment) => {
+        // Assignment must have actualAuditDate (orange dates)
+        if (!assignment.actualAuditDate) {
+          return;
+        }
+        
+        // Check auditId
+        const reqAuditId = String(req.auditId || '').toLowerCase();
+        const assignAuditId = String(assignment.auditId || '').toLowerCase();
+        if (reqAuditId !== assignAuditId) {
+          return;
+        }
+        
+        // Check deptId
+        if (Number(req.deptId) !== Number(assignment.deptId)) {
+          return;
+        }
+        
+        // Check auditAssignmentId - this is the key!
+        const reqAssignmentId = String(req.auditAssignmentId || '').toLowerCase();
+        const assignAssignmentId = String(assignment.assignmentId || '').toLowerCase();
+        
+        // Get assignment's actualAuditDate
+        const assignmentDate1 = formatDateForSet(new Date(assignment.actualAuditDate));
+        const assignmentDate2 = assignment.actualAuditDate.split('T')[0];
+        
+        console.log('  🔗 Checking assignment:', {
+          assignmentId: assignment.assignmentId,
+          auditId: assignment.auditId,
+          deptId: assignment.deptId,
+          actualAuditDate: assignment.actualAuditDate,
+          assignmentDate1,
+          assignmentDate2,
+          requestAssignmentId: req.auditAssignmentId,
+          requestDate1: reqDate1,
+          requestDate2: reqDate2,
+          assignmentIdMatch: reqAssignmentId === assignAssignmentId
+        });
+        
+        // If request is for this assignment (same auditAssignmentId), block the assignment's date
+        // OR if request matches by auditId + deptId + user, also block
+        if (reqAssignmentId === assignAssignmentId || 
+            (reqAuditId === assignAuditId && Number(req.deptId) === Number(assignment.deptId))) {
+          console.log('  ✅ MATCH FOUND - Blocking assignment date:', assignmentDate1, assignmentDate2);
+          blockedDates.add(assignmentDate1);
+          blockedDates.add(assignmentDate2);
+        }
+      });
+    });
+    
+    console.log('🚫 Blocked dates with pending requests:', Array.from(blockedDates));
+    return blockedDates;
+  }, [allRequests, assignments, userIdFromToken]);
 
   // Get all dates that should be highlighted and map dates to assignments
   const highlightedDates = useMemo(() => {
@@ -402,6 +554,115 @@ const AuditorSchedule = () => {
     setShowRejectModal(true);
   };
 
+  // Handle click on actual date (orange date)
+  const handleActualDateClick = async (date: Date, dateStr: string) => {
+    const actualAssignments = highlightedDates.actualDateToAssignmentsMap.get(dateStr) || [];
+    if (actualAssignments.length === 0) return;
+    
+    // Reload requests to ensure we have the latest data
+    let currentRequests: any[] = [];
+    try {
+      const response = await getAllAuditAssignmentRequests();
+      if (response?.$values && Array.isArray(response.$values)) {
+        currentRequests = response.$values;
+      } else if (Array.isArray(response)) {
+        currentRequests = response;
+      } else if (response?.data) {
+        const data = response.data;
+        if (data?.$values && Array.isArray(data.$values)) {
+          currentRequests = data.$values;
+        } else if (Array.isArray(data)) {
+          currentRequests = data;
+        }
+      }
+      // Update state for future use
+      setAllRequests(currentRequests);
+    } catch (error) {
+      console.error('Failed to load requests:', error);
+      // Use existing requests if API fails
+      currentRequests = allRequests;
+    }
+    
+    // Check if any assignment already has a pending request for this date by the current user
+    const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+    
+    // CRITICAL: Must have userIdFromToken to check
+    if (!userIdFromToken) {
+      console.error('❌ userIdFromToken is missing');
+      toast.error('Unable to verify existing requests. Please refresh the page.', { autoClose: 3000 });
+      return; // BLOCK if no userId
+    }
+    
+    // CRITICAL CHECK: Check if this date is blocked by datesWithPendingRequests
+    // This is the simplest and most reliable check
+    if (datesWithPendingRequests.has(dateStr)) {
+      console.log('🚫 BLOCKED: Date has pending request', dateStr);
+      toast.error('You have already submitted a pending request for this date. Please wait for approval.', { autoClose: 4000 });
+      return; // EXIT IMMEDIATELY - DO NOT CONTINUE
+    }
+    
+    // Also check directly in case datesWithPendingRequests hasn't updated yet
+    for (const assignment of actualAssignments) {
+      for (const req of currentRequests) {
+        // Step 1: Status must be Pending
+        if (req.status !== 'Pending') {
+          continue;
+        }
+        
+        // Step 2: Check auditAssignmentId (most reliable)
+        const reqAssignmentId = String(req.auditAssignmentId || '').toLowerCase();
+        const assignAssignmentId = String(assignment.assignmentId || '').toLowerCase();
+        if (reqAssignmentId === assignAssignmentId) {
+          // Found pending request for this assignment - BLOCK
+          console.log('🚫 BLOCKED: Found pending request for assignment', {
+            requestId: req.requestId,
+            assignmentId: assignment.assignmentId
+          });
+          toast.error('You have already submitted a pending request for this date. Please wait for approval.', { autoClose: 4000 });
+          return; // EXIT IMMEDIATELY
+        }
+        
+        // Step 3: Check auditId + deptId + user (fallback)
+        const auditId1 = String(req.auditId || '').toLowerCase();
+        const auditId2 = String(assignment.auditId || '').toLowerCase();
+        const deptId1 = Number(req.deptId);
+        const deptId2 = Number(assignment.deptId);
+        const createdBy1 = String(req.createdBy || '').toLowerCase();
+        const createdBy2 = String(userIdFromToken || '').toLowerCase();
+        
+        if (auditId1 === auditId2 && deptId1 === deptId2 && createdBy1 === createdBy2) {
+          // Found pending request for this assignment - BLOCK
+          console.log('🚫 BLOCKED: Found pending request by auditId+deptId+user', {
+            requestId: req.requestId,
+            auditId: req.auditId,
+            deptId: req.deptId
+          });
+          toast.error('You have already submitted a pending request for this date. Please wait for approval.', { autoClose: 4000 });
+          return; // EXIT IMMEDIATELY
+        }
+      }
+    }
+    
+    // NO MATCH FOUND - Allow modal to show
+    console.log('✅ No pending request found - allowing modal');
+    
+    setSelectedDate(normalizedDate);
+    
+    // If only one assignment, show request modal directly
+    if (actualAssignments.length === 1) {
+      setSelectedAssignment(actualAssignments[0]);
+      setRequestReason('');
+      setShowRequestModal(true);
+    } else {
+      // Multiple assignments - show selection modal first
+      setAvailableAssignments(actualAssignments);
+      // We'll handle multiple assignments in the modal
+      setSelectedAssignment(actualAssignments[0]);
+      setRequestReason('');
+      setShowRequestModal(true);
+    }
+  };
+
   // Handle confirm reject
   const handleConfirmReject = async () => {
     if (!selectedAssignment || !rejectReason.trim()) {
@@ -432,6 +693,61 @@ const AuditorSchedule = () => {
     } catch (error: any) {
       console.error('Failed to reject assignment:', error);
       toast.error(error?.response?.data?.message || error?.message || 'Failed to reject assignment');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle submit request
+  const handleSubmitRequest = async () => {
+    if (!selectedAssignment || !selectedDate) {
+      toast.error('Please select an assignment and date');
+      return;
+    }
+
+    if (!requestReason.trim()) {
+      toast.error('Please enter a reason for your request');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // Format date as ISO string
+      const isoDate = selectedDate.toISOString();
+      
+      // Call API with correct format
+      await createAuditAssignmentRequest({
+        auditId: selectedAssignment.auditId,
+        deptId: selectedAssignment.deptId,
+        auditAssignmentId: selectedAssignment.assignmentId,
+        reasonRequest: requestReason.trim(),
+        actualAuditDate: isoDate,
+      });
+      
+      toast.success('Request submitted successfully!');
+      setShowRequestModal(false);
+      setSelectedDate(null);
+      setSelectedAssignment(null);
+      setRequestReason('');
+      
+      // Reload assignments (this will trigger the useEffect to reload requests)
+      const response = await getMyAssignments();
+      let assignmentsData: Assignment[] = [];
+      if (response?.$values && Array.isArray(response.$values)) {
+        assignmentsData = response.$values;
+      } else if (Array.isArray(response)) {
+        assignmentsData = response;
+      } else {
+        const unwrapped = unwrap<Assignment>(response);
+        assignmentsData = Array.isArray(unwrapped) ? unwrapped : [];
+      }
+      setAssignments(assignmentsData);
+      
+      // Reload all requests immediately
+      await loadAllRequests();
+    } catch (error: any) {
+      console.error('Failed to submit request:', error);
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to submit request');
     } finally {
       setSubmitting(false);
     }
@@ -607,6 +923,9 @@ const AuditorSchedule = () => {
                   const hasValidAssignment = validAssignments.some(a => isDateValidForAssignment(day.date, a));
                   // Allow clicking on all planned dates, but show error if invalid
                   const canClick = isPlanned && !isActual && day.isCurrentMonth && validAssignments.length > 0;
+                  // Allow clicking on actual dates (orange dates) - BUT check if blocked by pending request
+                  const hasPendingRequest = datesWithPendingRequests.has(dateStr);
+                  const canClickActual = isActual && day.isCurrentMonth && !hasPendingRequest;
                   // Visual indicator for invalid dates (not enough duration)
                   const isInvalidDate = canClick && !hasValidAssignment;
 
@@ -630,7 +949,13 @@ const AuditorSchedule = () => {
                   return (
                     <div
                       key={index}
-                      onClick={() => canClick && handleDateClick(day.date, dateStr)}
+                      onClick={() => {
+                        if (canClickActual) {
+                          handleActualDateClick(day.date, dateStr);
+                        } else if (canClick) {
+                          handleDateClick(day.date, dateStr);
+                        }
+                      }}
                       className={`
                         aspect-square p-0.5 rounded border transition-all
                         ${day.isCurrentMonth ? 'border-gray-200' : 'border-transparent'}
@@ -638,7 +963,7 @@ const AuditorSchedule = () => {
                         ${bgColor || 'hover:bg-gray-50'}
                         ${textColor}
                         ${opacityClass}
-                        ${canClick ? (isInvalidDate ? 'cursor-pointer hover:ring-2 hover:ring-red-300' : 'cursor-pointer hover:ring-2 hover:ring-blue-300') : day.isCurrentMonth ? 'cursor-default' : 'cursor-default'}
+                        ${canClickActual ? 'cursor-pointer hover:ring-2 hover:ring-orange-300' : canClick ? (isInvalidDate ? 'cursor-pointer hover:ring-2 hover:ring-red-300' : 'cursor-pointer hover:ring-2 hover:ring-blue-300') : day.isCurrentMonth ? 'cursor-default' : 'cursor-default'}
                         flex flex-col items-center justify-center
                         ${isActual ? 'relative group' : ''}
                       `}
@@ -978,6 +1303,131 @@ const AuditorSchedule = () => {
                     </>
                   ) : (
                     'Reject'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Request Modal - for actual audit dates (orange dates) */}
+      {showRequestModal && selectedDate && selectedAssignment && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => {
+              if (!submitting) {
+                setShowRequestModal(false);
+                setSelectedDate(null);
+                setSelectedAssignment(null);
+                setRequestReason('');
+              }
+            }}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Submit Request
+                </h3>
+                <button
+                  onClick={() => {
+                    if (!submitting) {
+                      setShowRequestModal(false);
+                      setSelectedDate(null);
+                      setSelectedAssignment(null);
+                      setRequestReason('');
+                    }
+                  }}
+                  disabled={submitting}
+                  className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Assignment Info */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Audit
+                  </label>
+                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                    {selectedAssignment.auditTitle}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                    {selectedAssignment.departmentName}
+                  </p>
+                </div>
+
+                {/* Selected Date */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Actual Audit Date
+                  </label>
+                  <p className="text-sm text-gray-900 bg-orange-50 px-3 py-2 rounded-lg border border-orange-200 font-medium">
+                    {formatDate(selectedDate)}
+                  </p>
+                </div>
+
+                {/* Request Reason */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Request Reason <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={requestReason}
+                    onChange={(e) => setRequestReason(e.target.value)}
+                    placeholder="Please provide a reason for your request..."
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!submitting) {
+                      setShowRequestModal(false);
+                      setSelectedDate(null);
+                      setSelectedAssignment(null);
+                      setRequestReason('');
+                    }
+                  }}
+                  disabled={submitting}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitRequest}
+                  disabled={submitting || !requestReason.trim()}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {submitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Submitting...
+                    </>
+                  ) : (
+                    'Submit Request'
                   )}
                 </button>
               </div>
