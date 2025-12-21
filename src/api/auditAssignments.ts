@@ -140,6 +140,13 @@ export const getAuditAssignmentsByDepartment = async (deptId: number): Promise<A
   return [];
 };
 
+// Get assignments by department ID using POST method
+export const getAuditAssignmentsByDepartmentPost = async (deptId: number): Promise<any> => {
+  const res: any = await apiClient.post('/AuditAssignment/by-department', { deptId });
+  // Return the full response so component can parse it
+  return res;
+};
+
 // Create new audit assignment
 export const createAuditAssignment = async (dto: CreateAuditAssignmentDto): Promise<AuditAssignment> => {
   const pascalDto = toPascalCase(dto);
@@ -203,8 +210,14 @@ export const updateActualAuditDate = async (
   assignmentId: string,
   actualAuditDate: string // Format: YYYY-MM-DD
 ): Promise<AuditAssignment> => {
-  const dateObj = new Date(actualAuditDate + 'T00:00:00');
-  const payload = toPascalCase({ actualAuditDate: dateObj.toISOString() });
+  // Parse the date string and create a date at local midnight to avoid timezone issues
+  const [year, month, day] = actualAuditDate.split('-').map(Number);
+  
+  // Format as ISO string but ensure it represents the correct date
+  // Use local date components to create UTC date at midnight
+  const isoString = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00.000Z`;
+  
+  const payload = toPascalCase({ actualAuditDate: isoString });
   const res: any = await apiClient.put(`/AuditAssignment/${assignmentId}/actual-audit-date`, payload);
   return res;
 };

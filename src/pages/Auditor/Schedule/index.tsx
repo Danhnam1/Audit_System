@@ -29,8 +29,10 @@ const AuditorSchedule = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showSelectAssignmentModal, setShowSelectAssignmentModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [availableAssignments, setAvailableAssignments] = useState<Assignment[]>([]);
   const [rejectReason, setRejectReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -79,7 +81,8 @@ const AuditorSchedule = () => {
   const highlightedDates = useMemo(() => {
     const plannedDates = new Set<string>(); // Blue dates (planned range)
     const actualDates = new Set<string>(); // Orange dates (actual audit dates)
-    const dateToAssignmentMap = new Map<string, Assignment>(); // Map date string to assignment
+    const dateToAssignmentsMap = new Map<string, Assignment[]>(); // Map date string to assignments (can have multiple)
+    const actualDateToAssignmentsMap = new Map<string, Assignment[]>(); // Map actual date to assignments (for tooltip)
 
     assignments.forEach((assignment) => {
       // Only add planned dates if status is "Assigned" and no actualAuditDate yet
@@ -100,18 +103,39 @@ const AuditorSchedule = () => {
         while (current <= end) {
           const dateStr = formatDateForSet(current);
           plannedDates.add(dateStr);
-          // Map this date to the assignment
-          dateToAssignmentMap.set(dateStr, assignment);
+          // Map this date to the assignment(s) - can have multiple assignments for same date
+          if (!dateToAssignmentsMap.has(dateStr)) {
+            dateToAssignmentsMap.set(dateStr, []);
+          }
+          dateToAssignmentsMap.get(dateStr)!.push(assignment);
           current.setDate(current.getDate() + 1);
         }
       }
 
       // Add actual audit date (orange)
       if (assignment.actualAuditDate) {
-        const actualDate = new Date(assignment.actualAuditDate);
-        actualDate.setHours(0, 0, 0, 0);
-        const dateStr = formatDateForSet(actualDate);
+        // Parse date from API - use UTC components to avoid timezone conversion issues
+        const dateFromAPI = new Date(assignment.actualAuditDate);
+        // Extract date part only (YYYY-MM-DD) from ISO string if available, otherwise use UTC components
+        let dateStr: string;
+        if (typeof assignment.actualAuditDate === 'string' && assignment.actualAuditDate.includes('T')) {
+          // Extract date part from ISO string (YYYY-MM-DD)
+          dateStr = assignment.actualAuditDate.split('T')[0];
+        } else {
+          // Fallback: use UTC date components
+          const year = dateFromAPI.getUTCFullYear();
+          const month = dateFromAPI.getUTCMonth();
+          const day = dateFromAPI.getUTCDate();
+          const actualDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+          dateStr = formatDateForSet(actualDate);
+        }
         actualDates.add(dateStr);
+        
+        // Map actual date to assignment(s) for tooltip
+        if (!actualDateToAssignmentsMap.has(dateStr)) {
+          actualDateToAssignmentsMap.set(dateStr, []);
+        }
+        actualDateToAssignmentsMap.get(dateStr)!.push(assignment);
       }
     });
 
@@ -120,7 +144,7 @@ const AuditorSchedule = () => {
       actualDates: Array.from(actualDates) 
     });
 
-    return { plannedDates, actualDates, dateToAssignmentMap };
+    return { plannedDates, actualDates, dateToAssignmentsMap, actualDateToAssignmentsMap };
   }, [assignments]);
 
   // Get assignments with status "Assigned" for sidebar (exclude those with actualAuditDate)
@@ -242,18 +266,105 @@ const AuditorSchedule = () => {
   };
 
   // Handle click on planned date (blue dates)
-  const handleDateClick = (date: Date, dateStr: string) => {
-    const assignment = highlightedDates.dateToAssignmentMap.get(dateStr);
-    if (assignment && !assignment.actualAuditDate && assignment.status === 'Assigned') {
-      setSelectedDate(date);
-      setSelectedAssignment(assignment);
-      setShowConfirmModal(true);
+  // Helper function to check if a date is valid for an assignment
+  const isDateValidForAssignment = (date: Date, assignment: Assignment): boolean => {
+    if (!assignment.plannedEndDate || !assignment.estimatedDuration) {
+      return true; // If no duration requirement, allow any date
     }
+    
+    const plannedEndDate = new Date(assignment.plannedEndDate);
+    plannedEndDate.setHours(0, 0, 0, 0);
+    
+    const selectedDateNormalized = new Date(date);
+    selectedDateNormalized.setHours(0, 0, 0, 0);
+    
+    // Calculate days from selected date to planned end date (inclusive)
+    const daysAvailable = Math.floor((plannedEndDate.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const requiredDuration = assignment.estimatedDuration;
+    
+    return daysAvailable >= requiredDuration;
+  };
+
+  const handleDateClick = (date: Date, dateStr: string) => {
+    const assignmentsForDate = highlightedDates.dateToAssignmentsMap.get(dateStr) || [];
+    // Filter only assignments that are still valid (status = Assigned, no actualAuditDate)
+    const validAssignments = assignmentsForDate.filter(
+      a => a.status === 'Assigned' && !a.actualAuditDate
+    );
+    
+    if (validAssignments.length === 0) return;
+    
+    // Filter assignments that have enough days from selected date to planned end date
+    const validAssignmentsWithDuration = validAssignments.filter(a => isDateValidForAssignment(date, a));
+    
+    if (validAssignmentsWithDuration.length === 0) {
+      // Show error message explaining why this date cannot be selected
+      const invalidAssignments = validAssignments.filter(a => !isDateValidForAssignment(date, a));
+      if (invalidAssignments.length > 0) {
+        const assignment = invalidAssignments[0]; // Show details for first invalid assignment
+        if (assignment.plannedEndDate && assignment.estimatedDuration) {
+          const plannedEndDate = new Date(assignment.plannedEndDate);
+          plannedEndDate.setHours(0, 0, 0, 0);
+          const selectedDateNormalized = new Date(date);
+          selectedDateNormalized.setHours(0, 0, 0, 0);
+          const daysAvailable = Math.floor((plannedEndDate.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          
+          toast.error(
+            `Insufficient time: Only ${daysAvailable} day(s) remaining, but ${assignment.estimatedDuration} day(s) required. Please select an earlier date.`,
+            { autoClose: 4000 }
+          );
+        } else {
+          toast.error('Insufficient time to complete audit. Please select an earlier date.', { autoClose: 4000 });
+        }
+      }
+      return;
+    }
+    
+    // Normalize date to local midnight to avoid timezone issues
+    const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+    setSelectedDate(normalizedDate);
+    
+    // If only one assignment, go directly to confirm modal
+    if (validAssignmentsWithDuration.length === 1) {
+      setSelectedAssignment(validAssignmentsWithDuration[0]);
+      setShowConfirmModal(true);
+    } else {
+      // Multiple assignments - show selection modal
+      setAvailableAssignments(validAssignmentsWithDuration);
+      setShowSelectAssignmentModal(true);
+    }
+  };
+
+  // Handle assignment selection from multiple assignments
+  const handleSelectAssignment = (assignment: Assignment) => {
+    setSelectedAssignment(assignment);
+    setShowSelectAssignmentModal(false);
+    setShowConfirmModal(true);
   };
 
   // Handle confirm actual audit date
   const handleConfirmActualDate = async () => {
     if (!selectedAssignment || !selectedDate) return;
+
+    // Validate: Check if selected date allows enough days until PlannedEndDate
+    if (selectedAssignment.plannedEndDate && selectedAssignment.estimatedDuration) {
+      const plannedEndDate = new Date(selectedAssignment.plannedEndDate);
+      plannedEndDate.setHours(0, 0, 0, 0);
+      
+      const selectedDateNormalized = new Date(selectedDate);
+      selectedDateNormalized.setHours(0, 0, 0, 0);
+      
+      // Calculate days from selected date to planned end date (inclusive)
+      const daysAvailable = Math.floor((plannedEndDate.getTime() - selectedDateNormalized.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const requiredDuration = selectedAssignment.estimatedDuration;
+      
+      if (daysAvailable < requiredDuration) {
+        toast.error(
+          `Insufficient time: Only ${daysAvailable} day(s) remaining, but ${requiredDuration} day(s) required.`
+        );
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -346,14 +457,14 @@ const AuditorSchedule = () => {
         <div className="flex gap-6">
           {/* Left Sidebar - Assignments List */}
           <div className="w-80 flex-shrink-0">
-            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 sticky top-6">
+            <div className="bg-white rounded-lg shadow-md border border-gray-200 p-2 sticky top-6 mx-8">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Assigned Schedules</h3>
               {loading ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
                 </div>
               ) : assignedSchedules.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-8">No assigned schedules</p>
+                <p className="text-sm text-gray-500 text-center py-8">No schedule is currently awaiting confirmation</p>
               ) : (
                 <div className="space-y-3 max-h-[calc(100vh-250px)] overflow-y-auto">
                   {assignedSchedules.map((assignment) => (
@@ -462,6 +573,7 @@ const AuditorSchedule = () => {
                   
                   let bgColor = '';
                   let textColor = 'text-gray-700';
+                  let opacityClass = '';
                   
                   if (!day.isCurrentMonth) {
                     textColor = 'text-gray-300';
@@ -469,6 +581,16 @@ const AuditorSchedule = () => {
                     // Actual date takes priority (orange)
                     bgColor = 'bg-orange-500';
                     textColor = 'text-white font-semibold';
+                    
+                    // Check if actual date is today or in the past - make it dimmed
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const dayDate = new Date(day.date);
+                    dayDate.setHours(0, 0, 0, 0);
+                    
+                    if (dayDate <= today) {
+                      opacityClass = 'opacity-50';
+                    }
                   } else if (isPlanned) {
                     // Planned date range (blue)
                     bgColor = 'bg-blue-500';
@@ -479,7 +601,31 @@ const AuditorSchedule = () => {
                   }
 
                   // Check if this date can be clicked (planned date without actual date, status = Assigned)
-                  const canClick = isPlanned && !isActual && day.isCurrentMonth && highlightedDates.dateToAssignmentMap.has(dateStr);
+                  const plannedAssignments = highlightedDates.dateToAssignmentsMap.get(dateStr) || [];
+                  const validAssignments = plannedAssignments.filter(a => a.status === 'Assigned' && !a.actualAuditDate);
+                  // Check if date is valid for at least one assignment (has enough duration)
+                  const hasValidAssignment = validAssignments.some(a => isDateValidForAssignment(day.date, a));
+                  // Allow clicking on all planned dates, but show error if invalid
+                  const canClick = isPlanned && !isActual && day.isCurrentMonth && validAssignments.length > 0;
+                  // Visual indicator for invalid dates (not enough duration)
+                  const isInvalidDate = canClick && !hasValidAssignment;
+
+                  // Get tooltip text for actual dates (orange) - show department names
+                  let tooltipText = '';
+                  if (isActual && day.isCurrentMonth) {
+                    const actualAssignments = highlightedDates.actualDateToAssignmentsMap.get(dateStr) || [];
+                    if (actualAssignments.length > 0) {
+                      const departments = actualAssignments
+                        .map(a => a.departmentName)
+                        .filter(Boolean)
+                        .filter((name, idx, arr) => arr.indexOf(name) === idx); // Remove duplicates
+                      if (departments.length > 0) {
+                        tooltipText = departments.join(', ');
+                      }
+                    }
+                  } else if (day.isCurrentMonth) {
+                    tooltipText = formatDate(day.date);
+                  }
 
                   return (
                     <div
@@ -491,12 +637,23 @@ const AuditorSchedule = () => {
                         ${day.isToday && !isPlanned && !isActual ? 'border-blue-500 border-2' : ''}
                         ${bgColor || 'hover:bg-gray-50'}
                         ${textColor}
-                        ${canClick ? 'cursor-pointer hover:ring-2 hover:ring-blue-300' : day.isCurrentMonth ? 'cursor-default' : 'cursor-default'}
+                        ${opacityClass}
+                        ${canClick ? (isInvalidDate ? 'cursor-pointer hover:ring-2 hover:ring-red-300' : 'cursor-pointer hover:ring-2 hover:ring-blue-300') : day.isCurrentMonth ? 'cursor-default' : 'cursor-default'}
                         flex flex-col items-center justify-center
+                        ${isActual ? 'relative group' : ''}
                       `}
-                      title={day.isCurrentMonth ? formatDate(day.date) : ''}
+                      title={tooltipText}
                     >
                       <span className="text-xs font-medium leading-tight">{day.date.getDate()}</span>
+                      {/* Tooltip for actual dates */}
+                      {isActual && tooltipText && (
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                          {tooltipText}
+                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                            <div className="border-4 border-transparent border-t-gray-900"></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -511,6 +668,98 @@ const AuditorSchedule = () => {
           </div>
         </div>
       </div>
+
+      {/* Select Assignment Modal - when multiple assignments exist for a date */}
+      {showSelectAssignmentModal && selectedDate && availableAssignments.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => {
+              setShowSelectAssignmentModal(false);
+              setSelectedDate(null);
+              setAvailableAssignments([]);
+            }}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Select Schedule
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowSelectAssignmentModal(false);
+                    setSelectedDate(null);
+                    setAvailableAssignments([]);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Selected Date
+                  </label>
+                  <p className="text-sm text-gray-900 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200 font-medium">
+                    {selectedDate ? formatDate(selectedDate) : ''}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Available Schedules
+                  </label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Please select which schedule you want to set the actual audit date for:
+                  </p>
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {availableAssignments.map((assignment) => (
+                      <button
+                        key={assignment.assignmentId}
+                        onClick={() => handleSelectAssignment(assignment)}
+                        className="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                      >
+                        <div className="font-semibold text-gray-900 text-sm mb-1">
+                          {assignment.auditTitle}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <div>Department: {assignment.departmentName}</div>
+                          <div>
+                            Planned: {formatDateShort(assignment.plannedStartDate)} - {formatDateShort(assignment.plannedEndDate)}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSelectAssignmentModal(false);
+                    setSelectedDate(null);
+                    setAvailableAssignments([]);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirm Actual Audit Date Modal */}
       {showConfirmModal && selectedDate && selectedAssignment && (

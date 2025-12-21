@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getActionById, getActionsByFinding, type Action } from '../../api/actions';
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById, type AdminUserDto } from '../../api/adminUsers';
@@ -37,6 +37,7 @@ const ActionDetailModal = ({
   const [showFeedbackInput, setShowFeedbackInput] = useState(false);
   const [rootCause, setRootCause] = useState<RootCause | null>(null);
   const [loadingRootCause, setLoadingRootCause] = useState(false);
+  const [showResponsiblePersonModal, setShowResponsiblePersonModal] = useState(false);
   
   // Multi-action support
   const [relatedActions, setRelatedActions] = useState<Action[]>([]);
@@ -236,8 +237,9 @@ const ActionDetailModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* Backdrop */}
+    <React.Fragment>
+      <div className="fixed inset-0 z-50 overflow-y-auto">
+        {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
@@ -246,7 +248,7 @@ const ActionDetailModal = ({
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
         <div
-          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex animate-slideUp"
+          className="relative bg-white rounded-xl shadow-lg w-full max-w-6xl max-h-[95vh] overflow-hidden flex"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Sidebar for Related Actions */}
@@ -397,7 +399,7 @@ const ActionDetailModal = ({
           {/* Main Content */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Header with Gradient */}
-            <div className="sticky top-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 sm:px-8 py-6 shadow-lg z-10">
+            <div className="sticky top-0 bg-primary-600 px-6 sm:px-8 py-6 border-b border-primary-700 z-10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
@@ -426,7 +428,7 @@ const ActionDetailModal = ({
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-gradient-to-b from-gray-50 to-white">
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8 bg-white">
               {(() => {
                 console.log('📺 [Modal Display] Currently showing action:', {
                   selectedActionId,
@@ -446,7 +448,7 @@ const ActionDetailModal = ({
                   </div>
                 </div>
               ) : error ? (
-                <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-5 mb-6 shadow-sm">
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-5 mb-6">
                   <div className="flex items-start gap-3">
                     <svg className="w-6 h-6 text-orange-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -457,7 +459,7 @@ const ActionDetailModal = ({
               ) : action ? (
                 <div className="space-y-6">
                   {/* Title and Status */}
-                  <div className="bg-gradient-to-r from-primary-50 to-blue-50 border-l-4 border-primary-600 p-6 rounded-r-xl shadow-md">
+                  <div className="bg-gray-50 border-l-4 border-primary-600 p-6 rounded-r-lg">
                     <div className="flex items-start gap-3 mb-4">
                       <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center flex-shrink-0">
                         <svg className="w-6 h-6 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -472,11 +474,11 @@ const ActionDetailModal = ({
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 pl-[52px]">
-                      <span className={`px-4 py-2 rounded-xl text-sm font-bold shadow-sm border-2 ${getStatusColor(action.status)}`}>
+                      <span className={`px-4 py-2 rounded-lg text-sm font-medium border ${getStatusColor(action.status)}`}>
                         {action.status}
                       </span>
                       {action.progressPercent > 0 && (
-                        <span className="px-4 py-2 rounded-xl text-sm font-bold bg-primary-100 text-primary-700 border-2 border-primary-200 shadow-sm">
+                        <span className="px-4 py-2 rounded-lg text-sm font-medium bg-primary-100 text-primary-700 border border-primary-200">
                           {action.progressPercent}% Complete
                         </span>
                       )}
@@ -516,7 +518,7 @@ const ActionDetailModal = ({
                     if (!hasRootCauseFromApi && !legacyRootCauseName) return null;
                     
                     return (
-                      <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-2 border-purple-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-6 hover:bg-purple-100 transition-colors">
                         <div className="flex items-start gap-3 mb-3">
                           <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center flex-shrink-0">
                             <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -562,7 +564,7 @@ const ActionDetailModal = ({
 
                   {/* Description */}
                   {action.description && (
-                    <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+                    <div className="bg-white border border-gray-200 rounded-lg p-6 hover:bg-gray-50 transition-colors">
                       <div className="flex items-start gap-3 mb-3">
                         <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
                           <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -588,7 +590,7 @@ const ActionDetailModal = ({
 
                   {/* Progress Bar */}
                   {action.progressPercent > 0 && (
-                    <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md">
+                    <div className="bg-white border border-gray-200 rounded-lg p-6">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center">
@@ -603,7 +605,7 @@ const ActionDetailModal = ({
                       <div className="relative">
                         <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner">
                           <div
-                            className="bg-gradient-to-r from-primary-500 to-primary-600 h-4 rounded-full transition-all duration-500 relative overflow-hidden"
+                            className="bg-primary-600 h-4 rounded-full transition-all duration-500"
                             style={{ width: `${action.progressPercent}%` }}
                           >
                             <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
@@ -616,7 +618,10 @@ const ActionDetailModal = ({
                   {/* Details Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Responsible Person */}
-                    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-2 border-purple-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow md:col-span-2">
+                    <div 
+                      className={`bg-purple-50 border border-purple-200 rounded-lg p-6 hover:bg-purple-100 transition-colors md:col-span-2 ${assignedToUser ? 'cursor-pointer' : ''}`}
+                      onClick={() => assignedToUser && setShowResponsiblePersonModal(true)}
+                    >
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
                           <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -631,7 +636,7 @@ const ActionDetailModal = ({
                     </div>
 
                     {/* Created Date */}
-                    <div className="bg-gradient-to-br from-green-50 to-green-100/50 border-2 border-green-200 rounded-xl p-6 shadow-md">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-6">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
                           <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -646,7 +651,7 @@ const ActionDetailModal = ({
                     </div>
 
                     {/* Due Date */}
-                    <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 border-2 border-orange-200 rounded-xl p-6 shadow-md">
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-10 h-10 bg-orange-200 rounded-lg flex items-center justify-center">
                           <svg className="w-6 h-6 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -662,7 +667,7 @@ const ActionDetailModal = ({
 
                     {/* Closed Date - Full Width (if exists) */}
                     {action.closedAt && (
-                      <div className="bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-gray-200 rounded-xl p-6 shadow-md md:col-span-2">
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 md:col-span-2">
                         <div className="flex items-center gap-3 mb-3">
                           <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center">
                             <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -680,7 +685,7 @@ const ActionDetailModal = ({
 
                   {/* Attachments */}
                   {action.findingId && (
-                    <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
+                    <div className="bg-white border border-gray-200 rounded-lg p-6 hover:bg-gray-50 transition-colors">
                       <div className="flex items-center gap-3 mb-4">
                         <div className="w-10 h-10 bg-indigo-200 rounded-lg flex items-center justify-center">
                           <svg className="w-6 h-6 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -719,7 +724,7 @@ const ActionDetailModal = ({
                             return (
                               <div
                                 key={attachment.attachmentId}
-                                className="bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-gray-200 rounded-xl overflow-hidden hover:border-primary-300 hover:shadow-lg transition-all"
+                                className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden hover:border-primary-300 transition-colors"
                               >
                                 {/* Image Header */}
                                 <div className="p-4 border-b-2 border-gray-200 bg-white">
@@ -779,7 +784,7 @@ const ActionDetailModal = ({
                           return (
                               <div
                                 key={attachment.attachmentId}
-                                className="bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-gray-200 rounded-xl p-4 hover:bg-gray-100 hover:border-primary-300 transition-all shadow-sm"
+                                className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:bg-gray-100 hover:border-primary-300 transition-colors"
                               >
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -824,7 +829,7 @@ const ActionDetailModal = ({
 
             {/* Feedback Input */}
             {showFeedbackInput && onApprove && onReject && action && (
-              <div className="bg-gradient-to-br from-gray-50 to-white border-2 border-gray-200 rounded-xl shadow-lg p-6 mt-6">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 mt-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-rose-100">
                     <svg className="w-6 h-6 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -845,7 +850,7 @@ const ActionDetailModal = ({
                   onChange={(e) => setReviewFeedback(e.target.value)}
                   rows={4}
                   placeholder="Enter a detailed reason for rejection..."
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm resize-none font-medium shadow-sm"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm resize-none font-medium"
                 />
                 <div className="flex items-center justify-end gap-3 mt-4">
                   <button
@@ -948,7 +953,7 @@ const ActionDetailModal = ({
                     setShowFeedbackInput(true);
                   }}
                   disabled={isProcessing}
-                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg border-2 border-rose-600/30"
+                  className="px-5 py-2.5 text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center gap-2">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -973,7 +978,7 @@ const ActionDetailModal = ({
                     }
                   }}
                   disabled={isProcessing}
-                  className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg border-2 border-green-600/30"
+                  className="px-5 py-2.5 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <div className="flex items-center gap-2">
                     {isProcessing ? (
@@ -996,8 +1001,93 @@ const ActionDetailModal = ({
           )}
         </div>
       </div>
-    </div>
-    </div>
+      </div>
+      </div>
+
+      {/* Responsible Person Detail Modal */}
+      {showResponsiblePersonModal && assignedToUser && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+            onClick={() => setShowResponsiblePersonModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div
+              className="relative bg-white rounded-xl shadow-lg w-full max-w-2xl mx-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-purple-600 text-white p-6 rounded-t-xl">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+                    <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-2xl font-bold mb-1">Responsible Person Details</h3>
+                  </div>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-8 space-y-4">
+                {/* Full Name */}
+                {assignedToUser.fullName && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-5">
+                    <label className="block text-xs font-bold text-purple-700 uppercase tracking-wide mb-2">Full Name</label>
+                    <p className="text-xl font-bold text-gray-900">{assignedToUser.fullName}</p>
+                  </div>
+                )}
+
+                {/* Email */}
+                {assignedToUser.email && (
+                  <div className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Email</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{assignedToUser.email}</p>
+                  </div>
+                )}
+
+                {/* Role */}
+                {assignedToUser.roleName && (
+                  <div className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Role</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{assignedToUser.roleName}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 rounded-b-xl flex justify-end">
+                <button
+                  onClick={() => setShowResponsiblePersonModal(false)}
+                  className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </React.Fragment>
   );
 };
 

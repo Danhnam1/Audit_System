@@ -285,13 +285,64 @@ const FindingsProgress = () => {
     try {
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
       const rootCauses = res.data.$values || [];
-      // Only show approved root causes that haven't been submitted yet
+      
+      // Fetch actions for this finding to check which root causes are already assigned
+      let assignedRootCauseIds = new Set<number>();
+      const assignedDataMap: Record<number, { staffId: string; staffName: string; dueDate: string }> = {};
+      
+      try {
+        const actions = await getActionsByFinding(findingId);
+        if (actions && actions.length > 0) {
+          // Get all root cause IDs that have actions and fetch user info
+          const actionsWithRootCause = actions.filter((action: Action) => action.rootCauseId);
+          
+          // Fetch user info for all assigned actions
+          await Promise.all(
+            actionsWithRootCause.map(async (action: Action) => {
+              if (action.rootCauseId) {
+                assignedRootCauseIds.add(action.rootCauseId);
+                
+                // Get assigned user info
+                if (action.assignedTo && !assignedDataMap[action.rootCauseId]) {
+                  try {
+                    const user = await getUserById(action.assignedTo);
+                    assignedDataMap[action.rootCauseId] = {
+                      staffId: action.assignedTo,
+                      staffName: user.fullName || user.email || 'Unknown',
+                      dueDate: action.dueDate || ''
+                    };
+                  } catch (err) {
+                    console.warn(`Failed to fetch user info for ${action.assignedTo}:`, err);
+                    assignedDataMap[action.rootCauseId] = {
+                      staffId: action.assignedTo,
+                      staffName: 'Unknown',
+                      dueDate: action.dueDate || ''
+                    };
+                  }
+                }
+              }
+            })
+          );
+        }
+      } catch (err) {
+        console.warn('Error loading actions for finding:', err);
+      }
+      
+      // Update submittedRootCauseIds with root causes that have actions
+      setSubmittedRootCauseIds(assignedRootCauseIds);
+      
+      // Update assignedRootCauseData
+      if (Object.keys(assignedDataMap).length > 0) {
+        setAssignedRootCauseData(assignedDataMap);
+      }
+      
+      // Show all approved root causes (both assigned and unassigned)
       const approvedRootCauses = rootCauses.filter((rc: any) => 
-        rc.status?.toLowerCase() === 'approved' && !submittedRootCauseIds.has(rc.rootCauseId)
+        rc.status?.toLowerCase() === 'approved'
       );
       
       setFindingRootCauses(approvedRootCauses);
-      console.log('📝 Loaded unassigned root causes:', approvedRootCauses.length, 'Submitted:', submittedRootCauseIds.size);
+      console.log('📝 Loaded root causes:', approvedRootCauses.length, 'Assigned:', assignedRootCauseIds.size);
     } catch (err) {
       console.error('Error loading root causes:', err);
       setFindingRootCauses([]);
@@ -347,6 +398,13 @@ const FindingsProgress = () => {
     setSubmittingAssign(true);
 
     try {
+      // Validate deptId - must be a valid positive number
+      if (!selectedFindingForAssign.deptId || selectedFindingForAssign.deptId <= 0) {
+        toast.error('Invalid department ID. Please ensure the finding has a valid department.');
+        setSubmittingAssign(false);
+        return;
+      }
+
       // Create action for this root cause with rootCauseId link
       // Keep finding description separate, don't mix with root cause info
       await createAction({
@@ -354,7 +412,7 @@ const FindingsProgress = () => {
         title: `${selectedFindingForAssign.title} - ${selectedRootCause.name}`,
         description: selectedFindingForAssign.description || '', // Keep original finding description
         assignedTo: individualStaffId,
-        assignedDeptId: selectedFindingForAssign.deptId || 0,
+        assignedDeptId: selectedFindingForAssign.deptId, // Only send if valid (> 0)
         progressPercent: 0,
         dueDate: new Date(individualDueDate).toISOString(),
         reviewFeedback: '',
@@ -1049,7 +1107,7 @@ const FindingsProgress = () => {
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-4 rounded-t-xl">
+                <div className="bg-primary-600 px-6 py-4 rounded-t-xl">
                   <h3 className="text-lg font-semibold text-white">Assign Root Cause</h3>
                   <p className="text-sm text-primary-100 mt-1">{selectedRootCause.name}</p>
                 </div>
@@ -1272,11 +1330,11 @@ const FindingsProgress = () => {
             {/* Modal */}
             <div className="flex min-h-full items-center justify-center p-4">
               <div
-                className="relative bg-white rounded-2xl shadow-2xl w-full max-w-6xl mx-auto max-h-[95vh] overflow-hidden flex flex-col animate-slideUp"
+                className="relative bg-white rounded-xl shadow-lg w-full max-w-6xl mx-auto max-h-[95vh] overflow-hidden flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Header with Gradient */}
-                <div className="sticky top-0 bg-gradient-to-r from-primary-600 to-primary-700 px-8 py-6 shadow-lg z-10">
+                {/* Header */}
+                <div className="sticky top-0 bg-primary-600 px-8 py-6 border-b border-primary-700 z-10">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
@@ -1307,7 +1365,7 @@ const FindingsProgress = () => {
                 </div>
 
                 {/* Body */}
-                <div className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 to-white">
+                <div className="flex-1 overflow-y-auto bg-white">
                   {loadingFindingActions ? (
                     <div className="flex items-center justify-center py-20">
                       <div className="text-center">
@@ -1336,10 +1394,10 @@ const FindingsProgress = () => {
                         {selectedFindingActions.map((action, index) => (
                           <div
                             key={action.actionId}
-                            className="border-2 border-gray-200 rounded-2xl bg-white hover:border-primary-300 hover:shadow-xl transition-all duration-300 overflow-hidden group"
+                            className="border border-gray-200 rounded-lg bg-white hover:border-primary-300 transition-all overflow-hidden"
                           >
                             {/* Action Header */}
-                            <div className="bg-gradient-to-r from-gray-50 to-white border-b-2 border-gray-200 px-6 py-4">
+                            <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
                               <div className="flex items-start justify-between">
                                 <div className="flex items-start gap-4 flex-1">
                                   <div className="w-10 h-10 bg-primary-100 group-hover:bg-primary-200 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors">
@@ -1355,12 +1413,12 @@ const FindingsProgress = () => {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                  <span className={`px-4 py-2 rounded-full text-sm font-bold shadow-sm ${
-                                    action.status === 'Approved' ? 'bg-green-100 text-green-700 border-2 border-green-200' :
-                                    action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700 border-2 border-blue-200' :
-                                    action.status === 'Rejected' ? 'bg-red-100 text-red-700 border-2 border-red-200' :
-                                    action.status === 'Returned' ? 'bg-yellow-100 text-yellow-700 border-2 border-yellow-200' :
-                                    'bg-gray-100 text-gray-700 border-2 border-gray-200'
+                                  <span className={`px-4 py-2 rounded-full text-sm font-medium ${
+                                    action.status === 'Approved' ? 'bg-green-100 text-green-700 border border-green-200' :
+                                    action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                                    action.status === 'Rejected' ? 'bg-red-100 text-red-700 border border-red-200' :
+                                    action.status === 'Returned' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
+                                    'bg-gray-100 text-gray-700 border border-gray-200'
                                   }`}>
                                     {action.status}
                                   </span>
@@ -1386,7 +1444,7 @@ const FindingsProgress = () => {
                                 <div className="relative">
                                   <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner">
                                     <div
-                                      className="bg-gradient-to-r from-primary-500 to-primary-600 h-4 rounded-full transition-all duration-500 relative overflow-hidden"
+                                      className="bg-primary-600 h-4 rounded-full transition-all duration-500"
                                       style={{ width: `${action.progressPercent || 0}%` }}
                                     >
                                       <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
@@ -1397,7 +1455,7 @@ const FindingsProgress = () => {
 
                               {/* Info Grid */}
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-xl p-4 border border-blue-200">
+                                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
                                   <div className="flex items-center gap-3 mb-2">
                                     <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center">
                                       <svg className="w-5 h-5 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1410,7 +1468,7 @@ const FindingsProgress = () => {
                                     </div>
                                   </div>
                                 </div>
-                                <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-xl p-4 border border-purple-200">
+                                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
                                   <div className="flex items-center gap-3 mb-2">
                                     <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
                                       <svg className="w-5 h-5 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1423,7 +1481,7 @@ const FindingsProgress = () => {
                                     </div>
                                   </div>
                                 </div>
-                                <div className="bg-gradient-to-br from-green-50 to-green-100/50 rounded-xl p-4 border border-green-200">
+                                <div className="bg-green-50 rounded-lg p-4 border border-green-200">
                                   <div className="flex items-center gap-3 mb-2">
                                     <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
                                       <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1440,7 +1498,7 @@ const FindingsProgress = () => {
 
                               {/* Review Feedback */}
                               {action.reviewFeedback && (
-                                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 rounded-xl p-5 mb-4">
+                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-5 mb-4">
                                   <div className="flex items-start gap-3">
                                     <div className="w-8 h-8 bg-amber-200 rounded-lg flex items-center justify-center flex-shrink-0">
                                       <svg className="w-5 h-5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1466,7 +1524,7 @@ const FindingsProgress = () => {
                                       setShowActionsModal(false);
                                       console.log('Opening action modal for review - ActionId:', action.actionId, 'FindingId:', action.findingId);
                                     }}
-                                    className="px-6 py-3 text-sm font-bold text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2"
+                                    className="px-6 py-3 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors flex items-center gap-2"
                                   >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -1548,7 +1606,7 @@ const FindingsProgress = () => {
                   {/* Description */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Description</label>
-                    <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4 shadow-inner">
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                       <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
                         {selectedDescription.description}
                       </p>

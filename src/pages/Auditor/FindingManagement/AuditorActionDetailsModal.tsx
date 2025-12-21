@@ -131,11 +131,11 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl mx-auto max-h-[90vh] overflow-hidden flex flex-col border-2 border-blue-100"
+          className="relative bg-white rounded-xl shadow-lg w-full max-w-5xl mx-auto max-h-[90vh] overflow-hidden flex flex-col border border-blue-100"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="bg-blue-600 px-8 py-6 flex items-center justify-between border-b-4 border-blue-700">
+          <div className="bg-blue-600 px-8 py-6 flex items-center justify-between border-b border-blue-700">
             <div className="flex-1 min-w-0 flex items-center gap-4">
               <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
                 <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -179,10 +179,10 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
             ) : (
               <div className="p-8 space-y-6">
                 {/* Title and Status Section */}
-                <div className="bg-blue-50 rounded-xl p-6 border-2 border-blue-200 shadow-sm">
+                <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <h3 className="text-2xl font-bold text-gray-900 flex-1">{action.title}</h3>
-                    <span className={`px-4 py-2 rounded-xl text-sm font-bold border-2 whitespace-nowrap shadow-sm ${getStatusColor(action.status || '')}`}>
+                    <span className={`px-4 py-2 rounded-lg text-sm font-medium border whitespace-nowrap ${getStatusColor(action.status || '')}`}>
                       {action.status || 'N/A'}
                     </span>
                   </div>

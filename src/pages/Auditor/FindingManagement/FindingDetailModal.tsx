@@ -3,7 +3,7 @@ import { getFindingById, type Finding } from '../../../api/findings';
 import { getAttachments, type Attachment } from '../../../api/attachments';
 import { getUserById } from '../../../api/adminUsers';
 import { getDepartmentById } from '../../../api/departments';
-import { createRootCause, type CreateRootCauseDto, updateRootCause, approveRootCause, rejectRootCause, getRootCauseLogs, type RootCauseLog } from '../../../api/rootCauses';
+import { createRootCause, type CreateRootCauseDto, updateRootCause, approveRootCause, rejectRootCause, getRootCauseLogs } from '../../../api/rootCauses';
 import useAuthStore from '../../../store/useAuthStore';
 import apiClient from '../../../api/client';
 
@@ -37,6 +37,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const [rejectReason, setRejectReason] = useState<string>('');
   const [editingReasonReject, setEditingReasonReject] = useState<string>('');
   const [isProcessingReview, setIsProcessingReview] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [rootCauseToDelete, setRootCauseToDelete] = useState<number | null>(null);
   
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -186,7 +188,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           category: rootCauseCategory.trim(),
           deptId: finding.deptId || 0,
           findingId: findingId,
-          // reasonReject: editingReasonReject || '',
+          reasonReject: editingReasonReject || (currentRootCause?.reasonReject || ''),
           reviewBy: currentRootCause?.reviewBy || '',
         };
         
@@ -248,7 +250,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
             category: rc.category,
             deptId: finding?.deptId || 0,
             findingId: findingId,
-            // reasonReject: rc.reasonReject || '',
+            reasonReject: rc.reasonReject || '',
             reviewBy: rc.reviewBy || '',
           };
           await updateRootCause(rc.rootCauseId, rootCauseDto as any);
@@ -270,13 +272,16 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   };
   
   // Delete draft root cause
-  const handleDeleteRootCause = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this draft?')) {
-      return;
-    }
+  const handleDeleteRootCause = (id: number) => {
+    setRootCauseToDelete(id);
+    setShowDeleteConfirmModal(true);
+  };
+
+  const confirmDeleteRootCause = async () => {
+    if (!rootCauseToDelete) return;
     
     try {
-      await apiClient.delete(`/RootCauses/${id}`);
+      await apiClient.delete(`/RootCauses/${rootCauseToDelete}`);
       showToast('Draft deleted successfully!', 'success');
       
       // Reload all root causes
@@ -286,6 +291,9 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     } catch (err: any) {
       console.error('Error deleting root cause:', err);
       showToast('Failed to delete draft: ' + (err.message || 'Unknown error'), 'error');
+    } finally {
+      setShowDeleteConfirmModal(false);
+      setRootCauseToDelete(null);
     }
   };
   
@@ -390,11 +398,11 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-y-auto animate-slideUp"
+          className="relative bg-white rounded-xl shadow-lg w-full max-w-5xl max-h-[95vh] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header with Gradient */}
-          <div className="sticky top-0 bg-gradient-to-r from-primary-600 to-primary-700 px-6 sm:px-8 py-6 shadow-lg z-10">
+          <div className="sticky top-0 bg-primary-600 px-6 sm:px-8 py-6 border-b border-primary-700 z-10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
@@ -416,7 +424,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           </div>
 
           {/* Body */}
-          <div className="p-6 sm:p-8 bg-gradient-to-b from-gray-50 to-white">
+          <div className="p-6 sm:p-8 bg-white">
             {loading && (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
@@ -440,7 +448,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
             {finding && !loading && (
               <div className="space-y-6">
                 {/* Title - Highlighted with gradient */}
-                <div className="bg-gradient-to-r from-primary-50 to-blue-50 border-l-4 border-primary-600 p-6 rounded-r-xl shadow-md">
+                <div className="bg-gray-50 border-l-4 border-primary-600 p-6 rounded-r-lg">
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center flex-shrink-0">
                       <svg className="w-6 h-6 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -553,7 +561,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
 
                   {/* Dates */}
                   {finding.deadline && (
-                    <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 border-2 border-orange-200 rounded-xl p-6 shadow-md">
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-10 h-10 bg-orange-200 rounded-lg flex items-center justify-center">
                           <svg className="w-6 h-6 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -566,7 +574,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                     </div>
                   )}
                   {finding.createdAt && (
-                    <div className="bg-gradient-to-br from-green-50 to-green-100/50 border-2 border-green-200 rounded-xl p-6 shadow-md">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-6">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
                           <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -614,7 +622,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                         return (
                           <div
                             key={attachment.attachmentId}
-                            className={`bg-gradient-to-br from-gray-50 to-gray-100/50 border-2 border-gray-200 rounded-xl overflow-hidden hover:border-primary-300 hover:shadow-lg transition-all ${
+                            className={`bg-gray-50 border border-gray-200 rounded-lg overflow-hidden hover:border-primary-300 transition-all ${
                               isImage ? '' : 'p-4'
                             }`}
                           >
@@ -822,7 +830,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                           <button
                             onClick={handleSaveRootCause}
                             disabled={isSavingRootCause || !rootCauseName.trim()}
-                            className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                           >
                             {isSavingRootCause ? (
                               <>
@@ -846,7 +854,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                             <button
                               onClick={handleSubmitAllRootCauses}
                               disabled={isProcessingReview}
-                              className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:from-primary-700 hover:to-primary-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                              className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                             >
                               {isProcessingReview ? (
                                 <>
@@ -884,7 +892,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                             return (
                               <div 
                                 key={rc.rootCauseId || index}
-                                className="bg-gradient-to-br from-slate-50 to-slate-100/50 border-2 border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow"
+                                className="bg-gray-50 border border-gray-200 rounded-lg p-5 hover:bg-gray-100 transition-colors"
                               >
                                 <div className="flex items-start justify-between mb-2">
                                   <div className="flex items-center gap-2 flex-1">
@@ -939,7 +947,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   <div className="mt-3 pl-10 border-l-2 border-gray-300 pl-4">
                                     <h5 className="text-xs font-semibold text-gray-600 mb-2 uppercase">History</h5>
                                     <div className="space-y-2">
-                                      {rc.history.map((log: any, logIndex: number) => {
+                                      {rc.history.map((log: any) => {
                                         let oldData: any = {};
                                         let newData: any = {};
                                         
@@ -1098,10 +1106,10 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           </div>
 
           {/* Footer */}
-          <div className="sticky bottom-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 sm:px-8 py-5 flex justify-end shadow-lg">
+          <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 sm:px-8 py-5 flex justify-end">
             <button
               onClick={onClose}
-              className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-700 hover:to-primary-800 transition-all duration-200 text-base font-bold shadow-lg hover:shadow-xl flex items-center gap-2"
+              className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-base font-medium flex items-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1124,11 +1132,11 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           {/* Modal */}
           <div className="flex min-h-full items-center justify-center p-4">
             <div
-              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-auto animate-slideUp"
+              className="relative bg-white rounded-xl shadow-lg w-full max-w-2xl mx-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-8 rounded-t-2xl">
+              <div className="bg-purple-600 text-white p-6 rounded-t-xl">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
                     <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1146,7 +1154,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               <div className="p-8 space-y-4">
                 {/* Full Name */}
                 {createdByData.fullName && (
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-2 border-purple-200 rounded-xl p-5 shadow-md">
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-5">
                     <label className="block text-xs font-bold text-purple-700 uppercase tracking-wide mb-2">Full Name</label>
                     <p className="text-xl font-bold text-gray-900">{createdByData.fullName}</p>
                   </div>
@@ -1205,7 +1213,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               <div className="bg-gray-50 border-t-2 border-gray-200 px-6 py-4 rounded-b-2xl flex justify-end">
                 <button
                   onClick={() => setShowCreatedByModal(false)}
-                  className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 font-semibold shadow-md hover:shadow-lg"
+                  className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
                 >
                   Close
                 </button>
@@ -1227,7 +1235,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           {/* Modal */}
           <div className="flex min-h-full items-center justify-center p-4">
             <div
-              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-auto animate-slideUp"
+              className="relative bg-white rounded-xl shadow-lg w-full max-w-2xl mx-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
@@ -1334,7 +1342,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               <div className="bg-gray-50 border-t-2 border-gray-200 px-6 py-4 rounded-b-2xl flex justify-end">
                 <button
                   onClick={() => setShowWitnessModal(false)}
-                  className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all duration-200 font-semibold shadow-md hover:shadow-lg"
+                  className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
                 >
                   Close
                 </button>
@@ -1468,10 +1476,62 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirmModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => {
+              setShowDeleteConfirmModal(false);
+              setRootCauseToDelete(null);
+            }}
+          />
+          
+          <div className="relative bg-white rounded-lg shadow-lg w-full max-w-md mx-auto">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Delete Draft?
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Are you sure you want to delete this draft? This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeleteConfirmModal(false);
+                    setRootCauseToDelete(null);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteRootCause}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
 
 export default FindingDetailModal;
 

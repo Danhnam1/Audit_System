@@ -91,11 +91,11 @@ const ActionDetailsModal = ({ isOpen, onClose, actionId }: ActionDetailsModalPro
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className="relative bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-auto max-h-[90vh] overflow-hidden flex flex-col"
+          className="relative bg-white rounded-xl shadow-lg w-full max-w-5xl mx-auto max-h-[90vh] overflow-hidden flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="sticky top-0 bg-blue-600 px-6 py-5 flex items-center justify-between z-10 shadow-lg border-b-4 border-blue-700">
+          <div className="sticky top-0 bg-blue-600 px-6 py-5 flex items-center justify-between z-10 border-b border-blue-700">
             <div className="flex-1 min-w-0">
               {loading ? (
                 <div className="flex items-center gap-3">
@@ -132,7 +132,7 @@ const ActionDetailsModal = ({ isOpen, onClose, actionId }: ActionDetailsModalPro
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-br from-gray-50 to-gray-100">
+          <div className="flex-1 overflow-y-auto p-6 bg-white">
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">

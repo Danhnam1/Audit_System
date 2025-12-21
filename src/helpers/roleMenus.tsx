@@ -88,7 +88,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <ReportsIcon />, label: 'Findings Management', path: `${ROUTES.AUDITEE_OWNER}/findings` },
         { icon: <QualityIcon />, label: 'CAPA Owner Management', path: `${ROUTES.AUDITEE_OWNER}/capa-management` },
         { icon: <DocumentIcon />, label: 'My Witnessed', path: `${ROUTES.AUDITEE_OWNER}/my-witnessed` },
-        { icon: <ShieldIcon />, label: 'Scan QR Code', path: `${ROUTES.AUDITEE_OWNER}/scan-qr` },
+        { icon: <ShieldIcon />, label: 'Scan QR Code', path: `${ROUTES.AUDITEE_OWNER}/audit-schedule` },
       ];
 
     case 'capaowner':

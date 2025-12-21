@@ -195,11 +195,11 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
         {/* Modal */}
         <div className="flex min-h-full items-center justify-center p-4">
           <div
-            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl mx-auto max-h-[90vh] overflow-hidden flex flex-col border-2 border-blue-100"
+            className="relative bg-white rounded-xl shadow-lg w-full max-w-5xl mx-auto max-h-[90vh] overflow-hidden flex flex-col border border-blue-100"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="bg-blue-600 px-8 py-6 flex items-center justify-between border-b-4 border-blue-700">
+            <div className="bg-blue-600 px-8 py-6 flex items-center justify-between border-b border-blue-700">
               <div className="flex-1 min-w-0 flex items-center gap-4">
                 <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
                   <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,10 +243,10 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
               ) : (
                 <div className="p-8 space-y-6">
                   {/* Title and Status Section */}
-                  <div className="bg-blue-50 rounded-xl p-6 border-2 border-blue-200 shadow-sm">
+                  <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
                     <div className="flex items-start justify-between gap-4 mb-4">
                       <h3 className="text-2xl font-bold text-gray-900 flex-1">{action.title}</h3>
-                      <span className={`px-4 py-2 rounded-xl text-sm font-bold border-2 whitespace-nowrap shadow-sm ${getStatusColor(action.status || '')}`}>
+                      <span className={`px-4 py-2 rounded-lg text-sm font-medium border whitespace-nowrap ${getStatusColor(action.status || '')}`}>
                         {action.status || 'N/A'}
                       </span>
                     </div>
@@ -256,7 +256,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                   </div>
 
                   {/* Progress Section */}
-                  <div className="bg-white rounded-xl p-6 border-2 border-gray-200 shadow-sm">
+                  <div className="bg-white rounded-lg p-6 border border-gray-200">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="bg-blue-100 p-2 rounded-lg">
                         <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -286,7 +286,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                   {/* Information Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Due Date */}
-                    <div className="bg-white rounded-xl p-5 border-2 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="bg-white rounded-lg p-5 border border-gray-200 hover:bg-gray-50 transition-colors">
                       <div className="flex items-center gap-3 mb-2">
                         <div className="bg-orange-100 p-2 rounded-lg">
                           <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -299,7 +299,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                     </div>
 
                     {/* Created Date */}
-                    <div className="bg-white rounded-xl p-5 border-2 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                    <div className="bg-white rounded-lg p-5 border border-gray-200 hover:bg-gray-50 transition-colors">
                       <div className="flex items-center gap-3 mb-2">
                         <div className="bg-green-100 p-2 rounded-lg">
                           <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -313,7 +313,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                   </div>
 
                   {/* Attachments Section */
-                  <div className="bg-white rounded-xl p-6 border-2 border-gray-200 shadow-sm">
+                  <div className="bg-white rounded-lg p-6 border border-gray-200">
                     <div className="flex items-center gap-3 mb-5">
                       <div className="bg-purple-100 p-2 rounded-lg">
                         <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -340,7 +340,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                         {attachments.map((att) => (
                           <div
                             key={att.attachmentId}
-                            className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group"
+                            className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors group"
                           >
                             <div className="flex-shrink-0">
                               {getFileIcon(att.fileName)}
@@ -440,7 +440,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   placeholder="Enter your rejection reason..."
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                   rows={4}
                 />
               </div>
@@ -459,7 +459,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                 >
                   {processing ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin"></div>
                       Processing...
                     </>
                   ) : (
