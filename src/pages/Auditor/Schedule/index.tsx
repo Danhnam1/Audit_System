@@ -229,6 +229,47 @@ const AuditorSchedule = () => {
     return blockedDates;
   }, [allRequests, assignments, userIdFromToken]);
 
+  // Create a Set of assignment IDs that have rejected requests (don't show as orange dates)
+  const assignmentsWithRejectedRequests = useMemo(() => {
+    const rejectedSet = new Set<string>();
+    
+    if (!userIdFromToken || allRequests.length === 0) {
+      return rejectedSet;
+    }
+    
+    const currentUserId = String(userIdFromToken || '').toLowerCase();
+    
+    allRequests.forEach((req: any) => {
+      // Only check Rejected requests
+      if (req.status !== 'Rejected') return;
+      
+      // Must match current user
+      const reqCreatedBy = String(req.createdBy || '').toLowerCase();
+      if (reqCreatedBy !== currentUserId) return;
+      
+      // Check if this request matches any assignment
+      assignments.forEach((assignment) => {
+        // Check auditAssignmentId (most reliable)
+        const reqAssignmentId = String(req.auditAssignmentId || '').toLowerCase();
+        const assignAssignmentId = String(assignment.assignmentId || '').toLowerCase();
+        if (reqAssignmentId === assignAssignmentId) {
+          rejectedSet.add(assignment.assignmentId);
+          return;
+        }
+        
+        // Check auditId + deptId + user (fallback)
+        const reqAuditId = String(req.auditId || '').toLowerCase();
+        const assignAuditId = String(assignment.auditId || '').toLowerCase();
+        if (reqAuditId === assignAuditId && 
+            Number(req.deptId) === Number(assignment.deptId)) {
+          rejectedSet.add(assignment.assignmentId);
+        }
+      });
+    });
+    
+    return rejectedSet;
+  }, [allRequests, assignments, userIdFromToken]);
+
   // Get all dates that should be highlighted and map dates to assignments
   const highlightedDates = useMemo(() => {
     const plannedDates = new Set<string>(); // Blue dates (planned range)
@@ -264,8 +305,8 @@ const AuditorSchedule = () => {
         }
       }
 
-      // Add actual audit date (orange)
-      if (assignment.actualAuditDate) {
+      // Add actual audit date (orange) - BUT exclude if request is rejected
+      if (assignment.actualAuditDate && !assignmentsWithRejectedRequests.has(assignment.assignmentId)) {
         // Parse date from API - use UTC components to avoid timezone conversion issues
         const dateFromAPI = new Date(assignment.actualAuditDate);
         // Extract date part only (YYYY-MM-DD) from ISO string if available, otherwise use UTC components
@@ -297,7 +338,7 @@ const AuditorSchedule = () => {
     });
 
     return { plannedDates, actualDates, dateToAssignmentsMap, actualDateToAssignmentsMap };
-  }, [assignments]);
+  }, [assignments, assignmentsWithRejectedRequests]);
 
   // Get assignments with status "Assigned" for sidebar (exclude those with actualAuditDate)
   const assignedSchedules = useMemo(() => {

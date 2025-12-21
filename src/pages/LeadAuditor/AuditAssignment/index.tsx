@@ -962,6 +962,10 @@ export default function AuditAssignment() {
                             (a) => a.deptId === dept.deptId && a.auditId === selectedAuditId
                           );
                           const isAssigned = deptAssignments.length > 0 || isDepartmentAssigned(dept.deptId);
+                          // Check if any assignment has Rejected status
+                          const hasRejectedAssignment = deptAssignments.some(
+                            (a) => a.status?.toLowerCase() === 'rejected'
+                          );
                           // Deduplicate by auditorId
                           const auditorNames = Array.from(
                             new Map(
@@ -1016,7 +1020,17 @@ export default function AuditAssignment() {
                                   )}
                                 </div>
                                 <div className="ml-4 flex items-center gap-2">
-                                  {isAssigned ? (
+                                  {hasRejectedAssignment ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenAssignModal(dept);
+                                      }}
+                                      className="px-4 py-2 bg-orange-600 text-white text-sm font-medium rounded-lg hover:bg-orange-700 transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
+                                    >
+                                      Reassign
+                                    </button>
+                                  ) : isAssigned ? (
                                     <span className="px-4 py-2 bg-green-100 text-green-800 text-sm font-medium rounded-lg">
                                       Assigned
                                     </span>
@@ -1547,6 +1561,8 @@ export default function AuditAssignment() {
                               ? 'bg-blue-100 text-blue-800'
                               : selectedAssignment.status === 'Completed'
                               ? 'bg-gray-100 text-gray-800'
+                              : selectedAssignment.status === 'Rejected'
+                              ? 'bg-red-100 text-red-800'
                               : 'bg-yellow-100 text-yellow-800'
                           }`}
                         >
@@ -1564,6 +1580,23 @@ export default function AuditAssignment() {
                         </div>
                       )}
                     </div>
+                    {/* Reassign button for Rejected status */}
+                    {selectedAssignment.status === 'Rejected' && selectedDepartmentForDetail && (
+                      <div className="mt-4">
+                        <button
+                          onClick={() => {
+                            handleCloseDetailModal();
+                            handleOpenAssignModal(selectedDepartmentForDetail);
+                          }}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Reassign
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 

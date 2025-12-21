@@ -260,3 +260,16 @@ export const getAllAuditAssignmentRequests = async (): Promise<any> => {
   const res: any = await apiClient.get('/AuditAssignmentRequest');
   return res;
 };
+
+// Accept (approve) audit assignment request
+export const approveAuditAssignmentRequest = async (requestId: string): Promise<any> => {
+  const res: any = await apiClient.post(`/AuditAssignmentRequest/${requestId}/accept`);
+  return res;
+};
+
+// Reject audit assignment request
+export const rejectAuditAssignmentRequest = async (requestId: string, reason?: string): Promise<any> => {
+  const payload = reason ? toPascalCase({ reason }) : {};
+  const res: any = await apiClient.post(`/AuditAssignmentRequest/${requestId}/reject`, payload);
+  return res;
+};

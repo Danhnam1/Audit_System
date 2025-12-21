@@ -144,8 +144,8 @@ export const Navigation = () => {
                         </span>
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-white">{user?.fullName}</p>
-                        <p className="text-xs text-gray-400">{user?.email}</p>
+                        <p className="text-sm font-semibold text-gray-900">{user?.fullName}</p>
+                        <p className="text-xs text-gray-500">{user?.email}</p>
                       </div>
                     </div>
                   </div>
