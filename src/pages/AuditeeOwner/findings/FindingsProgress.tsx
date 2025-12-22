@@ -86,16 +86,83 @@ const FindingsProgress = () => {
   };
 
   // Get display status for finding - override "Closed" if not all actions are closed
+  // Keep "Received" if there's at least one action not approved or verified
+  // If all actions are "completed", show "Closed"
   const getDisplayStatus = (finding: Finding): string => {
     const originalStatus = finding.status || '';
     const statusLower = originalStatus.toLowerCase();
+    const actions = findingActionsMap[finding.findingId] || [];
+
+    // First, check if all actions are completed - if so, always show "Closed"
+    if (actions.length > 0) {
+      const allCompleted = actions.every(a => {
+        const actionStatus = a.status?.toLowerCase() || '';
+        return actionStatus === 'completed';
+      });
+      
+      if (allCompleted) {
+        return 'Closed';
+      }
+    }
+
+    // If status is "Received", check if all actions are approved/verified
+    if (statusLower === 'received') {
+      if (actions.length > 0) {
+        // Check if all actions are approved or verified
+        const allApprovedOrVerified = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'approved' || actionStatus === 'verified' || actionStatus === 'completed';
+        });
+        
+        // If not all actions are approved/verified, keep "Received" status
+        if (!allApprovedOrVerified) {
+          return 'Received';
+        }
+        
+        // If all actions are approved/verified, change status based on action states
+        // Check if all actions are closed
+        const allClosed = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'closed' || a.closedAt !== null;
+        });
+        
+        if (allClosed) {
+          return 'Closed';
+        }
+        
+        // All verified/approved but not all closed - show "Verified" or "Approved" status
+        // Check if all are verified
+        const allVerified = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'verified';
+        });
+        
+        if (allVerified) {
+          return 'Verified';
+        }
+        
+        // Check if all are approved
+        const allApproved = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'approved' || actionStatus === 'completed';
+        });
+        
+        if (allApproved) {
+          return 'Approved';
+        }
+        
+        // Mixed verified/approved - show "In Progress"
+        return 'In Progress';
+      }
+      // No actions yet, keep Received
+      return 'Received';
+    }
 
     // If status is "Closed", check if all actions are actually closed
     if (statusLower === 'closed') {
       const allClosed = areAllActionsClosed(finding.findingId);
       if (!allClosed) {
         // Not all actions are closed, determine status based on actions
-        const actions = findingActionsMap[finding.findingId] || [];
         if (actions.length === 0) {
           return 'Open'; // No actions yet
         }
@@ -124,7 +191,7 @@ const FindingsProgress = () => {
         return 'Open';
       }
     }
-
+    
     return originalStatus;
   };
 

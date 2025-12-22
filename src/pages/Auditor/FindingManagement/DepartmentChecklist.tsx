@@ -778,10 +778,65 @@ const DepartmentChecklist = () => {
   };
 
   // Get display status for finding - override "Closed" if not all actions are closed
+  // Keep "Received" if there's at least one action not approved or verified
   const getDisplayStatus = (finding: Finding): string => {
     const originalStatus = finding.status || '';
     const statusLower = originalStatus.toLowerCase();
-    
+
+    // If status is "Received", check if all actions are approved/verified
+    if (statusLower === 'received') {
+      const actions = findingActionsMap[finding.findingId] || [];
+      if (actions.length > 0) {
+        // Check if all actions are approved or verified
+        const allApprovedOrVerified = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'approved' || actionStatus === 'verified' || actionStatus === 'completed';
+        });
+        
+        // If not all actions are approved/verified, keep "Received" status
+        if (!allApprovedOrVerified) {
+          return 'Received';
+        }
+        
+        // If all actions are approved/verified, change status based on action states
+        // Check if all actions are closed
+        const allClosed = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'closed' || a.closedAt !== null;
+        });
+        
+        if (allClosed) {
+          return 'Closed';
+        }
+        
+        // All verified/approved but not all closed - show "Verified" or "Approved" status
+        // Check if all are verified
+        const allVerified = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'verified';
+        });
+        
+        if (allVerified) {
+          return 'Verified';
+        }
+        
+        // Check if all are approved
+        const allApproved = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'approved' || actionStatus === 'completed';
+        });
+        
+        if (allApproved) {
+          return 'Approved';
+        }
+        
+        // Mixed verified/approved - show "In Progress"
+        return 'In Progress';
+      }
+      // No actions yet, keep Received
+      return 'Received';
+    }
+
     // If status is "Closed", check if all actions are actually closed
     if (statusLower === 'closed') {
       const allClosed = areAllActionsClosed(finding.findingId);
