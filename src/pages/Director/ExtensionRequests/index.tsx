@@ -102,12 +102,26 @@ export default function DirectorExtensionRequestsPage() {
     
     setSubmitting(true);
     try {
-      await approveAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
+      const res = await approveAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
       toast.success('Extension request approved successfully.');
       setShowApproveModal(false);
       setSelectedRequest(null);
       setResponseComment('');
       await loadRequests();
+
+      // Notify other screens (e.g. Lead Reports) so "Edit Schedule & Team" button appears immediately
+      try {
+        const eventDetail = {
+          auditId: selectedRequest.auditId,
+          requestId: selectedRequest.requestId,
+          status: res?.status || 'Approved',
+          timestamp: Date.now(),
+        };
+        const evt = new CustomEvent('auditExtensionApproved', { detail: eventDetail });
+        window.dispatchEvent(evt);
+      } catch (notifyErr) {
+        console.warn('Failed to dispatch auditExtensionApproved event:', notifyErr);
+      }
     } catch (error: any) {
       console.error('Failed to approve request:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to approve request';

@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts';
 import { getAuditPlans } from '../../../api/audits';
 import { getAuditDocuments, downloadAuditDocumentById } from '../../../api/auditDocuments';
 import { getAdminUsers, getUserById } from '../../../api/adminUsers';
+import { getAuditTeam } from '../../../api/auditTeam';
 import { unwrap } from '../../../utils/normalize';
 import { exportFile } from '../../../utils/globalUtil';
 
@@ -50,11 +51,80 @@ const HistoryUploadPage = () => {
       setLoadingAudits(true);
       setError(null);
       try {
+        // Load audit teams and users to filter audits by team membership
+        const [teamsRes, usersRes] = await Promise.all([
+          getAuditTeam().catch(() => []),
+          getAdminUsers().catch(() => [])
+        ]);
+        
+        const teams = Array.isArray(teamsRes) ? teamsRes : [];
+        const users = Array.isArray(usersRes) ? usersRes : [];
+        
+        // Get current user's userId - try multiple methods (same as Reports page)
+        let currentUserId: string | null = null;
+        
+        // Find by email (ProfileResponse doesn't have userId, need to look it up from AdminUsers)
+        if (user?.email) {
+          const found = users.find((u: any) => {
+            const uEmail = String(u?.email || '').toLowerCase().trim();
+            const userEmail = String(user.email).toLowerCase().trim();
+            return uEmail === userEmail;
+          });
+          if (found?.userId) {
+            currentUserId = String(found.userId);
+          } else if (found?.$id) {
+            currentUserId = String(found.$id);
+          }
+        }
+        
+        // Normalize currentUserId for comparison (lowercase, trim)
+        const normalizedCurrentUserId = currentUserId ? String(currentUserId).toLowerCase().trim() : '';
+        
+        // Build set of auditIds where current user is a team member
+        const userAuditIds = new Set<string>();
+        teams.forEach((t: any) => {
+          const teamUserId = String(t.userId || '').trim().toLowerCase();
+          if (teamUserId && teamUserId === normalizedCurrentUserId) {
+            const auditIdStr = String(t.auditId || '').trim();
+            if (auditIdStr) {
+              userAuditIds.add(auditIdStr);
+              userAuditIds.add(auditIdStr.toLowerCase());
+            }
+          }
+        });
+        
         const res = await getAuditPlans();
         const arr = unwrap(res);
-        // Show upload history for all audits; later we filter to only those that actually have documents
-        const visible = Array.isArray(arr) ? arr : [];
-        setAudits(visible);
+        
+        // Filter audits: only show audits where user is in audit team
+        const filtered = (Array.isArray(arr) ? arr : []).filter((a: any) => {
+          // If user is not in any audit team, don't show any audits
+          if (!normalizedCurrentUserId || userAuditIds.size === 0) {
+            return false;
+          }
+          
+          // Check if this audit is in user's audit list
+          const auditIdCandidates = [
+            a.auditId,
+            a.id,
+            a.$id
+          ].filter(Boolean).map(id => String(id).trim());
+          
+          // Check if any auditId format matches
+          const isUserAudit = auditIdCandidates.some(auditId => {
+            // Direct match
+            if (userAuditIds.has(auditId)) return true;
+            // Case-insensitive match
+            if (userAuditIds.has(auditId.toLowerCase())) return true;
+            // Try lowercase version
+            const lowerAuditId = auditId.toLowerCase();
+            return Array.from(userAuditIds).some(uid => uid.toLowerCase() === lowerAuditId);
+          });
+          
+          return isUserAudit;
+        });
+        
+        setAudits(filtered);
         // Preload users once for name mapping
         try {
           const users = await getAdminUsers();

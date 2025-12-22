@@ -12,6 +12,7 @@ import {
   getSensitiveDepartments,
 } from '../../../api/audits';
 import { getAuditSchedules } from '../../../api/auditSchedule';
+import { getDepartmentSensitiveAreaByDeptId } from '../../../api/departmentSensitiveAreas';
 
 
 
@@ -585,12 +586,13 @@ const AuditDetail = () => {
 
   const loadSensitiveAreas = async () => {
     if (!auditId) return;
-    
+
     try {
       const sensitiveDepts = await getSensitiveDepartments(auditId);
       if (sensitiveDepts && sensitiveDepts.length > 0) {
         const areasByDept: Record<number, string[]> = {};
-        
+
+        // 1) Ưu tiên dùng dữ liệu Areas / areas trả về từ backend (AuditScopeDepartment)
         sensitiveDepts.forEach((sd: any) => {
           const deptId = Number(sd.deptId);
           let areasArray: string[] = [];
@@ -620,13 +622,38 @@ const AuditDetail = () => {
             areasArray = Array.isArray(sd.areas.$values) ? sd.areas.$values : [];
           }
 
-          // Store areas by deptId
           if (deptId && areasArray.length > 0) {
             areasByDept[deptId] = areasArray
               .filter((area: string) => area && typeof area === 'string' && area.trim())
               .map((a: string) => a.trim());
           }
         });
+
+        // 2) Fallback: nếu backend chưa set Areas / DepartmentSensitiveAreaIds,
+        //    dùng deptId để lấy master data từ DepartmentSensitiveArea
+        const missingDeptIds = sensitiveDepts
+          .map((sd: any) => Number(sd.deptId))
+          .filter((deptId: number) => !!deptId && !areasByDept[deptId]);
+
+        if (missingDeptIds.length > 0) {
+          const masterResults = await Promise.all(
+            missingDeptIds.map((deptId) => getDepartmentSensitiveAreaByDeptId(deptId))
+          );
+
+          masterResults.forEach((areas, idx) => {
+            const deptId = missingDeptIds[idx];
+            if (!deptId || !areas || areas.length === 0) return;
+
+            const names = areas
+              .map((item: any) => item.sensitiveArea)
+              .filter((area: string) => area && typeof area === 'string' && area.trim())
+              .map((a: string) => a.trim());
+
+            if (names.length > 0) {
+              areasByDept[deptId] = names;
+            }
+          });
+        }
 
         setSensitiveAreasByDept(areasByDept);
       } else {

@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
 import { getAuditSchedules } from '../../../../api/auditSchedule';
-import { getAuditorsByAuditId } from '../../../../api/auditTeam';
+import { getAuditorsByAuditId, getAvailableTeamMembers } from '../../../../api/auditTeam';
 import { getAdminUsers } from '../../../../api/adminUsers';
 import { unwrap } from '../../../../utils/normalize';
 import MultiSelect from '../../../../components/MultiSelect';
@@ -45,8 +45,13 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [editMode, setEditMode] = useState<'schedule' | 'team' | 'both'>('both');
+  // editMode controls which sections are active: schedule, team, both, or none
+  const [editMode, setEditMode] = useState<'schedule' | 'team' | 'both' | 'none'>('both');
   const [scheduleErrors, setScheduleErrors] = useState<Record<number, string>>({});
+  const [periodFromLocal, setPeriodFromLocal] = useState<string | undefined>(periodFrom);
+  const [periodToLocal, setPeriodToLocal] = useState<string | undefined>(periodTo);
+  const [availableAuditorIds, setAvailableAuditorIds] = useState<Set<string>>(new Set());
+  const [initialAuditorIds, setInitialAuditorIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (show && auditId) {
@@ -66,6 +71,8 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
         hasPeriodFrom: !!periodFrom,
         hasPeriodTo: !!periodTo
       });
+      setPeriodFromLocal(periodFrom);
+      setPeriodToLocal(periodTo);
     }
   }, [show, periodFrom, periodTo]);
 
@@ -100,14 +107,34 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
       const teamDataArray = Array.isArray(teamData) ? teamData : [];
       // Extract auditor IDs from team members (filter out AuditeeOwner)
       const auditorIds = teamDataArray
-            .filter((m: any) => {
-              const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
-              return role !== 'auditeeowner';
-            })
+        .filter((m: any) => {
+          const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+          return role !== 'auditeeowner';
+        })
         .map((m: any) => String(m.userId || m.id || m.$id || ''))
         .filter((id: string) => id);
-      
+
       setSelectedAuditorIds(auditorIds);
+      setInitialAuditorIds(new Set(auditorIds));
+
+      // Load available team members for this audit & period (to prevent conflicts)
+      try {
+        const available = await getAvailableTeamMembers({
+          auditId,
+          excludePreviousPeriod: true,
+          startDate: periodFrom || undefined,
+          endDate: periodTo || undefined,
+        });
+        const availableIds = new Set<string>();
+        (Array.isArray(available) ? available : []).forEach((m: any) => {
+          const uid = String(m.userId || m.id || m.$id || '').trim();
+          if (uid) availableIds.add(uid);
+        });
+        setAvailableAuditorIds(availableIds);
+      } catch (err) {
+        console.error('Failed to load available team members', err);
+        setAvailableAuditorIds(new Set());
+      }
     } catch (err) {
       console.error('Failed to load data', err);
       toast.error('Failed to load schedule and team data');
@@ -118,49 +145,147 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
 
   // Note: Add/Remove schedule functionality removed - schedules are managed by backend
 
-  const validateScheduleDate = (_index: number, date: string): string | undefined => {
-    if (!date) {
-      return 'Due date is required';
-    }
+  // Build validation errors similar to Auditor create/edit rules
+  const computedScheduleErrors = useMemo(() => {
+    const errs: Record<number, string> = {};
 
-    if (periodFrom && periodTo) {
-      const scheduleDate = new Date(date);
-      const periodFromDate = new Date(periodFrom);
-      const periodToDate = new Date(periodTo);
+    // Map milestone -> index in schedules array
+    const milestoneOrder = ['Kickoff Meeting', 'Fieldwork Start', 'Evidence Due', 'CAPA Due', 'Draft Report Due'];
 
-      // Set time to 00:00:00 for accurate date comparison
-      scheduleDate.setHours(0, 0, 0, 0);
-      periodFromDate.setHours(0, 0, 0, 0);
-      periodToDate.setHours(0, 0, 0, 0);
+    // 1) Basic: required + within period
+    schedules.forEach((s, index) => {
+      if (!s.dueDate) {
+        errs[index] = 'Due date is required';
+        return;
+      }
 
-      if (scheduleDate < periodFromDate) {
-        return `Date must be on or after Period From (${new Date(periodFrom).toLocaleDateString()}).`;
-      } else if (scheduleDate > periodToDate) {
-        return `Date must be on or before Period To (${new Date(periodTo).toLocaleDateString()}).`;
+      if (periodFromLocal && periodToLocal) {
+        const scheduleDate = new Date(s.dueDate);
+        const periodFromDate = new Date(periodFromLocal);
+        const periodToDate = new Date(periodToLocal);
+
+        scheduleDate.setHours(0, 0, 0, 0);
+        periodFromDate.setHours(0, 0, 0, 0);
+        periodToDate.setHours(0, 0, 0, 0);
+
+        if (scheduleDate < periodFromDate) {
+          errs[index] = `Date must be on or after Period From (${new Date(periodFromLocal).toLocaleDateString()}).`;
+        } else if (scheduleDate > periodToDate) {
+          errs[index] = `Date must be on or before Period To (${new Date(periodToLocal).toLocaleDateString()}).`;
+        }
+      }
+    });
+
+    // 2) Duplicate dates check (any milestones sharing same date)
+    const seen = new Map<string, number[]>();
+    schedules.forEach((s, idx) => {
+      if (!s.dueDate) return;
+      const key = s.dueDate;
+      const list = seen.get(key) ?? [];
+      list.push(idx);
+      seen.set(key, list);
+    });
+    seen.forEach((idxs) => {
+      if (idxs.length > 1) {
+        idxs.forEach((i) => {
+          if (!errs[i]) {
+            errs[i] = 'Dates must be unique (no duplicates).';
+          }
+        });
+      }
+    });
+
+    // Helper to get schedule index by milestone label (case-insensitive contains)
+    const findIndexByMilestone = (label: string) => {
+      const normLabel = label.toLowerCase().replace(/\s+/g, '');
+      return schedules.findIndex((s) => {
+        const name = String(s.milestoneName || '').toLowerCase().replace(/\s+/g, '');
+        return name === normLabel || name.includes(normLabel) || normLabel.includes(name);
+      });
+    };
+
+    const kickoffIdx = findIndexByMilestone('Kickoff Meeting');
+    const fieldworkIdx = findIndexByMilestone('Fieldwork Start');
+    const evidenceIdx = findIndexByMilestone('Evidence Due');
+    const capaIdx = findIndexByMilestone('CAPA Due');
+    const draftIdx = findIndexByMilestone('Draft Report Due');
+
+    const toDate = (d?: string) => (d ? new Date(d) : null);
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+    // 3) Strict order: KICKOFF < FIELDWORK < EVIDENCE < CAPA < DRAFT
+    const orderedIdx = [kickoffIdx, fieldworkIdx, evidenceIdx, capaIdx, draftIdx].filter(
+      (i) => i != null && i >= 0 && schedules[i].dueDate
+    ) as number[];
+
+    for (let i = 1; i < orderedIdx.length; i++) {
+      const prevIdx = orderedIdx[i - 1];
+      const currIdx = orderedIdx[i];
+      const prev = toDate(schedules[prevIdx].dueDate);
+      const curr = toDate(schedules[currIdx].dueDate);
+      if (prev && curr && curr.getTime() <= prev.getTime()) {
+        if (!errs[currIdx]) {
+          errs[currIdx] = `${schedules[currIdx].milestoneName} must be after ${schedules[prevIdx].milestoneName}.`;
+        }
       }
     }
 
-    return undefined;
-  };
+    // 4) Minimum gaps: giống Auditor
+    const addGapError = (
+      laterIdx: number | null,
+      laterLabelFallback: string,
+      earlierIdx: number | null,
+      minDays: number
+    ) => {
+      if (laterIdx == null || earlierIdx == null) return;
+      if (laterIdx < 0 || earlierIdx < 0) return;
+      const laterDate = toDate(schedules[laterIdx].dueDate);
+      const earlierDate = toDate(schedules[earlierIdx].dueDate);
+      if (!laterDate || !earlierDate) return;
+
+      const diffDays = Math.floor((laterDate.getTime() - earlierDate.getTime()) / MS_PER_DAY);
+      if (diffDays < minDays && !errs[laterIdx]) {
+        const laterLabel = schedules[laterIdx].milestoneName || laterLabelFallback;
+        const earlierLabel = schedules[earlierIdx].milestoneName || '';
+        errs[laterIdx] = `${laterLabel} must be at least ${minDays} day(s) after ${earlierLabel}.`;
+      }
+    };
+
+    // Fieldwork ≥ Kickoff + 1 day
+    addGapError(fieldworkIdx, 'Fieldwork Start', kickoffIdx, 1);
+    // Evidence ≥ Fieldwork + 5 days
+    addGapError(evidenceIdx, 'Evidence Due', fieldworkIdx, 5);
+    // CAPA ≥ Evidence + 5 days
+    addGapError(capaIdx, 'CAPA Due', evidenceIdx, 5);
+    // Draft Report Due ≥ CAPA + 3 days
+    addGapError(draftIdx, 'Draft Report Due', capaIdx, 3);
+
+    return errs;
+  }, [schedules, periodFromLocal, periodToLocal]);
 
   const handleScheduleChange = (index: number, field: keyof ScheduleItem, value: any) => {
+    // Không cho phép sửa 2 mốc đầu: Kickoff Meeting & Fieldwork Start
+    if (
+      field === 'dueDate' &&
+      index >= 0 &&
+      index < schedules.length &&
+      ['kickoff', 'kickoffmeeting', 'kickoff-meeting', 'fieldwork', 'fieldworkstart', 'fieldwork-start'].some((k) =>
+        String(schedules[index].milestoneName || '')
+          .toLowerCase()
+          .replace(/\s+/g, '')
+          .includes(k)
+      )
+    ) {
+      toast.warning('Kickoff Meeting and Fieldwork Start cannot be edited here. Please update them in the original plan.');
+      return;
+    }
+
     const updated = [...schedules];
     updated[index] = { ...updated[index], [field]: value };
     setSchedules(updated);
 
-    // Validate date if field is dueDate
-    if (field === 'dueDate') {
-      const error = validateScheduleDate(index, value);
-      setScheduleErrors(prev => {
-        const newErrors = { ...prev };
-        if (error) {
-          newErrors[index] = error;
-        } else {
-          delete newErrors[index];
-        }
-        return newErrors;
-      });
-    }
+    // Re-sync errors from computedScheduleErrors
+    setScheduleErrors(computedScheduleErrors);
   };
 
   // Get auditor options for MultiSelect
@@ -168,37 +293,29 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
     const auditors = allUsers.filter(
       (u: any) => String(u.roleName || '').toLowerCase().includes('auditor')
     );
-    return auditors.map((u: any) => ({
-      value: String(u.userId || u.id || ''),
-      label: `${u.fullName || 'Unknown'} (${u.email || 'N/A'})`,
-      disabled: false,
-    }));
-  }, [allUsers]);
+    return auditors.map((u: any) => {
+      const uid = String(u.userId || u.id || '').trim();
+      const isSelected = selectedAuditorIds.includes(uid);
+      const isInitial = initialAuditorIds.has(uid);
+      const inAvailable =
+        !availableAuditorIds || availableAuditorIds.size === 0 || availableAuditorIds.has(uid);
+
+      return {
+        value: uid,
+        label: `${u.fullName || 'Unknown'} (${u.email || 'N/A'})`,
+        // Cho phép luôn giữ/chọn lại các auditor ban đầu; chỉ khóa những người không có trong available list
+        disabled: !isSelected && !isInitial && !inAvailable,
+      };
+    });
+  }, [allUsers, selectedAuditorIds, initialAuditorIds, availableAuditorIds]);
 
   const handleSave = async () => {
     if (!auditId) return;
 
     // Validate based on edit mode
     if (editMode === 'schedule' || editMode === 'both') {
-      const errors: Record<number, string> = {};
-      let hasError = false;
-
-      for (let i = 0; i < schedules.length; i++) {
-        const schedule = schedules[i];
-        if (!schedule.dueDate) {
-          errors[i] = 'Due date is required';
-          hasError = true;
-        } else {
-          const dateError = validateScheduleDate(i, schedule.dueDate);
-          if (dateError) {
-            errors[i] = dateError;
-            hasError = true;
-          }
-        }
-      }
-
-      if (hasError) {
-        setScheduleErrors(errors);
+      if (Object.keys(computedScheduleErrors).length > 0) {
+        setScheduleErrors(computedScheduleErrors);
         toast.error('Please fix validation errors before saving');
         return;
       }
@@ -299,58 +416,56 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Edit Mode Selection */}
+              {/* Edit Mode Selection (simple check/uncheck) */}
               <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
                 <label className="block text-xs font-semibold text-gray-700 mb-3">
                   Select what to edit:
                 </label>
                 <div className="flex flex-wrap gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editMode === 'schedule' || editMode === 'both'}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          // Check schedule: if team is checked, set to both; otherwise set to schedule
-                          setEditMode(editMode === 'team' ? 'both' : 'schedule');
-                        } else {
-                          // Uncheck schedule: if both, set to team; if schedule, cannot uncheck (must have at least one)
-                          if (editMode === 'both') {
-                            setEditMode('team');
-                          }
-                          // If editMode is 'schedule', don't allow unchecking (must have at least one selected)
-                        }
-                      }}
-                      disabled={editMode === 'schedule'}
-                      className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    <span className={`text-sm font-medium ${editMode === 'schedule' ? 'text-gray-500' : 'text-gray-700'}`}>
-                      Schedule
-                    </span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editMode === 'team' || editMode === 'both'}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          // Check team: if schedule is checked, set to both; otherwise set to team
-                          setEditMode(editMode === 'schedule' ? 'both' : 'team');
-                        } else {
-                          // Uncheck team: if both, set to schedule; if team, cannot uncheck (must have at least one)
-                          if (editMode === 'both') {
-                            setEditMode('schedule');
-                          }
-                          // If editMode is 'team', don't allow unchecking (must have at least one selected)
-                        }
-                      }}
-                      disabled={editMode === 'team'}
-                      className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    />
-                    <span className={`text-sm font-medium ${editMode === 'team' ? 'text-gray-500' : 'text-gray-700'}`}>
-                      Team
-                    </span>
-                  </label>
+                  {(() => {
+                    const scheduleChecked = editMode === 'schedule' || editMode === 'both';
+                    const teamChecked = editMode === 'team' || editMode === 'both';
+                    return (
+                      <>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={scheduleChecked}
+                            onChange={(e) => {
+                              const next = e.target.checked;
+                              if (next) {
+                                setEditMode(teamChecked ? 'both' : 'schedule');
+                              } else {
+                                setEditMode(teamChecked ? 'team' : 'none');
+                              }
+                            }}
+                            className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
+                          />
+                          <span className="text-sm font-medium text-gray-700">
+                            Schedule
+                          </span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={teamChecked}
+                            onChange={(e) => {
+                              const next = e.target.checked;
+                              if (next) {
+                                setEditMode(scheduleChecked ? 'both' : 'team');
+                              } else {
+                                setEditMode(scheduleChecked ? 'schedule' : 'none');
+                              }
+                            }}
+                            className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
+                          />
+                          <span className="text-sm font-medium text-gray-700">
+                            Team
+                          </span>
+                        </label>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -365,55 +480,53 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
                   
                 </div>
                 
-                {/* Period From/To Info */}
-                {(periodFrom || periodTo) && (
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div className="flex-1">
-                        <p className="text-xs font-semibold text-blue-900 mb-1">Valid Date Range:</p>
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-blue-700">
-                          {periodFrom ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="font-semibold text-blue-900">Period From:</span>
-                              <span className="px-2.5 py-1 bg-blue-100 rounded font-mono text-blue-800 font-semibold">
-                                {new Date(periodFrom).toLocaleDateString('en-US', { 
-                                  year: 'numeric', 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })}
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="text-blue-600 italic">Period From: Not set</span>
-                          )}
-                          {periodTo ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="font-semibold text-blue-900">Period To:</span>
-                              <span className="px-2.5 py-1 bg-blue-100 rounded font-mono text-blue-800 font-semibold">
-                                {new Date(periodTo).toLocaleDateString('en-US', { 
-                                  year: 'numeric', 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })}
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="text-blue-600 italic">Period To: Not set</span>
-                          )}
+                {/* Period From/To editable range */}
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-blue-900 mb-1">Valid Date Range</p>
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-blue-700">
+                        <div className="flex flex-col">
+                          <label className="mb-0.5 text-[11px] font-semibold text-blue-900">
+                            Period From
+                          </label>
+                          <input
+                            type="date"
+                            value={periodFromLocal || ''}
+                            readOnly
+                            disabled
+                            className="px-2.5 py-1 rounded border border-blue-200 font-mono text-blue-500 bg-gray-100 cursor-not-allowed"
+                          />
                         </div>
-                        <p className="text-xs text-blue-600 mt-1.5">
-                          Schedule dates must be within this period.
-                        </p>
+                        <div className="flex flex-col">
+                          <label className="mb-0.5 text-[11px] font-semibold text-blue-900">
+                            Period To
+                          </label>
+                          <input
+                            type="date"
+                            value={periodToLocal || ''}
+                            onChange={(e) => setPeriodToLocal(e.target.value || undefined)}
+                            className="px-2.5 py-1 bg-white rounded border border-blue-200 font-mono text-blue-800 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                          />
+                        </div>
                       </div>
+                      
                     </div>
+                  </div>
                 </div>
-                )}
                 <div className="space-y-3">
                    {schedules.map((schedule, index) => {
                      const scheduleKey = schedule.scheduleId || `schedule-${index}`;
+                     const isLockedMilestone = ['kickoff', 'kickoffmeeting', 'kickoff-meeting', 'fieldwork', 'fieldworkstart', 'fieldwork-start'].some(
+                       (k) =>
+                         String(schedule.milestoneName || '')
+                           .toLowerCase()
+                           .replace(/\s+/g, '')
+                           .includes(k)
+                     );
                      return (
                     <div
                        key={scheduleKey}
@@ -429,6 +542,11 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
                              <p className="text-base font-bold text-gray-900">
                                {schedule.milestoneName || `Schedule ${index + 1}`}
                              </p>
+                             {isLockedMilestone && (
+                               <p className="mt-0.5 text-[11px] font-medium text-amber-600">
+                                 This milestone can only be edited in the original audit plan.
+                               </p>
+                             )}
                            </div>
                          </div>
                         </div>
@@ -442,12 +560,16 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
                             onChange={(e) =>
                               handleScheduleChange(index, 'dueDate', e.target.value)
                             }
-                           min={periodFrom}
-                           max={periodTo}
-                           className={`w-full px-4 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white ${
-                             scheduleErrors[index] ? 'border-red-500' : 'border-gray-300'
-                           }`}
-                         />
+                            min={periodFrom}
+                            max={periodTo}
+                            disabled={isLockedMilestone}
+                            className={`w-full px-4 py-2.5 border rounded-lg text-sm transition-all duration-200 ${
+                              isLockedMilestone
+                                ? 'bg-gray-100 text-gray-500 border-gray-300 cursor-not-allowed'
+                                : 'bg-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ' +
+                                  (scheduleErrors[index] ? 'border-red-500' : 'border-gray-300')
+                            }`}
+                          />
                          {scheduleErrors[index] && (
                            <p className="text-xs text-red-600 mt-1">{scheduleErrors[index]}</p>
                          )}

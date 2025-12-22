@@ -6,6 +6,7 @@ import { useAuth } from '../../../contexts';
 import { getAuditSummary, approveAuditReport, rejectAuditReport, getAuditFullDetail } from '../../../api/audits';
 import { unwrap } from '../../../utils/normalize';
 import { getStatusColor } from '../../../constants';
+import { Button } from '../../../components/Button';
 import AuditReportsTable from './components/AuditReportsTable';
 import DepartmentsSection from './components/DepartmentsSection';
 import { getAuditTeam, getAuditorsByAuditId } from '../../../api/auditTeam';
@@ -128,20 +129,38 @@ const AuditorLeadReports = () => {
       
       // Get ReportRequests (submitted by Auditors)
       const rawReportRequests = Array.isArray(reportRequestsRes) ? reportRequestsRes as ViewReportRequest[] : [];
-      // For each auditId, keep ONLY the latest ReportRequest (by requestedAt) to handle re-submit
+      // For each auditId, prioritize ReportRequest with status "Approved" or "Returned" (after approve/reject)
+      // If no approved/rejected, then keep the latest by requestedAt
       const reportRequestMap = new Map<string, ViewReportRequest>();
       rawReportRequests.forEach((rr) => {
         const auditId = String(rr.auditId || '').trim();
         if (!auditId) return;
         const key = auditId.toLowerCase();
         const existing = reportRequestMap.get(key) as any;
+        
         if (!existing) {
           reportRequestMap.set(key, rr);
         } else {
-          const existingTime = existing.requestedAt ? new Date(existing.requestedAt).getTime() : 0;
-          const currentTime = rr.requestedAt ? new Date(rr.requestedAt).getTime() : 0;
-          if (currentTime >= existingTime) {
+          // Check status priority: Approved/Returned > Pending
+          const existingStatus = String(existing.status || '').toLowerCase().trim();
+          const currentStatus = String(rr.status || '').toLowerCase().trim();
+          
+          const existingIsFinal = existingStatus === 'approved' || existingStatus === 'returned' || existingStatus.includes('approve') || existingStatus.includes('return');
+          const currentIsFinal = currentStatus === 'approved' || currentStatus === 'returned' || currentStatus.includes('approve') || currentStatus.includes('return');
+          
+          if (currentIsFinal && !existingIsFinal) {
+            // Current has final status (Approved/Returned), existing doesn't -> use current
             reportRequestMap.set(key, rr);
+          } else if (!currentIsFinal && existingIsFinal) {
+            // Existing has final status, current doesn't -> keep existing
+            // Do nothing, keep existing
+          } else {
+            // Both have same priority -> use the latest by requestedAt
+            const existingTime = existing.requestedAt ? new Date(existing.requestedAt).getTime() : 0;
+            const currentTime = rr.requestedAt ? new Date(rr.requestedAt).getTime() : 0;
+            if (currentTime >= existingTime) {
+              reportRequestMap.set(key, rr);
+            }
           }
         }
       });
@@ -179,14 +198,17 @@ const AuditorLeadReports = () => {
           // Get audit details from auditMap
           const audit = auditMap.get(auditId.toLowerCase()) || auditMap.get(auditId);
           
+          // Use ReportRequest status (already prioritized by Approved/Returned status)
+          const finalStatus = rr.status || 'Pending';
+          
           // Create report object from ReportRequest
           const reportObj: any = {
             auditId: auditId,
             id: auditId,
             $id: auditId,
-            status: rr.status || 'Pending', // Status from ReportRequest
-            state: rr.status || 'Pending',
-            approvalStatus: rr.status || 'Pending',
+            status: finalStatus,
+            state: finalStatus,
+            approvalStatus: finalStatus,
             title: audit?.title || audit?.name || rr.title || `Audit ${auditId}`,
             name: audit?.title || audit?.name || rr.title,
             startDate: audit?.startDate,
@@ -202,7 +224,7 @@ const AuditorLeadReports = () => {
           
           combinedReports.push(reportObj);
         } else {
-          // Update existing report with ReportRequest status if it's more recent
+          // Update existing report with ReportRequest status if it's more recent or has final status
           const existingIndex = combinedReports.findIndex((r: any) => {
             const rAuditId = String(r.auditId || r.id || r.$id || '');
             return rAuditId.toLowerCase() === auditId.toLowerCase();
@@ -210,15 +232,30 @@ const AuditorLeadReports = () => {
           
           if (existingIndex >= 0) {
             const existing = combinedReports[existingIndex];
-            // Prefer ReportRequest status over AuditReports status
-            if (rr.status) {
+            const existingStatus = String(existing.status || '').toLowerCase().trim();
+            const newStatus = String(rr.status || '').toLowerCase().trim();
+            
+            // Check if new status is final (Approved/Returned) and existing is not
+            const existingIsFinal = existingStatus === 'approved' || existingStatus === 'returned' || existingStatus.includes('approve') || existingStatus.includes('return');
+            const newIsFinal = newStatus === 'approved' || newStatus === 'returned' || newStatus.includes('approve') || newStatus.includes('return');
+            
+            // Update status if new is final or if both are same priority and new is more recent
+            if (newIsFinal && !existingIsFinal) {
+              // New has final status, existing doesn't -> update
+              existing.status = rr.status;
+              existing.state = rr.status;
+              existing.approvalStatus = rr.status;
+            } else if (rr.status && !existingIsFinal && !newIsFinal) {
+              // Both are pending, update to latest
               existing.status = rr.status;
               existing.state = rr.status;
               existing.approvalStatus = rr.status;
             }
+            
             if (rr.note) {
               existing.note = rr.note;
             }
+            
             if (rr.requestedBy) {
               existing.submittedBy = rr.requestedBy;
               existing.submittedByUser = rr.requestedBy;
@@ -307,6 +344,36 @@ const AuditorLeadReports = () => {
 
   useEffect(() => { reload(); }, [reload]);
 
+  // Listen for Director's extension approval so "Edit Schedule & Team" button appears without full reload
+  useEffect(() => {
+    const handleExtensionApproved = async (event: Event) => {
+      const detail: any = (event as CustomEvent).detail || {};
+      const auditId: string | undefined = detail.auditId;
+      if (!auditId) return;
+
+      try {
+        const requests = await getAuditPlanRevisionRequestsByAuditId(auditId).catch(() => []);
+        setRevisionRequestsMap((prev) => ({
+          ...prev,
+          [auditId]: Array.isArray(requests) ? requests : [],
+        }));
+
+        // Nếu đang mở đúng audit này thì refresh luôn phần summary & danh sách request
+        if (String(selectedAuditId || '') === String(auditId)) {
+          setRevisionRequests(Array.isArray(requests) ? requests : []);
+          setSummaryReloadKey((k) => k + 1);
+        }
+      } catch (err) {
+        console.error('Failed to refresh revision requests after extension approval event:', err);
+      }
+    };
+
+    window.addEventListener('auditExtensionApproved', handleExtensionApproved as EventListener);
+    return () => {
+      window.removeEventListener('auditExtensionApproved', handleExtensionApproved as EventListener);
+    };
+  }, [selectedAuditId]);
+
   useEffect(() => {
     const loadSummary = async () => {
       if (!selectedAuditId) return;
@@ -382,18 +449,31 @@ const AuditorLeadReports = () => {
       let status: string;
       let displayStatus: string; // Status để hiển thị trên UI
       
-      if (norm === 'pending') {
+      // Normalize và check status (case-insensitive, remove spaces)
+      const normalizedStatus = norm;
+      
+      if (normalizedStatus === 'pending') {
         status = 'Pending';
         displayStatus = 'Pending';
-      } else if (norm === 'approved' || norm.includes('approved') || norm.includes('approve')) {
+      } else if (normalizedStatus === 'approved' || normalizedStatus.includes('approved') || normalizedStatus.includes('approve')) {
         status = 'Approved';
         displayStatus = 'Approved';
-      } else if (norm.includes('return') || norm.includes('reject') || norm === 'returned') {
+      } else if (normalizedStatus.includes('return') || normalizedStatus.includes('reject') || normalizedStatus === 'returned') {
         status = 'Returned';
         displayStatus = 'Returned';
       } else {
-        status = rawStatus;
-        displayStatus = rawStatus;
+        // Fallback: check rawStatus again with different normalization
+        const rawNorm = String(rawStatus).toLowerCase().trim();
+        if (rawNorm === 'approved' || rawNorm.includes('approve')) {
+          status = 'Approved';
+          displayStatus = 'Approved';
+        } else if (rawNorm.includes('return') || rawNorm.includes('reject')) {
+          status = 'Returned';
+          displayStatus = 'Returned';
+        } else {
+          status = rawStatus;
+          displayStatus = rawStatus;
+        }
       }
       
       const createdBy = getCreatedByLabel(a);
@@ -457,11 +537,18 @@ const AuditorLeadReports = () => {
   const needsDecision = (status: string) => {
     const s = String(status || '').toLowerCase().trim();
     if (!s) return false;
+    
     // If status is already Approved, Returned, or Rejected, no decision needed
-    if (s === 'approved' || s === 'returned' || s === 'rejected' || 
-        s.includes('approve') || s.includes('reject') || s.includes('return')) {
+    // Check exact matches first, then partial matches
+    if (s === 'approved' || s === 'returned' || s === 'rejected') {
       return false;
     }
+    
+    // Check for partial matches (case-insensitive)
+    if (s.includes('approve') || s.includes('reject') || s.includes('return')) {
+      return false;
+    }
+    
     // Only show buttons for Pending/Submitted/UnderReview statuses
     return s.includes('submit') || s === 'pending' || s.includes('underreview') || s.includes('under review');
   };
@@ -601,40 +688,78 @@ const AuditorLeadReports = () => {
       const audit = fullDetail?.audit || fullDetail?.Audit || fullDetail;
       
       if (audit) {
-        // Try multiple possible field names
-        const periodFrom = audit.periodFrom || audit.PeriodFrom || audit.startDate || audit.StartDate || 
-                          audit.auditPlan?.periodFrom || audit.auditPlan?.PeriodFrom ||
-                          audit.auditPlan?.startDate || audit.auditPlan?.StartDate;
-        const periodTo = audit.periodTo || audit.PeriodTo || audit.endDate || audit.EndDate || 
-                        audit.auditPlan?.periodTo || audit.auditPlan?.PeriodTo ||
-                        audit.auditPlan?.endDate || audit.auditPlan?.EndDate;
+        // Priority order: auditPlan.periodFrom/periodTo first (most accurate), then audit.periodFrom/periodTo, then startDate/endDate
+        const periodFrom = audit.auditPlan?.periodFrom 
+                          || audit.auditPlan?.PeriodFrom
+                          || audit.periodFrom 
+                          || audit.PeriodFrom
+                          || audit.auditPlan?.startDate
+                          || audit.auditPlan?.StartDate
+                          || audit.startDate 
+                          || audit.StartDate;
+        const periodTo = audit.auditPlan?.periodTo
+                        || audit.auditPlan?.PeriodTo
+                        || audit.periodTo 
+                        || audit.PeriodTo
+                        || audit.auditPlan?.endDate
+                        || audit.auditPlan?.EndDate
+                        || audit.endDate 
+                        || audit.EndDate;
         
         console.log('🔍 Loaded period dates from full detail:', {
           auditId,
           auditKeys: Object.keys(audit),
           hasAuditPlan: !!audit.auditPlan,
+          auditPlanKeys: audit.auditPlan ? Object.keys(audit.auditPlan) : [],
           periodFromRaw: periodFrom,
           periodToRaw: periodTo,
+          auditPlanPeriodFrom: audit.auditPlan?.periodFrom,
+          auditPlanPeriodTo: audit.auditPlan?.periodTo,
+          auditStartDate: audit.startDate,
+          auditEndDate: audit.endDate,
         });
         
-        // Convert to YYYY-MM-DD format
+        // Convert to YYYY-MM-DD format, avoiding timezone shifts
         const formatDate = (date: any): string | undefined => {
           if (!date) return undefined;
           if (typeof date === 'string') {
+            // If already in YYYY-MM-DD format, return as is
             if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+            // If it's a datetime string, extract just the date part before converting
+            if (date.includes('T')) {
+              const datePart = date.split('T')[0];
+              if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
+            }
+            // Parse and format, but use local date to avoid timezone shift
             const d = new Date(date);
             if (!isNaN(d.getTime())) {
-              return d.toISOString().split('T')[0];
+              // Use local date components to avoid timezone issues
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
             }
           } else if (date instanceof Date && !isNaN(date.getTime())) {
-            return date.toISOString().split('T')[0];
+            // Use local date components to avoid timezone issues
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
           }
           return undefined;
         };
 
+        const formattedFrom = formatDate(periodFrom);
+        const formattedTo = formatDate(periodTo);
+        
+        console.log('📅 Formatted period dates:', {
+          periodFrom: formattedFrom,
+          periodTo: formattedTo,
+        });
+
         setAuditPeriodDates({
-          periodFrom: formatDate(periodFrom),
-          periodTo: formatDate(periodTo),
+          periodFrom: formattedFrom,
+          periodTo: formattedTo,
         });
       } else {
         // Fallback to getAuditPeriodDates
@@ -659,15 +784,27 @@ const AuditorLeadReports = () => {
       });
 
       if (audit) {
-        // Try multiple possible field names - check all variations including nested structures
-        const periodFrom = audit.periodFrom || audit.PeriodFrom || audit.startDate || audit.StartDate || 
-                          audit.periodFromDate || audit.period_from || 
-                          audit.auditPlan?.periodFrom || audit.auditPlan?.PeriodFrom ||
-                          audit.auditPlan?.startDate || audit.auditPlan?.StartDate;
-        const periodTo = audit.periodTo || audit.PeriodTo || audit.endDate || audit.EndDate || 
-                        audit.periodToDate || audit.period_to ||
-                        audit.auditPlan?.periodTo || audit.auditPlan?.PeriodTo ||
-                        audit.auditPlan?.endDate || audit.auditPlan?.EndDate;
+        // Priority order: auditPlan.periodFrom/periodTo first (most accurate), then audit.periodFrom/periodTo, then startDate/endDate
+        const periodFrom = audit.auditPlan?.periodFrom 
+                          || audit.auditPlan?.PeriodFrom
+                          || audit.periodFrom 
+                          || audit.PeriodFrom
+                          || audit.periodFromDate 
+                          || audit.period_from
+                          || audit.auditPlan?.startDate
+                          || audit.auditPlan?.StartDate
+                          || audit.startDate 
+                          || audit.StartDate;
+        const periodTo = audit.auditPlan?.periodTo
+                        || audit.auditPlan?.PeriodTo
+                        || audit.periodTo 
+                        || audit.PeriodTo
+                        || audit.periodToDate
+                        || audit.period_to
+                        || audit.auditPlan?.endDate
+                        || audit.auditPlan?.EndDate
+                        || audit.endDate 
+                        || audit.EndDate;
         
         console.log('🔍 Getting period dates for audit:', auditId, {
           auditKeys: Object.keys(audit),
@@ -677,34 +814,36 @@ const AuditorLeadReports = () => {
           periodToRaw: periodTo,
           hasPeriodFrom: !!periodFrom,
           hasPeriodTo: !!periodTo,
-          auditSample: {
-            periodFrom: audit.periodFrom,
-            PeriodFrom: audit.PeriodFrom,
-            startDate: audit.startDate,
-            periodTo: audit.periodTo,
-            PeriodTo: audit.PeriodTo,
-            endDate: audit.endDate,
-            auditPlanPeriodFrom: audit.auditPlan?.periodFrom,
-            auditPlanPeriodTo: audit.auditPlan?.periodTo,
-          }
+          auditPlanPeriodFrom: audit.auditPlan?.periodFrom,
+          auditPlanPeriodTo: audit.auditPlan?.periodTo,
         });
         
-        // Convert to YYYY-MM-DD format if needed
+        // Convert to YYYY-MM-DD format, avoiding timezone shifts
         const formatDate = (date: any): string | undefined => {
           if (!date) return undefined;
           if (typeof date === 'string') {
             // If already in YYYY-MM-DD format, return as is
             if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-            // Otherwise try to parse and format
+            // If it's a datetime string, extract just the date part before converting
+            if (date.includes('T')) {
+              const datePart = date.split('T')[0];
+              if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
+            }
+            // Parse and format, but use local date to avoid timezone shift
             const d = new Date(date);
             if (!isNaN(d.getTime())) {
-              return d.toISOString().split('T')[0];
+              // Use local date components to avoid timezone issues
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              return `${year}-${month}-${day}`;
             }
-          } else if (date instanceof Date) {
-            // If it's already a Date object
-            if (!isNaN(date.getTime())) {
-              return date.toISOString().split('T')[0];
-            }
+          } else if (date instanceof Date && !isNaN(date.getTime())) {
+            // Use local date components to avoid timezone issues
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
           }
           return undefined;
         };
@@ -747,13 +886,91 @@ const AuditorLeadReports = () => {
 
     try {
       // Load current schedules and team to compare
-      const [currentSchedulesRes, currentTeamRes] = await Promise.all([
+      // Use getAuditTeam() to get full team data with auditTeamId, then filter by auditId
+      const [currentSchedulesRes, allTeamsRes, currentTeamRes] = await Promise.all([
         getAuditSchedules(editScheduleTeamAuditId),
+        getAuditTeam().catch(() => []), // Fallback to empty array if fails
         getAuditorsByAuditId(editScheduleTeamAuditId),
       ]);
 
       const currentSchedules = unwrap(currentSchedulesRes) || [];
-      const currentTeam = unwrap(currentTeamRes) || [];
+      const allTeams = Array.isArray(allTeamsRes) ? allTeamsRes : [];
+      const currentTeamFromAuditors = unwrap(currentTeamRes) || [];
+      
+      // Try to get full team data with auditTeamId from getAuditTeam()
+      // Filter by auditId to get team members with full IDs
+      // Check multiple possible field names for auditId
+      const auditIdStr = String(editScheduleTeamAuditId);
+      const currentTeamWithIds = allTeams.filter((t: any) => {
+        const tAuditId = String(
+          t.auditId 
+          || t.AuditId 
+          || t.audit?.id 
+          || t.audit?.$id
+          || t.audit?.auditId
+          || ''
+        );
+        return tAuditId === auditIdStr;
+      });
+      
+      console.log('🔍 Filtering teams by auditId:', {
+        auditId: auditIdStr,
+        allTeamsCount: allTeams.length,
+        currentTeamWithIdsCount: currentTeamWithIds.length,
+        sampleAllTeam: allTeams[0],
+        sampleFilteredTeam: currentTeamWithIds[0],
+      });
+      
+      // Merge: prefer currentTeamWithIds (has auditTeamId), fallback to currentTeamFromAuditors
+      // Create a map of userId -> team member with auditTeamId
+      const teamMap = new Map<string, any>();
+      currentTeamWithIds.forEach((t: any) => {
+        const uid = String(t.userId || t.UserId || t.id || t.$id || '').trim();
+        if (uid) {
+          // Get auditTeamId from various possible fields
+          const teamId = t.auditTeamId 
+            || t.AuditTeamId 
+            || t.id 
+            || t.$id
+            || t.Id;
+          if (teamId) {
+            teamMap.set(uid, { ...t, auditTeamId: teamId });
+          } else {
+            teamMap.set(uid, t);
+          }
+        }
+      });
+      
+      // Merge with currentTeamFromAuditors, preserving auditTeamId from teamMap
+      const currentTeam = currentTeamFromAuditors.map((m: any) => {
+        const uid = String(m.userId || m.UserId || m.id || m.$id || '').trim();
+        const teamWithId = teamMap.get(uid);
+        if (teamWithId) {
+          // Merge: use data from currentTeamFromAuditors but add auditTeamId from teamWithId
+          const teamId = teamWithId.auditTeamId 
+            || teamWithId.AuditTeamId
+            || teamWithId.id 
+            || teamWithId.$id
+            || teamWithId.Id;
+          return {
+            ...m,
+            auditTeamId: teamId,
+            id: teamId || m.id,
+            $id: teamId || m.$id,
+          };
+        }
+        return m;
+      });
+      
+      console.log('🔍 Team data loaded and merged:', {
+        allTeamsCount: allTeams.length,
+        currentTeamWithIdsCount: currentTeamWithIds.length,
+        currentTeamFromAuditorsCount: currentTeamFromAuditors.length,
+        mergedCurrentTeamCount: currentTeam.length,
+        teamMapSize: teamMap.size,
+        sampleTeamMember: currentTeam[0],
+        sampleTeamWithId: currentTeamWithIds[0],
+      });
 
       // Update schedules
       for (const schedule of schedules) {
@@ -830,75 +1047,129 @@ const AuditorLeadReports = () => {
         }
       }
 
-      // Update team members - only if teamMembers array is provided (not empty from edit mode selection)
+      // Update team members - always compare with current team, even if teamMembers is empty
+      // This ensures that if user unchecks all and only selects 2, we still delete the unchecked ones
       let teamUpdateErrors: any[] = [];
-      if (teamMembers.length > 0) {
-        // Update team members
-        for (const member of teamMembers) {
-          try {
-            if (!member.auditTeamId) {
-              // Add new member
-              console.log('📝 Adding team member:', {
+      try {
+        // Build sets of userIds for comparison (empty set if teamMembers is empty)
+        const selectedUserIds = new Set<string>(
+          teamMembers.map((m: any) => String(m.userId || '').trim()).filter(Boolean)
+        );
+
+        // Current auditors (exclude AuditeeOwner)
+        const currentAuditors = (currentTeam || []).filter((m: any) => {
+          const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+          return role !== 'auditeeowner';
+        });
+
+        const currentUserIds = new Set<string>();
+        currentAuditors.forEach((m: any) => {
+          const uid = String(m.userId || m.id || m.$id || '').trim();
+          if (uid) currentUserIds.add(uid);
+        });
+
+        console.log('🔍 Team update comparison:', {
+          selectedUserIds: Array.from(selectedUserIds),
+          currentUserIds: Array.from(currentUserIds),
+          teamMembersLength: teamMembers.length,
+        });
+
+        // 1) Add new members: in selectedUserIds but not in currentUserIds
+        for (const userId of Array.from(selectedUserIds)) {
+          if (!currentUserIds.has(userId)) {
+            try {
+              console.log('📝 Adding team member (diff-based):', {
                 auditId: editScheduleTeamAuditId,
-                userId: member.userId,
-                roleInTeam: member.isLead ? 'LeadAuditor' : member.roleInTeam,
-                isLead: member.isLead,
+                userId,
               });
               await addTeamMember({
                 auditId: editScheduleTeamAuditId,
-                userId: member.userId,
-                roleInTeam: member.isLead ? 'LeadAuditor' : member.roleInTeam,
-                isLead: member.isLead,
+                userId,
+                roleInTeam: 'Auditor',
+                isLead: false,
               });
-              console.log('✅ Team member added successfully');
-            } else {
-              // For existing members, we might need to update (if API supports it)
-              // For now, we'll delete and re-add if role changed
-              const currentMember = currentTeam.find(
-                (m: any) => String(m.auditTeamId || m.id) === String(member.auditTeamId)
-              );
-              if (currentMember) {
-                const roleChanged = currentMember.roleInTeam !== (member.isLead ? 'LeadAuditor' : member.roleInTeam);
-                const isLeadChanged = currentMember.isLead !== member.isLead;
-                if (roleChanged || isLeadChanged) {
-                  const memberId = member.auditTeamId ? String(member.auditTeamId) : null;
-                  if (memberId) {
-                    await deleteTeamMember(memberId);
-                    await addTeamMember({
-                      auditId: editScheduleTeamAuditId,
-                      userId: member.userId,
-                      roleInTeam: member.isLead ? 'LeadAuditor' : member.roleInTeam,
-                      isLead: member.isLead,
-                    });
-                  }
-                }
-              }
+            } catch (addErr: any) {
+              console.error('❌ Failed to add team member (diff-based):', {
+                userId,
+                error: addErr?.response?.data || addErr?.message || addErr,
+                status: addErr?.response?.status,
+              });
+              teamUpdateErrors.push({ userId, error: addErr });
             }
-          } catch (teamErr: any) {
-            console.error('❌ Failed to update team member:', {
-              member,
-              error: teamErr?.response?.data || teamErr?.message || teamErr,
-              status: teamErr?.response?.status
-            });
-            teamUpdateErrors.push({ member, error: teamErr });
-            // Continue with other members instead of throwing
           }
         }
 
-        // Delete removed team members - only delete if currentId is valid
-        const teamIds = teamMembers.filter(m => m.auditTeamId).map(m => String(m.auditTeamId));
-        for (const currentMember of currentTeam) {
-          try {
-            const currentId = currentMember.auditTeamId || currentMember.id;
-            if (currentId && !teamIds.includes(String(currentId))) {
+        // 2) Delete removed members: in currentUserIds but not in selectedUserIds
+        // This will run even if teamMembers is empty (user unchecked all)
+        for (const currentMember of currentAuditors) {
+          const uid = String(currentMember.userId || currentMember.id || currentMember.$id || '').trim();
+          
+          // Try multiple fields to get auditTeamId for deletion
+          // API might return: auditTeamId, id, $id, AuditTeamId, etc.
+          const currentId = currentMember.auditTeamId 
+            || currentMember.AuditTeamId 
+            || currentMember.id 
+            || currentMember.$id
+            || currentMember.Id
+            || (currentMember as any).auditTeam?.id
+            || (currentMember as any).auditTeam?.$id;
+          
+          // Log full member structure for debugging
+          console.log('🔍 Processing team member for deletion:', {
+            userId: uid,
+            auditTeamId: currentId,
+            memberKeys: Object.keys(currentMember),
+            memberStructure: currentMember,
+          });
+          
+          if (!uid) {
+            console.warn('⚠️ Skipping team member (missing userId):', {
+              currentMember,
+              memberKeys: Object.keys(currentMember),
+            });
+            continue;
+          }
+          
+          if (!currentId) {
+            console.error('❌ Cannot delete team member - missing auditTeamId:', {
+              userId: uid,
+              fullName: currentMember.fullName || 'Unknown',
+              memberKeys: Object.keys(currentMember),
+              memberStructure: currentMember,
+            });
+            teamUpdateErrors.push({ 
+              member: currentMember, 
+              error: new Error('Missing auditTeamId - cannot delete without ID'),
+              userId: uid,
+            });
+            continue;
+          }
+
+          if (!selectedUserIds.has(uid)) {
+            try {
+              console.log('🗑 Deleting team member (diff-based):', {
+                auditTeamId: currentId,
+                userId: uid,
+                fullName: currentMember.fullName || 'Unknown',
+              });
               await deleteTeamMember(String(currentId));
+              console.log('✅ Successfully deleted team member:', uid);
+            } catch (deleteErr: any) {
+              console.error('❌ Failed to delete team member (diff-based):', {
+                auditTeamId: currentId,
+                userId: uid,
+                fullName: currentMember.fullName || 'Unknown',
+                error: deleteErr?.response?.data || deleteErr?.message || deleteErr,
+                status: deleteErr?.response?.status,
+                responseData: deleteErr?.response?.data,
+              });
+              teamUpdateErrors.push({ member: currentMember, error: deleteErr, userId: uid });
             }
-          } catch (deleteErr: any) {
-            console.error('❌ Failed to delete team member:', deleteErr);
-            teamUpdateErrors.push({ member: currentMember, error: deleteErr });
-            // Continue with other deletions
           }
         }
+      } catch (outerErr: any) {
+        console.error('❌ Team diff update failed:', outerErr);
+        teamUpdateErrors.push({ error: outerErr });
       }
       
       // Show warning if there were team update errors, but don't block the success flow
@@ -1276,19 +1547,24 @@ const AuditorLeadReports = () => {
                   Are you sure you want to approve this audit report?
                 </p>
                 <div className="flex gap-3 justify-end">
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="md"
                     onClick={closeApproveModal}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="rounded-md font-semibold shadow-sm"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="success"
+                    size="md"
                     onClick={handleApprove}
                     disabled={actionLoading === approveAuditId}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${actionLoading === approveAuditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Approved') + ' hover:opacity-90'}`}
+                    isLoading={actionLoading === approveAuditId}
+                    className="rounded-md font-semibold shadow-sm"
                   >
                     {actionLoading === approveAuditId ? 'Approving...' : 'Approve'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1322,19 +1598,24 @@ const AuditorLeadReports = () => {
                   rows={4}
                 />
                 <div className="flex gap-3 justify-end mt-6">
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="md"
                     onClick={closeRejectModal}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="rounded-md font-semibold shadow-sm"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="md"
                     onClick={handleReject}
                     disabled={actionLoading === rejectAuditId}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${actionLoading === rejectAuditId ? 'bg-gray-300 cursor-not-allowed text-white' : getStatusColor('Rejected') + ' hover:opacity-90'}`}
+                    isLoading={actionLoading === rejectAuditId}
+                    className="rounded-md font-semibold shadow-sm"
                   >
                     {actionLoading === rejectAuditId ? 'Rejecting...' : 'Reject'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>

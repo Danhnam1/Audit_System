@@ -1,4 +1,5 @@
 import React from 'react';
+import { Button } from '../../../../components/Button';
 
 
 interface Row {
@@ -44,9 +45,22 @@ const AuditReportsTable: React.FC<Props> = ({
 }) => {
   // Check if status allows editing schedule and team (Director approved)
   // Button hiển thị khi:
-  // 1. status = "Approved" && có Director approval
-  // 2. HOẶC có extension request (revision request) đã được Director approve (isDirectorApproved = true)
-  const canEditScheduleAndTeam = (_status: string, _rawStatus?: string, isDirectorApproved?: boolean) => {
+  // 1. Có extension request (revision request) đã được Director approve (isDirectorApproved = true)
+  // 2. VÀ report status KHÔNG phải "Returned" (không bị reject)
+  // 3. VÀ report status KHÔNG phải "Approved" (chưa được approve)
+  const canEditScheduleAndTeam = (status: string, _rawStatus?: string, isDirectorApproved?: boolean) => {
+    const statusLower = String(status || '').toLowerCase().trim();
+    
+    // Nếu report đã bị reject (Returned), không cho phép edit
+    if (statusLower === 'returned') {
+      return false;
+    }
+    
+    // Nếu report đã được approve, không cho phép edit
+    if (statusLower === 'approved') {
+      return false;
+    }
+    
     // Nếu có Director approval (bao gồm cả extension request đã approved), cho phép edit
     return isDirectorApproved === true;
   };
@@ -95,52 +109,81 @@ const AuditReportsTable: React.FC<Props> = ({
                   <td className="px-6 py-4 whitespace-nowrap"><span className="text-ms text-[#5b6166]">{r.createdBy || '—'}</span></td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-2 items-center justify-center">
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => onView(r.auditId)}
-                        className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all duration-200 hover:scale-105 active:scale-95"
+                        className="p-2 rounded-md font-semibold shadow-sm"
                         title="View Details"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
-                      </button>
+                      </Button>
                       {canEditScheduleAndTeam(r.status, r.rawStatus, r.isDirectorApproved) && onEditScheduleAndTeam && (
-                        <button
+                        <Button
+                          variant="primary"
+                          size="sm"
                           onClick={() => onEditScheduleAndTeam(r.auditId)}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all duration-200 bg-gradient-to-r from-indigo-600 via-blue-600 to-blue-700 hover:from-indigo-700 hover:via-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg active:scale-95 border border-blue-400/30 hover:border-blue-300/50"
+                          className="text-xs rounded-md font-semibold shadow-sm"
                           title="Edit Schedule & Team - Update audit schedule and team members"
+                          leftIcon={
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          }
                         >
-                          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          <span className="whitespace-nowrap">Edit Schedule & Team</span>
-                        </button>
+                          Edit Schedule & Team
+                        </Button>
                       )}
-                      {needsDecision(r.status) && (
-                        <>
-                          <button
-                            onClick={() => onApprove(r.auditId)}
-                            disabled={actionLoading === r.auditId}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white shadow-md hover:shadow-lg active:scale-95 disabled:active:scale-100 border border-green-500/30"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            <span>{actionLoading === r.auditId ? 'Approving...' : 'Approve'}</span>
-                          </button>
-                          <button
-                            onClick={() => onReject(r.auditId)}
-                            disabled={actionLoading === r.auditId}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-md hover:shadow-lg active:scale-95 disabled:active:scale-100 border border-red-500/30"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                            <span>{actionLoading === r.auditId ? 'Rejecting...' : 'Reject'}</span>
-                          </button>
-                        </>
-                      )}
+                      {(() => {
+                        // Double-check: Don't show Approve/Reject buttons if status is Approved or Returned
+                        // Check both r.status and r.displayStatus to ensure we catch all cases
+                        const statusToCheck = String(r.status || r.displayStatus || r.rawStatus || '').toLowerCase().trim().replace(/\s+/g, '');
+                        const isApproved = statusToCheck === 'approved' || statusToCheck.includes('approve');
+                        const isReturned = statusToCheck === 'returned' || statusToCheck.includes('return') || statusToCheck.includes('reject');
+                        
+                        // Only show buttons if needsDecision returns true AND status is not Approved/Returned
+                        if (isApproved || isReturned) {
+                          return null;
+                        }
+                        
+                        return needsDecision(r.status) ? (
+                          <>
+                            <Button
+                              variant="success"
+                              size="sm"
+                              onClick={() => onApprove(r.auditId)}
+                              disabled={actionLoading === r.auditId}
+                              isLoading={actionLoading === r.auditId}
+                              className="text-xs rounded-md font-semibold shadow-sm"
+                              leftIcon={
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              }
+                            >
+                              {actionLoading === r.auditId ? 'Approving...' : 'Approve'}
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => onReject(r.auditId)}
+                              disabled={actionLoading === r.auditId}
+                              isLoading={actionLoading === r.auditId}
+                              className="text-xs rounded-md font-semibold shadow-sm"
+                              leftIcon={
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              }
+                            >
+                              {actionLoading === r.auditId ? 'Rejecting...' : 'Reject'}
+                            </Button>
+                          </>
+                        ) : null;
+                      })()}
                     </div>
                   </td>
                 </tr>

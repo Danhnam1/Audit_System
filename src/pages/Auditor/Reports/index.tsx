@@ -83,15 +83,22 @@ const SQAStaffReports = () => {
         isNaN(mNum) || mNum < 1 || mNum > 12
           ? String(m?.month || m?.label || `Month ${idx + 1}`)
           : new Date(2000, mNum - 1, 1).toLocaleString('vi-VN', { month: 'long' });
+      
+      // Filter out findings with status "Closed" from items
+      const allFindings = unwrap(m?.findings) || [];
+      const filteredFindings = allFindings.filter((f: any) => {
+        const status = String(f?.status || '').toLowerCase().trim();
+        return status !== 'closed';
+      });
+      
       return {
         key: `${mNum || idx}`,
         monthNum: mNum,
         label,
         total: Number(m?.total ?? 0),
         open: Number(m?.open ?? 0),
-        closed: Number(m?.closed ?? 0),
         overdue: Number(m?.overdue ?? 0),
-        items: unwrap(m?.findings),
+        items: filteredFindings, // Only include non-Closed findings
       };
     });
   }, [summary]);
@@ -1067,11 +1074,10 @@ const SQAStaffReports = () => {
       />
 
       <div className="px-6 pb-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-slideInRight animate-delay-100">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slideInRight animate-delay-100">
           <StatCard title="Total Reports" value={reportRows.length} icon={<svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>} variant="primary" />
           <StatCard title="Returned" value={reportRows.filter(r => String(r.status || '').toLowerCase().includes('returned')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>} variant="primary-light" />
           <StatCard title="Submitted" value={reportRows.filter(r => String(r.status || '').toLowerCase().includes('submitted')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>} variant="primary-light" />
-          <StatCard title="Closed" value={reportRows.filter(r => { const v = String(r.status || '').toLowerCase(); return v.includes('closed'); }).length} icon={<svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} variant="primary-dark" />
         </div>
 
         {/* Audit selector */}
@@ -1115,7 +1121,7 @@ const SQAStaffReports = () => {
               /> */}
               <PieChartCard title="Severity of Findings" data={pieData} />
               <BarChartCard
-              title="Number of Findings by Department (Monthly)"
+              title="Number of Findings by Department "
               data={barData}
               xAxisKey="department"
               bars={[{ dataKey: 'count', fill: '#0369a1', name: 'Findings' }]}
@@ -1563,17 +1569,12 @@ const SQAStaffReports = () => {
             {summaryTab === 'findings' && (
               <>
                 {/* KPI cards – high level overview */}
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                   <SummaryCard title="Total Findings" value={summary?.totalFindings ?? 0} />
                   <SummaryCard
                     title="Open"
                     value={summary?.openFindings ?? 0}
                     valueClassName="text-amber-600"
-                  />
-                  <SummaryCard
-                    title="Closed"
-                    value={summary?.closedFindings ?? 0}
-                    valueClassName="text-green-600"
                   />
                   <SummaryCard
                     title="Overdue"
@@ -1718,9 +1719,6 @@ const SQAStaffReports = () => {
                           </span>
                           <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
                             Open: {m.open}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700">
-                            Closed: {m.closed}
                           </span>
                           <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700">
                             Overdue: {m.overdue}
