@@ -23,6 +23,7 @@ interface AssignmentWithLeadAuditor {
   assignedDate: string;
   remarks?: string;
   status?: string;
+  filePaths?: string | string[]; // JSON string or array of file URLs from backend
   files?: AssignmentFile[];
   attachments?: AssignmentFile[];
   leadAuditorName?: string;
@@ -45,11 +46,15 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
   const [rejectFiles, setRejectFiles] = useState<File[]>([]);
   const [rejectionCount, setRejectionCount] = useState<number>(0);
   const [rejections, setRejections] = useState<any[]>([]);
-  const [showProcessed, setShowProcessed] = useState<boolean>(false);
   const [expandedProcessedIds, setExpandedProcessedIds] = useState<Set<string>>(new Set());
 
-  // Filter states
-  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  // Filter states - Set default From date to today
+  const getTodayDate = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today.toISOString().split('T')[0]; // Format: YYYY-MM-DD
+  };
+  const [filterStartDate, setFilterStartDate] = useState<string>(getTodayDate());
   const [filterEndDate, setFilterEndDate] = useState<string>('');
 
   // Helper: load assignments + users + rejection stats
@@ -80,6 +85,15 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
           const assignByStr = String(assignment.assignBy || '').trim();
           const userIdStr = String(u.userId || '').trim();
           return assignByStr && userIdStr && assignByStr === userIdStr;
+        });
+
+        // Debug: Log assignment data to check for files
+        console.log('[AuditorAssignmentsView] Assignment data:', {
+          assignmentId: assignment.assignmentId,
+          files: assignment.files,
+          attachments: assignment.attachments,
+          filePaths: assignment.filePaths,
+          filePathsType: typeof assignment.filePaths,
         });
 
         return {
@@ -177,8 +191,74 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
 
   const getAllFiles = (assignment: AssignmentWithLeadAuditor): AssignmentFile[] => {
     const files: AssignmentFile[] = [];
-    if (assignment.files && Array.isArray(assignment.files)) files.push(...assignment.files);
-    if (assignment.attachments && Array.isArray(assignment.attachments)) files.push(...assignment.attachments);
+    
+    // Check files array
+    if (assignment.files && Array.isArray(assignment.files)) {
+      console.log('[AuditorAssignmentsView] Found files array:', assignment.files);
+      files.push(...assignment.files);
+    }
+    
+    // Check attachments array
+    if (assignment.attachments && Array.isArray(assignment.attachments)) {
+      console.log('[AuditorAssignmentsView] Found attachments array:', assignment.attachments);
+      files.push(...assignment.attachments);
+    }
+    
+    // Parse filePaths if it exists (JSON string from backend)
+    if (assignment.filePaths) {
+      console.log('[AuditorAssignmentsView] Processing filePaths:', {
+        filePaths: assignment.filePaths,
+        type: typeof assignment.filePaths,
+      });
+      
+      // If filePaths is already an array
+      if (Array.isArray(assignment.filePaths)) {
+        assignment.filePaths.forEach((filePath: string, index: number) => {
+          const fileName = typeof filePath === 'string' ? filePath.split('/').pop() || `File ${index + 1}` : `File ${index + 1}`;
+          files.push({
+            fileUrl: typeof filePath === 'string' ? filePath : '',
+            fileName: fileName,
+            fileId: `filepath-${index}`,
+          });
+        });
+      }
+      // If filePaths is a JSON string
+      else if (typeof assignment.filePaths === 'string') {
+        try {
+          const filePathsArray = JSON.parse(assignment.filePaths);
+          if (Array.isArray(filePathsArray)) {
+            console.log('[AuditorAssignmentsView] Parsed filePaths array:', filePathsArray);
+            filePathsArray.forEach((filePath: string, index: number) => {
+              // Extract filename from URL or path
+              const fileName = filePath.split('/').pop() || `File ${index + 1}`;
+              files.push({
+                fileUrl: filePath,
+                fileName: fileName,
+                fileId: `filepath-${index}`,
+              });
+            });
+          }
+        } catch (err) {
+          console.warn('[AuditorAssignmentsView] Failed to parse filePaths as JSON:', err);
+          // If parsing fails, try to use filePaths as a single URL
+          if (assignment.filePaths.startsWith('http') || assignment.filePaths.startsWith('/')) {
+            const fileName = assignment.filePaths.split('/').pop() || 'File';
+            files.push({
+              fileUrl: assignment.filePaths,
+              fileName: fileName,
+              fileId: 'filepath-0',
+            });
+          }
+        }
+      }
+    }
+    
+    console.log('[AuditorAssignmentsView] getAllFiles result:', {
+      assignmentId: assignment.assignmentId,
+      totalFiles: files.length,
+      files: files,
+    });
+    
     return files;
   };
 
@@ -280,40 +360,20 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
             />
           </div>
         </div>
-        {(filterStartDate || filterEndDate) && (
+        {(filterStartDate !== getTodayDate() || filterEndDate) && (
           <button
             onClick={() => {
-              setFilterStartDate('');
+              setFilterStartDate(getTodayDate());
               setFilterEndDate('');
             }}
             className="mt-4 px-4 py-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
           >
-            Clear filters
+            Reset filters
           </button>
         )}
       </div>
 
-      {/* Toggle Processed Assignments */}
-      {filteredProcessedAssignments.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-gray-800">
-              Processed assignments ({filteredProcessedAssignments.length})
-            </p>
-            <p className="text-xs text-gray-500">
-              Assignments that have already been approved or rejected.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowProcessed(!showProcessed)}
-            className="px-4 py-2 text-sm font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors"
-          >
-            {showProcessed ? 'Hide' : 'Show'}
-          </button>
-        </div>
-      )}
-
-      {/* Pending Assignments List */}
+      {/* Loading State */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -321,198 +381,302 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
             Loading assignments...
           </span>
         </div>
-      ) : filteredPendingAssignments.length === 0 && (!showProcessed || filteredProcessedAssignments.length === 0) ? (
-        <div className="text-center py-12 bg-gradient-to-b from-gray-50 to-white rounded-xl border border-dashed border-gray-300">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-50 rounded-full mb-4 shadow-sm">
-            <svg className="w-8 h-8 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <p className="text-gray-800 font-semibold text-lg mb-1">
-            No assignments yet
-          </p>
-          <p className="text-gray-500 text-sm max-w-md mx-auto">
-            {filterStartDate || filterEndDate
-              ? 'There are no assignments in the selected date range. Try adjusting your filters.'
-              : 'You have not received any plan creation assignments from the Lead Auditor yet.'}
-          </p>
-        </div>
       ) : (
-        <div className="space-y-4">
-          {/* Pending Assignments */}
-          {filteredPendingAssignments.map((assignment) => {
-            const allFiles = getAllFiles(assignment);
-            return (
-              <div
-                key={assignment.assignmentId || `${assignment.auditorId}-${assignment.assignedDate}`}
-                className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
-              >
-                <div className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-semibold text-gray-900">
-                          Assignment 
-                          {/* #{assignment.assignmentId?.substring(0, 8) || 'N/A'} */}
-                        </h3>
-                        
-                      </div>
-                      <div className="text-sm text-gray-600 space-y-1">
-                        <p>
-                          <span className="font-medium">Assigned on:</span> {formatDate(assignment.assignedDate)}
-                        </p>
-                        <p>
-                          <span className="font-medium">Assigned by:</span> {assignment.leadAuditorName} ({assignment.leadAuditorEmail})
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {assignment.remarks && (
-                    <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className="text-sm font-medium text-gray-700 mb-1">
-                        Notes from Lead Auditor:
-                      </p>
-                      <p className="text-sm text-gray-600 whitespace-pre-wrap">{assignment.remarks}</p>
-                    </div>
-                  )}
-
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button
-                      onClick={() => handleApprove(assignment.assignmentId)}
-                      disabled={actionLoadingId === assignment.assignmentId}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-60"
-                    >
-                      {actionLoadingId === assignment.assignmentId ? (
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                      Approve
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setRejectingId(assignment.assignmentId || null);
-                        setRejectReason('');
-                        setRejectFiles([]);
-                      }}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                      Reject
-                    </button>
-                  </div>
-
-                  {rejectingId === assignment.assignmentId && (
-                    <div className="mt-4 border border-amber-200 bg-amber-50 rounded-lg p-4 space-y-3">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-5 h-5 text-amber-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86L12 5 5.07 19z" />
-                        </svg>
+        <div className="space-y-8">
+          {/* Pending Assignments Section */}
+          {filteredPendingAssignments.length > 0 ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary-200 to-transparent"></div>
+                <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 whitespace-nowrap">
+                  <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Pending Assignments ({filteredPendingAssignments.length})
+                </h2>
+                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary-200 to-transparent"></div>
+              </div>
+              
+              {filteredPendingAssignments.map((assignment) => {
+                const allFiles = getAllFiles(assignment);
+                return (
+                  <div
+                    key={assignment.assignmentId || `${assignment.auditorId}-${assignment.assignedDate}`}
+                    className="bg-white rounded-lg border-2 border-primary-200 shadow-md hover:shadow-lg transition-all"
+                  >
+                    <div className="p-6">
+                      <div className="flex items-start justify-between mb-4">
                         <div className="flex-1">
-                          <p className="text-sm font-semibold text-amber-800 mb-1">
-                            Rejection reason
-                          </p>
-                          <textarea
-                            className="w-full rounded-lg border border-amber-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                            rows={3}
-                            value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value)}
-                            placeholder="Enter the reason for rejecting this assignment..."
-                          />
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
+                              <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <h3 className="text-lg font-bold text-gray-900">
+                                Assignment Request
+                              </h3>
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                Requires your response
+                              </p>
+                            </div>
+                          </div>
+                          <div className="ml-13 space-y-2 text-sm text-gray-600">
+                            <div className="flex items-center gap-2">
+                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              <span><span className="font-medium">Assigned on:</span> {formatDate(assignment.assignedDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                              </svg>
+                              <span><span className="font-medium">Assigned by:</span> {assignment.leadAuditorName} ({assignment.leadAuditorEmail})</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-amber-800 mb-2">
-                          Attachments (optional)
-                        </label>
-                        <input
-                          type="file"
-                          multiple
-                          onChange={(e) => {
-                            const files = e.target.files ? Array.from(e.target.files) : [];
-                            setRejectFiles(files);
-                          }}
-                          className="w-full text-sm text-amber-800"
-                        />
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => handleReject(assignment.assignmentId)}
-                          disabled={actionLoadingId === assignment.assignmentId}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60"
-                        >
-                          {actionLoadingId === assignment.assignmentId ? 'Submitting...' : 'Confirm rejection'}
-                        </button>
-                        <button
-                          onClick={resetRejectForm}
-                          className="text-sm font-semibold text-gray-600 hover:text-gray-800"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {allFiles.length > 0 ? (
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                        <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012 2H7a2 2 0 00-2 2v16a2 2 0 002 2z" />
-                        </svg>
-                        DRL Templates ({allFiles.length})
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {allFiles.map((file, index) => (
-                          <div
-                            key={file.fileId || file.attachmentId || index}
-                            className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-                          >
-                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <svg className="w-5 h-5 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                  {file.fileName || 'Unnamed File'}
-                                </p>
-                              </div>
+                      {assignment.remarks && (
+                        <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                            </svg>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-blue-900 mb-1">
+                                Notes from Lead Auditor:
+                              </p>
+                              <p className="text-sm text-blue-800 whitespace-pre-wrap">{assignment.remarks}</p>
                             </div>
-                            <button
-                              onClick={() => handleDownloadFile(file)}
-                              className="ml-3 px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors flex-shrink-0"
-                            >
+                          </div>
+                        </div>
+                      )}
+
+                      {/* DRL Templates - Show before actions */}
+                      {allFiles.length > 0 && (
+                        <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                            <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012 2H7a2 2 0 00-2 2v16a2 2 0 002 2z" />
+                            </svg>
+                            DRL Templates ({allFiles.length})
+                          </h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {allFiles.map((file, index) => (
+                              <div
+                                key={file.fileId || file.attachmentId || index}
+                                className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                              >
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                  <svg className="w-5 h-5 text-primary-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-900 truncate">
+                                      {file.fileName || 'Unnamed File'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => handleDownloadFile(file)}
+                                  className="ml-3 px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 rounded-lg transition-colors flex-shrink-0"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                  </svg>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-6 flex flex-wrap gap-3">
+                        <button
+                          onClick={() => handleApprove(assignment.assignmentId)}
+                          disabled={actionLoadingId === assignment.assignmentId}
+                          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-bold text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:opacity-60 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5"
+                        >
+                          {actionLoadingId === assignment.assignmentId ? (
+                            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                          Approve
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setRejectingId(assignment.assignmentId || null);
+                            setRejectReason('');
+                            setRejectFiles([]);
+                          }}
+                          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-bold text-amber-800 bg-gradient-to-r from-amber-100 to-amber-200 hover:from-amber-200 hover:to-amber-300 border-2 border-amber-300 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          Reject
+                        </button>
+                  </div>
+
+                      {rejectingId === assignment.assignmentId && (
+                        <div className="mt-6 border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-5 space-y-4 shadow-md">
+                          <div className="flex items-start gap-3">
+                            <svg className="w-6 h-6 text-amber-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86L12 5 5.07 19z" />
+                            </svg>
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-amber-900 mb-2">
+                                Rejection Reason <span className="text-red-600">*</span>
+                              </p>
+                              <textarea
+                                className="w-full rounded-lg border-2 border-amber-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400 bg-white"
+                                rows={4}
+                                value={rejectReason}
+                                onChange={(e) => setRejectReason(e.target.value)}
+                                placeholder="Please provide a detailed reason for rejecting this assignment..."
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-semibold text-amber-900 mb-2 flex items-center gap-2">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                               </svg>
+                              Attachments (Optional)
+                            </label>
+                            <input
+                              type="file"
+                              multiple
+                              onChange={(e) => {
+                                const files = e.target.files ? Array.from(e.target.files) : [];
+                                setRejectFiles(files);
+                              }}
+                              className="w-full px-4 py-2 text-sm border-2 border-amber-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                            {rejectFiles.length > 0 && (
+                              <p className="mt-2 text-xs text-amber-700">
+                                {rejectFiles.length} file(s) selected
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-3 pt-2">
+                            <button
+                              onClick={() => handleReject(assignment.assignmentId)}
+                              disabled={actionLoadingId === assignment.assignmentId || !rejectReason.trim()}
+                              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-bold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 disabled:opacity-60 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5"
+                            >
+                              {actionLoadingId === assignment.assignmentId ? (
+                                <>
+                                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                  </svg>
+                                  Submitting...
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                  Confirm Rejection
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={resetRejectForm}
+                              className="px-6 py-3 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              Cancel
                             </button>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-sm text-gray-500 italic">No files attached</p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            // No pending assignments - show history
+            filteredProcessedAssignments.length > 0 ? (
+              <div className="space-y-4">
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg p-5 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-6 h-6 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-base font-bold text-blue-900 mb-1">
+                        No Pending Assignments
+                      </p>
+                      <p className="text-sm text-blue-800">
+                        {filterStartDate || filterEndDate
+                          ? 'There are no pending assignments in the selected date range. Showing assignment history below.'
+                          : 'You have no pending assignments. Below is your assignment history.'}
+                      </p>
                     </div>
-                  )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 mt-6">
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 whitespace-nowrap">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Assignment History ({filteredProcessedAssignments.length})
+                  </h2>
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
                 </div>
               </div>
-            );
-          })}
+            ) : (
+              // No assignments at all
+              <div className="text-center py-16 bg-gradient-to-b from-gray-50 to-white rounded-xl border-2 border-dashed border-gray-300">
+                <div className="inline-flex items-center justify-center w-20 h-20 bg-primary-50 rounded-full mb-4 shadow-sm">
+                  <svg className="w-10 h-10 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <p className="text-gray-800 font-bold text-xl mb-2">
+                  No Assignments Yet
+                </p>
+                <p className="text-gray-500 text-sm max-w-md mx-auto">
+                  {filterStartDate || filterEndDate
+                    ? 'There are no assignments in the selected date range. Try adjusting your filters.'
+                    : 'You have not received any plan creation assignments from the Lead Auditor yet.'}
+                </p>
+              </div>
+            )
+          )}
 
-          {/* Processed Assignments */}
-          {showProcessed && filteredProcessedAssignments.length > 0 && (
-            <>
+          {/* Processed Assignments History */}
+          {filteredProcessedAssignments.length > 0 && (
+            <div className="space-y-4">
+              {filteredPendingAssignments.length > 0 && (
+                <div className="flex items-center gap-3 mt-8">
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
+                  <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 whitespace-nowrap">
+                    <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Assignment History ({filteredProcessedAssignments.length})
+                  </h2>
+                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-300 to-transparent"></div>
+                </div>
+              )}
+              
               {filteredProcessedAssignments.map((assignment) => {
                 const allFiles = getAllFiles(assignment);
                 const status = String(assignment.status || '').toLowerCase().trim();
@@ -731,7 +895,7 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
                   </div>
                 );
               })}
-            </>
+            </div>
           )}
         </div>
       )}

@@ -1,10 +1,13 @@
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
+import { useState } from "react";
 import { AuditorAssignmentsView } from "../../LeadAuditor/SpecifyCreatePlan/components/AuditorAssignmentsView";
+import { AssignmentHistory } from "./components/AssignmentHistory";
 
 const AuditorPlanAssignments = () => {
   const { user } = useAuth();
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
+  const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
 
   return (
     <MainLayout user={layoutUser}>
@@ -29,9 +32,51 @@ const AuditorPlanAssignments = () => {
           </div>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 sm:p-6">
-          {/* Ở màn hình riêng Plan Assignments, không cần callback đặc biệt */}
-          <AuditorAssignmentsView />
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          {/* Tabs */}
+          <div className="border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+            <div className="flex">
+              <button
+                onClick={() => setActiveTab('pending')}
+                className={`px-6 py-4 text-sm font-semibold transition-all duration-200 border-b-2 ${
+                  activeTab === 'pending'
+                    ? 'border-primary-600 text-primary-700 bg-white'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Pending Assignments
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`px-6 py-4 text-sm font-semibold transition-all duration-200 border-b-2 ${
+                  activeTab === 'history'
+                    ? 'border-primary-600 text-primary-700 bg-white'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  History
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Tab Content */}
+          <div className="p-5 sm:p-6">
+            {activeTab === 'pending' ? (
+              <AuditorAssignmentsView />
+            ) : (
+              <AssignmentHistory />
+            )}
+          </div>
         </div>
       </div>
     </MainLayout>

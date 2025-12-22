@@ -41,6 +41,7 @@ import { useUserId } from "../../../store/useAuthStore";
 import {
   hasAuditPlanCreationPermission,
   getAuditPlanAssignmentsByAuditor,
+  getAuditPlanCreationStatus,
 } from "../../../api/auditPlanAssignment";
 import { 
   validateBeforeCreateAudit, 
@@ -79,7 +80,6 @@ import { Step5Schedule } from "./components/PlanForm/Step5Schedule";
 import { SensitiveAreaForm } from "./components/PlanForm/SensitiveAreaForm";
 import { PermissionPreviewPanel } from "./components/PlanForm/PermissionPreviewPanel";
 // import { DRLTemplateViewer } from "./components/PlanForm/DRLTemplateViewer";
-import { DRLTemplateHistory } from "./components/DRLTemplateHistory";
 import { AuditorAssignmentsView } from "../../LeadAuditor/SpecifyCreatePlan/components/AuditorAssignmentsView";
 // import RevisionChangesTab from "./components/RevisionChangesTab";
 
@@ -96,6 +96,8 @@ const SQAStaffAuditPlanning = () => {
   );
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [isCheckingPermission, setIsCheckingPermission] = useState(true);
+  const [permissionDeniedReason, setPermissionDeniedReason] = useState<string | null>(null);
+  const [isSubmittingPlan, setIsSubmittingPlan] = useState(false);
   
   // // DRL template from assignment
   // const [drlTemplateFiles, setDrlTemplateFiles] = useState<
@@ -129,7 +131,7 @@ const SQAStaffAuditPlanning = () => {
   const pageSize = 7;
 
   // Tab state for main view
-  const [activeMainTab, setActiveMainTab] = useState<"plans" | "drl-templates" | "assignments" | "revision-changes">(
+  const [activeMainTab, setActiveMainTab] = useState<"plans" | "assignments" | "revision-changes">(
     "plans"
   );
 
@@ -1337,6 +1339,204 @@ const SQAStaffAuditPlanning = () => {
       return departments;
   }, [departments]);
 
+  // Function to check permission (reusable)
+  const checkPlanCreationPermission = async () => {
+    if (!user?.email) {
+      setIsCheckingPermission(false);
+      setHasPlanPermission(false);
+      return;
+    }
+
+    try {
+      // Get userId (GUID) from allUsers list by email
+      let currentUserId: string | null = null;
+      
+      if (allUsers.length > 0) {
+        const currentUserInList = allUsers.find((u: any) => {
+          const uEmail = String(u?.email || "")
+            .toLowerCase()
+            .trim();
+          const userEmail = String(user.email || "")
+            .toLowerCase()
+            .trim();
+          return uEmail && userEmail && uEmail === userEmail;
+        });
+        
+        if (currentUserInList?.userId) {
+          currentUserId = String(currentUserInList.userId);
+        }
+      }
+      
+      // Fallback to userIdFromToken if not found in allUsers
+      if (!currentUserId && userIdFromToken) {
+        currentUserId = String(userIdFromToken);
+      }
+      
+      if (!currentUserId) {
+        console.warn(
+          "[AuditPlanning] Cannot find userId for permission check"
+        );
+        setHasPlanPermission(false);
+        setIsCheckingPermission(false);
+        return;
+      }
+      
+      console.log(
+        "[AuditPlanning] Checking permission for userId:",
+        currentUserId
+      );
+      
+      // Get all assignments for this auditor
+      const assignments = await getAuditPlanAssignmentsByAuditor(currentUserId);
+      console.log("[AuditPlanning] Found assignments:", assignments);
+      
+      // Check if there's any approved assignment that can create a plan
+      let canCreatePlan = false;
+      let activeAssignment = null;
+      
+      // Find approved assignments first
+      const approvedAssignments = assignments.filter(
+        (a) => (a.status || "").toLowerCase() === "approved"
+      );
+      
+      console.log("[AuditPlanning] Approved assignments:", approvedAssignments);
+      
+      // Check each approved assignment to see if it can create a plan
+      let lastStatusMessage: string | null = null;
+      for (const assignment of approvedAssignments) {
+        if (!assignment.assignmentId) continue;
+        
+        try {
+          const status = await getAuditPlanCreationStatus(assignment.assignmentId);
+          console.log(`[AuditPlanning] Assignment ${assignment.assignmentId} status:`, status);
+          console.log(`[AuditPlanning] Assignment auditorId: ${assignment.auditorId}, Current userId: ${currentUserId}`);
+          console.log(`[AuditPlanning] Status canCreate: ${status.canCreate}, hasActiveAuditPlan: ${status.hasActiveAuditPlan}`);
+          
+          if (status.canCreate) {
+            canCreatePlan = true;
+            activeAssignment = assignment;
+            setPermissionDeniedReason(null);
+            break; // Found one that can create, stop checking
+          } else {
+            // Store the reason why cannot create
+            lastStatusMessage = status.message || "You have already created an audit plan from this assignment.";
+            console.log(`[AuditPlanning] Cannot create plan. Reason: ${lastStatusMessage}`);
+          }
+        } catch (error) {
+          console.error(
+            `[AuditPlanning] Failed to check status for assignment ${assignment.assignmentId}:`,
+            error
+          );
+        }
+      }
+      
+      // Fallback: if no approved assignments found, use the old logic
+      if (!activeAssignment && assignments.length > 0) {
+        activeAssignment = approvedAssignments[0] || assignments[0];
+        // Use old permission check as fallback
+        const hasPermission = await hasAuditPlanCreationPermission(currentUserId);
+        canCreatePlan = hasPermission;
+        if (!hasPermission) {
+          setPermissionDeniedReason("You have not been selected by the lead auditor to create a plan.");
+        }
+      } else if (!canCreatePlan) {
+        // No approved assignments or all approved assignments cannot create plan
+        if (approvedAssignments.length === 0) {
+          setPermissionDeniedReason("You have not been selected by the lead auditor to create a plan.");
+        } else {
+          setPermissionDeniedReason(lastStatusMessage || "You have already created an audit plan from your assignment(s).");
+        }
+      }
+      
+      console.log("[AuditPlanning] Can create plan:", canCreatePlan);
+      setHasPlanPermission(canCreatePlan);
+      
+      // If has permission, load DRL template files from assignment
+      if (canCreatePlan && activeAssignment) {
+        try {
+          
+          if (activeAssignment) {
+            // Extract files from assignment - prioritize filePaths from API
+            let drlFiles: Array<{
+              fileName: string;
+              fileUrl?: string;
+              fileId?: string;
+            }> = [];
+
+            // Parse filePaths (JSON string array from API)
+            if (activeAssignment.filePaths) {
+              try {
+                const filePathsArray = JSON.parse(activeAssignment.filePaths);
+                if (Array.isArray(filePathsArray)) {
+                  drlFiles = filePathsArray.map((filePath: string) => {
+                    // Extract fileName from URL
+                    let fileName = "DRL Template";
+                    try {
+                      const url = new URL(filePath);
+                      const pathParts = url.pathname.split("/");
+                      const lastPart = pathParts[pathParts.length - 1];
+                      // Decode URL-encoded filename
+                      fileName = decodeURIComponent(lastPart.split("?")[0]);
+                      // Remove any prefixes like assignment IDs
+                      const fileNameParts = fileName.split("_");
+                      if (fileNameParts.length > 1) {
+                        // Skip first parts (assignment IDs) and take the actual filename
+                        fileName = fileNameParts.slice(-1)[0];
+                      }
+                    } catch (e) {
+                      console.warn(
+                        "[AuditPlanning] Failed to parse fileName from URL:",
+                        filePath
+                      );
+                    }
+
+                    return {
+                      fileName: fileName || "DRL Template",
+                      fileUrl: filePath,
+                      fileId: undefined,
+                    };
+                  });
+                }
+              } catch (e) {
+                console.warn(
+                  "[AuditPlanning] Failed to parse filePaths:",
+                  activeAssignment.filePaths,
+                  e
+                );
+              }
+            }
+
+            // Fallback to files or attachments if filePaths is not available
+            if (drlFiles.length === 0) {
+              const files =
+                activeAssignment.files || activeAssignment.attachments || [];
+              drlFiles = files
+                .filter((f: any) => f.fileName || f.fileUrl || f.fileId)
+                .map((f: any) => ({
+                  fileName: f.fileName || "DRL Template",
+                  fileUrl: f.fileUrl,
+                  fileId: f.fileId || f.attachmentId,
+                }));
+            }
+          }
+        } catch (error) {
+          console.error(
+            "[AuditPlanning] Failed to load DRL template files:",
+            error
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        "[AuditPlanning] Failed to check plan creation permission",
+        error
+      );
+      setHasPlanPermission(false);
+    } finally {
+      setIsCheckingPermission(false);
+    }
+  };
+
   // Check permission to create plans
   useEffect(() => {
     const checkPermission = async () => {
@@ -1386,22 +1586,71 @@ const SQAStaffAuditPlanning = () => {
           currentUserId
         );
         
-        // Check permission using the actual userId (GUID)
-        const hasPermission = await hasAuditPlanCreationPermission(
-          currentUserId
+        // Get all assignments for this auditor
+        const assignments = await getAuditPlanAssignmentsByAuditor(currentUserId);
+        console.log("[AuditPlanning] Found assignments:", assignments);
+        
+        // Check if there's any approved assignment that can create a plan
+        let canCreatePlan = false;
+        let activeAssignment = null;
+        
+        // Find approved assignments first
+        const approvedAssignments = assignments.filter(
+          (a) => (a.status || "").toLowerCase() === "approved"
         );
-        console.log("[AuditPlanning] Permission result:", hasPermission);
-        setHasPlanPermission(hasPermission);
+        
+        console.log("[AuditPlanning] Approved assignments:", approvedAssignments);
+        
+        // Check each approved assignment to see if it can create a plan
+        let lastStatusMessage: string | null = null;
+        for (const assignment of approvedAssignments) {
+          if (!assignment.assignmentId) continue;
+          
+          try {
+            const status = await getAuditPlanCreationStatus(assignment.assignmentId);
+            console.log(`[AuditPlanning] Assignment ${assignment.assignmentId} status:`, status);
+            
+            if (status.canCreate) {
+              canCreatePlan = true;
+              activeAssignment = assignment;
+              setPermissionDeniedReason(null);
+              break; // Found one that can create, stop checking
+            } else {
+              // Store the reason why cannot create
+              lastStatusMessage = status.message || "You have already created an audit plan from this assignment.";
+            }
+          } catch (error) {
+            console.error(
+              `[AuditPlanning] Failed to check status for assignment ${assignment.assignmentId}:`,
+              error
+            );
+          }
+        }
+        
+        // Fallback: if no approved assignments found, use the old logic
+        if (!activeAssignment && assignments.length > 0) {
+          activeAssignment = approvedAssignments[0] || assignments[0];
+          // Use old permission check as fallback
+          const hasPermission = await hasAuditPlanCreationPermission(currentUserId);
+          canCreatePlan = hasPermission;
+          if (!hasPermission) {
+            setPermissionDeniedReason("You have not been selected by the lead auditor to create a plan.");
+          }
+        } else if (!canCreatePlan) {
+          // No approved assignments or all approved assignments cannot create plan
+          if (approvedAssignments.length === 0) {
+            setPermissionDeniedReason("You have not been selected by the lead auditor to create a plan.");
+          } else {
+            setPermissionDeniedReason(lastStatusMessage || "You have already created an audit plan from your assignment(s).");
+          }
+        }
+        
+        console.log("[AuditPlanning] Can create plan:", canCreatePlan);
+        setHasPlanPermission(canCreatePlan);
         
         // If has permission, load DRL template files from assignment
-        if (hasPermission && currentUserId) {
+        if (canCreatePlan && activeAssignment) {
           try {
-            const assignments = await getAuditPlanAssignmentsByAuditor(currentUserId);
-            // Ưu tiên assignment đã được Approved
-            const activeAssignment =
-              assignments.find(
-                (a) => (a.status || "").toLowerCase() === "approved"
-              ) || assignments[0];
             
             if (activeAssignment) {
               // Extract files from assignment - prioritize filePaths from API
@@ -2705,35 +2954,44 @@ const SQAStaffAuditPlanning = () => {
 
   // Handler: Submit plan
   const handleSubmitPlan = async () => {
-    // Client-side validation
-    if (!formState.title.trim()) {
-      toast.warning("Please enter a title for the plan.");
-      formState.setCurrentStep(1);
-      return;
-    }
-    if (!formState.periodFrom || !formState.periodTo) {
-      toast.warning("Please select the start and end dates.");
-      formState.setCurrentStep(1);
-      return;
-    }
-
-    if (!validatePlanPeriod(formState.periodFrom, formState.periodTo, true)) {
-      formState.setCurrentStep(1);
-      return;
-    }
-    if (!formState.selectedTemplateIds.length) {
-      toast.warning("Please select at least one Checklist Template (Step 3).");
-      formState.setCurrentStep(3);
-      return;
-    }
-    if (formState.level === "department") {
-      if (formState.selectedDeptIds.length === 0) {
-        toast.warning(
-          "Please select at least one department for the Department scope (Step 2)."
-        );
-        formState.setCurrentStep(2);
+    // Block immediately when starting to submit
+    setIsSubmittingPlan(true);
+    
+    try {
+      // Client-side validation
+      if (!formState.title.trim()) {
+        toast.warning("Please enter a title for the plan.");
+        formState.setCurrentStep(1);
+        setIsSubmittingPlan(false);
         return;
       }
+      if (!formState.periodFrom || !formState.periodTo) {
+        toast.warning("Please select the start and end dates.");
+        formState.setCurrentStep(1);
+        setIsSubmittingPlan(false);
+        return;
+      }
+
+      if (!validatePlanPeriod(formState.periodFrom, formState.periodTo, true)) {
+        formState.setCurrentStep(1);
+        setIsSubmittingPlan(false);
+        return;
+      }
+      if (!formState.selectedTemplateIds.length) {
+        toast.warning("Please select at least one Checklist Template (Step 3).");
+        formState.setCurrentStep(3);
+        setIsSubmittingPlan(false);
+        return;
+      }
+      if (formState.level === "department") {
+        if (formState.selectedDeptIds.length === 0) {
+          toast.warning(
+            "Please select at least one department for the Department scope (Step 2)."
+          );
+          formState.setCurrentStep(2);
+          setIsSubmittingPlan(false);
+          return;
+        }
       const ownersForDepts = ownerOptions.filter((o: any) =>
         formState.selectedDeptIds.includes(String(o.deptId ?? ""))
       );
@@ -2744,6 +3002,7 @@ const SQAStaffAuditPlanning = () => {
           )
         ) {
           formState.setCurrentStep(4);
+          setIsSubmittingPlan(false);
           return;
         }
       }
@@ -2754,6 +3013,7 @@ const SQAStaffAuditPlanning = () => {
     if (scheduleErrorMessages.length > 0) {
       toast.error("Invalid schedule:\n\n" + scheduleErrorMessages.join("\n"));
       formState.setCurrentStep(5);
+      setIsSubmittingPlan(false);
       return;
     }
 
@@ -2775,7 +3035,6 @@ const SQAStaffAuditPlanning = () => {
       objective: formState.goal || "",
     };
 
-    try {
       let auditId: string;
 
       // Check if we're in edit mode but editingAuditId is missing
@@ -2786,6 +3045,7 @@ const SQAStaffAuditPlanning = () => {
         toast.error(
           "Cannot update: Missing audit ID. Please try editing again."
         );
+        setIsSubmittingPlan(false);
         return;
       }
 
@@ -2825,6 +3085,7 @@ const SQAStaffAuditPlanning = () => {
             toast.error(
               "Cannot verify auditor assignment. Please re-login and try again."
             );
+            setIsSubmittingPlan(false);
             return;
           }
           const assignmentValidation = await validateAssignmentBeforeCreate(
@@ -3273,6 +3534,100 @@ const SQAStaffAuditPlanning = () => {
       formState.resetForm();
       setOriginalSelectedAuditorIds([]); // Reset original selected auditors when closing modal
 
+      // Refresh permission check after creating plan (to update canCreate status)
+      if (!wasEditMode) {
+        // Only refresh if creating new plan (not editing)
+        // Immediately block permission since a plan was just created
+        console.log("[AuditPlanning] Plan created successfully, blocking further plan creation");
+        setHasPlanPermission(false);
+        setPermissionDeniedReason("You have already created an audit plan from your assignment. Only one plan can be created per assignment.");
+        
+        // Reload plans to update the list
+        try {
+          const merged = await getPlansWithDepartments();
+          setExistingPlans(merged);
+        } catch (err) {
+          console.error("[AuditPlanning] Failed to reload plans after creation:", err);
+        }
+        
+        // Also verify with backend after a delay (for consistency)
+        // But only update state if backend confirms we cannot create (to prevent race conditions)
+        setTimeout(async () => {
+          setIsCheckingPermission(true);
+          try {
+            // Get current userId
+            let currentUserId: string | null = null;
+            if (allUsers.length > 0) {
+              const currentUserInList = allUsers.find((u: any) => {
+                const uEmail = String(u?.email || "").toLowerCase().trim();
+                const userEmail = String(user?.email || "").toLowerCase().trim();
+                return uEmail && userEmail && uEmail === userEmail;
+              });
+              if (currentUserInList?.userId) {
+                currentUserId = String(currentUserInList.userId);
+              }
+            }
+            if (!currentUserId && userIdFromToken) {
+              currentUserId = String(userIdFromToken);
+            }
+            
+            if (!currentUserId) {
+              console.warn("[AuditPlanning] Cannot find userId for verification");
+              setIsCheckingPermission(false);
+              return;
+            }
+            
+            // Get assignments and check status
+            const assignments = await getAuditPlanAssignmentsByAuditor(currentUserId);
+            const approvedAssignments = assignments.filter(
+              (a) => (a.status || "").toLowerCase() === "approved"
+            );
+            
+            // Check each approved assignment
+            let backendCanCreate = false;
+            let backendMessage: string | null = null;
+            for (const assignment of approvedAssignments) {
+              if (!assignment.assignmentId) continue;
+              try {
+                const status = await getAuditPlanCreationStatus(assignment.assignmentId);
+                console.log(`[AuditPlanning] Post-create verification: Assignment ${assignment.assignmentId} status:`, status);
+                console.log(`[AuditPlanning] Verification - canCreate: ${status.canCreate}, hasActiveAuditPlan: ${status.hasActiveAuditPlan}`);
+                if (status.canCreate) {
+                  backendCanCreate = true;
+                  break;
+                } else {
+                  backendMessage = status.message || "You have already created an audit plan from this assignment.";
+                }
+              } catch (error) {
+                console.error(`[AuditPlanning] Failed to check status in verification:`, error);
+              }
+            }
+            
+            // Only update state if backend confirms we cannot create
+            // If backend says canCreate=true, keep the blocked state (to prevent double creation due to timing)
+            if (!backendCanCreate) {
+              console.log("[AuditPlanning] Backend verification confirms: cannot create plan");
+              setHasPlanPermission(false);
+              if (backendMessage) {
+                setPermissionDeniedReason(backendMessage);
+              }
+            } else {
+              console.warn("[AuditPlanning] Backend verification returned canCreate=true, but keeping blocked state to prevent double creation");
+              // Keep blocked state even if backend says can create (to prevent race condition)
+              setHasPlanPermission(false);
+              setPermissionDeniedReason("You have already created an audit plan from your assignment. Only one plan can be created per assignment.");
+            }
+          } catch (err) {
+            console.error("[AuditPlanning] Failed to verify permission with backend:", err);
+            // Keep blocked state on error
+            setHasPlanPermission(false);
+            setPermissionDeniedReason("You have already created an audit plan from your assignment. Only one plan can be created per assignment.");
+          } finally {
+            setIsCheckingPermission(false);
+          }
+        }, 2000);
+      }
+
       const successMsg = wasEditMode
         ? "Audit plan updated successfully."
         : "Create Audit plan successfully.";
@@ -3293,6 +3648,9 @@ const SQAStaffAuditPlanning = () => {
         errorMessage = err?.message || String(err);
       }
       toast.error(errorMessage);
+    } finally {
+      // Always unblock after submit completes (success or error)
+      setIsSubmittingPlan(false);
     }
   };
 
@@ -3330,9 +3688,18 @@ const SQAStaffAuditPlanning = () => {
                 formState.setShowForm(false);
               }
             }}
-            className="bg-gradient-to-r from-primary-600 to-primary-700 hover:shadow-lg text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-md"
+            disabled={isCheckingPermission || hasPlanPermission === false || isSubmittingPlan}
+            className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-md ${
+              isCheckingPermission || hasPlanPermission === false || isSubmittingPlan
+                ? "bg-gray-400 cursor-not-allowed text-gray-200"
+                : "bg-gradient-to-r from-primary-600 to-primary-700 hover:shadow-lg text-white"
+            }`}
           >
-            + Create New Plan
+            {isCheckingPermission 
+              ? "Checking..." 
+              : isSubmittingPlan 
+              ? "Creating..." 
+              : "+ Create New Plan"}
           </button>
         }
       />
@@ -3364,6 +3731,37 @@ const SQAStaffAuditPlanning = () => {
                 <p className="text-sm text-green-700">
                   You have been granted permission to create audit plans. Click
                   the "Create New Plan" button above to get started.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Permission Denied Banner */}
+        {hasPlanPermission === false && !isCheckingPermission && (
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border-l-4 border-red-500 rounded-lg shadow-sm p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0">
+                <svg
+                  className="w-6 h-6 text-red-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-red-800 mb-1">
+                  Can't not Create Plan
+                </h3>
+                <p className="text-sm text-red-700">
+                  {permissionDeniedReason || "Contact to lead Auditor"}
                 </p>
               </div>
             </div>
@@ -3531,7 +3929,15 @@ const SQAStaffAuditPlanning = () => {
                             : criteria
                         }
                     selectedCriteriaIds={formState.selectedCriteriaIds}
-                    onLevelChange={formState.setLevel}
+                    onLevelChange={(value) => {
+                      formState.setLevel(value);
+                      // If changing to academy level and sensitive flag is enabled, disable it
+                      if (value === 'academy' && formState.sensitiveFlag) {
+                        formState.setSensitiveFlag(false);
+                        formState.setSensitiveAreas([]);
+                        formState.setSensitiveNotes('');
+                      }
+                    }}
                         onSelectedDeptIdsChange={(value) => {
                           formState.setSelectedDeptIds(value);
                           // Reset conflict data when departments change
@@ -3553,11 +3959,27 @@ const SQAStaffAuditPlanning = () => {
                       sensitiveFlag={formState.sensitiveFlag}
                       sensitiveAreas={formState.sensitiveAreas}
                       sensitiveNotes={formState.sensitiveNotes}
-                      onFlagChange={formState.setSensitiveFlag}
+                      onFlagChange={(flag) => {
+                        formState.setSensitiveFlag(flag);
+                        // If enabling sensitive flag, ensure level is "department" and at least one department is selected
+                        if (flag) {
+                          if (formState.level !== 'department') {
+                            formState.setLevel('department');
+                          }
+                          // If no departments selected, show warning but don't auto-select
+                          // User must manually select departments
+                        } else {
+                          // If disabling sensitive flag, clear selected departments
+                          formState.setSelectedDeptIds([]);
+                          formState.setSensitiveAreas([]);
+                          formState.setSensitiveNotes('');
+                        }
+                      }}
                       onAreasChange={formState.setSensitiveAreas}
                       onNotesChange={formState.setSensitiveNotes}
                       selectedDeptIds={formState.selectedDeptIds}
                       departments={departments}
+                      level={formState.level}
                     />
                   </div>
                 )}
@@ -3809,31 +4231,6 @@ const SQAStaffAuditPlanning = () => {
                 </div>
               </button>
               <button
-                onClick={() => setActiveMainTab("drl-templates")}
-                className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                  activeMainTab === "drl-templates"
-                    ? "border-primary-600 text-primary-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                  DRL Templates
-                </div>
-              </button>
-              <button
                 onClick={() => setActiveMainTab("assignments")}
                 className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
                   activeMainTab === "assignments"
@@ -3929,23 +4326,6 @@ const SQAStaffAuditPlanning = () => {
           </>
         )}
 
-        {/* Tab Content: DRL Templates */}
-        {activeMainTab === "drl-templates" && (
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200">
-            <div className="p-6">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Received DRL Templates
-                </h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  View all DRL templates sent by Lead Auditor when assigning you
-                  to create audit plans.
-                </p>
-              </div>
-              <DRLTemplateHistory userId={currentUserId} />
-            </div>
-          </div>
-        )}
 
         {/* Tab Content: Revision Changes
         // {activeMainTab === "revision-changes" && (
@@ -3961,9 +4341,7 @@ const SQAStaffAuditPlanning = () => {
                   <h2 className="text-lg font-semibold text-gray-900">
                     Plan Assignments from Lead Auditor
                   </h2>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Xem và phản hồi các yêu cầu giao quyền tạo audit plan (Approve / Reject kèm minh chứng).
-                  </p>
+                  
                 </div>
               </div>
 
@@ -4049,11 +4427,10 @@ const SQAStaffAuditPlanning = () => {
                 </svg>
               </div>
               <h3 className="text-xl font-semibold text-gray-900 text-center mb-2">
-                Permission Denied
+                Cannot Create Audit Plan
               </h3>
               <p className="text-gray-600 text-center mb-6">
-                  You have not been selected by the lead auditor to create a
-                  plan.
+                {permissionDeniedReason || "You have not been selected by the lead auditor to create a plan, or you have already created a plan from your assignment(s)."}
               </p>
               <div className="flex justify-center">
                 <button

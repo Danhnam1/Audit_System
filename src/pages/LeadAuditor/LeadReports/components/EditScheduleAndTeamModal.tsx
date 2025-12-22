@@ -87,14 +87,44 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
 
       const schedulesData = unwrap(schedulesRes);
       const schedulesList = Array.isArray(schedulesData) ? schedulesData : [];
+      
+      // Helper function to safely convert date to YYYY-MM-DD format without timezone issues
+      const formatDateForInput = (dateValue: any): string => {
+        if (!dateValue) return '';
+        
+        // If already in YYYY-MM-DD format, return as is
+        if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+          return dateValue;
+        }
+        
+        // If it's an ISO string with time, extract date part directly
+        if (typeof dateValue === 'string' && dateValue.includes('T')) {
+          return dateValue.split('T')[0];
+        }
+        
+        // Otherwise, parse as local date to avoid timezone shift
+        try {
+          const date = new Date(dateValue);
+          if (isNaN(date.getTime())) return '';
+          
+          // Use local date components to avoid timezone conversion
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        } catch {
+          return '';
+        }
+      };
+      
       setSchedules(
         schedulesList.map((s: any, idx: number) => {
           const scheduleId = s.scheduleId || s.id || s.$id;
           return {
             scheduleId: scheduleId ? String(scheduleId) : undefined, // Ensure it's a string or undefined
             milestoneName: s.milestoneName || s.milestone || `Schedule ${idx + 1}`,
-              dueDate: s.dueDate ? new Date(s.dueDate).toISOString().split('T')[0] : '',
-              status: s.status || 'Active',
+            dueDate: formatDateForInput(s.dueDate),
+            status: s.status || 'Active',
             notes: s.notes || '', // Backend requires Notes field
           };
         })
@@ -149,11 +179,25 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
   const computedScheduleErrors = useMemo(() => {
     const errs: Record<number, string> = {};
 
-    // 1) Basic: required + within period
+    // Helper to check if milestone is locked (Kickoff Meeting or Fieldwork Start)
+    const isLockedMilestone = (milestoneName: string) => {
+      const normalized = String(milestoneName || '').toLowerCase().replace(/\s+/g, '');
+      return ['kickoff', 'kickoffmeeting', 'kickoff-meeting', 'fieldwork', 'fieldworkstart', 'fieldwork-start'].some(
+        (k) => normalized.includes(k)
+      );
+    };
+
+    // 1) Basic: required + within period (skip validation for locked milestones)
     schedules.forEach((s, index) => {
       if (!s.dueDate) {
         errs[index] = 'Due date is required';
         return;
+      }
+
+      // Skip Period From/To validation for locked milestones (Kickoff Meeting & Fieldwork Start)
+      // because they cannot be edited and may have dates outside the current period
+      if (isLockedMilestone(s.milestoneName)) {
+        return; // Skip period validation for locked milestones
       }
 
       if (periodFromLocal && periodToLocal) {
@@ -174,13 +218,42 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
     });
 
     // 2) Duplicate dates check (any milestones sharing same date)
+    // Normalize dates to YYYY-MM-DD format for accurate comparison
     const seen = new Map<string, number[]>();
     schedules.forEach((s, idx) => {
       if (!s.dueDate) return;
-      const key = s.dueDate;
-      const list = seen.get(key) ?? [];
+      
+      // Normalize date string: trim whitespace and ensure YYYY-MM-DD format
+      let normalizedDate = String(s.dueDate).trim();
+      
+      // If date is in different format (e.g., MM/DD/YYYY), convert to YYYY-MM-DD
+      if (normalizedDate.includes('/')) {
+        const parts = normalizedDate.split('/');
+        if (parts.length === 3) {
+          // Assume MM/DD/YYYY format
+          const [month, day, year] = parts;
+          normalizedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+      }
+      
+      // Final normalization: ensure YYYY-MM-DD format
+      try {
+        const dateObj = new Date(normalizedDate);
+        if (!isNaN(dateObj.getTime())) {
+          // Format as YYYY-MM-DD
+          const year = dateObj.getFullYear();
+          const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+          const day = String(dateObj.getDate()).padStart(2, '0');
+          normalizedDate = `${year}-${month}-${day}`;
+        }
+      } catch (e) {
+        // If parsing fails, use original string (trimmed)
+        console.warn('Failed to normalize date:', normalizedDate, e);
+      }
+      
+      const list = seen.get(normalizedDate) ?? [];
       list.push(idx);
-      seen.set(key, list);
+      seen.set(normalizedDate, list);
     });
     seen.forEach((idxs) => {
       if (idxs.length > 1) {
@@ -281,9 +354,17 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
     updated[index] = { ...updated[index], [field]: value };
     setSchedules(updated);
 
-    // Re-sync errors from computedScheduleErrors
-    setScheduleErrors(computedScheduleErrors);
+    // Re-sync errors from computedScheduleErrors (will recalculate automatically via useMemo)
+    // Use setTimeout to ensure state update completes first
+    setTimeout(() => {
+      setScheduleErrors(computedScheduleErrors);
+    }, 0);
   };
+  
+  // Update scheduleErrors whenever computedScheduleErrors changes (including when periodToLocal changes)
+  useEffect(() => {
+    setScheduleErrors(computedScheduleErrors);
+  }, [computedScheduleErrors]);
 
   // Get auditor options for MultiSelect
   const auditorOptions = React.useMemo(() => {
@@ -505,7 +586,12 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
                           <input
                             type="date"
                             value={periodToLocal || ''}
-                            onChange={(e) => setPeriodToLocal(e.target.value || undefined)}
+                            onChange={(e) => {
+                              const newValue = e.target.value || undefined;
+                              setPeriodToLocal(newValue);
+                              // Validation will automatically update via computedScheduleErrors useMemo
+                              // which depends on periodToLocal
+                            }}
                             className="px-2.5 py-1 bg-white rounded border border-blue-200 font-mono text-blue-800 focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                           />
                         </div>
@@ -557,8 +643,8 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
                             onChange={(e) =>
                               handleScheduleChange(index, 'dueDate', e.target.value)
                             }
-                            min={periodFrom}
-                            max={periodTo}
+                            min={periodFromLocal}
+                            max={periodToLocal}
                             disabled={isLockedMilestone}
                             className={`w-full px-4 py-2.5 border rounded-lg text-sm transition-all duration-200 ${
                               isLockedMilestone
