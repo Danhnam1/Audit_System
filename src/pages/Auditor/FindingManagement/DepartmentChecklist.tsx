@@ -70,7 +70,7 @@ const DepartmentChecklist = () => {
   const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null); // Compliant record ID from API response
   const [loadingCompliantId, setLoadingCompliantId] = useState(false); // Loading state for fetching compliant ID
   const [compliantIdMap, setCompliantIdMap] = useState<Record<string, string | number>>({}); // auditItemId -> compliant record id (persisted to sessionStorage)
-  const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasPending: boolean; pendingCount: number }>>({}); // findingId -> root cause status
+  const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasPending: boolean; pendingCount: number; hasApproved: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }>>({}); // findingId -> root cause status
 
   // Audit info state
   const [auditType, setAuditType] = useState<string>('');
@@ -335,35 +335,44 @@ const DepartmentChecklist = () => {
   }, []);
 
   // Load root cause status for findings (to show indicators for pending reviews)
-  useEffect(() => {
-    const loadRootCauseStatus = async () => {
-      if (Object.keys(findingsMap).length === 0) return;
-      
-      const statusMap: Record<string, { hasPending: boolean; pendingCount: number }> = {};
-      
-      await Promise.all(
-        Object.values(findingsMap).map(async (findingId) => {
-          try {
-            const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
-            const rootCauses = res.data.$values || [];
-            const pendingCount = rootCauses.filter((rc: any) => rc.status?.toLowerCase() === 'pending').length;
-            
-            statusMap[findingId] = {
-              hasPending: pendingCount > 0,
-              pendingCount: pendingCount,
-            };
-          } catch (err) {
-            console.warn(`Failed to load root causes for finding ${findingId}`, err);
-            statusMap[findingId] = { hasPending: false, pendingCount: 0 };
-          }
-        })
-      );
-      
-      setRootCauseStatusMap(statusMap);
-    };
+  const loadRootCauseStatus = async () => {
+    if (myFindings.length === 0) return;
     
-    loadRootCauseStatus();
-  }, [findingsMap]);
+    const statusMap: Record<string, { hasPending: boolean; pendingCount: number; hasApproved: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }> = {};
+    
+    await Promise.all(
+      myFindings.map(async (finding) => {
+        try {
+          const res = await apiClient.get(`/RootCauses/by-finding/${finding.findingId}`);
+          const rootCauses = res.data.$values || [];
+          const totalCount = rootCauses.length;
+          const pendingCount = rootCauses.filter((rc: any) => rc.status?.toLowerCase() === 'pending').length;
+          const approvedCount = rootCauses.filter((rc: any) => rc.status?.toLowerCase() === 'approved').length;
+          
+          statusMap[finding.findingId] = {
+            hasPending: pendingCount > 0,
+            pendingCount: pendingCount,
+            hasApproved: rootCauses.some((rc: any) => rc.status?.toLowerCase() === 'approved'),
+            hasRejected: rootCauses.some((rc: any) => rc.status?.toLowerCase() === 'rejected'),
+            allApproved: totalCount > 0 && approvedCount === totalCount,
+            totalCount: totalCount,
+          };
+        } catch (err) {
+          console.warn(`Failed to load root causes for finding ${finding.findingId}`, err);
+          statusMap[finding.findingId] = { hasPending: false, pendingCount: 0, hasApproved: false, hasRejected: false, allApproved: false, totalCount: 0 };
+        }
+      })
+    );
+    
+    setRootCauseStatusMap(statusMap);
+  };
+
+  // Load root cause status when myFindings changes
+  useEffect(() => {
+    if (activeTab === 'action' && myFindings.length > 0) {
+      loadRootCauseStatus();
+    }
+  }, [myFindings, activeTab]);
 
   // Handle view finding details
   const handleViewFinding = (item: ChecklistItem) => {
@@ -623,24 +632,82 @@ const DepartmentChecklist = () => {
     loadData();
   }, [deptId, auditId]);
 
-  // Load my findings when action tab is active
+  // Load my findings when action tab is active, or when auditId/deptId changes
   useEffect(() => {
-    if (activeTab === 'action') {
+    if (activeTab === 'action' && auditId && deptId) {
       loadMyFindings();
     }
-  }, [activeTab]);
+  }, [activeTab, auditId, deptId]);
+
+  // Listen for root cause updates
+  useEffect(() => {
+    const handleRootCauseUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const findingId = customEvent.detail?.findingId;
+      console.log('🔄 [DepartmentChecklist] Root cause updated event received for finding:', findingId);
+      
+      // Small delay to ensure backend has updated
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Reload root cause status if we have findings
+      if (myFindings.length > 0) {
+        console.log('🔄 [DepartmentChecklist] Reloading root cause status for', myFindings.length, 'findings');
+        await loadRootCauseStatus();
+        console.log('✅ [DepartmentChecklist] Root cause status reloaded, badge should update now');
+      }
+    };
+
+    window.addEventListener('rootCauseUpdated', handleRootCauseUpdated);
+    console.log('👂 [DepartmentChecklist] Event listener for rootCauseUpdated registered');
+
+    return () => {
+      window.removeEventListener('rootCauseUpdated', handleRootCauseUpdated);
+      console.log('👋 [DepartmentChecklist] Event listener for rootCauseUpdated removed');
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myFindings]);
 
   const loadMyFindings = async () => {
     setLoadingFindings(true);
     try {
-      const findings = await getMyFindings();
-      setMyFindings(findings);
+      const allFindings = await getMyFindings();
+      console.log('📋 All my findings from API:', allFindings);
+      console.log('🔍 Filtering by auditId:', auditId, 'and deptId:', deptId);
+
+      // Filter findings by current audit and department
+      const filteredFindings = allFindings.filter((finding) => {
+        // Check audit match
+        const findingAuditId = finding.audit?.auditId || finding.auditId || '';
+        const auditMatch = !auditId || String(findingAuditId) === String(auditId);
+        
+        // Check department match
+        const findingDeptId = finding.deptId || null;
+        const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
+        
+        const matches = auditMatch && deptMatch;
+        
+        if (!matches) {
+          console.log(`❌ Filtered out finding ${finding.findingId}:`, {
+            findingAuditId,
+            expectedAuditId: auditId,
+            auditMatch,
+            findingDeptId,
+            expectedDeptId: deptId,
+            deptMatch
+          });
+        }
+        
+        return matches;
+      });
+
+      console.log('✅ Filtered findings:', filteredFindings);
+      setMyFindings(filteredFindings);
 
       // Load actions for each finding and count verified actions
       const actionsMap: Record<string, Action[]> = {};
       let verifiedCount = 0;
 
-      for (const finding of findings) {
+      for (const finding of filteredFindings) {
         try {
           const actions = await getActionsByFinding(finding.findingId);
           actionsMap[finding.findingId] = actions || [];
@@ -656,6 +723,14 @@ const DepartmentChecklist = () => {
 
       setFindingActionsMap(actionsMap);
       setVerifiedActionsCount(verifiedCount);
+      
+      // Load root cause status after findings are loaded
+      if (filteredFindings.length > 0) {
+        // Small delay to ensure state is set
+        setTimeout(() => {
+          loadRootCauseStatus();
+        }, 100);
+      }
     } catch (err: any) {
       console.error('Error loading my findings:', err);
       toast.error('Failed to load findings');
@@ -1174,21 +1249,41 @@ const DepartmentChecklist = () => {
                                   </span>
                                 ) : null;
                               })()}
-                              {/* Root Cause Pending Review Badge */}
+                              {/* Root Cause Indicator Badge - Only show if not all approved */}
                               {(() => {
                                 const rcStatus = rootCauseStatusMap[finding.findingId];
-                                if (rcStatus?.hasPending) {
+                                const totalCount = rcStatus?.totalCount || 0;
+                                const allApproved = rcStatus?.allApproved || false;
+                                const hasPendingRC = rcStatus?.hasPending || false;
+                                const hasRejectedRC = rcStatus?.hasRejected || false;
+                                
+                                // Only show badge if there are root causes AND not all are approved
+                                if (totalCount > 0 && !allApproved) {
                                   return (
                                     <div className="relative group">
-                                      <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-600 border border-amber-200 whitespace-nowrap flex items-center gap-1">
+                                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold border whitespace-nowrap flex items-center gap-1 ${
+                                        hasPendingRC
+                                          ? 'bg-amber-50 text-amber-600 border-amber-200'
+                                          : hasRejectedRC
+                                          ? 'bg-red-100 text-red-700 border-red-300'
+                                          : 'bg-blue-100 text-blue-700 border-blue-300'
+                                      }`}>
                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                                         </svg>
-                                        <span>{rcStatus.pendingCount} RC</span>
+                                        <span>{totalCount} RC</span>
                                       </span>
                                       <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                                        <p className="font-semibold">{rcStatus.pendingCount} Root Cause{rcStatus.pendingCount > 1 ? 's' : ''} need{rcStatus.pendingCount === 1 ? 's' : ''} review</p>
-                                        <p className="text-gray-300 mt-1">Click to view and review</p>
+                                        <p className="font-semibold mb-1">Root Causes Status:</p>
+                                        <p className="text-gray-300">
+                                          Total: {totalCount} root cause{totalCount > 1 ? 's' : ''}
+                                        </p>
+                                        {hasPendingRC && (
+                                          <p className="text-yellow-300 mt-1">⏳ {rcStatus.pendingCount} pending review</p>
+                                        )}
+                                        {hasRejectedRC && (
+                                          <p className="text-red-300 mt-1">✗ Has rejected root cause{hasRejectedRC && totalCount > 1 ? 's' : ''}</p>
+                                        )}
                                         <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
                                       </div>
                                     </div>

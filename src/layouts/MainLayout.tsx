@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
 import { Navigation } from '../components';
+import { ChatBot } from '../components/ChatBot';
 import './icons.tsx';
 import useAuthStore, { useUserId } from '../store/useAuthStore';
 import { getRoleMenu } from '../helpers/roleMenus';
@@ -211,6 +212,8 @@ export const MainLayout = ({
           </div>
         </main>
       </div>
+      {/* ChatBot - Available on all pages */}
+      <ChatBot />
     </div>
   );
 };

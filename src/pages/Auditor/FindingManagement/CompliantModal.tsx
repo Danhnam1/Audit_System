@@ -46,16 +46,25 @@ const CompliantModal = ({
   // Get current date and time automatically
   const getCurrentDateTime = () => {
     const now = new Date();
-    const date = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  
+    // ✅ LẤY NGÀY THEO GIỜ VIỆT NAM (LOCAL)
+    const date = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+  
+    // ✅ GIỜ PHÚT THEO GIỜ VIỆT NAM
     const time = now.toTimeString().slice(0, 5); // HH:MM
+  
     return { date, time };
   };
-
+  
+  // Ngày compliance (VN)
   const { date: complianceDate } = getCurrentDateTime();
+  
+  // Giờ compliance (VN)
   const [complianceTime, setComplianceTime] = useState(() => {
     const now = new Date();
-    return now.toTimeString().slice(0, 5); // HH:MM
+    return now.toTimeString().slice(0, 5);
   });
+  
 
   // Update time to current time when modal opens and keep it updated
   useEffect(() => {
