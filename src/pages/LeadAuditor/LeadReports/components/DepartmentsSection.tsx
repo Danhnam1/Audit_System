@@ -7,8 +7,7 @@ interface Props {
   selectedDeptKey: string;
   setSelectedDeptKey: (key: string) => void;
   findings: any[];
-  expandedFindingId: string;
-  setExpandedFindingId: (id: string) => void;
+  onViewFinding: (finding: any) => void;
   unwrapValues: (v: any) => any[];
   findingsSearch: string;
   setFindingsSearch: (v: string) => void;
@@ -21,8 +20,7 @@ const DepartmentsSection: React.FC<Props> = ({
   selectedDeptKey,
   setSelectedDeptKey,
   findings,
-  expandedFindingId,
-  setExpandedFindingId,
+  onViewFinding,
   unwrapValues,
   findingsSearch,
   setFindingsSearch,
@@ -111,69 +109,26 @@ const DepartmentsSection: React.FC<Props> = ({
                   const fid = String(f?.findingId || i);
                   const created = f?.createdAt ? new Date(f.createdAt).toLocaleDateString() : '';
                   const deadline = f?.deadline ? new Date(f.deadline).toLocaleDateString() : '';
-                  const isOpen = expandedFindingId === fid;
+                  const isReturned = String(f?.status || '').toLowerCase() === 'return';
                   return (
-                    <React.Fragment key={fid}>
-                      <tr className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm text-gray-900 font-medium">{f?.title || '—'}</td>
-                        <td className="px-4 py-2 text-sm">
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${String(f?.severity||'').toLowerCase().includes('major') ? 'bg-amber-100 text-amber-700' : String(f?.severity||'').toLowerCase().includes('minor') ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{f?.severity || '—'}</span>
-                        </td>
-                        <td className="px-4 py-2 text-sm text-gray-700">{f?.status || '—'}</td>
-                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{created}</td>
-                        <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{deadline}</td>
-                        <td className="px-4 py-2 text-sm whitespace-nowrap">
-                          <button
-                            onClick={() => setExpandedFindingId(isOpen ? '' : fid)}
-                            className="text-primary-600 hover:text-primary-700 font-medium text-sm"
-                          >{isOpen ? 'Hide' : 'Details'}</button>
-                        </td>
-                      </tr>
-                      {isOpen && (
-                        <tr className="bg-white">
-                          <td colSpan={6} className="px-6 py-3">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <div>
-                                  <div className="text-xs text-gray-500">Description</div>
-                                  <div className="text-sm text-gray-800">{f?.description || '—'}</div>
-                                </div>
-                                <div>
-                                  <div className="text-xs text-gray-500">Audit Item</div>
-                                  <div className="text-sm text-gray-800">{f?.auditItem?.questionTextSnapshot || f?.auditItem?.section || '—'}</div>
-                                </div>
-                                <div>
-                                  <div className="text-xs text-gray-500">Created By</div>
-                                  <div className="text-sm text-gray-800">{f?.createdByUser?.fullName || f?.createdByUser?.email || '—'}</div>
-                                </div>
-                              </div>
-                              <div>
-                                <div className="text-xs font-semibold text-gray-700 mb-2">Attachments</div>
-                                <div className="space-y-2">
-                                  {unwrapValues(f?.attachments).length === 0 && (
-                                    <div className="text-sm text-gray-500">No attachments</div>
-                                  )}
-                                  {unwrapValues(f?.attachments).map((att: any, idx: number) => {
-                                    const name = att?.fileName || att?.documentName || att?.name || att?.originalName || `Attachment ${idx+1}`;
-                                    const url = att?.blobPath || att?.url || att?.link || att?.path;
-                                    return (
-                                      <div key={idx} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded px-3 py-2">
-                                        <div className="text-sm text-gray-800">{name}</div>
-                                        {url ? (
-                                          <a href={url} target="_blank" rel="noreferrer" className="text-primary-600 hover:text-primary-700 text-sm font-medium">Open</a>
-                                        ) : (
-                                          <span className="text-xs text-gray-500">No link</span>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
+                    <tr 
+                      key={fid} 
+                      className={`hover:bg-gray-50 ${isReturned ? 'border-l-4 border-orange-500' : ''}`}
+                    >
+                      <td className="px-4 py-2 text-sm text-gray-900 font-medium">{f?.title || '—'}</td>
+                      <td className="px-4 py-2 text-sm">
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${String(f?.severity||'').toLowerCase().includes('major') ? 'bg-amber-100 text-amber-700' : String(f?.severity||'').toLowerCase().includes('minor') ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{f?.severity || '—'}</span>
+                      </td>
+                      <td className="px-4 py-2 text-sm text-gray-700">{f?.status || '—'}</td>
+                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{created}</td>
+                      <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{deadline}</td>
+                      <td className="px-4 py-2 text-sm whitespace-nowrap">
+                        <button
+                          onClick={() => onViewFinding(f)}
+                          className="text-primary-600 hover:text-primary-700 font-medium text-sm"
+                        >Details</button>
+                      </td>
+                    </tr>
                   );
                 })}
                 {filteredFindings.length === 0 && (
