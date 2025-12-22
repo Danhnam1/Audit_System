@@ -35,3 +35,40 @@ export const sendChatMessage = async (
   }
 };
 
+export interface SuggestedRootCause {
+  $id?: string;
+  name: string;
+  description: string;
+  reasoning: string;
+  confidence: number;
+}
+
+export interface AnalyzeFindingResponse {
+  $id?: string;
+  suggestedRootCauses: {
+    $id?: string;
+    $values?: SuggestedRootCause[];
+  };
+  analysisSummary: string;
+  isError: boolean;
+  errorMessage: string | null;
+}
+
+/**
+ * Analyze finding and get suggested root causes
+ * @param findingId - The finding ID to analyze
+ * @returns Suggested root causes and analysis summary
+ */
+export const analyzeFinding = async (
+  findingId: string
+): Promise<AnalyzeFindingResponse> => {
+  try {
+    // POST method - findingId is in the URL path
+    const response = await apiClient.post(`/ChatBot/analyze-finding/${findingId}`, {}) as AnalyzeFindingResponse;
+    return response;
+  } catch (error: any) {
+    console.error('[ChatBot] Failed to analyze finding:', error);
+    throw error;
+  }
+};
+
