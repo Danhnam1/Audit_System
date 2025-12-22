@@ -13,7 +13,7 @@ import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/au
 import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getAuditPlanRevisionRequestsByAuditId, type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
-import { updateOverdueToActiveByAuditId } from '../../../api/checklists';
+// import { updateOverdueToActiveByAuditId } from '../../../api/checklists';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
@@ -45,6 +45,7 @@ const SQAStaffReports = () => {
   // Extension request states
   const [extensionRequests, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
   
+
 
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
@@ -673,7 +674,6 @@ const SQAStaffReports = () => {
   // Handle update overdue items after extension approved
   // const handleUpdateOverdueItems = async () => {
   //   if (!selectedAuditId) return;
-    
   //   setUpdatingOverdue(selectedAuditId);
   //   try {
   //     const result = await updateOverdueToActiveByAuditId(selectedAuditId);
