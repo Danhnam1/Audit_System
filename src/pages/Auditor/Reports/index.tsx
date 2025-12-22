@@ -12,8 +12,9 @@ import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlan
 import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
 import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
-import { getAuditPlanRevisionRequestsByAuditId, type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
-import { updateOverdueToActiveByAuditId } from '../../../api/checklists';
+import { getAuditPlanRevisionRequestsByAuditId } from '../../../api/auditPlanRevisionRequest';
+// import { type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
+// import { updateOverdueToActiveByAuditId } from '../../../api/checklists';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
@@ -43,8 +44,8 @@ const SQAStaffReports = () => {
   const [reportRequests, setReportRequests] = useState<Record<string, ViewReportRequest>>({});
   
   // Extension request states
-  const [extensionRequests, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
-  const [updatingOverdue, setUpdatingOverdue] = useState<string>('');
+  const [_extensionRequests, setExtensionRequests] = useState<Record<string, any[]>>({});
+  // const [updatingOverdue, setUpdatingOverdue] = useState<string>('');
 
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
@@ -671,24 +672,24 @@ const SQAStaffReports = () => {
   // Now we allow any team member (already filtered in `reloadReports`) once the report is Closed/Completed.
 
   // Handle update overdue items after extension approved
-  const handleUpdateOverdueItems = async () => {
-    if (!selectedAuditId) return;
-    
-    setUpdatingOverdue(selectedAuditId);
-    try {
-      const result = await updateOverdueToActiveByAuditId(selectedAuditId);
-      toast.success(`Successfully updated ${result.updatedCount || 0} checklist item(s) from Overdue to Active.`);
-      // Reload summary to reflect changes
-      const sum = await getAuditSummary(selectedAuditId);
-      setSummary(sum);
-    } catch (err: any) {
-      console.error('Failed to update overdue items:', err);
-      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to update overdue items';
-      toast.error(errorMessage);
-    } finally {
-      setUpdatingOverdue('');
-    }
-  };
+  // const handleUpdateOverdueItems = async () => {
+  //   if (!selectedAuditId) return;
+  //   
+  //   setUpdatingOverdue(selectedAuditId);
+  //   try {
+  //     const result = await updateOverdueToActiveByAuditId(selectedAuditId);
+  //     toast.success(`Successfully updated ${result.updatedCount || 0} checklist item(s) from Overdue to Active.`);
+  //     // Reload summary to reflect changes
+  //     const sum = await getAuditSummary(selectedAuditId);
+  //     setSummary(sum);
+  //   } catch (err: any) {
+  //     console.error('Failed to update overdue items:', err);
+  //     const errorMessage = err?.response?.data?.message || err?.message || 'Failed to update overdue items';
+  //     toast.error(errorMessage);
+  //   } finally {
+  //     setUpdatingOverdue('');
+  //   }
+  // };
 
   const handleSubmitToLead = async () => {
     if (!selectedAuditId) return;
