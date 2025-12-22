@@ -4,7 +4,7 @@ import { useAuth } from '../../../contexts';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { getStatusColor } from '../../../constants';
-import { StatCard, LineChartCard, BarChartCard, PieChartCard } from '../../../components';
+import { StatCard, BarChartCard, PieChartCard } from '../../../components';
 import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
 import { getReportRequestByAuditId, type ViewReportRequest } from '../../../api/reportRequest';
 import { getDepartments } from '../../../api/departments';
@@ -13,7 +13,7 @@ import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/au
 import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getAuditPlanRevisionRequestsByAuditId, type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
-import { getAuditChecklistItems, updateOverdueToActiveByAuditId } from '../../../api/checklists';
+import { getAuditChecklistItems } from '../../../api/checklists';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
@@ -43,11 +43,11 @@ const SQAStaffReports = () => {
   const [reportRequests, setReportRequests] = useState<Record<string, ViewReportRequest>>({});
   
   // Extension request states
-  const [extensionRequests, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
+  const [, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
   
 
   // Chart datasets
-  const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
+  const [, setLineData] = useState<Array<{ month: string; count: number }>>([]);
   const [pieData, setPieData] = useState<Array<{ name: string; value: number; color: string }>>([]);
   const [barData, setBarData] = useState<Array<{ department: string; count: number }>>([]);
   const [findingsMap, setFindingsMap] = useState<Record<string, number>>({});

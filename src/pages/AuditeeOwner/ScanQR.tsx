@@ -18,7 +18,6 @@ export default function ScanQR() {
   const [scannerUserId, setScannerUserId] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [qrToken, setQrToken] = useState<string>('');
-  const [manualInput, setManualInput] = useState(false);
   const [scanResult, setScanResult] = useState<ScanAccessGrantResponse | null>(null);
   const [scannedDept, setScannedDept] = useState<{ deptId: number; name: string; isSensitive: boolean } | null>(null);
   const [auditTitle, setAuditTitle] = useState<string>('');
@@ -263,145 +262,6 @@ export default function ScanQR() {
     }
   };
 
-  const handleManualInput = async () => {
-    if (!qrToken.trim()) {
-      toast.error('Please enter a QR token');
-      return;
-    }
-
-    if (!scannerUserId) {
-      toast.error('User information not available. Please refresh the page.');
-      return;
-    }
-
-    try {
-      const result = await scanAccessGrant({
-        qrToken: qrToken.trim(),
-        scannerUserId: scannerUserId,
-      });
-
-      if (result.isValid) {
-        setScanResult(result);
-        
-        // Fetch names for display
-        const fetchPromises: Promise<void>[] = [];
-        
-        // Fetch audit title
-        if (result.auditId) {
-          fetchPromises.push(
-            getAuditPlanById(result.auditId)
-              .then((audit: any) => {
-                // Try multiple possible field paths for title
-                const title = audit?.title || 
-                             audit?.audit?.title || 
-                             audit?.name ||
-                             audit?.audit?.name ||
-                             'N/A';
-                setAuditTitle(title);
-                console.log('[ScanQR] Loaded audit title:', title, 'from audit data:', audit);
-              })
-              .catch((e) => {
-                console.warn('Failed to load audit info', e);
-                setAuditTitle('N/A');
-              })
-          );
-        }
-        
-        // Fetch auditor name
-        if (result.auditorId) {
-          fetchPromises.push(
-            getUserById(result.auditorId)
-              .then((auditor: any) => {
-                setAuditorName(auditor?.fullName || 'N/A');
-                if (auditor?.avatarUrl) {
-                  setScanResult((prev) =>
-                    prev ? { ...prev, avatarUrl: prev.avatarUrl || auditor.avatarUrl } : prev
-                  );
-                }
-              })
-              .catch((e) => {
-                console.warn('Failed to load auditor info', e);
-                setAuditorName('N/A');
-              })
-          );
-        }
-        
-        // Fetch department info to know if sensitive
-        if (result.deptId) {
-          fetchPromises.push(
-            getDepartmentById(Number(result.deptId))
-              .then((dept: any) => {
-                const isSensitive =
-                  !!(dept as any)?.hasSensitiveAreas ||
-                  (Array.isArray((dept as any)?.sensitiveAreas) && (dept as any).sensitiveAreas.length > 0);
-                setScannedDept({
-                  deptId: dept?.deptId || Number(result.deptId),
-                  name: dept?.name || 'Department',
-                  isSensitive,
-                });
-              })
-              .catch((e) => {
-                console.warn('Failed to load department info for sensitivity check', e);
-                setScannedDept({
-                  deptId: Number(result.deptId),
-                  name: 'Department',
-                  isSensitive: false,
-                });
-              })
-          );
-        }
-        
-        await Promise.allSettled(fetchPromises);
-        toast.success('QR code scanned successfully!');
-      } else {
-        // Handle different error reasons
-        const reason = result.reason || 'QR code is invalid';
-        let errorMessage = reason;
-        
-        if (reason.toLowerCase().includes('expired')) {
-          errorMessage = 'QR code has expired. Please request a new QR code from the auditor.';
-        } else if (reason.toLowerCase().includes('invalid')) {
-          errorMessage = 'QR code is invalid. Please check and try again.';
-        }
-        
-        toast.error(errorMessage);
-        setScanResult(result);
-      }
-    } catch (error: any) {
-      console.error('Failed to scan QR code:', error);
-      
-      // Check if error response contains reason
-      const errorData = error?.response?.data;
-      let reason = 'Scan failed';
-      
-      if (errorData?.reason) {
-        reason = errorData.reason;
-      } else if (errorData?.message) {
-        reason = errorData.message;
-      } else if (error?.message) {
-        reason = error.message;
-      }
-      
-      // Handle expired case specifically
-      if (reason.toLowerCase().includes('expired')) {
-        toast.error('QR code has expired. Please request a new QR code from the auditor.');
-      } else {
-        toast.error(reason || 'Failed to scan QR code');
-      }
-      
-      setScanResult({
-        isValid: false,
-        reason: reason,
-        auditId: errorData?.auditId || null,
-        auditorId: errorData?.auditorId || null,
-        deptId: errorData?.deptId || null,
-        expiresAt: errorData?.expiresAt || null,
-        verifyCode: errorData?.verifyCode || undefined,
-        avatarUrl: errorData?.avatarUrl || undefined,
-      });
-    }
-  };
-
   const handleVerifyCode = async () => {
     if (!qrToken || !verifyCodeInput.trim()) {
       toast.error('Please enter verify code');
@@ -480,7 +340,6 @@ export default function ScanQR() {
     setVerifyCodeInput('');
     setScanResult(null);
     setScanningError(null);
-    setManualInput(false);
     setAuditTitle('');
     setAuditorName('');
     setScannedDept(null);
@@ -508,47 +367,8 @@ export default function ScanQR() {
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
             <div className="p-6">
-              {/* Toggle between camera scan and manual input */}
-              <div className="flex items-center justify-center gap-4 mb-6">
-                <button
-                  onClick={() => {
-                    setManualInput(false);
-                    handleReset();
-                  }}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    !manualInput
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Camera Scan
-                </button>
-                <button
-                  onClick={() => {
-                    setManualInput(true);
-                    stopScanning();
-                    handleReset();
-                  }}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    manualInput
-                      ? 'bg-primary-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Manual Input
-                </button>
-              </div>
-
               {/* Camera Scan Mode */}
-              {!manualInput && (
-                <div className="space-y-4">
+              <div className="space-y-4">
                   <div className="flex justify-center">
                     <div
                       id="qr-reader"
@@ -589,31 +409,6 @@ export default function ScanQR() {
                     )}
                   </div>
                 </div>
-              )}
-
-              {/* Manual Input Mode */}
-              {manualInput && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      QR Token / URL
-                    </label>
-                    <input
-                      type="text"
-                      value={qrToken}
-                      onChange={(e) => setQrToken(e.target.value)}
-                      placeholder="Enter QR token or paste QR URL"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    />
-                  </div>
-                  <button
-                    onClick={handleManualInput}
-                    className="w-full px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
-                  >
-                    Scan QR Token
-                  </button>
-                </div>
-              )}
 
               {/* Scan Result */}
               {scanResult && (

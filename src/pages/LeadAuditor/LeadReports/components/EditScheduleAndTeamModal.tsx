@@ -149,9 +149,6 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
   const computedScheduleErrors = useMemo(() => {
     const errs: Record<number, string> = {};
 
-    // Map milestone -> index in schedules array
-    const milestoneOrder = ['Kickoff Meeting', 'Fieldwork Start', 'Evidence Due', 'CAPA Due', 'Draft Report Due'];
-
     // 1) Basic: required + within period
     schedules.forEach((s, index) => {
       if (!s.dueDate) {

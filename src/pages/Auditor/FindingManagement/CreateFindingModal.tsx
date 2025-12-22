@@ -58,7 +58,7 @@ const CreateFindingModal = ({
     const now = new Date();
     return now.toTimeString().slice(0, 5);
   });
-  const [findingType, setFindingType] = useState('');
+  const [findingType] = useState('');
 
   // Update time to current time when modal opens and keep it updated
   useEffect(() => {
@@ -77,17 +77,6 @@ const CreateFindingModal = ({
       return () => clearInterval(interval);
     }
   }, [isOpen]);
-  
-  // Mock finding types
-  const findingTypes = [
-    'Non-Compliance',
-    'Process Gap',
-    'Documentation Issue',
-    'Training Deficiency',
-    'Control Weakness',
-    'System Issue',
-    'Other',
-  ];
   
   // Errors
   const [errors, setErrors] = useState<{
