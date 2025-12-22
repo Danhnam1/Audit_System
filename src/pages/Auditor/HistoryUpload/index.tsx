@@ -52,17 +52,8 @@ const HistoryUploadPage = () => {
       try {
         const res = await getAuditPlans();
         const arr = unwrap(res);
-        const visible = (Array.isArray(arr) ? arr : []).filter((a: any) => {
-          const v = String(a.status || a.state || a.approvalStatus || '').toLowerCase().replace(/\s+/g, '');
-          // History for audits that are Completed / Approved / Closed
-          return (
-            v.includes('completed') ||
-            v.includes('complete') ||
-            v.includes('approve') ||
-            v.includes('closed') ||
-            v === 'closed'
-          );
-        });
+        // Show upload history for all audits; later we filter to only those that actually have documents
+        const visible = Array.isArray(arr) ? arr : [];
         setAudits(visible);
         // Preload users once for name mapping
         try {

@@ -69,6 +69,8 @@ const AuditorLeadReports = () => {
   const [teamChanges, setTeamChanges] = useState<any[]>([]);
   // Track recently updated audit statuses to prevent overwriting during reload
   const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
+  // Force reloading summary data even if selectedAuditId doesn't change (e.g. after Director approves)
+  const [summaryReloadKey, setSummaryReloadKey] = useState(0);
 
   const reload = useCallback(async () => {
     try {
@@ -125,7 +127,25 @@ const AuditorLeadReports = () => {
       }
       
       // Get ReportRequests (submitted by Auditors)
-      const reportRequests = Array.isArray(reportRequestsRes) ? reportRequestsRes : [];
+      const rawReportRequests = Array.isArray(reportRequestsRes) ? reportRequestsRes as ViewReportRequest[] : [];
+      // For each auditId, keep ONLY the latest ReportRequest (by requestedAt) to handle re-submit
+      const reportRequestMap = new Map<string, ViewReportRequest>();
+      rawReportRequests.forEach((rr) => {
+        const auditId = String(rr.auditId || '').trim();
+        if (!auditId) return;
+        const key = auditId.toLowerCase();
+        const existing = reportRequestMap.get(key) as any;
+        if (!existing) {
+          reportRequestMap.set(key, rr);
+        } else {
+          const existingTime = existing.requestedAt ? new Date(existing.requestedAt).getTime() : 0;
+          const currentTime = rr.requestedAt ? new Date(rr.requestedAt).getTime() : 0;
+          if (currentTime >= existingTime) {
+            reportRequestMap.set(key, rr);
+          }
+        }
+      });
+      const reportRequests = Array.from(reportRequestMap.values()) as ViewReportRequest[];
       
       // Get all audits to merge with ReportRequests
       const auditsList = unwrap(auditsRes);
@@ -144,8 +164,8 @@ const AuditorLeadReports = () => {
       // Combine reports from ReportRequests (submitted by Auditors)
       const combinedReports: any[] = [];
       
-      // Add reports from ReportRequests (submitted by Auditors)
-      reportRequests.forEach((rr: ViewReportRequest) => {
+      // Add reports from latest ReportRequest per auditId (submitted by Auditors)
+      reportRequests.forEach((rr) => {
         const auditId = String(rr.auditId || '');
         if (!auditId) return;
         
@@ -309,7 +329,7 @@ const AuditorLeadReports = () => {
       }
     };
     loadSummary();
-  }, [selectedAuditId]);
+  }, [selectedAuditId, summaryReloadKey]);
 
   const rows = useMemo(() => {
     const getCreatedByLabel = (a: any): string => {
@@ -378,18 +398,8 @@ const AuditorLeadReports = () => {
       
       const createdBy = getCreatedByLabel(a);
       
-      // Check if Director has approved (for edit schedule & team button)
-      // Button hiển thị khi: status = "Approved" && có Director approval
-      // HOẶC có extension request (revision request) đã được Director approve
-      const approvalStatus = a.approvalStatus || a.status || a.state;
-      const normApproval = String(approvalStatus || '').toLowerCase().replace(/\s+/g, '');
-      let isDirectorApproved = normApproval === 'approved' || 
-                               normApproval.includes('approved') || 
-                               norm === 'approved' ||
-                               String(rawStatus || '').toLowerCase().replace(/\s+/g, '') === 'approved';
-      
       // Check if there's an approved extension request (revision request)
-      // Backend returns status as "Approved" (with capital A)
+      // Backend returns revision status as "Approved" (with capital A)
       const auditRevisionRequests = revisionRequestsMap[auditId] || [];
       const hasApprovedExtension = auditRevisionRequests.some((req: ViewAuditPlanRevisionRequest) => {
         const reqStatus = String(req.status || '').trim();
@@ -405,10 +415,8 @@ const AuditorLeadReports = () => {
         console.log(`[LeadReports] ✅ Audit ${auditId} has approved extension request - enabling Edit Schedule & Team button`);
       }
       
-      // If there's an approved extension request, allow editing schedule & team
-      if (hasApprovedExtension) {
-        isDirectorApproved = true;
-      }
+      // Only allow Edit Schedule & Team button when extension request has been approved by Director
+      const isDirectorApproved = hasApprovedExtension;
       
       return { 
         auditId, 
@@ -1176,6 +1184,7 @@ const AuditorLeadReports = () => {
               setSelectedAuditId('');
             } else {
               setSelectedAuditId(id);
+              setSummaryReloadKey((k) => k + 1); // force reload summary even if same id
               setShowSummary(true);
             }
           }}

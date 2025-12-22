@@ -13,7 +13,7 @@ import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/au
 import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getAuditPlanRevisionRequestsByAuditId, type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
-// import { updateOverdueToActiveByAuditId } from '../../../api/checklists';
+import { getAuditChecklistItems, updateOverdueToActiveByAuditId } from '../../../api/checklists';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
@@ -46,7 +46,6 @@ const SQAStaffReports = () => {
   const [extensionRequests, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
   
 
-
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
   const [pieData, setPieData] = useState<Array<{ name: string; value: number; color: string }>>([]);
@@ -56,6 +55,8 @@ const SQAStaffReports = () => {
   const [reportFilters, setReportFilters] = useState<ActiveFilters>({});
   const [findingFilters, setFindingFilters] = useState<ActiveFilters>({});
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  const [auditChecklistItems, setAuditChecklistItems] = useState<any[] | null>(null);
+  const [summaryTab, setSummaryTab] = useState<'findings' | 'checklist'>('findings');
 
   // Derived datasets for summary rendering
   const severityEntries = useMemo(() => {
@@ -94,6 +95,68 @@ const SQAStaffReports = () => {
       };
     });
   }, [summary]);
+
+  // Checklist overview (overdue + compliant) for selected audit
+  // NOTE: Backend checklist items không có deptId, nên dùng "section" như phòng ban logic.
+  const checklistOverview = useMemo(() => {
+    if (!auditChecklistItems || auditChecklistItems.length === 0) {
+      return {
+        totalOverdue: 0,
+        totalCompliant: 0,
+        overdueByDept: [] as Array<{ deptId: string; deptName: string; overdue: number; compliant: number }>,
+        overdueItems: [] as any[],
+      };
+    }
+
+    const byDeptMap = new Map<string, { deptId: string; overdue: number; compliant: number }>();
+    const overdueItems: any[] = [];
+    let totalOverdue = 0;
+    let totalCompliant = 0;
+
+    auditChecklistItems.forEach((item: any) => {
+      const rawStatus = String(item.status || '').toLowerCase();
+      const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
+      const isCompliant = rawStatus === 'compliant' || rawStatus.includes('compliant');
+
+      // Use section (e.g. "Flight Operations") as logical department key/label
+      const sectionRaw =
+        item.section ||
+        item.departmentName ||
+        item.deptName ||
+        item.department ||
+        '';
+      const key = String(sectionRaw || '—').trim();
+
+      if (!byDeptMap.has(key)) {
+        byDeptMap.set(key, { deptId: key, overdue: 0, compliant: 0 });
+      }
+      const agg = byDeptMap.get(key)!;
+
+      if (isOverdue) {
+        agg.overdue += 1;
+        totalOverdue += 1;
+        overdueItems.push(item);
+      }
+      if (isCompliant) {
+        agg.compliant += 1;
+        totalCompliant += 1;
+      }
+    });
+
+    const overdueByDept = Array.from(byDeptMap.values()).map((row) => ({
+      deptId: row.deptId,
+      deptName: row.deptId || '—', // section label
+      overdue: row.overdue,
+      compliant: row.compliant,
+    }));
+
+    return {
+      totalOverdue,
+      totalCompliant,
+      overdueByDept,
+      overdueItems,
+    };
+  }, [auditChecklistItems]);
 
   // Chuẩn hóa id (tránh lệch hoa/thường, khoảng trắng)
   const normalizeId = (id: string | number | null | undefined) =>
@@ -157,6 +220,22 @@ const SQAStaffReports = () => {
     if (k.includes('major') || k.includes('medium')) return '#f59e0b';
     return '#3b82f6'; // minor/low default
   };
+
+  // Small internal component for KPI cards in the summary modal
+  const SummaryCard = ({
+    title,
+    value,
+    valueClassName = '',
+  }: {
+    title: string;
+    value: React.ReactNode;
+    valueClassName?: string;
+  }) => (
+    <div className="rounded-xl border border-gray-100 bg-white shadow-sm px-3 py-3">
+      <p className="text-[11px] font-medium text-gray-500 tracking-wide">{title}</p>
+      <p className={`mt-1 text-xl font-semibold text-gray-900 ${valueClassName}`}>{value}</p>
+    </div>
+  );
 
   // Load audits list (only Open) and departments
   const reloadReports = useCallback(async () => {
@@ -569,6 +648,7 @@ const SQAStaffReports = () => {
   useEffect(() => {
     const loadSummary = async () => {
       if (!selectedAuditId) return;
+      setSummaryTab('findings');
       try {
         const [sum, requests] = await Promise.all([
           getAuditSummary(selectedAuditId),
@@ -580,9 +660,19 @@ const SQAStaffReports = () => {
         if (!isNaN(total)) {
           setFindingsMap((prev) => ({ ...prev, [String(selectedAuditId)]: total }));
         }
+
+        // Load checklist items for this audit (used for overdue/compliant overview)
+        try {
+          const items = await getAuditChecklistItems(selectedAuditId);
+          setAuditChecklistItems(Array.isArray(items) ? items : unwrap(items));
+        } catch (checkErr) {
+          console.error('Failed to load audit checklist items for overview', checkErr);
+          setAuditChecklistItems(null);
+        }
       } catch (err) {
         console.error('Failed to load summary', err);
         setSummary(null);
+        setAuditChecklistItems(null);
       }
     };
     loadSummary();
@@ -674,6 +764,7 @@ const SQAStaffReports = () => {
   // Handle update overdue items after extension approved
   // const handleUpdateOverdueItems = async () => {
   //   if (!selectedAuditId) return;
+    
   //   setUpdatingOverdue(selectedAuditId);
   //   try {
   //     const result = await updateOverdueToActiveByAuditId(selectedAuditId);
@@ -1250,10 +1341,93 @@ const SQAStaffReports = () => {
           </div>
         </div>
 
-        {/* Summary section - clearer, card-based UI; show after View */}
-        {showSummary && (
-          <div ref={summaryRef} className="bg-white rounded-xl border border-primary-100 shadow-md p-6 scroll-mt-24">
-            
+        {/* Summary section - now shown in a modal for better focus */}
+        {showSummary && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => setShowSummary(false)}
+            />
+
+            {/* Modal container */}
+            <div
+              ref={summaryRef}
+              className="relative bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto border border-primary-100"
+            >
+              {/* Modal header */}
+              <div className="px-6 py-4 border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur z-10">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h2 className="text-xl font-semibold text-gray-900">Audit Report Summary</h2>
+                    <p className="text-sm text-gray-500">
+                      Overview, checklist status and findings for the selected audit.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {(() => {
+                      const st = selectedAuditRow?.status || selectedAuditRow?.state || selectedAuditRow?.approvalStatus;
+                      const auditIdStr = String(selectedAuditId || '').trim();
+                      const reportRequest = reportRequests[auditIdStr];
+                      const reportStatus = reportRequest?.status || '';
+                      const statusToCheck = reportStatus || st;
+                      const isReportRejected = String(reportStatus).toLowerCase() === 'returned';
+                      const rejected = isReportRejected || isRejectedStatus(statusToCheck);
+                      const submitted = isSubmittedStatus(statusToCheck, auditIdStr);
+                      const completed = isCompletedStatus(statusToCheck);
+                      const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
+
+                      if (isLeadAuditor || completed) {
+                        return null;
+                      }
+
+                      const key = String(selectedAuditId || '').trim();
+                      const hasRejectNote = key && rejectNotes[key] && rejectNotes[key].trim().length > 0;
+                      const disabled = submitLoading || !selectedAuditId || (submitted && !rejected) || (rejected && !hasRejectNote);
+
+                      let label = submitLoading
+                        ? 'Submitting...'
+                        : submitted && !rejected
+                          ? reportStatus ? `Submitted (${reportStatus})` : 'Submitted'
+                          : rejected
+                            ? hasRejectNote
+                              ? 'Resubmit to Lead Auditor'
+                              : 'Loading reject reason...'
+                            : 'Submit to Lead Auditor';
+
+                      return (
+                        <button
+                          onClick={() => setShowSubmitModal(true)}
+                          disabled={disabled}
+                          className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-all ${
+                            disabled
+                              ? 'bg-amber-300 cursor-not-allowed text-white'
+                              : 'bg-orange-500 hover:bg-orange-600 text-white'
+                          }`}
+                          title={
+                            disabled && submitted && !rejected
+                              ? 'Report has been submitted and is pending review'
+                              : undefined
+                          }
+                        >
+                          {label}
+                        </button>
+                      );
+                    })()}
+                    <button
+                      onClick={() => setShowSummary(false)}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+                      aria-label="Close summary"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
             {/* Reject Note Alert - Show when audit is rejected */}
             {(() => {
               const key = String(selectedAuditRow?.auditId || selectedAuditId || '');
@@ -1314,11 +1488,9 @@ const SQAStaffReports = () => {
               return null;
             })()}
 
+            {/* Section 1: Alerts + small summary title */}
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold text-primary-600">Summary Findings</h2>
-                <span className="text-xs text-gray-500">Overview for the selected audit.</span>
-              </div>
+             
               <div className="flex items-center gap-3">
                 {(() => {
                   // Only show reject reason if:
@@ -1357,295 +1529,429 @@ const SQAStaffReports = () => {
                     </button>
                   );
                 })()}
-                {(() => {
-                  const st = selectedAuditRow?.status || selectedAuditRow?.state || selectedAuditRow?.approvalStatus;
-                  const auditIdStr = String(selectedAuditId || '').trim();
-                  
-                  // Get ReportRequest status để check chính xác (source of truth)
-                  const reportRequest = reportRequests[auditIdStr];
-                  const reportStatus = reportRequest?.status || '';
-                  
-                  // Check status từ cả Audit và ReportRequest
-                  // Ưu tiên ReportRequest status nếu có (source of truth)
-                  const statusToCheck = reportStatus || st;
-                  
-                  // Check rejected first - if ReportRequest status is "Returned", it's rejected
-                  const isReportRejected = String(reportStatus).toLowerCase() === 'returned';
-                  const rejected = isReportRejected || isRejectedStatus(statusToCheck);
-                  
-                  // Check submitted - if ReportRequest status is "Pending" or "Approved", it's submitted
-                  // Pass auditIdStr to isSubmittedStatus so it can check reportRequests directly
-                  const submitted = isSubmittedStatus(statusToCheck, auditIdStr);
-                  const completed = isCompletedStatus(statusToCheck);
-                  const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
-                  
-                  // Don't show submit button if user is Lead Auditor or status is Closed
-                  if (isLeadAuditor || completed) {
-                    return null;
-                  }
-                  
-                  // Check if reject note is available
-                  const key = String(selectedAuditId || '').trim();
-                  const hasRejectNote = key && rejectNotes[key] && rejectNotes[key].trim().length > 0;
-                  
-                  // Disable if:
-                  // 1. Loading
-                  // 2. No audit selected
-                  // 3. Submitted (but not rejected) - đã submit và đang chờ review
-                  // 4. Rejected but no reject note available yet (waiting for note to load)
-                  const disabled = submitLoading || !selectedAuditId || (submitted && !rejected) || (rejected && !hasRejectNote);
-                  
-                  // Debug logging
-                  if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-                    console.log('[Reports] 🔘 Button state:', {
-                      auditId: auditIdStr,
-                      reportStatus,
-                      statusToCheck,
-                      submitted,
-                      rejected,
-                      isReportRejected,
-                      disabled,
-                      hasRejectNote,
-                      hasReportRequest: !!reportRequest,
-                      reportRequestStatus: reportRequest?.status
-                    });
-                  }
-                  
-                  let label = submitLoading
-                    ? 'Submitting...'
-                    : submitted && !rejected
-                      ? reportStatus ? `Submitted (${reportStatus})` : 'Submitted'
-                      : rejected
-                        ? hasRejectNote 
-                          ? 'Resubmit to Lead Auditor'
-                          : 'Loading reject reason...'
-                        : 'Submit to Lead Auditor';
-                  
-                  return (
-                    <button
-                      onClick={() => setShowSubmitModal(true)}
-                      disabled={disabled}
-                      className={`px-3 py-2 rounded-md text-sm font-medium shadow-sm transition-all ${
-                        disabled 
-                          ? 'bg-amber-300 cursor-not-allowed text-white' 
-                          : 'bg-amber-500 hover:bg-amber-600 text-white'
-                      }`}
-                      title={disabled && submitted && !rejected ? 'Report has been submitted and is pending review' : undefined}
-                    >
-                      {label}
-                    </button>
-                  );
-                })()}
               </div>
             </div>
+            {/* Tabs: Findings | Checklist */}
+            <div className="border-b border-gray-100">
+              <nav className="flex gap-4 text-sm">
+                <button
+                  type="button"
+                  onClick={() => setSummaryTab('findings')}
+                  className={`pb-2 border-b-2 transition-colors ${
+                    summaryTab === 'findings'
+                      ? 'border-primary-600 text-primary-700 font-semibold'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Findings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSummaryTab('checklist')}
+                  className={`pb-2 border-b-2 transition-colors ${
+                    summaryTab === 'checklist'
+                      ? 'border-primary-600 text-primary-700 font-semibold'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Checklist Templates & Items
+                </button>
+              </nav>
+            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left: audit info + key metrics */}
-              <div className="rounded-lg border border-gray-100 p-4">
-                <div className="mb-4">
-                  <div className="text-sm text-gray-500">Audit</div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-base font-semibold text-gray-900">{summary?.title || '—'}</div>
-                    {summary?.status && (
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700 border border-primary-100">
-                        {summary.status}
+            {/* TAB 1: Findings */}
+            {summaryTab === 'findings' && (
+              <>
+                {/* KPI cards – high level overview */}
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <SummaryCard title="Total Findings" value={summary?.totalFindings ?? 0} />
+                  <SummaryCard
+                    title="Open"
+                    value={summary?.openFindings ?? 0}
+                    valueClassName="text-amber-600"
+                  />
+                  <SummaryCard
+                    title="Closed"
+                    value={summary?.closedFindings ?? 0}
+                    valueClassName="text-green-600"
+                  />
+                  <SummaryCard
+                    title="Overdue"
+                    value={summary?.overdueFindings ?? 0}
+                    valueClassName="text-red-600"
+                  />
+                  <SummaryCard
+                    title="Checklist Overdue"
+                    value={checklistOverview.totalOverdue}
+                    valueClassName="text-red-600"
+                  />
+                  <SummaryCard
+                    title="Checklist Compliant"
+                    value={checklistOverview.totalCompliant}
+                    valueClassName="text-emerald-600"
+                  />
+                </div>
+
+                {/* Severity + Findings by Department */}
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left: Severity Breakdown */}
+                  <div className="rounded-lg border border-gray-100 p-4 bg-white">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold text-gray-800">Severity Breakdown</h3>
+                      <span className="text-[11px] text-gray-500">
+                        Distribution of findings by severity.
                       </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-600 mt-1">
-                    {summary?.startDate ? new Date(summary.startDate).toLocaleDateString() : '—'}
-                    <span className="mx-1">→</span>
-                    {summary?.endDate ? new Date(summary.endDate).toLocaleDateString() : '—'}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="rounded-lg border border-gray-100 p-3">
-                    <div className="text-xs text-gray-500">Total</div>
-                    <div className="text-xl font-semibold text-primary-700">{summary?.totalFindings ?? 0}</div>
-                  </div>
-                  <div className="rounded-lg border border-gray-100 p-3">
-                    <div className="text-xs text-gray-500">Open</div>
-                    <div className="text-xl font-semibold text-amber-600">{summary?.openFindings ?? 0}</div>
-                  </div>
-                  <div className="rounded-lg border border-gray-100 p-3">
-                    <div className="text-xs text-gray-500">Closed</div>
-                    <div className="text-xl font-semibold text-green-600">{summary?.closedFindings ?? 0}</div>
-                  </div>
-                  <div className="rounded-lg border border-gray-100 p-3">
-                    <div className="text-xs text-gray-500">Overdue</div>
-                    <div className="text-xl font-semibold text-red-600">{summary?.overdueFindings ?? 0}</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right: severity breakdown as progress */}
-              <div className="rounded-lg border border-gray-100 p-4">
-                <div className="text-sm font-semibold text-gray-700 mb-3">Severity Breakdown</div>
-                <div className="space-y-2">
-                  {severityEntries.map(([name, val]) => {
-                    const count = Number(val as any) || 0;
-                    const pct = severityTotal ? Math.round((count * 100) / severityTotal) : 0;
-                    return (
-                      <div key={name} className="flex items-center gap-3">
-                        <span className="w-24 text-sm text-gray-700">{name}</span>
-                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-2 rounded-full"
-                            style={{ width: `${pct}%`, backgroundColor: severityColor(String(name)) }}
-                          />
-                        </div>
-                        <span className="w-20 text-right text-sm text-gray-700">{count} ({pct}%)</span>
-                      </div>
-                    );
-                  })}
-                  {severityEntries.length === 0 && (
-                    <div className="text-sm text-gray-500">No data</div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Table: Department */}
-            <div className="mt-6">
-              <div className="rounded-lg border border-gray-100 p-4">
-                <div className="text-sm font-semibold text-gray-700 mb-2">BY DEPARTMENT</div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="text-left px-3 py-2 text-gray-700">Department</th>
-                        <th className="text-right px-3 py-2 text-gray-700">Findings</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {deptRows.map((it: any, idx: number) => {
-                        const deptIdLike = it.deptId;
-                        const name = it.deptName || (deptIdLike != null ? resolveDeptName(String(deptIdLike), departments) : '') || it.department || '—';
+                    </div>
+                    <div className="space-y-2">
+                      {severityEntries.map(([name, val]) => {
+                        const count = Number(val as any) || 0;
+                        const pct = severityTotal ? Math.round((count * 100) / severityTotal) : 0;
                         return (
-                          <tr key={`${name}-${idx}`}>
-                            <td className="px-3 py-2">{name}</td>
-                            <td className="px-3 py-2 text-right">{Number(it.count || 0)}</td>
-                          </tr>
+                          <div key={name} className="flex items-center gap-3">
+                            <span className="w-24 text-sm text-gray-700">{name}</span>
+                            <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-2 rounded-full"
+                                style={{ width: `${pct}%`, backgroundColor: severityColor(String(name)) }}
+                              />
+                            </div>
+                            <span className="w-20 text-right text-xs text-gray-700">
+                              {count} ({pct}%)
+                            </span>
+                          </div>
                         );
                       })}
-                      {deptRows.length === 0 && (
-                        <tr><td className="px-3 py-2 text-gray-500" colSpan={2}>No data</td></tr>
+                      {severityEntries.length === 0 && (
+                        <div className="text-sm text-gray-500">No data</div>
                       )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+                    </div>
+                  </div>
 
-        {/* Findings details by month - show after View */}
-        {showSummary && (
-          <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
-            <div className="space-y-3 mb-4">
-              <h2 className="text-lg font-semibold text-primary-600">Findings Details</h2>
-              <div className="flex flex-wrap gap-3 items-center">
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Free text search..."
-                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-60"
-                />
-                <FilterBar
-                  singleMode
-                  definitions={[
-                    { id: 'dept', label: 'Department', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.deptId != null ? resolveDeptName(String(f.deptId), departments) : '')))).filter(Boolean).sort().map(d => ({ value: d, label: d })) },
-                    { id: 'status', label: 'Status', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.status)))).filter(Boolean).sort().map(s => ({ value: String(s).toLowerCase(), label: String(s) })) },
-                    { id: 'severity', label: 'Severity', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.severity)))).filter(Boolean).sort().map(s => ({ value: String(s).toLowerCase(), label: String(s) })) },
-                    { id: 'deadline', label: 'Deadline', type: 'dateRange' }
-                  ]}
-                  active={findingFilters}
-                  onChange={setFindingFilters}
-                />
-                {Object.keys(findingFilters).length > 0 && (
-                  <button onClick={() => setFindingFilters({})} className="text-xs text-gray-500 hover:text-gray-700">Reset filters</button>
-                )}
-              </div>
-            </div>
-
-            {(filteredMonths.length ? filteredMonths : monthsFindings).map((m) => (
-              <div key={m.key} className="mb-6 last:mb-0">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-gray-700">Month {isNaN(m.monthNum) || m.monthNum < 1 ? m.label : m.monthNum}</div>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">Total: {m.total}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Open: {m.open}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700">Closed: {m.closed}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700">Overdue: {m.overdue}</span>
+                  {/* Right: Findings by Department */}
+                  <div className="rounded-lg border border-gray-100 p-4 bg-white">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold text-gray-800">Findings by Department</h3>
+                      <span className="text-[11px] text-gray-500">
+                        Total findings per department.
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="text-left px-3 py-2 text-gray-700">Department</th>
+                            <th className="text-right px-3 py-2 text-gray-700">Findings</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {deptRows.map((it: any, idx: number) => {
+                            const deptIdLike = it.deptId;
+                            const name =
+                              it.deptName ||
+                              (deptIdLike != null
+                                ? resolveDeptName(String(deptIdLike), departments)
+                                : '') ||
+                              it.department ||
+                              '—';
+                            const count = Number(it.count || 0);
+                            const highlight =
+                              count > 0 ? 'text-amber-600 font-semibold' : 'text-gray-700';
+                            return (
+                              <tr key={`${name}-${idx}`}>
+                                <td className="px-3 py-2">{name}</td>
+                                <td className={`px-3 py-2 text-right ${highlight}`}>{count}</td>
+                              </tr>
+                            );
+                          })}
+                          {deptRows.length === 0 && (
+                            <tr>
+                              <td className="px-3 py-2 text-gray-500" colSpan={2}>
+                                No data
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="text-left px-3 py-2 text-gray-700">#</th>
-                        <th className="text-left px-3 py-2 text-gray-700">Title</th>
-                        <th className="text-left px-3 py-2 text-gray-700">Dept</th>
-                        <th className="text-left px-3 py-2 text-gray-700">Severity</th>
-                        <th className="text-left px-3 py-2 text-gray-700">Status</th>
-                        <th className="text-left px-3 py-2 text-gray-700">Deadline</th>
-                        <th className="text-left px-3 py-2 text-gray-700">Progress</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {(filteredMonths.length ? m.items : m.items).map((f: any, idx: number) => (
-                        <tr key={f.findingId || idx} className="hover:bg-gray-50">
-                          <td className="px-3 py-2">{idx + 1}</td>
-                          <td className="px-3 py-2 font-medium text-gray-900">{f.title || '—'}</td>
-                          <td className="px-3 py-2">{
-                            (f.deptId != null ? resolveDeptName(String(f.deptId), departments) : '—') || '—'
-                          }</td>
-                          <td className="px-3 py-2">
-                            <span
-                              className="px-2 py-0.5 rounded-full text-xs font-medium border"
-                              style={{ borderColor: '#e5e7eb', color: severityColor(String(f.severity)) }}
-                            >
-                              {f.severity || '—'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">{f.status || '—'}</td>
-                          <td className="px-3 py-2">{f.deadline ? new Date(f.deadline).toLocaleDateString() : '—'}</td>
-                          <td className="px-3 py-2 w-32">
-                            {typeof f?.progressPercent === 'number' ? (
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-1.5 rounded-full bg-primary-500"
-                                    style={{ width: `${Math.min(Math.max(f.progressPercent, 0), 100)}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs text-gray-600 min-w-[2.5rem] text-right">
-                                  {Math.round(f.progressPercent)}%
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-gray-400">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                      {m.items.length === 0 && (
-                        <tr>
-                          <td colSpan={7} className="px-3 py-4 text-center text-gray-500">No data available.</td>
-                        </tr>
+                {/* Findings details by month */}
+                <div className="mt-8 pt-4 border-t border-gray-100">
+                  <div className="space-y-3 mb-4">
+                    <h2 className="text-lg font-semibold text-primary-600">Findings Details</h2>
+                    <div className="flex flex-wrap gap-3 items-center">
+                      <input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        placeholder="Search finding..."
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-60"
+                      />
+                      <FilterBar
+                        singleMode
+                        definitions={[
+                          { id: 'dept', label: 'Department', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.deptId != null ? resolveDeptName(String(f.deptId), departments) : '')))).filter(Boolean).sort().map(d => ({ value: d, label: d })) },
+                          { id: 'status', label: 'Status', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.status)))).filter(Boolean).sort().map(s => ({ value: String(s).toLowerCase(), label: String(s) })) },
+                          { id: 'severity', label: 'Severity', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.severity)))).filter(Boolean).sort().map(s => ({ value: String(s).toLowerCase(), label: String(s) })) },
+                          { id: 'deadline', label: 'Deadline', type: 'dateRange' }
+                        ]}
+                        active={findingFilters}
+                        onChange={setFindingFilters}
+                      />
+                      {Object.keys(findingFilters).length > 0 && (
+                        <button onClick={() => setFindingFilters({})} className="text-xs text-gray-500 hover:text-gray-700">
+                          Reset filters
+                        </button>
                       )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))}
+                    </div>
+                  </div>
 
-            {(!monthsFindings || monthsFindings.length === 0) && (
-              <div className="text-sm text-center text-gray-500">No data available.</div>
+                  {(filteredMonths.length ? filteredMonths : monthsFindings).map((m) => (
+                    <div key={m.key} className="mb-6 last:mb-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-700">
+                          Month {isNaN(m.monthNum) || m.monthNum < 1 ? m.label : m.monthNum}
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                            Total: {m.total}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                            Open: {m.open}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700">
+                            Closed: {m.closed}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700">
+                            Overdue: {m.overdue}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="text-left px-3 py-2 text-gray-700">#</th>
+                              <th className="text-left px-3 py-2 text-gray-700">Title</th>
+                              <th className="text-left px-3 py-2 text-gray-700">Dept</th>
+                              <th className="text-left px-3 py-2 text-gray-700">Severity</th>
+                              <th className="text-left px-3 py-2 text-gray-700">Status</th>
+                              <th className="text-left px-3 py-2 text-gray-700">Deadline</th>
+                              <th className="text-left px-3 py-2 text-gray-700">Progress</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {(filteredMonths.length ? m.items : m.items).map((f: any, idx: number) => (
+                              <tr key={f.findingId || idx} className="hover:bg-gray-50">
+                                <td className="px-3 py-2">{idx + 1}</td>
+                                <td className="px-3 py-2 font-medium text-gray-900">
+                                  {f.title || '—'}
+                                </td>
+                                <td className="px-3 py-2">
+                                  {(f.deptId != null ? resolveDeptName(String(f.deptId), departments) : '—') || '—'}
+                                </td>
+                                <td className="px-3 py-2">
+                                  <span
+                                    className="px-2 py-0.5 rounded-full text-xs font-medium border"
+                                    style={{
+                                      borderColor: '#e5e7eb',
+                                      color: severityColor(String(f.severity)),
+                                    }}
+                                  >
+                                    {f.severity || '—'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2">{f.status || '—'}</td>
+                                <td className="px-3 py-2">
+                                  {f.deadline ? new Date(f.deadline).toLocaleDateString() : '—'}
+                                </td>
+                                <td className="px-3 py-2 w-32">
+                                  {typeof f?.progressPercent === 'number' ? (
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                        <div
+                                          className="h-1.5 rounded-full bg-primary-500"
+                                          style={{
+                                            width: `${Math.min(
+                                              Math.max(f.progressPercent, 0),
+                                              100
+                                            )}%`,
+                                          }}
+                                        />
+                                      </div>
+                                      <span className="text-xs text-gray-600 min-w-[2.5rem] text-right">
+                                        {Math.round(f.progressPercent)}%
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                            {m.items.length === 0 && (
+                              <tr>
+                                <td
+                                  colSpan={7}
+                                  className="px-3 py-4 text-center text-gray-500"
+                                >
+                                  No data available.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+
+                  {(!monthsFindings || monthsFindings.length === 0) && (
+                    <div className="text-sm text-center text-gray-500">No data available.</div>
+                  )}
+                </div>
+              </>
             )}
-          </div>
+
+            {/* TAB 2: Checklist templates & items */}
+            {summaryTab === 'checklist' && (
+              <>
+                {/* Checklist KPI */}
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <SummaryCard
+                    title="Checklist Overdue"
+                    value={checklistOverview.totalOverdue}
+                    valueClassName="text-red-600"
+                  />
+                  <SummaryCard
+                    title="Checklist Compliant"
+                    value={checklistOverview.totalCompliant}
+                    valueClassName="text-emerald-600"
+                  />
+                </div>
+
+                {/* Checklist overview by department */}
+                {checklistOverview.overdueByDept.length > 0 && (
+                  <div className="mt-6">
+                    <div className="rounded-lg border border-gray-100 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-700">
+                          Checklist Status by Department
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          Showing only overdue and compliant counts.
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="text-left px-3 py-2 text-gray-700">Department</th>
+                              <th className="text-right px-3 py-2 text-gray-700">Overdue Items</th>
+                              <th className="text-right px-3 py-2 text-gray-700">Compliant Items</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {checklistOverview.overdueByDept.map((row) => (
+                              <tr key={row.deptId || row.deptName}>
+                                <td className="px-3 py-2">{row.deptName}</td>
+                                <td className="px-3 py-2 text-right text-red-600 font-semibold">
+                                  {row.overdue}
+                                </td>
+                                <td className="px-3 py-2 text-right text-emerald-600 font-semibold">
+                                  {row.compliant}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Overdue checklist items table */}
+                {checklistOverview.overdueItems.length > 0 && (
+                  <div className="mt-8 pt-4 border-t border-gray-100">
+                    <div className="rounded-lg border border-gray-100 p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-semibold text-gray-700">
+                          Overdue Checklist Items
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          Only items with status <span className="font-semibold">Overdue</span>.
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto max-h-72">
+                        <table className="min-w-full text-xs">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-gray-700">#</th>
+                              <th className="px-3 py-2 text-left text-gray-700">Department</th>
+                              <th className="px-3 py-2 text-left text-gray-700">Template / Section</th>
+                              <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                              <th className="px-3 py-2 text-left text-gray-700">Due date</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {checklistOverview.overdueItems.map((item: any, idx: number) => {
+                              // Use section as functional department name for checklist context
+                              const deptName =
+                                item.section ||
+                                item.departmentName ||
+                                item.deptName ||
+                                item.department ||
+                                '—';
+                              const section =
+                                item.templateName ||
+                                item.templateTitle ||
+                                item.template ||
+                                item.section ||
+                                '—';
+                              const question =
+                                item.questionTextSnapshot ||
+                                item.questionText ||
+                                item.title ||
+                                '—';
+                              const due =
+                                item.dueDate ||
+                                item.deadline ||
+                                item.due ||
+                                item.targetDate ||
+                                null;
+                              const dueDisplay = due
+                                ? new Date(due).toLocaleDateString()
+                                : '—';
+
+                              return (
+                                <tr
+                                  key={item.auditChecklistItemId || item.itemId || idx}
+                                  className="hover:bg-gray-50"
+                                >
+                                  <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
+                                  <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
+                                  <td className="px-3 py-2 whitespace-nowrap">{section}</td>
+                                  <td className="px-3 py-2">
+                                    <span className="line-clamp-2">{question}</span>
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap text-red-600 font-medium">
+                                    {dueDisplay}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
 
         {/* <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6">
