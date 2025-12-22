@@ -28,6 +28,16 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
 }) => {
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
   const [usedTemplateIds, setUsedTemplateIds] = useState<Set<string>>(new Set());
+  const templateDeptMap = useMemo(() => {
+    const map: Record<string, string | undefined> = {};
+    (checklistTemplates || []).forEach((tpl: any) => {
+      const id = String(tpl.templateId || tpl.id || tpl.$id || '');
+      if (!id) return;
+      const deptId = tpl.deptId != null ? String(tpl.deptId) : undefined;
+      map[id] = deptId;
+    });
+    return map;
+  }, [checklistTemplates]);
 
   // Load used templates for selected departments (không filter theo thời gian, chỉ filter theo department)
   useEffect(() => {
@@ -221,12 +231,28 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
   const handleTemplateClick = (templateId: string) => {
     const normalizedId = String(templateId);
     const isSelected = selectedTemplateIds.includes(normalizedId);
+    const templateDeptId = templateDeptMap[normalizedId];
 
-    // Toggle selection
-    if (isSelected) {
-      onSelectionChange(selectedTemplateIds.filter((id) => id !== normalizedId));
+    // Department level: only 1 template per department
+    if (level === 'department' && templateDeptId) {
+      if (isSelected) {
+        // Deselect current
+        onSelectionChange(selectedTemplateIds.filter((id) => id !== normalizedId));
+      } else {
+        // Replace any selection from the same department
+        const next = selectedTemplateIds.filter(
+          (id) => templateDeptMap[String(id)] !== templateDeptId
+        );
+        next.push(normalizedId);
+        onSelectionChange(next);
+      }
     } else {
-      onSelectionChange([...selectedTemplateIds, normalizedId]);
+      // Other levels: allow multi-select toggle
+      if (isSelected) {
+        onSelectionChange(selectedTemplateIds.filter((id) => id !== normalizedId));
+      } else {
+        onSelectionChange([...selectedTemplateIds, normalizedId]);
+      }
     }
 
     // Toggle expansion
@@ -247,7 +273,7 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
           </label>
           <p className="text-xs text-gray-500 mb-2">
             {level === 'department' && selectedDeptIds.length > 0
-              ? `You must select at least one template for each selected department (${selectedDeptIds.length} department(s) selected). The first selection will be treated as the primary template for summary info.`
+              ? `You must select exactly one template for each selected department (${selectedDeptIds.length} department(s) selected). The first selection will be treated as the primary template for summary info.`
               : 'You can select multiple templates. The first selection will be treated as the primary template for summary info.'}
           </p>
           {level === 'department' && selectedDeptIds.length > 0 && usedTemplateIds.size > 0 && (
@@ -264,7 +290,7 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
             </div>
           )}
           {/* Select All / Clear All for currently visible templates */}
-          {filteredTemplates.length > 0 && (
+          {filteredTemplates.length > 0 && level !== 'department' && (
             <div className="mb-2 flex items-center justify-end">
               {(() => {
                 const allIds = filteredTemplates.map((t: any) =>

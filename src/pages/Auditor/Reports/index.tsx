@@ -44,7 +44,7 @@ const SQAStaffReports = () => {
   
   // Extension request states
   const [extensionRequests, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
-  const [updatingOverdue, setUpdatingOverdue] = useState<string>('');
+  
 
   // Chart datasets
   const [lineData, setLineData] = useState<Array<{ month: string; count: number }>>([]);
@@ -671,24 +671,24 @@ const SQAStaffReports = () => {
   // Now we allow any team member (already filtered in `reloadReports`) once the report is Closed/Completed.
 
   // Handle update overdue items after extension approved
-  const handleUpdateOverdueItems = async () => {
-    if (!selectedAuditId) return;
+  // const handleUpdateOverdueItems = async () => {
+  //   if (!selectedAuditId) return;
     
-    setUpdatingOverdue(selectedAuditId);
-    try {
-      const result = await updateOverdueToActiveByAuditId(selectedAuditId);
-      toast.success(`Successfully updated ${result.updatedCount || 0} checklist item(s) from Overdue to Active.`);
-      // Reload summary to reflect changes
-      const sum = await getAuditSummary(selectedAuditId);
-      setSummary(sum);
-    } catch (err: any) {
-      console.error('Failed to update overdue items:', err);
-      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to update overdue items';
-      toast.error(errorMessage);
-    } finally {
-      setUpdatingOverdue('');
-    }
-  };
+  //   setUpdatingOverdue(selectedAuditId);
+  //   try {
+  //     const result = await updateOverdueToActiveByAuditId(selectedAuditId);
+  //     toast.success(`Successfully updated ${result.updatedCount || 0} checklist item(s) from Overdue to Active.`);
+  //     // Reload summary to reflect changes
+  //     const sum = await getAuditSummary(selectedAuditId);
+  //     setSummary(sum);
+  //   } catch (err: any) {
+  //     console.error('Failed to update overdue items:', err);
+  //     const errorMessage = err?.response?.data?.message || err?.message || 'Failed to update overdue items';
+  //     toast.error(errorMessage);
+  //   } finally {
+  //     setUpdatingOverdue('');
+  //   }
+  // };
 
   const handleSubmitToLead = async () => {
     if (!selectedAuditId) return;
@@ -1015,22 +1015,23 @@ const SQAStaffReports = () => {
 
         {audits.length > 0 && selectedAuditId ? (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <LineChartCard
+            {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6"> */}
+              {/* <LineChartCard
                 title="Findings (Monthly)"
                 data={lineData}
                 xAxisKey="month"
                 lines={[{ dataKey: 'count', stroke: '#0369a1', name: 'Findings' }]}
-              />
-              <PieChartCard title="Level of Findings (Monthly)" data={pieData} />
-            </div>
-
-            <BarChartCard
+              /> */}
+              <PieChartCard title="Severity of Findings" data={pieData} />
+              <BarChartCard
               title="Number of Findings by Department (Monthly)"
               data={barData}
               xAxisKey="department"
               bars={[{ dataKey: 'count', fill: '#0369a1', name: 'Findings' }]}
             />
+            {/* </div> */}
+
+            
           </>
         ) : audits.length === 0 ? (
           <div className="bg-yellow-50 border border-yellow-100 text-yellow-700 text-sm rounded-xl px-4 py-3">
