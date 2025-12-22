@@ -111,7 +111,7 @@ export default function AuditAssignment() {
         // Show audits with status "Approved" or "InProgress"
         const filteredAudits = (Array.isArray(auditsList) ? auditsList : []).filter((audit: Audit) => {
           const statusLower = (audit.status || '').toLowerCase().trim();
-          return statusLower === 'approved' || statusLower === 'inprogress';
+          return  statusLower === 'inprogress';
         });
         setAudits(filteredAudits);
       } catch (err: any) {
