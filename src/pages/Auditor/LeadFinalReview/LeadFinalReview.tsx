@@ -9,7 +9,7 @@ import {
   rejectFindingActionHigherLevel,
 } from '../../../api/findings';
 import { getActionsByFinding } from '../../../api/actions';
-import { getAttachments } from '../../../api/attachments';
+import { getAttachments, updateAttachmentStatus } from '../../../api/attachments';
 import { getUserById } from '../../../api/adminUsers';
 import { getAuditPlanById } from '../../../api/audits';
 import { getDepartments } from '../../../api/departments';
@@ -395,10 +395,48 @@ export default function LeadFinalReview() {
     setProcessingAction(true);
     try {
       if (feedbackType === 'approve') {
+        // IMPORTANT: Approve only attachments with status "Open" before approving the action
+        try {
+          const attachments = await getAttachments('Action', selectedAction.actionId);
+          const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
+          const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
+          
+          console.log(`📋 [LeadFinalReview] Approving action: ${selectedAction.actionId}`);
+          console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`);
+          console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`);
+          
+          if (openAttachments.length > 0) {
+            console.log(`✅ [LeadFinalReview] Approving ${openAttachments.length} attachment(s) with "Open" status...`);
+            const approvePromises = openAttachments.map(async (attachment) => {
+              try {
+                await updateAttachmentStatus(attachment.attachmentId, 'Approved');
+                console.log(`  ✓ Approved attachment: ${attachment.fileName}`);
+              } catch (err: any) {
+                console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
+              }
+            });
+            await Promise.all(approvePromises);
+            console.log(`✅ [LeadFinalReview] Approved ${openAttachments.length} attachment(s)`);
+          }
+        } catch (attErr) {
+          console.warn('Could not load/approve attachments:', attErr);
+        }
+        
         await approveFindingActionHigherLevel(selectedAction.actionId, feedbackText || '');
         toast.success('Action approved (Lead)!');
       } else {
         await rejectFindingActionHigherLevel(selectedAction.actionId, feedbackText.trim());
+        
+        // Reset progress to 0 when action is rejected
+        try {
+          const { updateActionProgressPercent } = await import('../../../api/actions');
+          await updateActionProgressPercent(selectedAction.actionId, 0);
+          console.log('✅ [LeadFinalReview] Progress reset to 0 after rejection');
+        } catch (progressError: any) {
+          console.error('⚠️ [LeadFinalReview] Failed to reset progress:', progressError);
+          // Don't fail the whole operation if progress reset fails
+        }
+        
         toast.success('Action rejected!');
       }
       closeFeedbackModal();

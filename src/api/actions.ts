@@ -102,6 +102,8 @@ export const updateActionStatusReviewed = async (actionId: string): Promise<void
 
 
 // Approve action (Auditee Owner) with feedback (new API)
+// Approve action (AuditeeOwner verifies action)
+// NOTE: Backend should only approve attachments with status "Open", not all attachments
 export const approveActionWithFeedback = async (actionId: string, feedback: string): Promise<void> => {
   await apiClient.post(`/ActionReview/${actionId}/verified`, { Feedback: feedback });
 };

@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { DataTable, type TableColumn } from '../../../../components/DataTable';
 import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../../api/findings';
-import { getActionsByFinding, type Action } from '../../../../api/actions';
+import { getActionsByFinding, updateActionProgressPercent, type Action } from '../../../../api/actions';
+import { getAttachments, updateAttachmentStatus } from '../../../../api/attachments';
 import { toast } from 'react-toastify';
 import type { Finding } from '../../../../api/findings';
 
@@ -108,10 +109,47 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
     setProcessingAction(true);
     try {
       if (feedbackType === 'approve') {
+        // IMPORTANT: Approve only attachments with status "Open" before approving the action
+        try {
+          const attachments = await getAttachments('Action', selectedAction.actionId);
+          const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
+          const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
+          
+          console.log(`📋 [FindingsTab] Approving action: ${selectedAction.actionId}`);
+          console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`);
+          console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`);
+          
+          if (openAttachments.length > 0) {
+            console.log(`✅ [FindingsTab] Approving ${openAttachments.length} attachment(s) with "Open" status...`);
+            const approvePromises = openAttachments.map(async (attachment) => {
+              try {
+                await updateAttachmentStatus(attachment.attachmentId, 'Approved');
+                console.log(`  ✓ Approved attachment: ${attachment.fileName}`);
+              } catch (err: any) {
+                console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
+              }
+            });
+            await Promise.all(approvePromises);
+            console.log(`✅ [FindingsTab] Approved ${openAttachments.length} attachment(s)`);
+          }
+        } catch (attErr) {
+          console.warn('Could not load/approve attachments:', attErr);
+        }
+        
         await approveFindingActionHigherLevel(selectedAction.actionId, feedbackText || '');
         toast.success('Action approved successfully');
       } else {
         await rejectFindingActionHigherLevel(selectedAction.actionId, feedbackText);
+        
+        // Reset progress to 0 when action is rejected
+        try {
+          await updateActionProgressPercent(selectedAction.actionId, 0);
+          console.log('✅ [FindingsTab] Progress reset to 0 after rejection');
+        } catch (progressError: any) {
+          console.error('⚠️ [FindingsTab] Failed to reset progress:', progressError);
+          // Don't fail the whole operation if progress reset fails
+        }
+        
         toast.success('Action rejected successfully');
       }
       

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { toast } from 'react-toastify';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../api/findings';
+import { updateActionProgressPercent } from '../../../api/actions';
+import { getAttachments, updateAttachmentStatus } from '../../../api/attachments';
 
 interface LeadAuditorActionReviewModalProps {
   isOpen: boolean;
@@ -28,6 +30,32 @@ export default function LeadAuditorActionReviewModal({
     setProcessing(true);
     try {
       console.log('📤 [LeadAuditor] Approving action:', actionIdParam);
+      
+      // IMPORTANT: Approve only attachments with status "Open" before approving the action
+      try {
+        const attachments = await getAttachments('Action', actionIdParam);
+        const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
+        const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
+        
+        console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`);
+        console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`);
+        
+        if (openAttachments.length > 0) {
+          console.log(`✅ [LeadAuditor] Approving ${openAttachments.length} attachment(s) with "Open" status...`);
+          const approvePromises = openAttachments.map(async (attachment) => {
+            try {
+              await updateAttachmentStatus(attachment.attachmentId, 'Approved');
+              console.log(`  ✓ Approved attachment: ${attachment.fileName}`);
+            } catch (err: any) {
+              console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
+            }
+          });
+          await Promise.all(approvePromises);
+          console.log(`✅ [LeadAuditor] Approved ${openAttachments.length} attachment(s)`);
+        }
+      } catch (attErr) {
+        console.warn('Could not load/approve attachments:', attErr);
+      }
       
       await approveFindingActionHigherLevel(actionIdParam, feedback || '');
       
@@ -60,6 +88,15 @@ export default function LeadAuditorActionReviewModal({
       console.log('📤 [LeadAuditor] Rejecting action:', actionIdParam);
       
       await rejectFindingActionHigherLevel(actionIdParam, feedback.trim());
+      
+      // Reset progress to 0 when action is rejected
+      try {
+        await updateActionProgressPercent(actionIdParam, 0);
+        console.log('✅ [LeadAuditor] Progress reset to 0 after rejection');
+      } catch (progressError: any) {
+        console.error('⚠️ [LeadAuditor] Failed to reset progress:', progressError);
+        // Don't fail the whole operation if progress reset fails
+      }
       
       toast.success('Action rejected successfully!');
       

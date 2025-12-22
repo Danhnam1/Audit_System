@@ -116,3 +116,9 @@ export const getAttachments = async (entityType: string, entityId: string): Prom
     isArchived: att.isArchived || false,
   }));
 };
+
+// Update attachment status
+// NOTE: This API may need to be implemented on the backend
+export const updateAttachmentStatus = async (attachmentId: string, status: string): Promise<void> => {
+  await apiClient.put(`/admin/AdminAttachment/${attachmentId}/status`, { status });
+};

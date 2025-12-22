@@ -664,6 +664,19 @@ const DepartmentChecklist = () => {
     }
   };
 
+  // Check if all actions for a finding are closed
+  const areAllActionsClosed = (findingId: string): boolean => {
+    const actions = findingActionsMap[findingId] || [];
+    if (actions.length === 0) return false; // No actions means not all closed
+    
+    // Check if all actions are closed
+    return actions.every(action => {
+      const status = action.status?.toLowerCase() || '';
+      const isClosed = status === 'closed' || action.closedAt !== null;
+      return isClosed;
+    });
+  };
+
   // Get finding status based on actions
   const getFindingStatus = (findingId: string): { status: string; color: string } | null => {
     const actions = findingActionsMap[findingId] || [];
@@ -687,6 +700,25 @@ const DepartmentChecklist = () => {
     }
 
     return null;
+  };
+
+  // Get display status for finding - override "Closed" if not all actions are closed
+  const getDisplayStatus = (finding: Finding): string => {
+    const originalStatus = finding.status || '';
+    const statusLower = originalStatus.toLowerCase();
+    
+    // If status is "Closed", check if all actions are actually closed
+    if (statusLower === 'closed') {
+      const allClosed = areAllActionsClosed(finding.findingId);
+      if (!allClosed) {
+        // Not all actions are closed, so don't show "Closed"
+        // Return a status based on actions or keep original if no actions
+        const actionStatus = getFindingStatus(finding.findingId);
+        return actionStatus?.status || 'Open';
+      }
+    }
+    
+    return originalStatus;
   };
 
   const handleViewFindingActions = async (finding: Finding) => {
@@ -1178,8 +1210,8 @@ const DepartmentChecklist = () => {
                                 }`}>
                                 {finding.severity || 'N/A'}
                               </span>
-                              <p className={`text-xs  sm:text-sm line-clamp-2 font-medium ${getStatusBadgeColor(finding.status)}`}>
-                                {finding.status || 'No status'}
+                              <p className={`text-xs  sm:text-sm line-clamp-2 font-medium ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
+                                {getDisplayStatus(finding) || 'No status'}
                               </p>
                             </div>
                           </div>

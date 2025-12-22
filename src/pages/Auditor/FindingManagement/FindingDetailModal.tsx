@@ -942,64 +942,89 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   </div>
                                 )}
                                 
-                                {/* History - Inline Display */}
-                                {rc.history && rc.history.length > 0 && (
-                                  <div className="mt-3 pl-10 border-l-2 border-gray-300 pl-4">
-                                    <h5 className="text-xs font-semibold text-gray-600 mb-2 uppercase">History</h5>
-                                    <div className="space-y-2">
-                                      {rc.history.map((log: any) => {
-                                        let oldData: any = {};
-                                        let newData: any = {};
-                                        
-                                        try {
-                                          oldData = JSON.parse(log.oldValue || '{}');
-                                          newData = JSON.parse(log.newValue || '{}');
-                                        } catch (e) {
-                                          console.error('Error parsing log values:', e);
-                                        }
-                                        
-                                        // Only show Name, Description, ReasonReject changes
-                                        const relevantFields = ['Name', 'Description', 'ReasonReject'];
-                                        const changes: Array<{ field: string; oldValue: any; newValue: any }> = [];
-                                        
-                                        relevantFields.forEach(field => {
-                                          if (oldData[field] !== newData[field]) {
-                                            changes.push({
-                                              field: field,
-                                              oldValue: oldData[field],
-                                              newValue: newData[field]
-                                            });
+                                {/* History - Inline Display - Only show if there are logs with actual changes */}
+                                {(() => {
+                                  // First, check if there are any logs with changes
+                                  if (!rc.history || rc.history.length === 0) return null;
+                                  
+                                  const logsWithChanges = rc.history.filter((log: any) => {
+                                    let oldData: any = {};
+                                    let newData: any = {};
+                                    
+                                    try {
+                                      oldData = JSON.parse(log.oldValue || '{}');
+                                      newData = JSON.parse(log.newValue || '{}');
+                                    } catch (e) {
+                                      return false;
+                                    }
+                                    
+                                    // Only show Name, Description, ReasonReject changes
+                                    const relevantFields = ['Name', 'Description', 'ReasonReject'];
+                                    return relevantFields.some(field => oldData[field] !== newData[field]);
+                                  });
+                                  
+                                  // Only render if there are logs with changes
+                                  if (logsWithChanges.length === 0) return null;
+                                  
+                                  return (
+                                    <div className="mt-3 pl-10 border-l-2 border-gray-300 pl-4">
+                                      <h5 className="text-xs font-semibold text-gray-600 mb-2 uppercase">History</h5>
+                                      <div className="space-y-2">
+                                        {logsWithChanges.map((log: any) => {
+                                          let oldData: any = {};
+                                          let newData: any = {};
+                                          
+                                          try {
+                                            oldData = JSON.parse(log.oldValue || '{}');
+                                            newData = JSON.parse(log.newValue || '{}');
+                                          } catch (e) {
+                                            console.error('Error parsing log values:', e);
+                                            return null;
                                           }
-                                        });
-                                        
-                                        if (changes.length === 0) return null;
-                                        
-                                        return (
-                                          <div key={log.logId} className="bg-gray-50 border border-gray-200 rounded p-3 text-xs">
-                                            <div className="text-gray-500 mb-2">
-                                              {new Date(log.performedAt).toLocaleString('en-US', {
-                                                month: 'short',
-                                                day: 'numeric',
-                                                hour: '2-digit',
-                                                minute: '2-digit'
-                                              })}
-                                            </div>
-                                            {changes.map((change, idx) => (
-                                              <div key={idx} className="mb-2 last:mb-0">
-                                                <span className="font-medium text-gray-700">{change.field}:</span>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                  <span className="text-gray-500">{change.oldValue || 'empty'}</span>
-                                                  <span className="text-gray-400">→</span>
-                                                  <span className="text-gray-900 font-medium">{change.newValue || 'empty'}</span>
-                                                </div>
+                                          
+                                          // Only show Name, Description, ReasonReject changes
+                                          const relevantFields = ['Name', 'Description', 'ReasonReject'];
+                                          const changes: Array<{ field: string; oldValue: any; newValue: any }> = [];
+                                          
+                                          relevantFields.forEach(field => {
+                                            if (oldData[field] !== newData[field]) {
+                                              changes.push({
+                                                field: field,
+                                                oldValue: oldData[field],
+                                                newValue: newData[field]
+                                              });
+                                            }
+                                          });
+                                          
+                                          if (changes.length === 0) return null;
+                                          
+                                          return (
+                                            <div key={log.logId} className="bg-gray-50 border border-gray-200 rounded p-3 text-xs">
+                                              <div className="text-gray-500 mb-2">
+                                                {new Date(log.performedAt).toLocaleString('en-US', {
+                                                  month: 'short',
+                                                  day: 'numeric',
+                                                  hour: '2-digit',
+                                                  minute: '2-digit'
+                                                })}
                                               </div>
-                                            ))}
-                                          </div>
-                                        );
-                                      })}
+                                              {changes.map((change, idx) => (
+                                                <div key={idx} className="mb-2 last:mb-0">
+                                                  <span className="font-medium text-gray-700">{change.field}:</span>
+                                                  <div className="flex items-center gap-2 mt-1">
+                                                    <span className="text-gray-500">{change.oldValue || 'empty'}</span>
+                                                    <span className="text-gray-400">→</span>
+                                                    <span className="text-gray-900 font-medium">{change.newValue || 'empty'}</span>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  );
+                                })()}
                                 
                                 <div className="flex items-center justify-between gap-4 mt-3 pl-10">
                                   <span className="flex items-center gap-1 text-xs text-gray-500">

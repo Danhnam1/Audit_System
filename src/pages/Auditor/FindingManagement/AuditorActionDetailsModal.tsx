@@ -28,7 +28,8 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
         getAttachments('Action', actionId),
       ]);
       setAction(actionData);
-      setAttachments(Array.isArray(attachmentsData) ? attachmentsData.filter(att => att.status?.toLowerCase() !== 'rejected') : []);
+      // Show all attachments, including old evidence when action is rejected
+      setAttachments(Array.isArray(attachmentsData) ? attachmentsData : []);
     } catch (err: any) {
       console.error('Failed to load action details', err);
       toast.error('Failed to load action details: ' + (err?.message || 'Unknown error'));
@@ -58,6 +59,47 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
+  // Get status badge for attachment
+  const getAttachmentStatusBadge = (status?: string) => {
+    if (!status) return null;
+    const statusLower = status.toLowerCase();
+    
+    if (statusLower === 'rejected') {
+      return (
+        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded border border-red-300 flex-shrink-0">
+          Rejected
+        </span>
+      );
+    }
+    if (statusLower === 'approved') {
+      return (
+        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-300 flex-shrink-0">
+          Approved
+        </span>
+      );
+    }
+    if (statusLower === 'Completed') {
+      return (
+        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-300 flex-shrink-0">
+          Approved
+        </span>
+      );
+    }
+    if (statusLower === 'open') {
+      return (
+        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded border border-blue-300 flex-shrink-0">
+          Open
+        </span>
+      );
+    }
+    // Default: show status as-is
+    return (
+      <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded border border-gray-300 flex-shrink-0">
+        {status}
+      </span>
+    );
+  };
+
   const getStatusColor = (status: string) => {
     const statusLower = status?.toLowerCase() || '';
     if (statusLower === 'open' || statusLower === 'pending') {
@@ -72,8 +114,8 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
     if (statusLower === 'approved' || statusLower === 'verified') {
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
     }
-    if (statusLower === 'completed') {
-      return 'bg-teal-100 text-teal-800 border-teal-200';
+    if (statusLower === 'Completed') {
+      return 'bg-green-100 text-green-800 border-green-200';
     }
     if (statusLower === 'rejected') {
       return 'bg-red-100 text-red-800 border-red-200';
@@ -287,37 +329,121 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
                       <p className="text-gray-500 font-medium">No attachments available</p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 gap-3">
-                      {attachments.map((att) => (
-                        <div
-                          key={att.attachmentId}
-                          className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group"
-                        >
-                          <div className="flex-shrink-0">
-                            {getFileIcon(att.fileName)}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-                              {att.fileName}
-                            </p>
-                            <p className="text-sm text-gray-500 mt-0.5">
-                              {formatFileSize(att.fileSize || 0)} • Uploaded {formatDate(att.uploadedAt)}
-                            </p>
-                          </div>
-                          <a
-                            href={att.filePath}
-                            download={att.fileName}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm hover:shadow-md flex items-center gap-2 group"
+                    <div className="space-y-4">
+                      {[...attachments].sort((a, b) => {
+                        // Sort: Rejected attachments first, then others
+                        const aIsRejected = a.status?.toLowerCase() === 'rejected';
+                        const bIsRejected = b.status?.toLowerCase() === 'rejected';
+                        if (aIsRejected && !bIsRejected) return -1;
+                        if (!aIsRejected && bIsRejected) return 1;
+                        return 0;
+                      }).map((att) => {
+                        const isImage = att.contentType?.toLowerCase().startsWith('image/');
+                        const filePath = att.filePath || att.blobPath || '';
+                        
+                        // If it's an image, show image preview
+                        if (isImage && filePath) {
+                          return (
+                            <div
+                              key={att.attachmentId}
+                              className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-colors"
+                            >
+                              {/* Image Header */}
+                              <div className="p-4 border-b-2 border-gray-200 bg-white">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-base font-bold text-gray-900 truncate">{att.fileName}</p>
+                                        {getAttachmentStatusBadge(att.status)}
+                                      </div>
+                                      <p className="text-sm text-gray-500 font-medium">{formatFileSize(att.fileSize || 0)}</p>
+                                    </div>
+                                  </div>
+                                  <a
+                                    href={filePath}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex-shrink-0 ml-3 p-2.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200"
+                                    title="Open image in new tab"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                  </a>
+                                </div>
+                              </div>
+                              {/* Image Preview - Full width, good quality */}
+                              <div className="relative bg-gray-100">
+                                <img
+                                  src={filePath}
+                                  alt={att.fileName}
+                                  className="w-full h-auto max-h-96 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                                  onError={(e) => {
+                                    console.error('Image load error:', filePath);
+                                    const target = e.target as HTMLImageElement;
+                                    const parent = target.parentElement;
+                                    if (parent) {
+                                      parent.innerHTML = `
+                                        <div class="p-8 text-center text-gray-500">
+                                          <svg class="w-16 h-16 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                          </svg>
+                                          <p class="text-base font-medium">Image failed to load</p>
+                                        </div>
+                                      `;
+                                    }
+                                  }}
+                                  onClick={() => {
+                                    // Open image in new tab when clicked
+                                    window.open(filePath, '_blank');
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        }
+                        
+                        // Non-image files
+                        return (
+                          <div
+                            key={att.attachmentId}
+                            className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Download
-                          </a>
-                        </div>
-                      ))}
+                            <div className="flex-shrink-0">
+                              {getFileIcon(att.fileName)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                                  {att.fileName}
+                                </p>
+                                {getAttachmentStatusBadge(att.status)}
+                              </div>
+                              <p className="text-sm text-gray-500 mt-0.5">
+                                {formatFileSize(att.fileSize || 0)} • Uploaded {formatDate(att.uploadedAt)}
+                              </p>
+                            </div>
+                            <a
+                              href={att.filePath}
+                              download={att.fileName}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm hover:shadow-md flex items-center gap-2 group"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                              Download
+                            </a>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

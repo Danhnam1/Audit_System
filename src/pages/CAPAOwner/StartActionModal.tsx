@@ -162,6 +162,11 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
         console.error('Error reloading attachments:', err);
       }
       
+      // Dispatch custom event to notify other components (like FindingsProgress) that action was updated
+      window.dispatchEvent(new CustomEvent('actionUpdated', {
+        detail: { actionId, progress: selectedProgress }
+      }));
+      
       onSuccess();
       handleClose();
     } catch (err: any) {

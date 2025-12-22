@@ -489,15 +489,15 @@ const CAPAOwnerActionDetailModal = ({
                                     </a>
                                   </div>
                                 </div>
-                                {/* Image Preview */}
-                                <div className="p-4 bg-gray-50">
+                                {/* Image Preview - Full width, good quality */}
+                                <div className="relative bg-gray-100">
                                   <img
                                     src={filePath}
                                     alt={attachment.fileName}
-                                    className="w-full h-auto max-h-96 object-contain rounded-lg border border-gray-200 bg-white cursor-pointer hover:opacity-90 transition-opacity"
+                                    className="w-full h-auto max-h-96 object-contain cursor-pointer hover:opacity-90 transition-opacity"
                                     onError={(e) => {
+                                      console.error('Image load error:', filePath);
                                       const target = e.target as HTMLImageElement;
-                                      target.style.display = 'none';
                                       const parent = target.parentElement;
                                       if (parent) {
                                         parent.innerHTML = `
@@ -509,6 +509,10 @@ const CAPAOwnerActionDetailModal = ({
                                           </div>
                                         `;
                                       }
+                                    }}
+                                    onClick={() => {
+                                      // Open image in new tab when clicked
+                                      window.open(filePath, '_blank');
                                     }}
                                   />
                                 </div>
