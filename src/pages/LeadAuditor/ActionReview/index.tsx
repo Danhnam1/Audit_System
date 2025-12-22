@@ -6,6 +6,7 @@ import { getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getActionsByFinding, type Action } from '../../../api/actions';
 import { approveFindingActionHigherLevel } from '../../../api/findings';
+import { getAttachments, updateAttachmentStatus } from '../../../api/attachments';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import FindingDetailModal from '../../Auditor/FindingManagement/FindingDetailModal';
@@ -347,8 +348,50 @@ const ActionReview = () => {
         });
 
         try {
-          // Approve this action
+          // IMPORTANT: Before approving action, we should only approve attachments with status "Open"
+          // Currently, the backend API approveFindingActionHigherLevel may approve all attachments
+          // This is a known issue that needs to be fixed on the backend
+          // For now, we log which attachments should be approved (only "Open" status)
+          try {
+            const attachments = await getAttachments('Action', action.actionId);
+            const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
+            const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
+            
+            console.log(`📋 [Bulk Approve] Action: ${action.title} (${action.actionId})`);
+            console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`, openAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
+            console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`, rejectedAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
+            
+            // IMPORTANT: Approve only attachments with status "Open" before approving the action
+            // This ensures rejected attachments are not approved
+            if (openAttachments.length > 0) {
+              console.log(`✅ [Bulk Approve] Approving ${openAttachments.length} attachment(s) with "Open" status for action: ${action.title}`);
+              const approvePromises = openAttachments.map(async (attachment) => {
+                try {
+                  await updateAttachmentStatus(attachment.attachmentId, 'Approved');
+                  console.log(`  ✓ Approved attachment: ${attachment.fileName}`);
+                } catch (err: any) {
+                  console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
+                  // Continue with other attachments even if one fails
+                }
+              });
+              
+              await Promise.all(approvePromises);
+              console.log(`✅ [Bulk Approve] Approved ${openAttachments.length} attachment(s) for action: ${action.title}`);
+            } else {
+              console.log(`⚠️ [Bulk Approve] No attachments with "Open" status to approve for action: ${action.title}`);
+            }
+          } catch (attErr) {
+            console.warn('Could not load attachments for action:', action.actionId, attErr);
+          }
+          
+          // Now approve the action (backend should not approve rejected attachments)
           await approveFindingActionHigherLevel(action.actionId, approveAllFeedback || '');
+          
+          // Dispatch custom event to notify other components (e.g., CAPA Owner ActionDetailModal) that action was updated
+          window.dispatchEvent(new CustomEvent('actionUpdated', { 
+            detail: { actionId: action.actionId, status: 'approved' } 
+          }));
+          console.log('🚀 [Bulk Approve] Dispatched actionUpdated event for actionId:', action.actionId);
           
           // Add to succeeded list
           succeeded.push({ actionId: action.actionId, title: action.title });

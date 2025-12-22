@@ -45,6 +45,7 @@ const FindingsProgress = () => {
   const [returnedActionsMap, setReturnedActionsMap] = useState<Record<string, Action>>({}); // findingId -> returned action
   const [rejectedActionsMap, setRejectedActionsMap] = useState<Record<string, Action>>({}); // findingId -> rejected action
   const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasApproved: boolean; hasPending: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }>>({}); // findingId -> root cause status
+  const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> all actions
   
   // New states for root cause assignment
   const [findingRootCauses, setFindingRootCauses] = useState<any[]>([]); // Root causes of selected finding
@@ -67,6 +68,62 @@ const FindingsProgress = () => {
   // Helper function to get status badge color
   const getStatusBadgeColor = (status: string) => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
+  };
+
+  // Check if all actions for a finding are closed
+  const areAllActionsClosed = (findingId: string): boolean => {
+    const actions = findingActionsMap[findingId] || [];
+    if (actions.length === 0) return false; // No actions means not all closed
+    
+    // Check if all actions are closed
+    return actions.every(action => {
+      const status = action.status?.toLowerCase() || '';
+      const isClosed = status === 'closed' || action.closedAt !== null;
+      return isClosed;
+    });
+  };
+
+  // Get display status for finding - override "Closed" if not all actions are closed
+  const getDisplayStatus = (finding: Finding): string => {
+    const originalStatus = finding.status || '';
+    const statusLower = originalStatus.toLowerCase();
+    
+    // If status is "Closed", check if all actions are actually closed
+    if (statusLower === 'closed') {
+      const allClosed = areAllActionsClosed(finding.findingId);
+      if (!allClosed) {
+        // Not all actions are closed, determine status based on actions
+        const actions = findingActionsMap[finding.findingId] || [];
+        if (actions.length === 0) {
+          return 'Open'; // No actions yet
+        }
+        
+        // Check action statuses to determine finding status
+        const hasInProgress = actions.some(a => {
+          const status = a.status?.toLowerCase() || '';
+          return status === 'inprogress' || status === 'in progress' || (a.progressPercent > 0 && a.progressPercent < 100);
+        });
+        
+        if (hasInProgress) {
+          return 'In Progress';
+        }
+        
+        const hasReviewed = actions.some(a => a.status?.toLowerCase() === 'reviewed');
+        if (hasReviewed) {
+          return 'Review';
+        }
+        
+        const hasApproved = actions.some(a => a.status?.toLowerCase() === 'approved');
+        if (hasApproved) {
+          return 'Approved';
+        }
+        
+        // Default to Open if we can't determine
+        return 'Open';
+      }
+    }
+    
+    return originalStatus;
   };
 
   // Get user's department ID from token
@@ -124,6 +181,7 @@ const FindingsProgress = () => {
     const usersMap: Record<string, string> = {};
     const returnedMap: Record<string, Action> = {};
     const rejectedMap: Record<string, Action> = {};
+    const actionsMap: Record<string, Action[]> = {};
     
     // Load actions for each finding and get assignedTo
     await Promise.all(
@@ -131,6 +189,9 @@ const FindingsProgress = () => {
         try {
           const actions = await getActionsByFinding(finding.findingId);
           if (actions && actions.length > 0) {
+            // Store all actions for this finding
+            actionsMap[finding.findingId] = actions;
+            
             // Check for returned actions
             const returnedAction = actions.find(a => a.status?.toLowerCase() === 'returned');
             if (returnedAction) {
@@ -173,9 +234,13 @@ const FindingsProgress = () => {
                 usersMap[finding.findingId] = `${userNames[0]} +${userNames.length - 1} others`;
               }
             }
+          } else {
+            // No actions for this finding
+            actionsMap[finding.findingId] = [];
           }
         } catch (err) {
           console.warn(`Failed to load actions for finding ${finding.findingId}`, err);
+          actionsMap[finding.findingId] = [];
         }
       })
     );
@@ -183,56 +248,78 @@ const FindingsProgress = () => {
     setAssignedUsersMap(usersMap);
     setReturnedActionsMap(returnedMap);
     setRejectedActionsMap(rejectedMap);
+    setFindingActionsMap(actionsMap);
+  };
+
+  // Function to reload findings data
+  const reloadFindings = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const deptId = getUserDeptId();
+      if (!deptId) {
+        setError('Department ID not found in token');
+        return;
+      }
+
+      const allFindings = await getFindingsByDepartment(deptId);
+      
+      // Filter findings by auditId if provided
+      let filteredFindings = allFindings;
+      if (auditIdFromState) {
+        console.log(`🔍 Filtering findings by auditId: ${auditIdFromState}`);
+        console.log(`📦 All findings from API:`, allFindings);
+        
+        filteredFindings = allFindings.filter((finding: Finding) => {
+          // Try multiple possible locations for auditId
+          const findingAuditId = finding.auditId || 
+                                 (finding as any).AuditId || 
+                                 (finding as any).auditPlanId ||
+                                 (finding as any).audit?.auditId;
+          
+          console.log(`  - Finding ${finding.findingId}: auditId = ${findingAuditId}`);
+          return String(findingAuditId) === String(auditIdFromState);
+        });
+        console.log(`✅ Filtered findings: ${filteredFindings.length} out of ${allFindings.length} for audit ${auditIdFromState}`);
+      }
+      
+      setFindings(filteredFindings);
+      
+      // Load assigned users and root cause status for findings
+      await loadAssignedUsers(filteredFindings);
+      await loadRootCauseStatus(filteredFindings);
+    } catch (err: any) {
+      console.error('Error fetching findings:', err);
+      setError(err?.message || 'Failed to load findings');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    const fetchFindings = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const deptId = getUserDeptId();
-        if (!deptId) {
-          setError('Department ID not found in token');
-          return;
-        }
+    reloadFindings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auditIdFromState]);
 
-        const allFindings = await getFindingsByDepartment(deptId);
-        
-        // Filter findings by auditId if provided
-        let filteredFindings = allFindings;
-        if (auditIdFromState) {
-          console.log(`🔍 Filtering findings by auditId: ${auditIdFromState}`);
-          console.log(`📦 All findings from API:`, allFindings);
-          
-          filteredFindings = allFindings.filter((finding: Finding) => {
-            // Try multiple possible locations for auditId
-            const findingAuditId = finding.auditId || 
-                                   (finding as any).AuditId || 
-                                   (finding as any).auditPlanId ||
-                                   (finding as any).audit?.auditId;
-            
-            console.log(`  - Finding ${finding.findingId}: auditId = ${findingAuditId}`);
-            return String(findingAuditId) === String(auditIdFromState);
-          });
-          console.log(`✅ Filtered findings: ${filteredFindings.length} out of ${allFindings.length} for audit ${auditIdFromState}`);
-        }
-        
-        setFindings(filteredFindings);
-        
-        // Load assigned users and root cause status for findings
-        await loadAssignedUsers(filteredFindings);
-        await loadRootCauseStatus(filteredFindings);
-      } catch (err: any) {
-        console.error('Error fetching findings:', err);
-        setError(err?.message || 'Failed to load findings');
-      } finally {
-        setLoading(false);
-      }
+  // Listen for action updates from CAPAOwner
+  useEffect(() => {
+    const handleActionUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      console.log('🔄 Action updated event received:', customEvent.detail);
+      // Small delay to ensure backend has updated
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Reload findings to reflect updated action status
+      await reloadFindings();
     };
 
-    fetchFindings();
-  }, [auditIdFromState]);
+    window.addEventListener('actionUpdated', handleActionUpdated);
+
+    return () => {
+      window.removeEventListener('actionUpdated', handleActionUpdated);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -293,8 +380,21 @@ const FindingsProgress = () => {
       try {
         const actions = await getActionsByFinding(findingId);
         if (actions && actions.length > 0) {
-          // Get all root cause IDs that have actions and fetch user info
-          const actionsWithRootCause = actions.filter((action: Action) => action.rootCauseId);
+          // IMPORTANT: Only consider actions that are NOT rejected
+          // When LeadAuditor rejects an action, it should be possible to assign again
+          const validActions = actions.filter((action: Action) => {
+            const statusLower = action.status?.toLowerCase() || '';
+            // Exclude rejected and leadrejected actions
+            return statusLower !== 'rejected' && statusLower !== 'leadrejected';
+          });
+          
+          // Get all root cause IDs that have valid (non-rejected) actions and fetch user info
+          const actionsWithRootCause = validActions.filter((action: Action) => action.rootCauseId);
+          
+          console.log(`📋 [loadFindingRootCauses] Finding ${findingId}:`);
+          console.log(`   Total actions: ${actions.length}`);
+          console.log(`   Valid (non-rejected) actions: ${validActions.length}`);
+          console.log(`   Actions with root cause: ${actionsWithRootCause.length}`);
           
           // Fetch user info for all assigned actions
           await Promise.all(
@@ -678,8 +778,8 @@ const FindingsProgress = () => {
                             </span>
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(finding.status)}`}>
-                              {finding.status || 'N/A'}
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
+                              {getDisplayStatus(finding) || 'N/A'}
                             </span>
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
@@ -959,8 +1059,13 @@ const FindingsProgress = () => {
                         </p>
                         <div className="flex items-center gap-2 text-xs">
                           <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded font-medium">
-                            {findingRootCauses.length} Pending Assignment
+                            {findingRootCauses.length - submittedRootCauseIds.size} Pending Assignment
                           </span>
+                          {submittedRootCauseIds.size > 0 && (
+                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded font-medium">
+                              {submittedRootCauseIds.size} Assigned
+                            </span>
+                          )}
                         </div>
                       </div>
 

@@ -177,12 +177,15 @@ export const deleteFinding = async (findingId: string): Promise<void> => {
 };
 
 // Approve action (Auditor reviews action and approves)
+// NOTE: Backend should only approve attachments with status "Open", not all attachments
 export const approveFindingAction = async (actionId: string, feedback?: string): Promise<void> => {
   await apiClient.post(`/ActionReview/${actionId}/approve`, {
     Feedback: feedback || ''
   });
 };
 
+// Approve action (LeadAuditor reviews action and approves)
+// NOTE: Backend should only approve attachments with status "Open", not all attachments
 export const approveFindingActionHigherLevel = async (actionId: string, feedback?: string): Promise<void> => {
   await apiClient.put(`/ActionReview/${actionId}/approve/higher-level`, {
     feedback: feedback || '',

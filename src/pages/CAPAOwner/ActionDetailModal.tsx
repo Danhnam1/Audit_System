@@ -86,6 +86,39 @@ const ActionDetailModal = ({
     }
   }, [isOpen, selectedActionId, findingId]);
 
+  // Listen for action updates to reload attachments (e.g., when LeadAuditor approves action)
+  useEffect(() => {
+    if (!isOpen || !selectedActionId) return;
+
+    const handleActionUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const updatedActionId = customEvent.detail?.actionId;
+      
+      // Only reload if the updated action matches the current action
+      if (updatedActionId === selectedActionId) {
+        console.log('🔄 [ActionDetailModal] Action updated event received, reloading attachments for action:', selectedActionId);
+        // Wait a bit for backend to update
+        await new Promise(resolve => setTimeout(resolve, 500));
+        // Reload attachments to get updated status
+        try {
+          await loadAttachments(selectedActionId);
+          // Also reload action to get updated status
+          const data = await getActionById(selectedActionId);
+          setAction(data);
+          console.log('✅ [ActionDetailModal] Reloaded action and attachments after update');
+        } catch (err) {
+          console.error('❌ [ActionDetailModal] Error reloading after action update:', err);
+        }
+      }
+    };
+
+    window.addEventListener('actionUpdated', handleActionUpdated as EventListener);
+    
+    return () => {
+      window.removeEventListener('actionUpdated', handleActionUpdated as EventListener);
+    };
+  }, [isOpen, selectedActionId]);
+
   const loadRelatedActions = async () => {
     if (!findingId) {
       console.log('No findingId provided, skipping related actions load');
@@ -209,6 +242,40 @@ const ActionDetailModal = ({
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  // Get status badge for attachment
+  const getAttachmentStatusBadge = (status?: string) => {
+    if (!status) return null;
+    const statusLower = status.toLowerCase();
+    
+    if (statusLower === 'rejected') {
+      return (
+        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded border border-red-300 flex-shrink-0">
+          Rejected
+        </span>
+      );
+    }
+    if (statusLower === 'approved') {
+      return (
+        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-300 flex-shrink-0">
+          Approved
+        </span>
+      );
+    }
+    if (statusLower === 'open') {
+      return (
+        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded border border-blue-300 flex-shrink-0">
+          Open
+        </span>
+      );
+    }
+    // Default: show status as-is
+    return (
+      <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded border border-gray-300 flex-shrink-0">
+        {status}
+      </span>
+    );
   };
 
   if (!isOpen) return null;
@@ -715,7 +782,14 @@ const ActionDetailModal = ({
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        {attachments.map((attachment) => {
+                        {[...attachments].sort((a, b) => {
+                          // Sort: Rejected attachments first, then others
+                          const aIsRejected = a.status?.toLowerCase() === 'rejected';
+                          const bIsRejected = b.status?.toLowerCase() === 'rejected';
+                          if (aIsRejected && !bIsRejected) return -1;
+                          if (!aIsRejected && bIsRejected) return 1;
+                          return 0;
+                        }).map((attachment) => {
                           const isImage = attachment.contentType?.toLowerCase().startsWith('image/');
                           const filePath = attachment.filePath || attachment.blobPath || '';
                           
@@ -736,7 +810,10 @@ const ActionDetailModal = ({
                                         </svg>
                                       </div>
                                       <div className="flex-1 min-w-0">
-                                        <p className="text-base font-bold text-gray-900 truncate">{attachment.fileName}</p>
+                                        <div className="flex items-center gap-2">
+                                          <p className="text-base font-bold text-gray-900 truncate">{attachment.fileName}</p>
+                                          {getAttachmentStatusBadge(attachment.status)}
+                                        </div>
                                         <p className="text-sm text-gray-500 font-medium">{formatFileSize(attachment.fileSize || 0)}</p>
                                       </div>
                                     </div>
@@ -753,15 +830,15 @@ const ActionDetailModal = ({
                                     </a>
                                   </div>
                                 </div>
-                                {/* Image Preview */}
-                                <div className="p-4 bg-gray-50">
+                                {/* Image Preview - Full width, good quality */}
+                                <div className="relative bg-gray-100">
                                   <img
                                     src={filePath}
                                     alt={attachment.fileName}
-                                    className="w-full h-auto max-h-96 object-contain rounded-xl border-2 border-gray-200 bg-white cursor-pointer hover:opacity-90 transition-opacity shadow-md"
+                                    className="w-full h-auto max-h-96 object-contain cursor-pointer hover:opacity-90 transition-opacity"
                                     onError={(e) => {
+                                      console.error('Image load error:', filePath);
                                       const target = e.target as HTMLImageElement;
-                                      target.style.display = 'none';
                                       const parent = target.parentElement;
                                       if (parent) {
                                         parent.innerHTML = `
@@ -773,6 +850,10 @@ const ActionDetailModal = ({
                                           </div>
                                         `;
                                       }
+                                    }}
+                                    onClick={() => {
+                                      // Open image in new tab when clicked
+                                      window.open(filePath, '_blank');
                                     }}
                                   />
                                 </div>
@@ -796,7 +877,14 @@ const ActionDetailModal = ({
                                   </div>
                                   {/* File Info */}
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-base font-bold text-gray-900 truncate">{attachment.fileName}</p>
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-base font-bold text-gray-900 truncate">{attachment.fileName}</p>
+                                      {attachment.status?.toLowerCase() === 'rejected' && (
+                                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded border border-red-300 flex-shrink-0">
+                                          Rejected
+                                        </span>
+                                      )}
+                                    </div>
                                     <p className="text-sm text-gray-500 font-medium">{formatFileSize(attachment.fileSize || 0)}</p>
                                   </div>
                                 </div>

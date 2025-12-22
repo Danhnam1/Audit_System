@@ -60,7 +60,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
         console.log('📦 Raw Actions from API (check rootCauseId field):', JSON.stringify(allActions, null, 2));
         console.log('📊 Total actions received:', allActions.length);
         
-        // Log each action with its details
+        // Log each action with its details, especially status
         allActions.forEach((a: any, index: number) => {
           console.log(`Action ${index + 1}:`, {
             actionId: a.actionId,
@@ -68,10 +68,22 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
             rootCauseId: a.rootCauseId,
             title: a.title,
             status: a.status,
+            statusLower: a.status?.toLowerCase(),
+            isRejected: a.status?.toLowerCase() === 'rejected',
             hasRootCauseId: 'rootCauseId' in a,
             rootCauseValue: a.rootCauseId
           });
         });
+        
+        // Count actions by status
+        const statusCounts: Record<string, number> = {};
+        allActions.forEach((a: any) => {
+          const status = (a.status || 'unknown').toLowerCase();
+          statusCounts[status] = (statusCounts[status] || 0) + 1;
+        });
+        console.log('📊 Actions by status:', statusCounts);
+        console.log('🔍 Rejected actions count:', (statusCounts['rejected'] || 0) + (statusCounts['rejected'] || 0));
+        console.log('🔍 LeadRejected actions count:', statusCounts['leadrejected'] || 0);
         
         // Filter actions by auditId if provided
         let actions = allActions;
@@ -217,8 +229,17 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
         // Filter out actions with status "Archived"
         const statusLower = task.originalStatus?.toLowerCase() || '';
         if (statusLower === 'archived') return false;
-        // Filter actions with status "Rejected"
-        return statusLower === 'rejected';
+        // Filter actions with status "Rejected" or "LeadRejected" (case-insensitive)
+        const isRejected = statusLower === 'rejected' ;
+        if (isRejected) {
+          console.log('✅ Found rejected task:', {
+            actionId: task.actionId,
+            title: task.title,
+            originalStatus: task.originalStatus,
+            statusLower
+          });
+        }
+        return isRejected;
       })
     : activeTab === 'completed'
     ? tasks.filter(task => {
@@ -233,8 +254,22 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
         const statusLower = task.originalStatus?.toLowerCase() || '';
         if (statusLower === 'archived') return false;
         // For action tab, filter actions with status "Reviewed", "Approved", "Active", or "InProgress"
+        // NOTE: Rejected actions should NOT appear in action tab, they should be in reject tab
         return statusLower === 'reviewed' || statusLower === 'approved' || statusLower === 'active' || statusLower === 'inprogress';
       });
+  
+  // Debug logging for filtered tasks
+  useEffect(() => {
+    console.log(`🔍 [AssignedTasks] Tab: ${activeTab}, Total tasks: ${tasks.length}, Filtered: ${filteredTasksByTab.length}`);
+    if (activeTab === 'reject') {
+      console.log('🔍 [Reject Tab] Tasks:', filteredTasksByTab.map(t => ({
+        actionId: t.actionId,
+        title: t.title,
+        originalStatus: t.originalStatus,
+        statusLower: t.originalStatus?.toLowerCase()
+      })));
+    }
+  }, [activeTab, tasks, filteredTasksByTab]);
 
   // Apply search and date filters
   const filteredTasks = filteredTasksByTab.filter(task => {
@@ -759,6 +794,8 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
             onClose={() => {
               setShowActionDetailModal(false);
               setSelectedActionId(null);
+              // Reload tasks when modal closes (in case action was updated elsewhere)
+              handleStartSuccess();
             }}
             actionId={selectedActionId}
           />
