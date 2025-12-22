@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { markChecklistItemCompliant1 } from '../../../api/checklists';
+import { markChecklistItemCompliant, markChecklistItemCompliant1 } from '../../../api/checklists';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { uploadAttachment } from '../../../api/attachments';
 import { useUserId } from '../../../store/useAuthStore';
@@ -51,8 +51,29 @@ const CompliantModal = ({
     return { date, time };
   };
 
-  const { date: complianceDate, time: defaultTime } = getCurrentDateTime();
-  const [complianceTime, setComplianceTime] = useState(defaultTime);
+  const { date: complianceDate } = getCurrentDateTime();
+  const [complianceTime, setComplianceTime] = useState(() => {
+    const now = new Date();
+    return now.toTimeString().slice(0, 5); // HH:MM
+  });
+
+  // Update time to current time when modal opens and keep it updated
+  useEffect(() => {
+    if (isOpen) {
+      // Set initial time
+      const updateTime = () => {
+        const now = new Date();
+        setComplianceTime(now.toTimeString().slice(0, 5));
+      };
+      
+      updateTime();
+      
+      // Update time every second to show real-time
+      const interval = setInterval(updateTime, 1000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isOpen]);
 
   // Load department users when modal opens
   useEffect(() => {
@@ -67,8 +88,20 @@ const CompliantModal = ({
     setLoadingUsers(true);
     try {
       const users = await getAdminUsersByDepartment(deptId);
-      setDepartmentUsers(users);
-      console.log(`Loaded ${users.length} users from department ${deptId}:`, users);
+      // Filter users to only show AuditeeOwner role
+      const auditeeOwners = users.filter(user => user.roleName === 'AuditeeOwner');
+      setDepartmentUsers(auditeeOwners);
+      console.log(`Loaded ${auditeeOwners.length} AuditeeOwner users from department ${deptId} (out of ${users.length} total users):`, auditeeOwners);
+      
+      // Auto-select witness if there's exactly one AuditeeOwner
+      if (auditeeOwners.length === 1 && auditeeOwners[0].userId) {
+        setSelectedWitnesses(auditeeOwners[0].userId);
+        console.log('Auto-selected witness:', auditeeOwners[0].fullName || auditeeOwners[0].email);
+      } else if (auditeeOwners.length > 1 && !selectedWitnesses) {
+        // If multiple AuditeeOwners exist and no selection yet, auto-select the first one
+        setSelectedWitnesses(auditeeOwners[0].userId || '');
+        console.log('Auto-selected first witness:', auditeeOwners[0].fullName || auditeeOwners[0].email);
+      }
     } catch (err: any) {
       console.error('Error loading department users:', err);
     } finally {
@@ -195,9 +228,19 @@ const CompliantModal = ({
       });
       console.log('3. Compliant Payload:', JSON.stringify(compliantData, null, 2));
 
-      // Call API to mark item as compliant
+      // Call API to create compliant record with details
       const response = await markChecklistItemCompliant1(checklistItem.auditItemId, compliantData);
-      console.log('✅ Item marked as compliant:', response);
+      console.log('✅ Compliant record created:', response);
+
+      // Call API to update checklist item status to "Compliant"
+      try {
+        await markChecklistItemCompliant(checklistItem.auditItemId);
+        console.log('✅ Checklist item status updated to Compliant');
+      } catch (statusError: any) {
+        console.warn('⚠️ Failed to update checklist item status:', statusError);
+        // Don't fail the whole operation if status update fails
+        // The compliant record was already created successfully
+      }
 
       // Use auditChecklistItemId from response (GUID string) for file upload
       // NOT the numeric 'id'
@@ -250,7 +293,8 @@ const CompliantModal = ({
       // Reset form
       setReason('');
       setSelectedWitnesses('');
-      setComplianceTime(defaultTime);
+      const now = new Date();
+      setComplianceTime(now.toTimeString().slice(0, 5));
       setFiles([]);
       setFileError('');
       
@@ -297,9 +341,9 @@ const CompliantModal = ({
     if (submitting) return;
 
     // Check if form has any data
+    // Note: complianceTime is always current time (read-only), so we don't check it
     const hasData = reason.trim() !== '' || 
                    selectedWitnesses !== '' || 
-                   complianceTime !== defaultTime ||
                    files.length > 0;
 
     if (hasData) {
@@ -314,7 +358,7 @@ const CompliantModal = ({
   const handleConfirmCancel = () => {
     setReason('');
     setSelectedWitnesses('');
-    setComplianceTime(defaultTime);
+    // Time will be updated automatically by useEffect when modal reopens
     setFiles([]);
     setFileError('');
     setShowCancelConfirmModal(false);
@@ -409,8 +453,8 @@ const CompliantModal = ({
                 <input
                   type="time"
                   value={complianceTime}
-                  onChange={(e) => setComplianceTime(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
                 />
               </div>
             </div>

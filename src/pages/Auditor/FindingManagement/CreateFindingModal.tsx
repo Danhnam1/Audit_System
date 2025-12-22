@@ -59,6 +59,24 @@ const CreateFindingModal = ({
     return now.toTimeString().slice(0, 5);
   });
   const [findingType, setFindingType] = useState('');
+
+  // Update time to current time when modal opens and keep it updated
+  useEffect(() => {
+    if (isOpen) {
+      // Set initial time
+      const updateTime = () => {
+        const now = new Date();
+        setFindingTime(now.toTimeString().slice(0, 5));
+      };
+      
+      updateTime();
+      
+      // Update time every second to show real-time
+      const interval = setInterval(updateTime, 1000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [isOpen]);
   
   // Mock finding types
   const findingTypes = [
@@ -99,8 +117,20 @@ const CreateFindingModal = ({
     setLoadingUsers(true);
     try {
       const users = await getAdminUsersByDepartment(deptId);
-      setDepartmentUsers(users);
-      console.log(`Loaded ${users.length} users from department ${deptId}:`, users);
+      // Filter users to only show AuditeeOwner role
+      const auditeeOwners = users.filter(user => user.roleName === 'AuditeeOwner');
+      setDepartmentUsers(auditeeOwners);
+      console.log(`Loaded ${auditeeOwners.length} AuditeeOwner users from department ${deptId} (out of ${users.length} total users):`, auditeeOwners);
+      
+      // Auto-select witness if there's exactly one AuditeeOwner
+      if (auditeeOwners.length === 1 && auditeeOwners[0].userId) {
+        setWitnesses(auditeeOwners[0].userId);
+        console.log('Auto-selected witness:', auditeeOwners[0].fullName || auditeeOwners[0].email);
+      } else if (auditeeOwners.length > 1 && !witnesses) {
+        // If multiple AuditeeOwners exist and no selection yet, auto-select the first one
+        setWitnesses(auditeeOwners[0].userId || '');
+        console.log('Auto-selected first witness:', auditeeOwners[0].fullName || auditeeOwners[0].email);
+      }
     } catch (err: any) {
       console.error('Error loading department users:', err);
     } finally {
@@ -269,10 +299,7 @@ const CreateFindingModal = ({
       }
     }
     
-    // Validate finding type
-    if (!findingType) {
-      newErrors.findingType = 'Finding Type is required';
-    }
+   
     
     // Validate files - check if at least one file is uploaded
     if (files.length === 0) {
@@ -744,32 +771,7 @@ const CreateFindingModal = ({
               </div>
             </div>
 
-            {/* Finding Type */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Finding Type <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={findingType}
-                onChange={(e) => {
-                  setFindingType(e.target.value);
-                  if (errors.findingType) setErrors(prev => ({ ...prev, findingType: undefined }));
-                }}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                  errors.findingType ? 'border-red-300' : 'border-gray-300'
-                }`}
-              >
-                <option value="">Select finding type</option>
-                {findingTypes.map((type, index) => (
-                  <option key={index} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-              {errors.findingType && (
-                <p className="mt-1 text-sm text-red-600">{errors.findingType}</p>
-              )}
-            </div>
+        
 
             {/* Two-column layout for date/time */}
             <div className="grid grid-cols-2 gap-4">
@@ -794,8 +796,8 @@ const CreateFindingModal = ({
                 <input
                   type="time"
                   value={findingTime}
-                  onChange={(e) => setFindingTime(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
                 />
               </div>
             </div>
