@@ -18,7 +18,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [witnessName, setWitnessName] = useState<string>('');
   const [witnessData, setWitnessData] = useState<any>(null);
   const [departmentName, setDepartmentName] = useState<string>('');
@@ -30,6 +29,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const [rootCauseName, setRootCauseName] = useState<string>('');
   const [rootCauseDescription, setRootCauseDescription] = useState<string>('');
   const [rootCauseCategory, setRootCauseCategory] = useState<string>('Finding');
+  const [customCategory, setCustomCategory] = useState<string>('');
   const [isEditingRootCause, setIsEditingRootCause] = useState(false);
   const [isSavingRootCause, setIsSavingRootCause] = useState(false);
   const [editingRootCauseId, setEditingRootCauseId] = useState<number | null>(null);
@@ -42,6 +42,9 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'details' | 'rootcauses'>('details');
   
   const { role } = useAuthStore();
   const isAuditeeOwner = role === 'AuditeeOwner';
@@ -152,15 +155,12 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   };
 
   const loadAttachments = async () => {
-    setLoadingAttachments(true);
     try {
       const data = await getAttachments('finding', findingId);
       setAttachments(data);
     } catch (err: any) {
       console.error('Error loading attachments:', err);
       // Don't show error for attachments, just log it
-    } finally {
-      setLoadingAttachments(false);
     }
   };
 
@@ -170,8 +170,34 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       return;
     }
 
+    // Validate category
     if (!rootCauseCategory.trim()) {
       showToast('Please select a category', 'error');
+      return;
+    }
+    
+    // If "Other" is selected, validate custom category
+    if (rootCauseCategory === 'Other' && !customCategory.trim()) {
+      showToast('Please enter a custom category name', 'error');
+      return;
+    }
+    
+    // Determine final category value
+    const finalCategory = rootCauseCategory === 'Other' ? customCategory.trim() : rootCauseCategory.trim();
+
+    // Check for duplicate root cause name (case-insensitive)
+    const trimmedName = rootCauseName.trim();
+    const isDuplicate = rootCauses.some((rc: any) => {
+      // When editing, exclude the current root cause from duplicate check
+      if (editingRootCauseId && rc.rootCauseId === editingRootCauseId) {
+        return false;
+      }
+      // Case-insensitive comparison
+      return rc.name?.trim().toLowerCase() === trimmedName.toLowerCase();
+    });
+
+    if (isDuplicate) {
+      showToast('A root cause with this name already exists. Please use a different name.', 'error');
       return;
     }
 
@@ -185,7 +211,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           name: rootCauseName.trim(),
           description: rootCauseDescription.trim(),
           status: 'Draft', // Keep as draft when editing
-          category: rootCauseCategory.trim(),
+          category: finalCategory,
           deptId: finding.deptId || 0,
           findingId: findingId,
           reasonReject: editingReasonReject || (currentRootCause?.reasonReject || ''),
@@ -202,7 +228,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           name: rootCauseName.trim(),
           description: rootCauseDescription.trim(),
           status: 'Draft', // Save as draft instead of Pending
-          category: rootCauseCategory.trim(),
+          category: finalCategory,
           deptId: finding.deptId || 0,
           findingId: findingId,
         };
@@ -214,6 +240,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       setRootCauseName('');
       setRootCauseDescription('');
       setRootCauseCategory('Finding');
+      setCustomCategory('');
       setEditingReasonReject('');
       setIsEditingRootCause(false);
       
@@ -221,6 +248,15 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
       const rootCausesList = res.data.$values || [];
       setRootCauses(rootCausesList);
+      
+      // Small delay to ensure state is updated before dispatching event
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Dispatch event to notify other components about root cause update
+      console.log('📢 Dispatching rootCauseUpdated event for finding:', findingId);
+      window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
+        detail: { findingId: findingId }
+      }));
     } catch (err: any) {
       console.error('Error saving root cause:', err);
       showToast('Failed to save root cause: ' + (err.message || 'Unknown error'), 'error');
@@ -263,6 +299,15 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
       const rootCausesList = res.data.$values || [];
       setRootCauses(rootCausesList);
+      
+      // Small delay to ensure state is updated before dispatching event
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Dispatch event to notify other components about root cause update
+      console.log('📢 Dispatching rootCauseUpdated event for finding:', findingId);
+      window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
+        detail: { findingId: findingId }
+      }));
     } catch (err: any) {
       console.error('Error submitting root causes:', err);
       showToast('Failed to submit root causes: ' + (err.message || 'Unknown error'), 'error');
@@ -302,7 +347,20 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     setEditingRootCauseId(rc.rootCauseId);
     setRootCauseName(rc.name || '');
     setRootCauseDescription(rc.description || '');
-    setRootCauseCategory(rc.category || 'Finding');
+    
+    // Check if category is in the predefined list
+    const predefinedCategories = ['Finding', 'Process', 'Human Error', 'Training', 'Documentation'];
+    const category = rc.category || 'Finding';
+    
+    if (predefinedCategories.includes(category)) {
+      setRootCauseCategory(category);
+      setCustomCategory('');
+    } else {
+      // Custom category - set to "Other" and populate custom field
+      setRootCauseCategory('Other');
+      setCustomCategory(category);
+    }
+    
     setEditingReasonReject(rc.reasonReject || '');
     setIsEditingRootCause(true);
   };
@@ -318,6 +376,15 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
       const rootCausesList = res.data.$values || [];
       setRootCauses(rootCausesList);
+      
+      // Small delay to ensure state is updated before dispatching event
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Dispatch event to notify other components about root cause update
+      console.log('📢 Dispatching rootCauseUpdated event for finding:', findingId);
+      window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
+        detail: { findingId: findingId }
+      }));
     } catch (err: any) {
       console.error('Error approving root cause:', err);
       showToast('Failed to approve root cause: ' + (err.message || 'Unknown error'), 'error');
@@ -344,6 +411,15 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
       const rootCausesList = res.data.$values || [];
       setRootCauses(rootCausesList);
+      
+      // Small delay to ensure state is updated before dispatching event
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Dispatch event to notify other components about root cause update
+      console.log('📢 Dispatching rootCauseUpdated event for finding:', findingId);
+      window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
+        detail: { findingId: findingId }
+      }));
     } catch (err: any) {
       console.error('Error rejecting root cause:', err);
       showToast('Failed to reject root cause: ' + (err.message || 'Unknown error'), 'error');
@@ -398,114 +474,139 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className="relative bg-white rounded-xl shadow-lg w-full max-w-5xl max-h-[95vh] overflow-y-auto"
+          className="relative bg-white rounded-xl shadow-lg w-full max-w-5xl mx-auto max-h-[90vh] overflow-hidden flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header with Gradient */}
-          <div className="sticky top-0 bg-primary-600 px-6 sm:px-8 py-6 border-b border-primary-700 z-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
+          {/* Header */}
+          <div className="sticky top-0 bg-blue-600 px-6 py-5 flex items-center justify-between z-10 border-b border-blue-700">
+            <div className="flex-1 min-w-0">
+              {loading ? (
+                <div className="flex items-center gap-3">
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                  <span className="text-white font-medium">Loading finding details...</span>
                 </div>
-                <h2 className="text-2xl font-bold text-white">Finding Details</h2>
-              </div>
-              <button
-                onClick={onClose}
-                className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              ) : (
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Finding Details</h2>
+                </div>
+              )}
             </div>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-blue-700 rounded-lg transition-colors text-white"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
           {/* Body */}
-          <div className="p-6 sm:p-8 bg-white">
+          <div className="flex-1 overflow-y-auto">
             {loading && (
               <div className="flex items-center justify-center py-20">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 border-t-primary-600 mx-auto mb-4"></div>
-                  <p className="text-gray-600 text-lg font-medium">Loading finding details...</p>
-                </div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                <span className="ml-3 text-gray-600">Loading finding details...</span>
               </div>
             )}
 
             {error && (
-              <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-5 mb-6 shadow-sm">
-                <div className="flex items-start gap-3">
-                  <svg className="w-6 h-6 text-orange-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-orange-700 font-medium">{error}</p>
-                </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 m-6 text-red-700">
+                <p className="font-medium">Error</p>
+                <p className="text-sm mt-1">{error}</p>
               </div>
             )}
 
             {finding && !loading && (
-              <div className="space-y-6">
-                {/* Title - Highlighted with gradient */}
-                <div className="bg-gray-50 border-l-4 border-primary-600 p-6 rounded-r-lg">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-primary-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <svg className="w-6 h-6 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1">
-                      <label className="block text-xs font-bold text-primary-700 uppercase tracking-wide mb-2">Title</label>
-                      <p className="text-xl font-bold text-gray-900 leading-relaxed">{finding.title}</p>
-                    </div>
+              <>
+                {/* Tab Navigation */}
+                <div className="border-b border-gray-200 bg-white sticky top-0 z-10">
+                  <div className="flex px-6">
+                    <button
+                      onClick={() => setActiveTab('details')}
+                      className={`px-6 py-4 font-medium text-sm border-b-2 transition-colors ${
+                        activeTab === 'details'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      Details
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('rootcauses')}
+                      className={`px-6 py-4 font-medium text-sm border-b-2 transition-colors relative ${
+                        activeTab === 'rootcauses'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      Root Causes
+                      {rootCauses.length > 0 && (
+                        <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-600 text-xs font-semibold rounded-full">
+                          {rootCauses.length}
+                        </span>
+                      )}
+                    </button>
                   </div>
                 </div>
 
-                {/* Description - Enhanced card */}
-                <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="w-10 h-10 bg-gray-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-                      </svg>
-                    </div>
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wide pt-2">Description</label>
-                  </div>
-                  <p className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed min-h-[80px] pl-[52px]">
-                    {finding.description || 'No description provided'}
-                  </p>
-                </div>
-
-                {/* Info Grid - 2 columns */}
+                {/* Tab Content */}
+                <div className="p-6">
+                  {activeTab === 'details' && (
+                    <div className="space-y-6">
+                {/* Information Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Title */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                      Title
+                    </label>
+                    <input
+                      type="text"
+                      value={finding.title || ''}
+                      readOnly
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                      Description
+                    </label>
+                    <textarea
+                      value={finding.description || 'No description provided'}
+                      readOnly
+                      rows={4}
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium resize-none"
+                    />
+                  </div>
+
                   {/* Severity */}
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 bg-orange-200 rounded-lg flex items-center justify-center">
-                        <svg className="w-6 h-6 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                      </div>
-                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Severity</label>
-                    </div>
-                    <span className={`inline-block px-5 py-2.5 rounded-xl text-base font-bold shadow-sm ${getSeverityColor(finding.severity)}`}>
-                      {finding.severity || 'N/A'}
-                    </span>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                      Severity
+                    </label>
+                    <input
+                      type="text"
+                      value={finding.severity || 'N/A'}
+                      readOnly
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                    />
                   </div>
 
                   {/* Department */}
                   {finding.deptId && (
-                    <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                          </svg>
-                        </div>
-                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Department</label>
-                      </div>
-                      <p className="text-base font-semibold text-gray-900 pl-[52px]">{departmentName || 'Loading...'}</p>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                        Department
+                      </label>
+                      <input
+                        type="text"
+                        value={departmentName || 'Loading...'}
+                        readOnly
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                      />
                     </div>
                   )}
 
@@ -513,224 +614,164 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
 
                   {/* Witness */}
                   {finding.witnessId && (
-                    <div 
-                      className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow cursor-pointer hover:border-purple-300"
-                      onClick={() => witnessData && setShowWitnessModal(true)}
-                      title="Click to view witness details"
-                    >
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                        </div>
-                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Witness</label>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                        Witness
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={witnessName || 'Loading...'}
+                          readOnly
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium pr-10"
+                        />
                         {witnessData && (
-                          <svg className="w-4 h-4 text-purple-600 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
+                          <button
+                            onClick={() => setShowWitnessModal(true)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Click to view witness details"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </button>
                         )}
                       </div>
-                      <p className="text-base font-semibold text-gray-900 pl-[52px]">{witnessName || 'Loading...'}</p>
                     </div>
                   )}
 
                   {/* Created By / Responsible Person */}
                   {finding.createdBy && (
-                    <div 
-                      className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow cursor-pointer hover:border-indigo-300"
-                      onClick={() => createdByData && setShowCreatedByModal(true)}
-                      title="Click to view responsible person details"
-                    >
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-indigo-200 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                        </div>
-                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Creator Person </label>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                        Creator Person
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={createdByName || 'Loading...'}
+                          readOnly
+                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium pr-10"
+                        />
                         {createdByData && (
-                          <svg className="w-4 h-4 text-indigo-600 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
+                          <button
+                            onClick={() => setShowCreatedByModal(true)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Click to view responsible person details"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </button>
                         )}
                       </div>
-                      <p className="text-base font-semibold text-gray-900 pl-[52px]">{createdByName || 'Loading...'}</p>
                     </div>
                   )}
 
                   {/* Dates */}
                   {finding.deadline && (
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-orange-200 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-orange-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <label className="text-xs font-bold text-orange-700 uppercase tracking-wide">Deadline</label>
-                      </div>
-                      <p className="text-lg font-bold text-orange-900 pl-[52px]">{formatDate(finding.deadline)}</p>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                        Deadline
+                      </label>
+                      <input
+                        type="text"
+                        value={formatDate(finding.deadline)}
+                        readOnly
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                      />
                     </div>
                   )}
                   {finding.createdAt && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 bg-green-200 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <label className="text-xs font-bold text-green-700 uppercase tracking-wide">Created At</label>
-                      </div>
-                      <p className="text-lg font-bold text-green-900 pl-[52px]">{formatDate(finding.createdAt)}</p>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                        Created At
+                      </label>
+                      <input
+                        type="text"
+                        value={formatDate(finding.createdAt)}
+                        readOnly
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                      />
                     </div>
                   )}
                 </div>
 
                 {/* Attachments */}
-                <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-indigo-200 rounded-lg flex items-center justify-center">
-                      <svg className="w-6 h-6 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                      </svg>
-                    </div>
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Attachments</label>
-                  </div>
-                  {loadingAttachments ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-200 border-t-primary-600 mx-auto mb-3"></div>
-                        <span className="text-base text-gray-600 font-medium">Loading attachments...</span>
-                      </div>
-                    </div>
-                  ) : attachments.length === 0 ? (
-                    <div className="text-center py-8">
-                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                        </svg>
-                      </div>
-                      <p className="text-base text-gray-500 font-medium">No attachments found</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
+                {attachments.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Attachments ({attachments.length})
+                    </label>
+                    <div className="space-y-3">
                       {attachments.map((attachment) => {
                         const isImage = attachment.contentType?.startsWith('image/');
+                        const imageUrl = attachment.filePath ? `${attachment.filePath}` : '';
                         
                         return (
                           <div
                             key={attachment.attachmentId}
-                            className={`bg-gray-50 border border-gray-200 rounded-lg overflow-hidden hover:border-primary-300 transition-all ${
-                              isImage ? '' : 'p-4'
-                            }`}
+                            className="border border-gray-300 rounded-lg overflow-hidden bg-white shadow-sm"
                           >
-                            {isImage ? (
-                              /* Image Preview */
-                              <div>
-                                <div className="p-4 border-b-2 border-gray-200 bg-white">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                                      <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                        <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                        </svg>
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-base font-bold text-gray-900 truncate">{attachment.fileName}</p>
-                                        <p className="text-sm text-gray-500 font-medium">{formatFileSize(attachment.fileSize || 0)}</p>
-                                      </div>
-                                    </div>
-                                    {attachment.filePath && (
-                                      <a
-                                        href={attachment.filePath}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex-shrink-0 ml-3 p-2.5 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors border border-primary-200"
-                                        title="Open image in new tab"
-                                      >
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                        </svg>
-                                      </a>
-                                    )}
-                                  </div>
-                                </div>
-                                {attachment.filePath && (
-                                  <div className="p-4 bg-gray-50">
-                                    <a
-                                      href={attachment.filePath}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="block"
-                                    >
-                                      <img
-                                        src={attachment.filePath}
-                                        alt={attachment.fileName}
-                                        className="w-full h-auto max-h-96 object-contain rounded-xl border-2 border-gray-200 bg-white cursor-pointer hover:opacity-90 transition-opacity shadow-md"
-                                        onError={(e) => {
-                                          // Fallback if the image fails to load
-                                          const target = e.target as HTMLImageElement;
-                                          target.style.display = 'none';
-                                          const parent = target.parentElement;
-                                          if (parent) {
-                                            parent.innerHTML = `
-                                              <div class="p-8 text-center text-gray-500">
-                                                <svg class="w-16 h-16 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                </svg>
-                                                <p class="text-base font-medium">Image failed to load</p>
-                                              </div>
-                                            `;
-                                          }
-                                        }}
-                                      />
-                                    </a>
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              /* Non-image File */
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  {/* File Icon */}
-                                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                    <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                  </div>
-                                  {/* File Info */}
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-base font-bold text-gray-900 truncate">{attachment.fileName}</p>
-                                    <p className="text-sm text-gray-500 font-medium">{formatFileSize(attachment.fileSize || 0)}</p>
-                                  </div>
-                                </div>
-                                {/* Download Button */}
-                                {attachment.filePath && (
-                                  <a
-                                    href={attachment.filePath}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex-shrink-0 ml-3 px-4 py-2.5 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors font-medium border border-primary-200 flex items-center gap-2"
-                                    title="Open file"
-                                  >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                    Open
-                                  </a>
-                                )}
+                            {/* Image preview - Full width, good quality */}
+                            {isImage && imageUrl && (
+                              <div className="relative bg-gray-100">
+                                <img
+                                  src={imageUrl}
+                                  alt={attachment.fileName}
+                                  className="w-full h-auto max-h-96 object-contain"
+                                  onError={(e) => {
+                                    console.error('Image load error:', attachment.filePath);
+                                    e.currentTarget.parentElement!.style.display = 'none';
+                                  }}
+                                />
                               </div>
                             )}
+                            
+                            {/* File info bar */}
+                            <div className="p-3 bg-gray-50 border-t border-gray-200">
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  {isImage ? (
+                                    <svg className="w-5 h-5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    </svg>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-gray-700 font-medium truncate">{attachment.fileName}</p>
+                                    <p className="text-xs text-gray-500">
+                                      {formatFileSize(attachment.fileSize || 0)} • {new Date(attachment.uploadedAt).toLocaleString()}
+                                    </p>
+                                  </div>
+                                </div>
+                                <a
+                                  href={imageUrl || attachment.filePath}
+                                  download={attachment.fileName}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="ml-3 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0"
+                                >
+                                  Open
+                                </a>
+                              </div>
+                            </div>
                           </div>
                         );
                       })}
                     </div>
+                  </div>
+                )}
+                    </div>
                   )}
-                </div>
-                   {/* Root Cause - Editable for AuditeeOwner */}
-                  <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow md:col-span-2">
+
+                  {activeTab === 'rootcauses' && (
+                    <div className="space-y-6">
+                      {/* Root Cause - Editable for AuditeeOwner */}
+                      <div className="bg-white border-2 border-gray-200 rounded-xl p-6 shadow-md hover:shadow-lg transition-shadow">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-slate-200 rounded-lg flex items-center justify-center">
@@ -783,17 +824,33 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                           <label className="block text-sm font-semibold text-gray-700 mb-2">Category *</label>
                           <select
                             value={rootCauseCategory}
-                            onChange={(e) => setRootCauseCategory(e.target.value)}
+                            onChange={(e) => {
+                              setRootCauseCategory(e.target.value);
+                              if (e.target.value !== 'Other') {
+                                setCustomCategory('');
+                              }
+                            }}
                             className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
                           >
                             <option value="Finding">Finding</option>
                             <option value="Process">Process</option>
-                            <option value="System">System</option>
                             <option value="Human Error">Human Error</option>
                             <option value="Training">Training</option>
-                            <option value="Documentation">Documentation</option>
-                            <option value="Other">Other</option>
+                            <option value="Documentation">Documentation</option>     
+                            <option value="Other">Other</option>     
                           </select>
+                          {rootCauseCategory === 'Other' && (
+                            <div className="mt-3">
+                             
+                              <input
+                                type="text"
+                                value={customCategory}
+                                onChange={(e) => setCustomCategory(e.target.value)}
+                                placeholder="Enter category "
+                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+                              />
+                            </div>
+                          )}
                         </div>
 
                         {/* Root Cause Description Input */}
@@ -892,14 +949,51 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                             return (
                               <div 
                                 key={rc.rootCauseId || index}
-                                className="bg-gray-50 border border-gray-200 rounded-lg p-5 hover:bg-gray-100 transition-colors"
+                                className={`rounded-lg p-5 transition-colors ${
+                                  isApproved 
+                                    ? 'bg-green-50 border-2 border-green-300 shadow-sm' 
+                                    : isRejected
+                                    ? 'bg-rose-50 border border-rose-200'
+                                    : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                                }`}
                               >
                                 <div className="flex items-start justify-between mb-2">
                                   <div className="flex items-center gap-2 flex-1">
-                                    <div className="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                      <span className="text-sm font-bold text-primary-700">#{index + 1}</span>
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                      isApproved 
+                                        ? 'bg-green-200' 
+                                        : 'bg-primary-100'
+                                    }`}>
+                                      {isApproved ? (
+                                        <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      ) : (
+                                        <span className={`text-sm font-bold ${
+                                          isApproved ? 'text-green-700' : 'text-primary-700'
+                                        }`}>#{index + 1}</span>
+                                      )}
                                     </div>
-                                    <h4 className="text-base font-bold text-gray-900">{rc.name}</h4>
+                                    <div className="flex-1">
+                                      <h4 className={`text-base font-bold ${
+                                        isApproved ? 'text-green-900' : 'text-gray-900'
+                                      }`}>{rc.name}</h4>
+                                      {isApproved && (
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded-full border border-green-300 flex items-center gap-1">
+                                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            Approved
+                                          </span>
+                                          {rc.reviewBy && (
+                                            <span className="text-[10px] text-green-600 font-medium">
+                                              by {rc.reviewBy}
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {isDraft && (
@@ -913,9 +1007,9 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                       </span>
                                     )}
                                     {isApproved && (
-                                      <span className="px-3 py-1 bg-green-50 text-green-600 text-xs font-semibold rounded-full border border-green-200 flex items-center gap-1">
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      <span className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-full border-2 border-green-300 flex items-center gap-1.5 shadow-sm">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                                         </svg>
                                         Approved
                                       </span>
@@ -1125,20 +1219,21 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                         )}
                       </div>
                     )}
-                  </div>
-              </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
 
           {/* Footer */}
-          <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 sm:px-8 py-5 flex justify-end">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 px-6 py-4">
             <button
+              type="button"
               onClick={onClose}
-              className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-base font-medium flex items-center gap-2"
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
               Close
             </button>
           </div>

@@ -46,13 +46,13 @@ const FindingsProgress = () => {
   const [rejectedActionsMap, setRejectedActionsMap] = useState<Record<string, Action>>({}); // findingId -> rejected action
   const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasApproved: boolean; hasPending: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }>>({}); // findingId -> root cause status
   const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> all actions
-  
+
   // New states for root cause assignment
   const [findingRootCauses, setFindingRootCauses] = useState<any[]>([]); // Root causes of selected finding
   const [loadingRootCauses, setLoadingRootCauses] = useState(false);
   const [submittedRootCauseIds, setSubmittedRootCauseIds] = useState<Set<number>>(new Set()); // Track submitted root causes
   const [assignedRootCauseData, setAssignedRootCauseData] = useState<Record<number, { staffId: string; staffName: string; dueDate: string }>>({}); // Track assigned data
-  
+
   // Individual root cause assignment modal
   const [showIndividualAssignModal, setShowIndividualAssignModal] = useState(false);
   const [selectedRootCause, setSelectedRootCause] = useState<any>(null);
@@ -60,21 +60,23 @@ const FindingsProgress = () => {
   const [individualDueDate, setIndividualDueDate] = useState('');
   const [individualStaffError, setIndividualStaffError] = useState('');
   const [individualDateError, setIndividualDateError] = useState('');
-  
+
   // Description view modal
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
-  const [selectedDescription, setSelectedDescription] = useState<{name: string; description: string; category?: string} | null>(null);
+  const [selectedDescription, setSelectedDescription] = useState<{ name: string; description: string; category?: string } | null>(null);
 
   // Helper function to get status badge color
   const getStatusBadgeColor = (status: string) => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
   };
 
+  const formatVNDate = (date: Date) =>
+    date.toLocaleDateString('en-CA');
   // Check if all actions for a finding are closed
   const areAllActionsClosed = (findingId: string): boolean => {
     const actions = findingActionsMap[findingId] || [];
     if (actions.length === 0) return false; // No actions means not all closed
-    
+
     // Check if all actions are closed
     return actions.every(action => {
       const status = action.status?.toLowerCase() || '';
@@ -87,7 +89,7 @@ const FindingsProgress = () => {
   const getDisplayStatus = (finding: Finding): string => {
     const originalStatus = finding.status || '';
     const statusLower = originalStatus.toLowerCase();
-    
+
     // If status is "Closed", check if all actions are actually closed
     if (statusLower === 'closed') {
       const allClosed = areAllActionsClosed(finding.findingId);
@@ -97,32 +99,32 @@ const FindingsProgress = () => {
         if (actions.length === 0) {
           return 'Open'; // No actions yet
         }
-        
+
         // Check action statuses to determine finding status
         const hasInProgress = actions.some(a => {
           const status = a.status?.toLowerCase() || '';
           return status === 'inprogress' || status === 'in progress' || (a.progressPercent > 0 && a.progressPercent < 100);
         });
-        
+
         if (hasInProgress) {
           return 'In Progress';
         }
-        
+
         const hasReviewed = actions.some(a => a.status?.toLowerCase() === 'reviewed');
         if (hasReviewed) {
           return 'Review';
         }
-        
+
         const hasApproved = actions.some(a => a.status?.toLowerCase() === 'approved');
         if (hasApproved) {
           return 'Approved';
         }
-        
+
         // Default to Open if we can't determine
         return 'Open';
       }
     }
-    
+
     return originalStatus;
   };
 
@@ -130,7 +132,7 @@ const FindingsProgress = () => {
   const getUserDeptId = (): number | null => {
     const token = localStorage.getItem('auth-storage');
     if (!token) return null;
-    
+
     try {
       const authData = JSON.parse(token);
       const jwtToken = authData?.state?.token;
@@ -150,7 +152,7 @@ const FindingsProgress = () => {
   // Load root cause status for findings
   const loadRootCauseStatus = async (findingsData: Finding[]) => {
     const statusMap: Record<string, { hasApproved: boolean; hasPending: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }> = {};
-    
+
     await Promise.all(
       findingsData.map(async (finding) => {
         try {
@@ -158,7 +160,7 @@ const FindingsProgress = () => {
           const rootCauses = res.data.$values || [];
           const totalCount = rootCauses.length;
           const approvedCount = rootCauses.filter((rc: any) => rc.status?.toLowerCase() === 'approved').length;
-          
+
           statusMap[finding.findingId] = {
             hasApproved: rootCauses.some((rc: any) => rc.status?.toLowerCase() === 'approved'),
             hasPending: rootCauses.some((rc: any) => rc.status?.toLowerCase() === 'pending'),
@@ -172,7 +174,7 @@ const FindingsProgress = () => {
         }
       })
     );
-    
+
     setRootCauseStatusMap(statusMap);
   };
 
@@ -182,7 +184,7 @@ const FindingsProgress = () => {
     const returnedMap: Record<string, Action> = {};
     const rejectedMap: Record<string, Action> = {};
     const actionsMap: Record<string, Action[]> = {};
-    
+
     // Load actions for each finding and get assignedTo
     await Promise.all(
       findingsData.map(async (finding) => {
@@ -191,19 +193,19 @@ const FindingsProgress = () => {
           if (actions && actions.length > 0) {
             // Store all actions for this finding
             actionsMap[finding.findingId] = actions;
-            
+
             // Check for returned actions
             const returnedAction = actions.find(a => a.status?.toLowerCase() === 'returned');
             if (returnedAction) {
               returnedMap[finding.findingId] = returnedAction;
             }
-            
+
             // Check for rejected actions
             const rejectedAction = actions.find(a => a.status?.toLowerCase() === 'rejected');
             if (rejectedAction) {
               rejectedMap[finding.findingId] = rejectedAction;
             }
-            
+
             // Get all unique assignedTo users
             const uniqueAssignedUsers = new Set<string>();
             actions.forEach(action => {
@@ -211,7 +213,7 @@ const FindingsProgress = () => {
                 uniqueAssignedUsers.add(action.assignedTo);
               }
             });
-            
+
             // Fetch all user names
             const userNames: string[] = [];
             for (const userId of Array.from(uniqueAssignedUsers)) {
@@ -223,7 +225,7 @@ const FindingsProgress = () => {
                 userNames.push(userId);
               }
             }
-            
+
             // Store as comma-separated names or count if more than 2
             if (userNames.length > 0) {
               if (userNames.length === 1) {
@@ -244,7 +246,7 @@ const FindingsProgress = () => {
         }
       })
     );
-    
+
     setAssignedUsersMap(usersMap);
     setReturnedActionsMap(returnedMap);
     setRejectedActionsMap(rejectedMap);
@@ -256,7 +258,7 @@ const FindingsProgress = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const deptId = getUserDeptId();
       if (!deptId) {
         setError('Department ID not found in token');
@@ -264,28 +266,28 @@ const FindingsProgress = () => {
       }
 
       const allFindings = await getFindingsByDepartment(deptId);
-      
+
       // Filter findings by auditId if provided
       let filteredFindings = allFindings;
       if (auditIdFromState) {
         console.log(`🔍 Filtering findings by auditId: ${auditIdFromState}`);
         console.log(`📦 All findings from API:`, allFindings);
-        
+
         filteredFindings = allFindings.filter((finding: Finding) => {
           // Try multiple possible locations for auditId
-          const findingAuditId = finding.auditId || 
-                                 (finding as any).AuditId || 
-                                 (finding as any).auditPlanId ||
-                                 (finding as any).audit?.auditId;
-          
+          const findingAuditId = finding.auditId ||
+            (finding as any).AuditId ||
+            (finding as any).auditPlanId ||
+            (finding as any).audit?.auditId;
+
           console.log(`  - Finding ${finding.findingId}: auditId = ${findingAuditId}`);
           return String(findingAuditId) === String(auditIdFromState);
         });
         console.log(`✅ Filtered findings: ${filteredFindings.length} out of ${allFindings.length} for audit ${auditIdFromState}`);
       }
-      
+
       setFindings(filteredFindings);
-      
+
       // Load assigned users and root cause status for findings
       await loadAssignedUsers(filteredFindings);
       await loadRootCauseStatus(filteredFindings);
@@ -321,29 +323,61 @@ const FindingsProgress = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Listen for root cause updates
+  useEffect(() => {
+    const handleRootCauseUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const findingId = customEvent.detail?.findingId;
+      console.log('🔄 Root cause updated event received for finding:', findingId);
+
+      // Small delay to ensure backend has updated
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Reload root cause status for all findings
+      if (findings.length > 0) {
+        console.log('🔄 Reloading root cause status for', findings.length, 'findings');
+        await loadRootCauseStatus(findings);
+        console.log('✅ Root cause status reloaded, badge should update now');
+      } else {
+        // If no findings, reload all findings first
+        console.log('⚠️ No findings in state, reloading all findings...');
+        await reloadFindings();
+      }
+    };
+
+    window.addEventListener('rootCauseUpdated', handleRootCauseUpdated);
+    console.log('👂 Event listener for rootCauseUpdated registered');
+
+    return () => {
+      window.removeEventListener('rootCauseUpdated', handleRootCauseUpdated);
+      console.log('👋 Event listener for rootCauseUpdated removed');
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findings]);
+
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
   // Filter findings based on search query
   const getFilteredFindings = () => {
     let filtered = findings;
-    
+
     // Filter out findings with status "Archived"
     filtered = filtered.filter(finding => {
       const statusLower = (finding.status || '').toLowerCase().trim();
       return statusLower !== 'archived';
     });
-    
+
     // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(finding => 
+      filtered = filtered.filter(finding =>
         finding.title?.toLowerCase().includes(query) ||
         finding.description?.toLowerCase().includes(query) ||
         finding.findingId?.toLowerCase().includes(query) ||
         finding.severity?.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
   };
 
@@ -355,10 +389,10 @@ const FindingsProgress = () => {
     if (!dateString) return 'N/A';
     try {
       const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
       });
     } catch {
       return dateString;
@@ -372,11 +406,11 @@ const FindingsProgress = () => {
     try {
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
       const rootCauses = res.data.$values || [];
-      
+
       // Fetch actions for this finding to check which root causes are already assigned
       let assignedRootCauseIds = new Set<number>();
       const assignedDataMap: Record<number, { staffId: string; staffName: string; dueDate: string }> = {};
-      
+
       try {
         const actions = await getActionsByFinding(findingId);
         if (actions && actions.length > 0) {
@@ -387,21 +421,21 @@ const FindingsProgress = () => {
             // Exclude rejected and leadrejected actions
             return statusLower !== 'rejected' && statusLower !== 'leadrejected';
           });
-          
+
           // Get all root cause IDs that have valid (non-rejected) actions and fetch user info
           const actionsWithRootCause = validActions.filter((action: Action) => action.rootCauseId);
-          
+
           console.log(`📋 [loadFindingRootCauses] Finding ${findingId}:`);
           console.log(`   Total actions: ${actions.length}`);
           console.log(`   Valid (non-rejected) actions: ${validActions.length}`);
           console.log(`   Actions with root cause: ${actionsWithRootCause.length}`);
-          
+
           // Fetch user info for all assigned actions
           await Promise.all(
             actionsWithRootCause.map(async (action: Action) => {
               if (action.rootCauseId) {
                 assignedRootCauseIds.add(action.rootCauseId);
-                
+
                 // Get assigned user info
                 if (action.assignedTo && !assignedDataMap[action.rootCauseId]) {
                   try {
@@ -427,20 +461,20 @@ const FindingsProgress = () => {
       } catch (err) {
         console.warn('Error loading actions for finding:', err);
       }
-      
+
       // Update submittedRootCauseIds with root causes that have actions
       setSubmittedRootCauseIds(assignedRootCauseIds);
-      
+
       // Update assignedRootCauseData
       if (Object.keys(assignedDataMap).length > 0) {
         setAssignedRootCauseData(assignedDataMap);
       }
-      
+
       // Show all approved root causes (both assigned and unassigned)
-      const approvedRootCauses = rootCauses.filter((rc: any) => 
+      const approvedRootCauses = rootCauses.filter((rc: any) =>
         rc.status?.toLowerCase() === 'approved'
       );
-      
+
       setFindingRootCauses(approvedRootCauses);
       console.log('📝 Loaded root causes:', approvedRootCauses.length, 'Assigned:', assignedRootCauseIds.size);
     } catch (err) {
@@ -454,12 +488,12 @@ const FindingsProgress = () => {
   // Load staff members for assignment (only CAPAOwner role)
   const loadStaffMembers = async (deptId?: number) => {
     if (!deptId) return;
-    
+
     setLoadingStaff(true);
     try {
       const users = await getAdminUsersByDepartment(deptId);
       // Filter only CAPAOwner role
-      const capaOwners = (users || []).filter((user: any) => 
+      const capaOwners = (users || []).filter((user: any) =>
         user.roleName?.toLowerCase() === 'capaowner'
       );
       setStaffMembers(capaOwners.map((user: any) => ({
@@ -482,7 +516,7 @@ const FindingsProgress = () => {
     console.log('Root Cause:', selectedRootCause);
     console.log('Staff ID:', individualStaffId);
     console.log('Due Date:', individualDueDate);
-    
+
     if (!selectedFindingForAssign || !selectedRootCause) {
       console.error('❌ Missing selectedFindingForAssign or selectedRootCause');
       toast.error('Please select a finding and root cause');
@@ -538,7 +572,7 @@ const FindingsProgress = () => {
       const allRootCausesRes = await apiClient.get(`/RootCauses/by-finding/${selectedFindingForAssign.findingId}`);
       const allRootCauses = (allRootCausesRes.data.$values || []).filter((rc: any) => rc.status?.toLowerCase() === 'approved');
       const allAssigned = allRootCauses.every((rc: any) => newSubmittedIds.has(rc.rootCauseId));
-      
+
       // Mark finding as received if all root causes assigned
       if (allAssigned) {
         await markFindingAsReceived(selectedFindingForAssign.findingId);
@@ -546,9 +580,9 @@ const FindingsProgress = () => {
 
       // Close individual modal
       setShowIndividualAssignModal(false);
-      
+
       const remainingCount = allRootCauses.length - newSubmittedIds.size;
-      
+
       if (allAssigned) {
         toast.success(`Action created for ${staffName}. All root causes assigned! Finding marked as Received.`);
         // Close assign modal completely
@@ -557,12 +591,12 @@ const FindingsProgress = () => {
         toast.success(`Action created for ${staffName}. ${remainingCount} root cause${remainingCount > 1 ? 's' : ''} remaining.`);
         // Keep all root causes in the list to show assigned status
       }
-      
+
       // Reload findings with assigned users and root cause status
       const deptId = getUserDeptId();
       if (deptId) {
         const allFindings = await getFindingsByDepartment(deptId);
-        
+
         // Filter by auditId if needed
         let filteredData = allFindings;
         if (auditIdFromState) {
@@ -571,7 +605,7 @@ const FindingsProgress = () => {
             return String(findingAuditId) === String(auditIdFromState);
           });
         }
-        
+
         setFindings(filteredData);
         await loadAssignedUsers(filteredData);
         await loadRootCauseStatus(filteredData);
@@ -735,8 +769,8 @@ const FindingsProgress = () => {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {paginatedFindings.map((finding) => (
-                        <tr 
-                          key={finding.findingId} 
+                        <tr
+                          key={finding.findingId}
                           className="hover:bg-gray-50 transition-colors cursor-pointer"
                           onClick={async () => {
                             setLoadingFindingActions(true);
@@ -770,6 +804,53 @@ const FindingsProgress = () => {
                               <div className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">
                                 {finding.title}
                               </div>
+                              {/* Root Cause Indicator Badge - Only show if not all approved */}
+                              {(() => {
+                                const rcStatus = rootCauseStatusMap[finding.findingId];
+                                const totalCount = rcStatus?.totalCount || 0;
+                                const allApproved = rcStatus?.allApproved || false;
+                                const hasPendingRC = rcStatus?.hasPending || false;
+                                const hasApprovedRC = rcStatus?.hasApproved || false;
+                                const hasRejectedRC = rcStatus?.hasRejected || false;
+
+                                // Only show badge if there are root causes AND not all are approved
+                                if (totalCount > 0 && !allApproved) {
+                                  return (
+                                    <div className="relative group flex-shrink-0">
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 ${hasPendingRC
+                                          ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                                          : hasRejectedRC
+                                            ? 'bg-red-100 text-red-700 border-red-300'
+                                            : hasApprovedRC
+                                              ? 'bg-blue-100 text-blue-700 border-blue-300'
+                                              : 'bg-blue-100 text-blue-700 border-blue-300'
+                                        }`}>
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                        </svg>
+                                        {totalCount} RC
+                                      </span>
+                                      <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                                        <p className="font-semibold mb-1">Root Causes Status:</p>
+                                        <p className="text-gray-300">
+                                          Total: {totalCount} root cause{totalCount > 1 ? 's' : ''}
+                                        </p>
+                                        {hasApprovedRC && (
+                                          <p className="text-green-300 mt-1">✓ Has approved root cause{hasApprovedRC && totalCount > 1 ? 's' : ''}</p>
+                                        )}
+                                        {hasPendingRC && (
+                                          <p className="text-yellow-300 mt-1">⏳ Has pending root cause{hasPendingRC && totalCount > 1 ? 's' : ''}</p>
+                                        )}
+                                        {hasRejectedRC && (
+                                          <p className="text-red-300 mt-1">✗ Has rejected root cause{hasRejectedRC && totalCount > 1 ? 's' : ''}</p>
+                                        )}
+                                        <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
@@ -799,7 +880,7 @@ const FindingsProgress = () => {
                                   onClick={async () => {
                                     const action = returnedActionsMap[finding.findingId];
                                     if (!action) return;
-                                    
+
                                     try {
                                       await rejectActionForResubmit(action.actionId);
                                       toast.success('Action redone successfully');
@@ -807,19 +888,19 @@ const FindingsProgress = () => {
                                       const deptId = getUserDeptId();
                                       if (deptId) {
                                         const allFindings = await getFindingsByDepartment(deptId);
-                                        
+
                                         // Filter by auditId if needed
                                         let filteredData = allFindings;
                                         if (auditIdFromState) {
                                           filteredData = allFindings.filter((finding: Finding) => {
-                                            const findingAuditId = finding.auditId || 
-                                                                 (finding as any).AuditId || 
-                                                                 (finding as any).auditPlanId ||
-                                                                 (finding as any).audit?.auditId;
+                                            const findingAuditId = finding.auditId ||
+                                              (finding as any).AuditId ||
+                                              (finding as any).auditPlanId ||
+                                              (finding as any).audit?.auditId;
                                             return String(findingAuditId) === String(auditIdFromState);
                                           });
                                         }
-                                        
+
                                         setFindings(filteredData);
                                         await loadAssignedUsers(filteredData);
                                         await loadRootCauseStatus(filteredData);
@@ -851,7 +932,7 @@ const FindingsProgress = () => {
                                 const hasPendingRC = rcStatus?.hasPending || false;
                                 const hasRejectedRC = rcStatus?.hasRejected || false;
                                 const totalCount = rcStatus?.totalCount || 0;
-                                
+
                                 // Show appropriate button based on root cause status
                                 // Only allow assign when ALL root causes are approved
                                 if (totalCount === 0) {
@@ -916,11 +997,11 @@ const FindingsProgress = () => {
                               {/* View Action button - show if finding has actions */}
                               {(() => {
                                 // Check if finding has any action (assigned, returned, or rejected)
-                                const hasAction = assignedUsersMap[finding.findingId] || 
-                                                  returnedActionsMap[finding.findingId] || 
-                                                  rejectedActionsMap[finding.findingId] ||
-                                                  finding.status?.toLowerCase() === 'received';
-                                
+                                const hasAction = assignedUsersMap[finding.findingId] ||
+                                  returnedActionsMap[finding.findingId] ||
+                                  rejectedActionsMap[finding.findingId] ||
+                                  finding.status?.toLowerCase() === 'received';
+
                                 if (hasAction) {
                                   return (
                                     <button
@@ -929,7 +1010,7 @@ const FindingsProgress = () => {
                                           // Load actions for this finding
                                           const actions = await getActionsByFinding(finding.findingId);
                                           const actionsList = Array.isArray(actions) ? actions : [];
-                                          
+
                                           if (actionsList.length > 0) {
                                             // Get the first action (or most recent one)
                                             const firstAction = actionsList[0];
@@ -1080,7 +1161,7 @@ const FindingsProgress = () => {
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Root Cause
                               </th>
-                         
+
                               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Assigned To
                               </th>
@@ -1096,7 +1177,7 @@ const FindingsProgress = () => {
                             {findingRootCauses.map((rootCause, index) => {
                               const isAssigned = submittedRootCauseIds.has(rootCause.rootCauseId);
                               const assignedData = assignedRootCauseData[rootCause.rootCauseId];
-                              
+
                               return (
                                 <tr key={rootCause.rootCauseId} className={isAssigned ? 'bg-green-50' : 'hover:bg-gray-50'}>
                                   <td className="px-4 py-3 text-sm font-medium text-gray-900">
@@ -1112,7 +1193,7 @@ const FindingsProgress = () => {
                                       )}
                                     </div>
                                   </td>
-                              
+
                                   <td className="px-4 py-3 text-sm text-gray-700">
                                     {assignedData ? (
                                       <div className="flex items-center gap-1">
@@ -1232,7 +1313,7 @@ const FindingsProgress = () => {
                   </div>
 
                   {/* CAPA Owner Selection */}
-  
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Assign to CAPA Owner <span className="text-red-500">*</span>
@@ -1253,9 +1334,8 @@ const FindingsProgress = () => {
                           setIndividualStaffId(e.target.value);
                           if (individualStaffError) setIndividualStaffError('');
                         }}
-                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                          individualStaffError ? 'border-red-300' : 'border-gray-300'
-                        }`}
+                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${individualStaffError ? 'border-red-300' : 'border-gray-300'
+                          }`}
                       >
                         <option value="">-- Select CAPA Owner --</option>
                         {staffMembers.map((staff) => (
@@ -1275,11 +1355,16 @@ const FindingsProgress = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Due Date <span className="text-red-500">*</span>
                     </label>
+
                     {selectedFindingForAssign?.deadline && (
                       <p className="text-xs text-gray-500 mb-2">
-                        Finding deadline: <span className="font-medium text-gray-700">{formatDate(selectedFindingForAssign.deadline)}</span>
+                        Finding deadline:{' '}
+                        <span className="font-medium text-gray-700">
+                          {formatVNDate(new Date(selectedFindingForAssign.deadline))}
+                        </span>
                       </p>
                     )}
+
                     <input
                       type="date"
                       value={individualDueDate}
@@ -1287,12 +1372,19 @@ const FindingsProgress = () => {
                         setIndividualDueDate(e.target.value);
                         if (individualDateError) setIndividualDateError('');
                       }}
-                      min={new Date().toISOString().split('T')[0]}
-                      max={selectedFindingForAssign?.deadline ? new Date(selectedFindingForAssign.deadline).toISOString().split('T')[0] : undefined}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
-                        individualDateError ? 'border-red-300' : 'border-gray-300'
-                      }`}
+                      // ✅ MIN = hôm nay (giờ VN)
+                      min={formatVNDate(new Date())}
+
+                      // ✅ MAX = deadline của finding (giờ VN)
+                      max={
+                        selectedFindingForAssign?.deadline
+                          ? formatVNDate(new Date(selectedFindingForAssign.deadline))
+                          : undefined
+                      }
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${individualDateError ? 'border-red-300' : 'border-gray-300'
+                        }`}
                     />
+
                     {individualDateError && (
                       <p className="mt-1 text-xs text-red-600">{individualDateError}</p>
                     )}
@@ -1316,12 +1408,12 @@ const FindingsProgress = () => {
                     onClick={() => {
                       // Validate
                       let hasError = false;
-                      
+
                       if (!individualStaffId) {
                         setIndividualStaffError('Please select a CAPA owner');
                         hasError = true;
                       }
-                      
+
                       if (!individualDueDate) {
                         setIndividualDateError('Please select a due date');
                         hasError = true;
@@ -1329,16 +1421,16 @@ const FindingsProgress = () => {
                         const dueDateObj = new Date(individualDueDate);
                         const today = new Date();
                         today.setHours(0, 0, 0, 0);
-                        
+
                         if (dueDateObj < today) {
                           setIndividualDateError('Due date cannot be in the past');
                           hasError = true;
                         }
-                        
+
                         if (selectedFindingForAssign?.deadline) {
                           const findingDeadline = new Date(selectedFindingForAssign.deadline);
                           findingDeadline.setHours(23, 59, 59, 999);
-                          
+
                           if (dueDateObj > findingDeadline) {
                             const deadlineStr = formatDate(selectedFindingForAssign.deadline);
                             setIndividualDateError(`Due date cannot exceed finding deadline (${deadlineStr})`);
@@ -1346,7 +1438,7 @@ const FindingsProgress = () => {
                           }
                         }
                       }
-                      
+
                       if (!hasError) {
                         // Create action immediately
                         handleAssignSingleRootCause();
@@ -1389,25 +1481,25 @@ const FindingsProgress = () => {
               if (deptId) {
                 console.log('🔄 Reloading findings...');
                 const allFindings = await getFindingsByDepartment(deptId);
-                
+
                 // Filter by auditId if needed (same as initial load)
                 let filteredData = allFindings;
                 if (auditIdFromState) {
                   filteredData = allFindings.filter((finding: Finding) => {
-                    const findingAuditId = finding.auditId || 
-                                         (finding as any).AuditId || 
-                                         (finding as any).auditPlanId ||
-                                         (finding as any).audit?.auditId;
+                    const findingAuditId = finding.auditId ||
+                      (finding as any).AuditId ||
+                      (finding as any).auditPlanId ||
+                      (finding as any).audit?.auditId;
                     return String(findingAuditId) === String(auditIdFromState);
                   });
                 }
-                
+
                 setFindings(filteredData);
                 await loadAssignedUsers(filteredData);
                 await loadRootCauseStatus(filteredData);
                 console.log('✅ Findings reloaded');
               }
-              
+
               // Reload actions sidebar if open
               if (selectedFindingId && showActionsModal) {
                 console.log('🔄 Reloading actions for finding:', selectedFindingId);
@@ -1518,13 +1610,12 @@ const FindingsProgress = () => {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                  <span className={`px-4 py-2 rounded-full text-sm font-medium ${
-                                    action.status === 'Approved' ? 'bg-green-100 text-green-700 border border-green-200' :
-                                    action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
-                                    action.status === 'Rejected' ? 'bg-red-100 text-red-700 border border-red-200' :
-                                    action.status === 'Returned' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
-                                    'bg-gray-100 text-gray-700 border border-gray-200'
-                                  }`}>
+                                  <span className={`px-4 py-2 rounded-full text-sm font-medium ${action.status === 'Approved' ? 'bg-green-100 text-green-700 border border-green-200' :
+                                      action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                                        action.status === 'Rejected' ? 'bg-red-100 text-red-700 border border-red-200' :
+                                          action.status === 'Returned' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
+                                            'bg-gray-100 text-gray-700 border border-gray-200'
+                                    }`}>
                                     {action.status}
                                   </span>
                                 </div>
@@ -1707,7 +1798,7 @@ const FindingsProgress = () => {
                       </span>
                     </div>
                   )}
-                  
+
                   {/* Description */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Description</label>

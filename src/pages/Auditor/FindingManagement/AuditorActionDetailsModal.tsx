@@ -177,159 +177,135 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="bg-blue-600 px-8 py-6 flex items-center justify-between border-b border-blue-700">
-            <div className="flex-1 min-w-0 flex items-center gap-4">
-              <div className="bg-white/20 p-3 rounded-xl backdrop-blur-sm">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-white">Action Details</h2>
-                <p className="text-blue-100 text-sm mt-1">Comprehensive action information and attachments</p>
-              </div>
+          <div className="sticky top-0 bg-blue-600 px-6 py-5 flex items-center justify-between z-10 border-b border-blue-700">
+            <div className="flex-1 min-w-0">
+              {loading ? (
+                <div className="flex items-center gap-3">
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                  <span className="text-white font-medium">Loading action details...</span>
+                </div>
+              ) : (
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Action Details</h2>
+                  <p className="text-blue-100 text-sm mt-1">Comprehensive action information and attachments</p>
+                </div>
+              )}
             </div>
             <button
               onClick={onClose}
-              className="ml-4 p-2.5 hover:bg-white/20 rounded-xl transition-all duration-200 flex-shrink-0 group"
+              className="p-2 hover:bg-blue-700 rounded-lg transition-colors text-white"
             >
-              <svg className="w-6 h-6 text-white group-hover:rotate-90 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto">
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto p-6">
             {loading ? (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="relative">
-                  <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-200"></div>
-                  <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-600 absolute top-0 left-0"></div>
-                </div>
-                <p className="mt-6 text-gray-600 font-medium">Loading action details...</p>
+              <div className="flex items-center justify-center py-20">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                <span className="ml-3 text-gray-600">Loading action details...</span>
               </div>
             ) : !action ? (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="bg-red-50 rounded-full p-4 mb-4">
-                  <svg className="w-12 h-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <p className="text-gray-600 font-medium">Failed to load action details</p>
+              <div className="text-center py-8 text-gray-500">
+                Failed to load action details
               </div>
             ) : (
-              <div className="p-8 space-y-6">
-                {/* Title and Status Section */}
-                <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <h3 className="text-2xl font-bold text-gray-900 flex-1">{action.title}</h3>
-                    <span className={`px-4 py-2 rounded-lg text-sm font-medium border whitespace-nowrap ${getStatusColor(action.status || '')}`}>
-                      {action.status || 'N/A'}
-                    </span>
-                  </div>
-                  {action.description && (
-                    <p className="text-gray-700 leading-relaxed">{action.description}</p>
-                  )}
-                </div>
-
-                {/* Progress Section */}
-                <div className="bg-white rounded-xl p-6 border-2 border-gray-200 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="bg-blue-100 p-2 rounded-lg">
-                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                    </div>
-                    <h4 className="text-lg font-bold text-gray-900">Progress Status</h4>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600 font-medium">Completion</span>
-                      <span className="text-blue-600 font-bold text-lg">{action.progressPercent || 0}%</span>
-                    </div>
-                    <div className="relative">
-                      <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden border border-gray-300">
-                        <div
-                          className="bg-blue-600 h-4 rounded-full transition-all duration-500 relative overflow-hidden"
-                          style={{ width: `${action.progressPercent || 0}%` }}
-                        >
-                          <div className="absolute inset-0 bg-white opacity-20 animate-pulse"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
+              <div className="space-y-6">
                 {/* Information Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Due Date */}
-                  <div className="bg-white rounded-xl p-5 border-2 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="bg-orange-100 p-2 rounded-lg">
-                        <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-600">Due Date</span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Title */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                      Title
+                    </label>
+                    <input
+                      type="text"
+                      value={action.title || 'N/A'}
+                      readOnly
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                    />
+                  </div>
+
+                  {/* Status */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                      Status
+                    </label>
+                    <input
+                      type="text"
+                      value={action.status || 'N/A'}
+                      readOnly
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  {action.description && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                        Description
+                      </label>
+                      <textarea
+                        value={action.description}
+                        readOnly
+                        rows={4}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium resize-none"
+                      />
                     </div>
-                    <p className="text-gray-900 font-bold text-lg ml-11">{formatDate(action.dueDate)}</p>
+                  )}
+
+                  {/* Due Date */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                      Due Date
+                    </label>
+                    <input
+                      type="text"
+                      value={formatDate(action.dueDate)}
+                      readOnly
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                    />
                   </div>
 
                   {/* Created Date */}
-                  <div className="bg-white rounded-xl p-5 border-2 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="bg-green-100 p-2 rounded-lg">
-                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <span className="text-sm font-semibold text-gray-600">Created Date</span>
-                    </div>
-                    <p className="text-gray-900 font-bold text-lg ml-11">{formatDate(action.createdAt)}</p>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                      Created Date
+                    </label>
+                    <input
+                      type="text"
+                      value={formatDate(action.createdAt)}
+                      readOnly
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                    />
                   </div>
+
+                  {/* Review Feedback */}
+                  {action.reviewFeedback && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                        Review Feedback
+                      </label>
+                      <textarea
+                        value={action.reviewFeedback}
+                        readOnly
+                        rows={3}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium resize-none"
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {/* Review Feedback Section */}
-                {action.reviewFeedback && (
-                  <div className="bg-amber-50 rounded-xl p-6 border-2 border-amber-200 shadow-sm">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="bg-amber-100 p-2 rounded-lg">
-                        <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                        </svg>
-                      </div>
-                      <h4 className="text-lg font-bold text-gray-900">Review Feedback</h4>
-                    </div>
-                    <p className="text-gray-700 leading-relaxed ml-11">{action.reviewFeedback}</p>
-                  </div>
-                )}
-
-                {/* Attachments Section */}
-                <div className="bg-white rounded-xl p-6 border-2 border-gray-200 shadow-sm">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="bg-purple-100 p-2 rounded-lg">
-                      <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                      </svg>
-                    </div>
-                    <h4 className="text-lg font-bold text-gray-900">Attachments</h4>
-                    <span className="ml-auto bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-bold border border-purple-200">
-                      {attachments.length} {attachments.length === 1 ? 'file' : 'files'}
-                    </span>
-                  </div>
-                  
-                  {attachments.length === 0 ? (
-                    <div className="text-center py-8">
-                      <div className="bg-gray-100 rounded-full p-4 inline-block mb-3">
-                        <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <p className="text-gray-500 font-medium">No attachments available</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
+                {/* Attachments */}
+                {attachments.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Attachments ({attachments.length})
+                    </label>
+                    <div className="space-y-3">
                       {[...attachments].sort((a, b) => {
                         // Sort: Rejected attachments first, then others
                         const aIsRejected = a.status?.toLowerCase() === 'rejected';
@@ -338,128 +314,80 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
                         if (!aIsRejected && bIsRejected) return 1;
                         return 0;
                       }).map((att) => {
-                        const isImage = att.contentType?.toLowerCase().startsWith('image/');
-                        const filePath = att.filePath || att.blobPath || '';
+                        const isImage = att.contentType?.startsWith('image/');
+                        const imageUrl = att.filePath || att.blobPath || '';
                         
-                        // If it's an image, show image preview
-                        if (isImage && filePath) {
-                          return (
-                            <div
-                              key={att.attachmentId}
-                              className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-colors"
-                            >
-                              {/* Image Header */}
-                              <div className="p-4 border-b-2 border-gray-200 bg-white">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                      </svg>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <p className="text-base font-bold text-gray-900 truncate">{att.fileName}</p>
-                                        {getAttachmentStatusBadge(att.status)}
-                                      </div>
-                                      <p className="text-sm text-gray-500 font-medium">{formatFileSize(att.fileSize || 0)}</p>
-                                    </div>
-                                  </div>
-                                  <a
-                                    href={filePath}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex-shrink-0 ml-3 p-2.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-blue-200"
-                                    title="Open image in new tab"
-                                  >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                  </a>
-                                </div>
-                              </div>
-                              {/* Image Preview - Full width, good quality */}
-                              <div className="relative bg-gray-100">
-                                <img
-                                  src={filePath}
-                                  alt={att.fileName}
-                                  className="w-full h-auto max-h-96 object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                                  onError={(e) => {
-                                    console.error('Image load error:', filePath);
-                                    const target = e.target as HTMLImageElement;
-                                    const parent = target.parentElement;
-                                    if (parent) {
-                                      parent.innerHTML = `
-                                        <div class="p-8 text-center text-gray-500">
-                                          <svg class="w-16 h-16 mx-auto mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                          </svg>
-                                          <p class="text-base font-medium">Image failed to load</p>
-                                        </div>
-                                      `;
-                                    }
-                                  }}
-                                  onClick={() => {
-                                    // Open image in new tab when clicked
-                                    window.open(filePath, '_blank');
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        }
-                        
-                        // Non-image files
                         return (
                           <div
                             key={att.attachmentId}
-                            className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200 group"
+                            className="border border-gray-300 rounded-lg overflow-hidden bg-white shadow-sm"
                           >
-                            <div className="flex-shrink-0">
-                              {getFileIcon(att.fileName)}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
-                                  {att.fileName}
-                                </p>
-                                {getAttachmentStatusBadge(att.status)}
+                            {/* Image preview - Full width, good quality */}
+                            {isImage && imageUrl && (
+                              <div className="relative bg-gray-100">
+                                <img
+                                  src={imageUrl}
+                                  alt={att.fileName}
+                                  className="w-full h-auto max-h-96 object-contain"
+                                  onError={(e) => {
+                                    console.error('Image load error:', att.filePath);
+                                    e.currentTarget.parentElement!.style.display = 'none';
+                                  }}
+                                />
                               </div>
-                              <p className="text-sm text-gray-500 mt-0.5">
-                                {formatFileSize(att.fileSize || 0)} • Uploaded {formatDate(att.uploadedAt)}
-                              </p>
+                            )}
+                            
+                            {/* File info bar */}
+                            <div className="p-3 bg-gray-50 border-t border-gray-200">
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  {isImage ? (
+                                    <svg className="w-5 h-5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    </svg>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-gray-700 font-medium truncate">{att.fileName}</p>
+                                      {getAttachmentStatusBadge(att.status)}
+                                    </div>
+                                    <p className="text-xs text-gray-500">
+                                      {formatFileSize(att.fileSize || 0)} • {new Date(att.uploadedAt).toLocaleString()}
+                                    </p>
+                                  </div>
+                                </div>
+                                <a
+                                  href={imageUrl || att.filePath}
+                                  download={att.fileName}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="ml-3 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0"
+                                >
+                                  Download
+                                </a>
+                              </div>
                             </div>
-                            <a
-                              href={att.filePath}
-                              download={att.fileName}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex-shrink-0 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-sm hover:shadow-md flex items-center gap-2 group"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                              </svg>
-                              Download
-                            </a>
                           </div>
                         );
                       })}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {/* Footer */}
-          <div className="bg-gray-50 px-8 py-4 border-t-2 border-gray-200 flex items-center justify-end">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200 px-6 py-4">
             <button
+              type="button"
               onClick={onClose}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold shadow-sm hover:shadow-md flex items-center gap-2"
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
               Close
             </button>
           </div>

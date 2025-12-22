@@ -48,17 +48,22 @@ const CreateFindingModal = ({
   const [departmentUsers, setDepartmentUsers] = useState<AdminUserDto[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [showWitnessesDropdown, setShowWitnessesDropdown] = useState(false);
+
   
-  // Additional fields
-  const [findingDate] = useState(() => {
-    const now = new Date();
-    return now.toISOString().split('T')[0];
-  });
-  const [findingTime, setFindingTime] = useState(() => {
-    const now = new Date();
-    return now.toTimeString().slice(0, 5);
-  });
-  const [findingType] = useState('');
+ // Additional fields (Giờ Việt Nam)
+const [findingDate] = useState(() => {
+  const now = new Date();
+  return now.toLocaleDateString('en-CA'); // YYYY-MM-DD (VN)
+});
+
+const [findingTime, setFindingTime] = useState(() => {
+  const now = new Date();
+  return now.toTimeString().slice(0, 5); // HH:MM (VN)
+});
+
+
+  const [findingType, setFindingType] = useState('');
+
 
   // Update time to current time when modal opens and keep it updated
   useEffect(() => {
@@ -178,15 +183,20 @@ const CreateFindingModal = ({
     const calculatedDate = new Date(today);
     calculatedDate.setDate(calculatedDate.getDate() + daysToAdd);
     
-    // Ensure deadline is within Fieldwork Start and Evidence Due range
+    // Ensure deadline is within Fieldwork Start and (Evidence Due - 1 day) range
     let finalDate = calculatedDate;
     
     if (fieldworkStartDate && finalDate < fieldworkStartDate) {
       finalDate = new Date(fieldworkStartDate);
     }
     
-    if (evidenceDueDate && finalDate > evidenceDueDate) {
-      finalDate = new Date(evidenceDueDate);
+    if (evidenceDueDate) {
+      // Max deadline is 1 day before Evidence Due date
+      const maxDeadline = new Date(evidenceDueDate);
+      maxDeadline.setDate(maxDeadline.getDate() - 1);
+      if (finalDate > maxDeadline) {
+        finalDate = new Date(maxDeadline);
+      }
     }
     
     return finalDate.toISOString().split('T')[0];
@@ -283,8 +293,17 @@ const CreateFindingModal = ({
         newErrors.deadline = 'Deadline cannot be before today';
       } else if (fieldworkStartDate && deadlineDate < fieldworkStartDate) {
         newErrors.deadline = `Deadline must be on or after Fieldwork Start date (${fieldworkStartDate.toISOString().split('T')[0]})`;
-      } else if (evidenceDueDate && deadlineDate > evidenceDueDate) {
-        newErrors.deadline = `Deadline must be on or before Evidence Due date (${evidenceDueDate.toISOString().split('T')[0]})`;
+      } else if (evidenceDueDate) {
+        // Deadline must be at least 1 day before Evidence Due date
+        const maxDeadlineDate = new Date(evidenceDueDate);
+        maxDeadlineDate.setDate(maxDeadlineDate.getDate() - 1);
+        maxDeadlineDate.setHours(0, 0, 0, 0);
+        
+        if (deadlineDate > maxDeadlineDate) {
+          const maxDeadlineStr = maxDeadlineDate.toISOString().split('T')[0];
+          const evidenceDueStr = evidenceDueDate.toISOString().split('T')[0];
+          newErrors.deadline = `Deadline must be on or before ${maxDeadlineStr} `;
+        }
       }
     }
     
@@ -502,7 +521,12 @@ const CreateFindingModal = ({
   const minDate = fieldworkStartDate 
     ? Math.max(fieldworkStartDate.getTime(), new Date().getTime()) 
     : new Date().getTime();
-  const maxDate = evidenceDueDate ? evidenceDueDate.getTime() : undefined;
+  // Max date is 1 day before Evidence Due date
+  const maxDate = evidenceDueDate ? (() => {
+    const maxDeadline = new Date(evidenceDueDate);
+    maxDeadline.setDate(maxDeadline.getDate() - 1);
+    return maxDeadline.getTime();
+  })() : undefined;
   
   const minDateStr = new Date(minDate).toISOString().split('T')[0];
   const maxDateStr = maxDate ? new Date(maxDate).toISOString().split('T')[0] : undefined;
@@ -659,11 +683,16 @@ const CreateFindingModal = ({
                   {errors.deadline && (
                     <p className="mt-1 text-sm text-red-600">{errors.deadline}</p>
                   )}
-                  {fieldworkStartDate && evidenceDueDate && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      Deadline must be between {fieldworkStartDate.toISOString().split('T')[0]} (Fieldwork Start) and {evidenceDueDate.toISOString().split('T')[0]} (Evidence Due)
-                    </p>
-                  )}
+                  {fieldworkStartDate && evidenceDueDate && (() => {
+                    const maxDeadline = new Date(evidenceDueDate);
+                    maxDeadline.setDate(maxDeadline.getDate() - 1);
+                    const maxDeadlineStr = maxDeadline.toISOString().split('T')[0];
+                    return (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Deadline must be between {fieldworkStartDate.toISOString().split('T')[0]} (Fieldwork Start) and {maxDeadlineStr} 
+                      </p>
+                    );
+                  })()}
                 </>
               )}
             </div>

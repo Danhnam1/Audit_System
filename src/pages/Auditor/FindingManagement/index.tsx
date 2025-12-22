@@ -123,8 +123,33 @@ const SQAStaffFindingManagement = () => {
             const auditTitle = audit.title || audit.name || auditData.title || auditData.name || auditAssignments[0]?.auditTitle || 'Department Audit';
             const status = audit.status || audit.Status || auditData.status || auditData.Status || auditAssignments[0]?.status || 'Unknown';
             const scope = audit.scope || audit.Scope || auditData.scope || auditData.Scope || '';
-            // Try to get startDate from audit, if not available, try from first assignment's plannedStartDate
-            let startDate = audit.startDate || audit.StartDate || auditData.startDate || auditData.StartDate || '';
+            
+            // Get Fieldwork Start date from schedules
+            let fieldworkStartDate = '';
+            try {
+              const schedulesData = auditData.schedules || audit.schedules;
+              if (schedulesData) {
+                // Unwrap schedules array
+                const schedulesArray = unwrap(schedulesData);
+                if (Array.isArray(schedulesArray) && schedulesArray.length > 0) {
+                  // Find schedule with milestoneName === "Fieldwork Start"
+                  const fieldworkSchedule = schedulesArray.find((s: any) => 
+                    (s.milestoneName || s.name || s.milestone || '').toLowerCase() === 'fieldwork start'
+                  );
+                  if (fieldworkSchedule && fieldworkSchedule.dueDate) {
+                    fieldworkStartDate = fieldworkSchedule.dueDate;
+                    console.log(`✅ Found Fieldwork Start date for ${auditId}:`, fieldworkStartDate);
+                  } else {
+                    console.log(`⚠️ No Fieldwork Start schedule found for ${auditId}`);
+                  }
+                }
+              }
+            } catch (scheduleErr) {
+              console.warn(`⚠️ Error extracting Fieldwork Start date for ${auditId}:`, scheduleErr);
+            }
+            
+            // Fallback to startDate if Fieldwork Start not found
+            let startDate = fieldworkStartDate || audit.startDate || audit.StartDate || auditData.startDate || auditData.StartDate || '';
             if (!startDate && auditAssignments.length > 0) {
               startDate = auditAssignments[0]?.plannedStartDate || '';
             }
@@ -188,25 +213,25 @@ const SQAStaffFindingManagement = () => {
             return false;
           }
           
-          // Filter out future audits - only show audits that have started (startDate <= today)
+          // Filter out future audits - only show audits where Fieldwork Start date is today or in the past
+          // Note: startDate now contains Fieldwork Start date (or fallback to audit startDate)
           if (audit.startDate) {
             try {
-              const startDate = new Date(audit.startDate);
-              startDate.setHours(0, 0, 0, 0);
+              const fieldworkStartDate = new Date(audit.startDate);
+              fieldworkStartDate.setHours(0, 0, 0, 0);
               
-              // Only show if startDate is today or in the past
-              if (startDate > today) {
-                console.log(`🚫 Filtering out future audit: ${audit.auditTitle} (startDate: ${audit.startDate})`);
+              // Only show if Fieldwork Start date is today or in the past
+              if (fieldworkStartDate > today) {
+                console.log(`🚫 Filtering out future audit: ${audit.auditTitle} (Fieldwork Start: ${audit.startDate})`);
                 return false;
               }
             } catch (err) {
-              console.warn(`⚠️ Invalid startDate for audit ${audit.auditTitle}:`, audit.startDate);
+              console.warn(`⚠️ Invalid Fieldwork Start date for audit ${audit.auditTitle}:`, audit.startDate);
               // If we can't parse the date, include it to be safe
             }
           } else {
-            // If no startDate, check if there's a plannedStartDate from assignments
-            // For now, if no startDate at all, we'll include it
-            console.log(`⚠️ Audit ${audit.auditTitle} has no startDate, including it`);
+            // If no Fieldwork Start date, include it (might be using fallback startDate)
+            console.log(`⚠️ Audit ${audit.auditTitle} has no Fieldwork Start date, including it`);
           }
           
           return true;
