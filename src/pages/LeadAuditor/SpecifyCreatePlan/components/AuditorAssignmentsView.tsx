@@ -352,19 +352,10 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-lg font-semibold text-gray-900">
-                          Assignment #{assignment.assignmentId?.substring(0, 8) || 'N/A'}
+                          Assignment 
+                          {/* #{assignment.assignmentId?.substring(0, 8) || 'N/A'} */}
                         </h3>
-                        {assignment.status && (
-                          <span
-                            className={`px-2 py-1 text-xs font-medium rounded-full ${
-                              assignment.status.toLowerCase() === 'active'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}
-                          >
-                            {assignment.status}
-                          </span>
-                        )}
+                        
                       </div>
                       <div className="text-sm text-gray-600 space-y-1">
                         <p>

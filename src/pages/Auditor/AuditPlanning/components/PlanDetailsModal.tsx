@@ -156,7 +156,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   const [refreshedTeams, setRefreshedTeams] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [hasLoadedRefreshedData, setHasLoadedRefreshedData] = useState(false);
-
+  
   // Load shared criteria when modal opens
   useEffect(() => {
     const loadSharedCriteria = async () => {
@@ -449,7 +449,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     });
     return result;
   }, [hasLoadedRefreshedData, refreshedSchedules, refreshKey, selectedPlanDetails.schedules?.values]);
-  
+
   // Build a list of audit team members to render. Filter out AuditeeOwner immediately.
   const auditTeamsFromDetails: any[] = useMemo(() => {
     const result = hasLoadedRefreshedData
@@ -458,10 +458,10 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           return role !== 'auditeeowner';
         })
       : (Array.isArray(selectedPlanDetails.auditTeams?.values)
-          ? selectedPlanDetails.auditTeams.values.filter((m: any) => {
-              const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
-              return role !== 'auditeeowner';
-            })
+    ? selectedPlanDetails.auditTeams.values.filter((m: any) => {
+        const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+        return role !== 'auditeeowner';
+      })
           : []);
     console.log('PlanDetailsModal: Computing auditTeamsFromDetails', {
       hasLoadedRefreshedData,

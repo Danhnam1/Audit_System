@@ -266,7 +266,7 @@ export const getAuditReportNote = async (auditId: string): Promise<string> => {
   }
   
   try {
-    const res = await apiClient.get(url) as any;
+  const res = await apiClient.get(url) as any;
     
     if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
       console.log(`[API] 📥 Response from ${url}:`, {
@@ -276,7 +276,7 @@ export const getAuditReportNote = async (auditId: string): Promise<string> => {
       });
     }
     
-    const data = res?.data ?? res;
+  const data = res?.data ?? res;
     if (data == null) {
       if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
         console.warn(`[API] ⚠️ No data in response from ${url}`);
@@ -291,7 +291,7 @@ export const getAuditReportNote = async (auditId: string): Promise<string> => {
       return data;
     }
     
-    if (typeof data === 'object') {
+  if (typeof data === 'object') {
       // Backend returns { Reason: note } (capital R), so check both cases
       const note = String(
         data.Reason ?? // Backend returns Reason (capital R)

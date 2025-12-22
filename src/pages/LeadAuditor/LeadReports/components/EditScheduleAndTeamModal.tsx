@@ -86,8 +86,8 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
           return {
             scheduleId: scheduleId ? String(scheduleId) : undefined, // Ensure it's a string or undefined
             milestoneName: s.milestoneName || s.milestone || `Schedule ${idx + 1}`,
-            dueDate: s.dueDate ? new Date(s.dueDate).toISOString().split('T')[0] : '',
-            status: s.status || 'Active',
+              dueDate: s.dueDate ? new Date(s.dueDate).toISOString().split('T')[0] : '',
+              status: s.status || 'Active',
             notes: s.notes || '', // Backend requires Notes field
           };
         })
@@ -100,10 +100,10 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
       const teamDataArray = Array.isArray(teamData) ? teamData : [];
       // Extract auditor IDs from team members (filter out AuditeeOwner)
       const auditorIds = teamDataArray
-        .filter((m: any) => {
-          const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
-          return role !== 'auditeeowner';
-        })
+            .filter((m: any) => {
+              const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+              return role !== 'auditeeowner';
+            })
         .map((m: any) => String(m.userId || m.id || m.$id || ''))
         .filter((id: string) => id);
       
@@ -207,8 +207,8 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
     if (editMode === 'team' || editMode === 'both') {
       if (selectedAuditorIds.length === 0) {
         toast.error('At least one auditor is required');
-        return;
-      }
+      return;
+    }
     }
 
     setSaving(true);
@@ -273,11 +273,11 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
             </div>
             <div className="flex-1">
               <h3 className="text-xl font-bold text-white">
-                Edit Schedule & Team
-              </h3>
+            Edit Schedule & Team
+          </h3>
               <p className="text-sm text-primary-100 mt-0.5">
-                Update audit schedule and team members
-              </p>
+            Update audit schedule and team members
+          </p>
             </div>
             <button
               onClick={onClose}
@@ -409,39 +409,39 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
                         </p>
                       </div>
                     </div>
-                  </div>
+                </div>
                 )}
-                 <div className="space-y-3">
+                <div className="space-y-3">
                    {schedules.map((schedule, index) => {
                      const scheduleKey = schedule.scheduleId || `schedule-${index}`;
                      return (
-                     <div
+                    <div
                        key={scheduleKey}
                        className="p-5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 space-y-4 group"
-                     >
+                    >
                        <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200">
                          <div className="flex items-center gap-3">
                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-sm">
                              <span className="text-white font-bold text-sm">{index + 1}</span>
                            </div>
-                           <div>
+                        <div>
                              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-0.5">Milestone</p>
                              <p className="text-base font-bold text-gray-900">
                                {schedule.milestoneName || `Schedule ${index + 1}`}
                              </p>
                            </div>
                          </div>
-                       </div>
-                       <div>
+                        </div>
+                        <div>
                          <label className="block text-xs font-semibold text-gray-700 mb-2">
                            Due Date <span className="text-red-500">*</span>
-                         </label>
-                         <input
-                           type="date"
-                           value={schedule.dueDate}
-                           onChange={(e) =>
-                             handleScheduleChange(index, 'dueDate', e.target.value)
-                           }
+                          </label>
+                          <input
+                            type="date"
+                            value={schedule.dueDate}
+                            onChange={(e) =>
+                              handleScheduleChange(index, 'dueDate', e.target.value)
+                            }
                            min={periodFrom}
                            max={periodTo}
                            className={`w-full px-4 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 bg-white ${
@@ -451,9 +451,9 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
                          {scheduleErrors[index] && (
                            <p className="text-xs text-red-600 mt-1">{scheduleErrors[index]}</p>
                          )}
-                       </div>
+                        </div>
                       
-                    </div>
+                      </div>
                    );
                    })}
                   {schedules.length === 0 && (
@@ -476,19 +476,19 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
                   <div className="flex items-center gap-2">
                     <div className="w-1 h-6 bg-gradient-to-b from-primary-600 to-primary-700 rounded-full"></div>
                     <h4 className="text-base font-bold text-gray-800">Team Members</h4>
-                  </div>
-                </div>
+                        </div>
+                      </div>
                 
                 <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
                   <label className="block text-xs font-semibold text-gray-700 mb-2">
                     Auditors <span className="text-red-500">*</span>
-                  </label>
+                        </label>
                   {auditorOptions.length === 0 ? (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                       <p className="text-sm text-yellow-700">
                         ⚠️ No auditor options available. Please ensure auditors are loaded.
                       </p>
-                    </div>
+                      </div>
                   ) : (
                     <MultiSelect
                       options={auditorOptions}
