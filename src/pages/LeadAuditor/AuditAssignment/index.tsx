@@ -1867,9 +1867,9 @@ export default function AuditAssignment() {
                               QR Code Validity Period
                             </p>
                           <p className={`text-xs mt-1 ${auditHasEnded ? 'text-amber-800' : 'text-blue-800'}`}>
-                              {validityFrom && validityTo ? (
+                              {qrValidityFrom && qrValidityTo ? (
                                 <>
-                                  QR codes will be valid from <strong>Evidence Due ({validityFrom.toLocaleDateString()})</strong>.
+                                  QR codes will be valid from <strong>Evidence Due ({qrValidityFrom.toLocaleDateString()})</strong>.
                                 </>
                               ) : (
                                 <>
