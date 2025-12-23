@@ -74,11 +74,40 @@ export const getReportRequestById = async (id: string): Promise<ViewReportReques
   }
 };
 
-// Get report request by audit ID
+// Get report request by audit ID (returns the LATEST one)
+// Priority: completedAt (when reject/approve happens) > requestedAt (when submit happens)
 export const getReportRequestByAuditId = async (auditId: string): Promise<ViewReportRequest | null> => {
   try {
     const allRequests = await getAllReportRequests();
-    return allRequests.find(r => r.auditId === auditId) || null;
+    // Filter all ReportRequests for this auditId
+    const matchingRequests = allRequests.filter(r => r.auditId === auditId);
+    
+    if (matchingRequests.length === 0) {
+      return null;
+    }
+    
+    // If only one, return it
+    if (matchingRequests.length === 1) {
+      return matchingRequests[0];
+    }
+    
+    // If multiple, return the LATEST one
+    // Compare max(completedAt, requestedAt) for each ReportRequest to find the most recent action
+    const latest = matchingRequests.reduce((latest, current) => {
+      const latestCompletedAt = latest.completedAt ? new Date(latest.completedAt).getTime() : 0;
+      const currentCompletedAt = current.completedAt ? new Date(current.completedAt).getTime() : 0;
+      const latestRequestedAt = latest.requestedAt ? new Date(latest.requestedAt).getTime() : 0;
+      const currentRequestedAt = current.requestedAt ? new Date(current.requestedAt).getTime() : 0;
+      
+      // Get the latest timestamp for each ReportRequest (completedAt or requestedAt, whichever is newer)
+      const latestLatest = Math.max(latestCompletedAt, latestRequestedAt);
+      const currentLatest = Math.max(currentCompletedAt, currentRequestedAt);
+      
+      // Use the ReportRequest with the latest timestamp
+      return currentLatest >= latestLatest ? current : latest;
+    });
+    
+    return latest;
   } catch (error) {
     console.error('Failed to get report request by audit ID:', error);
     return null;

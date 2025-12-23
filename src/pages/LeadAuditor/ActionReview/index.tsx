@@ -110,12 +110,17 @@ const ActionReview = () => {
               const deptList = unwrap<any>(deptData);
               const deptArray = Array.isArray(deptList) ? deptList : [];
               
-              // Count findings across all departments
+              // Count findings across all departments (filter by auditId)
               let totalFindings = 0;
               for (const dept of deptArray) {
                 try {
                   const findings = await getFindingsByDepartment(dept.deptId);
-                  totalFindings += findings.length;
+                  // Filter findings by auditId
+                  const filteredFindings = findings.filter((finding: Finding) => {
+                    const findingAuditId = finding.auditId || finding.audit?.auditId || '';
+                    return String(findingAuditId) === String(audit.auditId);
+                  });
+                  totalFindings += filteredFindings.length;
                 } catch (err) {
                   // Ignore errors for individual departments
                 }
@@ -170,16 +175,133 @@ const ActionReview = () => {
     }
   };
 
+  // Check if all actions for a finding are closed
+  const areAllActionsClosed = (findingId: string): boolean => {
+    const actions = findingActionsMap[findingId] || [];
+    if (actions.length === 0) return false; // No actions means not all closed
+    
+    // Check if all actions are closed
+    return actions.every(action => {
+      const status = action.status?.toLowerCase() || '';
+      const isClosed = status === 'closed' || action.closedAt !== null;
+      return isClosed;
+    });
+  };
+
+  // Get display status for finding - override "Closed" if not all actions are closed
+  // Keep "Received" if there's at least one action not approved or verified
+  const getDisplayStatus = (finding: Finding): string => {
+    const originalStatus = finding.status || '';
+    const statusLower = originalStatus.toLowerCase();
+
+    // If status is "Received", check if all actions are approved/verified
+    if (statusLower === 'received') {
+      const actions = findingActionsMap[finding.findingId] || [];
+      if (actions.length > 0) {
+        // Check if all actions are approved or verified
+        const allApprovedOrVerified = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'approved' || actionStatus === 'verified' || actionStatus === 'completed';
+        });
+        
+        // If not all actions are approved/verified, keep "Received" status
+        if (!allApprovedOrVerified) {
+          return 'Received';
+        }
+        
+        // If all actions are approved/verified, change status based on action states
+        // Check if all actions are closed
+        const allClosed = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'closed' || a.closedAt !== null;
+        });
+        
+        if (allClosed) {
+          return 'Closed';
+        }
+        
+        // All verified/approved but not all closed - show "Verified" or "Approved" status
+        // Check if all are verified
+        const allVerified = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'verified';
+        });
+        
+        if (allVerified) {
+          return 'Verified';
+        }
+        
+        // Check if all are approved
+        const allApproved = actions.every(a => {
+          const actionStatus = a.status?.toLowerCase() || '';
+          return actionStatus === 'approved' || actionStatus === 'completed';
+        });
+        
+        if (allApproved) {
+          return 'Approved';
+        }
+        
+        // Mixed verified/approved - show "In Progress"
+        return 'In Progress';
+      }
+      // No actions yet, keep Received
+      return 'Received';
+    }
+
+    // If status is "Closed", check if all actions are actually closed
+    if (statusLower === 'closed') {
+      const allClosed = areAllActionsClosed(finding.findingId);
+      if (!allClosed) {
+        // Not all actions are closed, determine status based on actions
+        const actions = findingActionsMap[finding.findingId] || [];
+        if (actions.length === 0) {
+          return 'Open'; // No actions yet
+        }
+
+        // Check action statuses to determine finding status
+        const hasInProgress = actions.some(a => {
+          const status = a.status?.toLowerCase() || '';
+          return status === 'inprogress' || status === 'in progress' || (a.progressPercent > 0 && a.progressPercent < 100);
+        });
+
+        if (hasInProgress) {
+          return 'In Progress';
+        }
+
+        const hasReviewed = actions.some(a => a.status?.toLowerCase() === 'reviewed');
+        if (hasReviewed) {
+          return 'Review';
+        }
+
+        const hasApproved = actions.some(a => a.status?.toLowerCase() === 'approved');
+        if (hasApproved) {
+          return 'Approved';
+        }
+
+        // Default to Open if we can't determine
+        return 'Open';
+      }
+    }
+    
+    return originalStatus;
+  };
+
   // Helper function to load findings
   const loadFindings = async (deptId: number) => {
     setLoadingFindings(true);
     try {
       const findingsData = await getFindingsByDepartment(deptId);
-      setFindings(findingsData);
+      // Filter findings by selectedAuditId
+      const filteredFindings = selectedAuditId 
+        ? findingsData.filter((finding: Finding) => {
+            const findingAuditId = finding.auditId || finding.audit?.auditId || '';
+            return String(findingAuditId) === String(selectedAuditId);
+          })
+        : findingsData;
       
       // Load actions for each finding to check for "Approved" status
       const actionsMap: Record<string, Action[]> = {};
-      for (const finding of findingsData) {
+      for (const finding of filteredFindings) {
         try {
           const actions = await getActionsByFinding(finding.findingId);
           actionsMap[finding.findingId] = actions || [];
@@ -189,6 +311,7 @@ const ActionReview = () => {
         }
       }
       setFindingActionsMap(actionsMap);
+      setFindings(filteredFindings);
     } catch (err: any) {
       console.error('Error loading findings:', err);
       toast.error('Failed to load findings');
@@ -271,6 +394,35 @@ const ActionReview = () => {
         });
 
         try {
+          // IMPORTANT: Approve only attachments with status "Open" before approving the action
+          try {
+            const attachments = await getAttachments('Action', action.actionId);
+            const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
+            const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
+            
+            console.log(`📋 [Retry] Action: ${action.title} (${action.actionId})`);
+            console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`);
+            console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`);
+            
+            if (openAttachments.length > 0) {
+              console.log(`✅ [Retry] Approving ${openAttachments.length} attachment(s) with "Open" status...`);
+              const approvePromises = openAttachments.map(async (attachment) => {
+                try {
+                  await updateAttachmentStatus(attachment.attachmentId, 'Approved');
+                  console.log(`  ✓ Approved attachment: ${attachment.fileName}`);
+                } catch (err: any) {
+                  console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
+                  // Continue with other attachments even if one fails
+                }
+              });
+              
+              await Promise.all(approvePromises);
+              console.log(`✅ [Retry] Approved ${openAttachments.length} attachment(s)`);
+            }
+          } catch (attErr) {
+            console.warn('Could not load/approve attachments for retry:', attErr);
+          }
+          
           // Retry approve this action
           await approveFindingActionHigherLevel(action.actionId, approveAllFeedback || '');
           
@@ -721,10 +873,8 @@ const ActionReview = () => {
                             {finding.severity || 'N/A'}
                                                   
                           </span>
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${getStatusBadgeColor(finding.status)}`}>
-
-  {finding.status || 'No status'}
-
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
+                            {getDisplayStatus(finding) || 'No status'}
                           </span>
                         
                           {hasApprovedAction(finding.findingId) && (
@@ -775,44 +925,7 @@ const ActionReview = () => {
             ) : (
               <>
                 {/* Approve All Button - Show if there are multiple approved actions ready for final review */}
-                {actions.filter(a => a.status?.toLowerCase() === 'approved').length > 1 && (
-                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-b-2 border-green-200 px-4 sm:px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                          <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-bold text-gray-900">Bulk Approval</h3>
-                          <p className="text-xs text-gray-600">
-                            {actions.filter(a => a.status?.toLowerCase() === 'approved').length} actions ready for final approval
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleApproveAll}
-                        disabled={approvingAll}
-                        className="px-5 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all font-semibold shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                        {approvingAll ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            Approving...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Approve All
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
+             
                 
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -1057,7 +1170,7 @@ const ActionReview = () => {
                     </svg>
                     <span className="text-sm font-medium text-green-700">Succeeded</span>
                   </div>
-                  <p className="text-2xl font-bold text-green-600">{approveResults.succeeded.length}</p>
+                  <p className="text-2xl font-bold text-green-600">{approveResults?.succeeded?.length || 0}</p>
                 </div>
                 <div className="bg-red-50 border-2 border-red-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
@@ -1066,7 +1179,7 @@ const ActionReview = () => {
                     </svg>
                     <span className="text-sm font-medium text-red-700">Failed</span>
                   </div>
-                  <p className="text-2xl font-bold text-red-600">{approveResults.failed.length}</p>
+                  <p className="text-2xl font-bold text-red-600">{approveResults?.failed?.length || 0}</p>
                 </div>
               </div>
             </div>
@@ -1074,7 +1187,7 @@ const ActionReview = () => {
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* Succeeded Actions */}
-              {approveResults.succeeded.length > 0 && (
+              {approveResults && approveResults.succeeded.length > 0 && (
                 <div>
                   <h4 className="text-sm font-bold text-green-700 uppercase tracking-wide mb-3 flex items-center gap-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1104,7 +1217,7 @@ const ActionReview = () => {
               )}
 
               {/* Failed Actions */}
-              {approveResults.failed.length > 0 && (
+              {approveResults && approveResults.failed.length > 0 && (
                 <div>
                   <h4 className="text-sm font-bold text-red-700 uppercase tracking-wide mb-3 flex items-center gap-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1146,7 +1259,7 @@ const ActionReview = () => {
                 >
                   Close
                 </button>
-                {approveResults.failed.length > 0 && (
+                {approveResults && approveResults.failed.length > 0 && (
                   <button
                     onClick={handleRetryFailed}
                     disabled={approvingAll}
@@ -1176,87 +1289,6 @@ const ActionReview = () => {
         </div>
       )}
 
-      {/* Approve All Modal */}
-      {showApproveAllModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full">
-            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 rounded-t-xl">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white">Approve All Actions</h3>
-                  <p className="text-sm text-white/80 mt-0.5">
-                    {actions.filter(a => a.status?.toLowerCase() === 'approved').length} actions will be approved
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="px-6 py-5">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <div className="flex items-start gap-3">
-                  <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div>
-                    <p className="text-sm font-semibold text-blue-900">Bulk Approval Confirmation</p>
-                    <p className="text-xs text-blue-700 mt-1">
-                      This will give final approval to all actions that have been approved by Auditor.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Feedback (Optional)
-              </label>
-              <textarea
-                value={approveAllFeedback}
-                onChange={(e) => setApproveAllFeedback(e.target.value)}
-                placeholder="Enter feedback for all actions (optional)"
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none"
-                rows={4}
-              />
-            </div>
-            
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-xl flex items-center justify-end gap-3">
-              <button
-                onClick={() => {
-                  setShowApproveAllModal(false);
-                  setApproveAllFeedback('');
-                }}
-                disabled={approvingAll}
-                className="px-5 py-2.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmApproveAll}
-                disabled={approvingAll}
-                className="px-5 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-lg transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {approvingAll ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Approving...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Approve All
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </MainLayout>
   );

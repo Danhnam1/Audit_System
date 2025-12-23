@@ -327,3 +327,21 @@ export const validateAssignment = async (request: ValidateAssignmentRequest): Pr
   return apiClient.post('/AuditPlanAssignment/validate', request) as any;
 };
 
+// Check audit plan creation status for a specific assignment
+export interface AuditPlanCreationStatus {
+  assignmentId: string;
+  auditorId: string;
+  status: string;
+  hasActiveAuditPlan: boolean;
+  canCreate: boolean;
+  message?: string | null;
+}
+
+export const getAuditPlanCreationStatus = async (assignmentId: string): Promise<AuditPlanCreationStatus> => {
+  if (!assignmentId) {
+    throw new Error('AssignmentId is required');
+  }
+  const res: any = await apiClient.get(`/AuditPlanAssignment/${assignmentId}/create-audit-plan`);
+  return res?.data || res;
+};
+

@@ -31,8 +31,8 @@ const SpecifyCreatePlan = () => {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
-  // DRL files state - Map<auditorId, {file: File, fileName: string}>
-  const [drlFiles, setDrlFiles] = useState<Map<string, { file: File; fileName: string }>>(new Map());
+  // DRL files state - Map<auditorId, File[]>
+  const [drlFiles, setDrlFiles] = useState<Map<string, File[]>>(new Map());
   
   const [assignmentViewMode, setAssignmentViewMode] = useState<AssignmentViewMode>('all');
   const [allAudits, setAllAudits] = useState<any[]>([]);
@@ -414,11 +414,11 @@ const SpecifyCreatePlan = () => {
         return;
       }
 
-      // Get DRL file for selected auditor (before clearing selection)
-      const drlFileInfo = selectedAuditorId ? drlFiles.get(selectedAuditorId) : null;
+      // Get DRL files for selected auditor (before clearing selection)
+      const drlFilesList = selectedAuditorId ? drlFiles.get(selectedAuditorId) || [] : [];
       const auditorIdToClear = selectedAuditorId; // Store for cleanup
       
-      // Create assignment with files if DRL file is provided
+      // Create assignment with files if DRL files are provided
       const assignmentPayload: any = {
         auditorId: auditorIdForApi, // UUID string
         assignBy: assignByForApi, // UUID string
@@ -426,10 +426,10 @@ const SpecifyCreatePlan = () => {
         remarks: remarksValue, // Ensure it's a non-empty string
       };
       
-      // Add files if DRL is provided
-      if (drlFileInfo?.file) {
-        (assignmentPayload as any).files = [drlFileInfo.file];
-        console.log('[SpecifyCreatePlan] Creating assignment with DRL file:', drlFileInfo.fileName);
+      // Add files if DRL files are provided
+      if (drlFilesList.length > 0) {
+        (assignmentPayload as any).files = drlFilesList;
+        console.log('[SpecifyCreatePlan] Creating assignment with DRL files:', drlFilesList.map(f => f.name));
       }
 
       const result = await createAuditPlanAssignment(assignmentPayload);
@@ -467,8 +467,9 @@ const SpecifyCreatePlan = () => {
 
       // Send notification to the assigned auditor
       try {
-        const notificationMessage = drlFileInfo
-          ? `You have been granted permission to create audit plans. DRL template "${drlFileInfo.fileName}" has been attached.`
+        const fileNames = drlFilesList.map(f => f.name).join(', ');
+        const notificationMessage = drlFilesList.length > 0
+          ? `You have been granted permission to create audit plans. ${drlFilesList.length} DRL template(s) ${drlFilesList.length === 1 ? 'has' : 'have'} been attached: ${fileNames}`
           : `You have been granted permission to create audit plans.`;
         
         await createNotification({
@@ -480,13 +481,13 @@ const SpecifyCreatePlan = () => {
           entityId: result?.assignmentId || '',
           category: 'AuditTeam',
         });
-        console.log('[SpecifyCreatePlan] Notification sent to auditor', drlFileInfo ? 'with DRL file info' : '');
+        console.log('[SpecifyCreatePlan] Notification sent to auditor', drlFilesList.length > 0 ? `with ${drlFilesList.length} DRL file(s)` : '');
       } catch (notifError) {
         // Don't fail the whole operation if notification fails
         console.error('[SpecifyCreatePlan] Failed to send notification:', notifError);
       }
 
-      // Remove DRL file for assigned auditor after successful assignment
+      // Remove DRL files for assigned auditor after successful assignment
       if (auditorIdToClear) {
         setDrlFiles((prev) => {
           const newMap = new Map(prev);
@@ -696,11 +697,18 @@ const SpecifyCreatePlan = () => {
                     setSelectedAuditorId(id);
                   }}
                   drlFiles={drlFiles}
-                  onDrlFileChange={(auditorId, file) => {
+                  onDrlFileChange={(auditorId, files) => {
                     setDrlFiles((prev) => {
                       const newMap = new Map(prev);
-                      if (file) {
-                        newMap.set(auditorId, { file, fileName: file.name });
+                      if (files && files.length > 0) {
+                        // Merge with existing files if any
+                        const existingFiles = newMap.get(auditorId) || [];
+                        const allFiles = [...existingFiles, ...files];
+                        // Remove duplicates based on file name and size
+                        const uniqueFiles = allFiles.filter((file, index, self) =>
+                          index === self.findIndex(f => f.name === file.name && f.size === file.size)
+                        );
+                        newMap.set(auditorId, uniqueFiles);
                       } else {
                         newMap.delete(auditorId);
                       }

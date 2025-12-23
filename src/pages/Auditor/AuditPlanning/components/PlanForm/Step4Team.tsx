@@ -163,7 +163,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
           
         </div>
 
-        {/* Permission preview */}
+        {/* Permission preview
         <div>
           {sensitiveFlag ? (
             <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
@@ -174,7 +174,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
               No sensitive flag. Auditors are assigned normally.
             </div>
           )}
-        </div>
+        </div> */}
 
         {/* Auditee Owners */}
         <div>

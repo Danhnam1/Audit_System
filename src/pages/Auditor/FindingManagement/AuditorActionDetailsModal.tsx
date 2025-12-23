@@ -100,63 +100,66 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
     );
   };
 
-  const getStatusColor = (status: string) => {
-    const statusLower = status?.toLowerCase() || '';
-    if (statusLower === 'open' || statusLower === 'pending') {
-      return 'bg-blue-100 text-blue-800 border-blue-200';
+  // Get action status badge
+  const getActionStatusBadge = (status?: string) => {
+    if (!status) return null;
+    const statusLower = status.toLowerCase();
+    
+    if (statusLower === 'verified' || statusLower === 'approved' || statusLower === 'completed') {
+      return (
+        <span className="px-3 py-1.5 bg-green-100 text-green-700 text-sm font-semibold rounded-lg border border-green-300 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          {status}
+        </span>
+      );
     }
-    if (statusLower === 'closed' || statusLower === 'resolved' || statusLower === 'reviewed') {
-      return 'bg-gray-100 text-gray-800 border-gray-200';
+    if (statusLower === 'rejected' || statusLower === 'leadrejected') {
+      return (
+        <span className="px-3 py-1.5 bg-red-100 text-red-700 text-sm font-semibold rounded-lg border border-red-300 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          {status}
+        </span>
+      );
+    }
+    if (statusLower === 'open' || statusLower === 'pending') {
+      return (
+        <span className="px-3 py-1.5 bg-blue-100 text-blue-700 text-sm font-semibold rounded-lg border border-blue-300 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {status}
+        </span>
+      );
     }
     if (statusLower === 'in progress' || statusLower === 'in-progress') {
-      return 'bg-cyan-100 text-cyan-800 border-cyan-200';
-    }
-    if (statusLower === 'approved' || statusLower === 'verified') {
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    }
-    if (statusLower === 'Completed') {
-      return 'bg-green-100 text-green-800 border-green-200';
-    }
-    if (statusLower === 'rejected') {
-      return 'bg-red-100 text-red-800 border-red-200';
-    }
-    return 'bg-gray-100 text-gray-800 border-gray-200';
-  };
-
-  const getFileIcon = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'].includes(ext || '')) {
       return (
-        <svg className="w-8 h-8 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-        </svg>
+        <span className="px-3 py-1.5 bg-cyan-100 text-cyan-700 text-sm font-semibold rounded-lg border border-cyan-300 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          {status}
+        </span>
       );
     }
-    if (['pdf'].includes(ext || '')) {
+    if (statusLower === 'reviewed') {
       return (
-        <svg className="w-8 h-8 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-        </svg>
+        <span className="px-3 py-1.5 bg-amber-100 text-amber-700 text-sm font-semibold rounded-lg border border-amber-300 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {status}
+        </span>
       );
     }
-    if (['doc', 'docx'].includes(ext || '')) {
-      return (
-        <svg className="w-8 h-8 text-blue-700" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-        </svg>
-      );
-    }
-    if (['xls', 'xlsx'].includes(ext || '')) {
-      return (
-        <svg className="w-8 h-8 text-green-700" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
-        </svg>
-      );
-    }
+    // Default
     return (
-      <svg className="w-8 h-8 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-      </svg>
+      <span className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg border border-gray-300 flex items-center gap-2">
+        {status}
+      </span>
     );
   };
 
@@ -234,12 +237,9 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
                     <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
                       Status
                     </label>
-                    <input
-                      type="text"
-                      value={action.status || 'N/A'}
-                      readOnly
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
-                    />
+                    <div className="flex items-center gap-3">
+                      {getActionStatusBadge(action.status)}
+                    </div>
                   </div>
 
                   {/* Description */}

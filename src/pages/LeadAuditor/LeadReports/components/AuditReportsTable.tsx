@@ -14,8 +14,8 @@ interface Row {
 
 interface Props {
   rows: Row[];
-  statusFilter: 'all' | 'submitted' | 'closed';
-  setStatusFilter: (v: 'all' | 'submitted' | 'closed') => void;
+  statusFilter: 'all' | 'submitted' | 'approved';
+  setStatusFilter: (v: 'all' | 'submitted' | 'approved') => void;
   reportSearch: string;
   setReportSearch: (v: string) => void;
   needsDecision: (status: string) => boolean;
@@ -46,22 +46,34 @@ const AuditReportsTable: React.FC<Props> = ({
   // Check if status allows editing schedule and team (Director approved)
   // Button hiển thị khi:
   // 1. Có extension request (revision request) đã được Director approve (isDirectorApproved = true)
-  // 2. VÀ report status KHÔNG phải "Returned" (không bị reject)
+  // 2. VÀ report status KHÔNG phải "Returned" (không bị reject) - kể cả sau khi đã edit
   // 3. VÀ report status KHÔNG phải "Approved" (chưa được approve)
-  const canEditScheduleAndTeam = (status: string, _rawStatus?: string, isDirectorApproved?: boolean) => {
-    const statusLower = String(status || '').toLowerCase().trim();
+  const canEditScheduleAndTeam = (status: string, rawStatus?: string, isDirectorApproved?: boolean) => {
+    // Normalize status (check both status and rawStatus for edge cases)
+    const statusLower = String(status || '').toLowerCase().trim().replace(/\s+/g, '');
+    const rawStatusLower = String(rawStatus || '').toLowerCase().trim().replace(/\s+/g, '');
     
-    // Nếu report đã bị reject (Returned), không cho phép edit
-    if (statusLower === 'returned') {
+    // Nếu report đã bị reject (Returned) - ẩn button ngay cả khi đã edit trước đó
+    // Check multiple variations: returned, reject, rejected
+    if (statusLower === 'returned' || 
+        statusLower.includes('return') || 
+        statusLower.includes('reject') ||
+        rawStatusLower === 'returned' ||
+        rawStatusLower.includes('return') ||
+        rawStatusLower.includes('reject')) {
       return false;
     }
     
-    // Nếu report đã được approve, không cho phép edit
-    if (statusLower === 'approved') {
+    // Nếu report đã được approve - ẩn button
+    if (statusLower === 'approved' || 
+        statusLower.includes('approve') ||
+        rawStatusLower === 'approved' ||
+        rawStatusLower.includes('approve')) {
       return false;
     }
     
     // Nếu có Director approval (bao gồm cả extension request đã approved), cho phép edit
+    // Nhưng chỉ khi status không phải Returned hoặc Approved (đã check ở trên)
     return isDirectorApproved === true;
   };
   return (
@@ -77,7 +89,7 @@ const AuditReportsTable: React.FC<Props> = ({
             >
               <option value="all">All</option>
               <option value="submitted">Submitted</option>
-              <option value="closed">Closed</option>
+              <option value="approved">Approved</option>
             </select>
           </div>
           <div className="flex-1">

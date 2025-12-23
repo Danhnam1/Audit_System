@@ -44,7 +44,7 @@ const AuditorLeadReports = () => {
   const [showFindingModal, setShowFindingModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<string>('');
   const [actionMsg, setActionMsg] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'closed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'approved'>('all');
   const [reportSearch, setReportSearch] = useState<string>('');
   const [findingsSearch, setFindingsSearch] = useState<string>('');
   const [findingsSeverity, setFindingsSeverity] = useState<string>('all');
@@ -69,13 +69,21 @@ const AuditorLeadReports = () => {
   const [auditPeriodDates, setAuditPeriodDates] = useState<{ periodFrom?: string; periodTo?: string }>({});
   const [scheduleChanges, setScheduleChanges] = useState<any[]>([]);
   const [teamChanges, setTeamChanges] = useState<any[]>([]);
+
   const [showReturnFindingModal, setShowReturnFindingModal] = useState(false);
   const [returnFindingNote, setReturnFindingNote] = useState('');
   const [returningFindingId, setReturningFindingId] = useState<string | null>(null);
   // Track recently updated audit statuses to prevent overwriting during reload
   const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
+
+
   // Force reloading summary data even if selectedAuditId doesn't change (e.g. after Director approves)
   const [summaryReloadKey, setSummaryReloadKey] = useState(0);
+  
+  // New tables: InProgress audits and their report requests
+  const [inProgressAudits, setInProgressAudits] = useState<any[]>([]);
+  const [selectedInProgressAuditId, setSelectedInProgressAuditId] = useState<string>('');
+  const [reportRequestsForSelectedAudit, setReportRequestsForSelectedAudit] = useState<ViewReportRequest[]>([]);
 
   const reload = useCallback(async () => {
     try {
@@ -133,8 +141,35 @@ const AuditorLeadReports = () => {
       
       // Get ReportRequests (submitted by Auditors)
       const rawReportRequests = Array.isArray(reportRequestsRes) ? reportRequestsRes as ViewReportRequest[] : [];
-      // For each auditId, prioritize ReportRequest with status "Approved" or "Returned" (after approve/reject)
-      // If no approved/rejected, then keep the latest by requestedAt
+      
+      // Debug: Group ReportRequests by auditId to see how many exist
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        const groupedByAuditId = rawReportRequests.reduce((acc, rr) => {
+          const auditId = String(rr.auditId || '').trim();
+          if (!auditId) return acc;
+          if (!acc[auditId]) acc[auditId] = [];
+          acc[auditId].push(rr);
+          return acc;
+        }, {} as Record<string, ViewReportRequest[]>);
+        
+        Object.entries(groupedByAuditId).forEach(([auditId, requests]) => {
+          if (requests.length > 1) {
+            console.log(`[LeadReports] Found ${requests.length} ReportRequests for audit ${auditId}:`, 
+              requests.map(r => ({
+                reportRequestId: r.reportRequestId,
+                status: r.status,
+                requestedAt: r.requestedAt,
+                completedAt: r.completedAt
+              }))
+            );
+          }
+        });
+      }
+      
+      // For each auditId, get the LATEST ReportRequest
+      // When resubmit: new ReportRequest is created with new requestedAt
+      // When reject/approve: existing ReportRequest gets completedAt updated
+      // So we compare: max(completedAt, requestedAt) for each ReportRequest to find the most recent action
       const reportRequestMap = new Map<string, ViewReportRequest>();
       rawReportRequests.forEach((rr) => {
         const auditId = String(rr.auditId || '').trim();
@@ -145,27 +180,41 @@ const AuditorLeadReports = () => {
         if (!existing) {
           reportRequestMap.set(key, rr);
         } else {
-          // Check status priority: Approved/Returned > Pending
-          const existingStatus = String(existing.status || '').toLowerCase().trim();
-          const currentStatus = String(rr.status || '').toLowerCase().trim();
+          // Compare timestamps to find the LATEST action
+          const existingCompletedAt = existing.completedAt ? new Date(existing.completedAt).getTime() : 0;
+          const currentCompletedAt = rr.completedAt ? new Date(rr.completedAt).getTime() : 0;
+          const existingRequestedAt = existing.requestedAt ? new Date(existing.requestedAt).getTime() : 0;
+          const currentRequestedAt = rr.requestedAt ? new Date(rr.requestedAt).getTime() : 0;
           
-          const existingIsFinal = existingStatus === 'approved' || existingStatus === 'returned' || existingStatus.includes('approve') || existingStatus.includes('return');
-          const currentIsFinal = currentStatus === 'approved' || currentStatus === 'returned' || currentStatus.includes('approve') || currentStatus.includes('return');
+          // Get the latest timestamp for each ReportRequest (completedAt or requestedAt, whichever is newer)
+          // This handles both cases:
+          // 1. Resubmit: new ReportRequest has requestedAt > old ReportRequest's completedAt
+          // 2. Reject/Approve: same ReportRequest gets completedAt updated
+          const existingLatest = Math.max(existingCompletedAt, existingRequestedAt);
+          const currentLatest = Math.max(currentCompletedAt, currentRequestedAt);
           
-          if (currentIsFinal && !existingIsFinal) {
-            // Current has final status (Approved/Returned), existing doesn't -> use current
+          // Use the ReportRequest with the latest timestamp
+          if (currentLatest > existingLatest) {
             reportRequestMap.set(key, rr);
-          } else if (!currentIsFinal && existingIsFinal) {
-            // Existing has final status, current doesn't -> keep existing
-            // Do nothing, keep existing
-          } else {
-            // Both have same priority -> use the latest by requestedAt
-            const existingTime = existing.requestedAt ? new Date(existing.requestedAt).getTime() : 0;
-            const currentTime = rr.requestedAt ? new Date(rr.requestedAt).getTime() : 0;
-            if (currentTime >= existingTime) {
+            // Debug log in development
+            if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+              console.log(`[LeadReports] Selected newer ReportRequest for audit ${auditId}:`, {
+                existing: { status: existing.status, requestedAt: existing.requestedAt, completedAt: existing.completedAt, latest: new Date(existingLatest).toISOString() },
+                current: { status: rr.status, requestedAt: rr.requestedAt, completedAt: rr.completedAt, latest: new Date(currentLatest).toISOString() }
+              });
+            }
+          } else if (currentLatest === existingLatest) {
+            // If timestamps are equal, prefer the one with status "Pending" (newer submission)
+            const existingStatus = String(existing.status || '').toLowerCase();
+            const currentStatus = String(rr.status || '').toLowerCase();
+            if (currentStatus === 'pending' && existingStatus !== 'pending') {
               reportRequestMap.set(key, rr);
+              if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+                console.log(`[LeadReports] Selected ReportRequest with Pending status for audit ${auditId}`);
+              }
             }
           }
+          // Otherwise keep existing
         }
       });
       const reportRequests = Array.from(reportRequestMap.values()) as ViewReportRequest[];
@@ -184,6 +233,14 @@ const AuditorLeadReports = () => {
         }
       });
       
+      // Filter audits with status InProgress for new table
+      const inProgressAuditsList = allAudits.filter((a: any) => {
+        const auditStatus = String(a.status || a.state || '').trim();
+        const normalizedAuditStatus = auditStatus.toLowerCase().replace(/\s+/g, '').replace(/-/g, '');
+        return normalizedAuditStatus === 'inprogress';
+      });
+      setInProgressAudits(inProgressAuditsList);
+      
       // Combine reports from ReportRequests (submitted by Auditors)
       const combinedReports: any[] = [];
       
@@ -192,88 +249,167 @@ const AuditorLeadReports = () => {
         const auditId = String(rr.auditId || '');
         if (!auditId) return;
         
-        // Check if this report already exists in combinedReports
-        const exists = combinedReports.some((r: any) => {
-          const rAuditId = String(r.auditId || r.id || r.$id || '');
-          return rAuditId.toLowerCase() === auditId.toLowerCase();
-        });
+        // Get audit details from auditMap
+        const audit = auditMap.get(auditId.toLowerCase()) || auditMap.get(auditId);
         
-        if (!exists) {
-          // Get audit details from auditMap
-          const audit = auditMap.get(auditId.toLowerCase()) || auditMap.get(auditId);
-          
-          // Use ReportRequest status (already prioritized by Approved/Returned status)
-          const finalStatus = rr.status || 'Pending';
-          
-          // Create report object from ReportRequest
-          const reportObj: any = {
-            auditId: auditId,
-            id: auditId,
-            $id: auditId,
-            status: finalStatus,
-            state: finalStatus,
-            approvalStatus: finalStatus,
-            title: audit?.title || audit?.name || rr.title || `Audit ${auditId}`,
-            name: audit?.title || audit?.name || rr.title,
-            startDate: audit?.startDate,
-            createdAt: rr.requestedAt || audit?.createdAt,
-            createdDate: rr.requestedAt || audit?.createdDate,
-            createdBy: rr.requestedBy,
-            submittedBy: rr.requestedBy,
-            submittedByUser: rr.requestedBy,
-            createdByUser: rr.requestedBy,
+        // Debug: Log if audit not found in auditMap
+        if (!audit && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
+          console.warn(`[LeadReports] Audit not found in auditMap for ReportRequest:`, {
+            auditId,
             reportRequestId: rr.reportRequestId,
-            note: rr.note,
-          };
-          
-          combinedReports.push(reportObj);
-        } else {
-          // Update existing report with ReportRequest status if it's more recent or has final status
-          const existingIndex = combinedReports.findIndex((r: any) => {
-            const rAuditId = String(r.auditId || r.id || r.$id || '');
-            return rAuditId.toLowerCase() === auditId.toLowerCase();
+            status: rr.status,
+            requestedAt: rr.requestedAt,
+            auditMapKeys: Array.from(auditMap.keys()).slice(0, 10), // First 10 keys for debugging
           });
-          
-          if (existingIndex >= 0) {
-            const existing = combinedReports[existingIndex];
-            const existingStatus = String(existing.status || '').toLowerCase().trim();
-            const newStatus = String(rr.status || '').toLowerCase().trim();
-            
-            // Check if new status is final (Approved/Returned) and existing is not
-            const existingIsFinal = existingStatus === 'approved' || existingStatus === 'returned' || existingStatus.includes('approve') || existingStatus.includes('return');
-            const newIsFinal = newStatus === 'approved' || newStatus === 'returned' || newStatus.includes('approve') || newStatus.includes('return');
-            
-            // Update status if new is final or if both are same priority and new is more recent
-            if (newIsFinal && !existingIsFinal) {
-              // New has final status, existing doesn't -> update
-              existing.status = rr.status;
-              existing.state = rr.status;
-              existing.approvalStatus = rr.status;
-            } else if (rr.status && !existingIsFinal && !newIsFinal) {
-              // Both are pending, update to latest
-              existing.status = rr.status;
-              existing.state = rr.status;
-              existing.approvalStatus = rr.status;
-            }
-            
-            if (rr.note) {
-              existing.note = rr.note;
-            }
-            
-            if (rr.requestedBy) {
-              existing.submittedBy = rr.requestedBy;
-              existing.submittedByUser = rr.requestedBy;
-            }
-            existing.reportRequestId = rr.reportRequestId;
-          }
         }
+        
+        // Filter: Chỉ hiển thị các audit có status là "InProgress" (chỉ để hiển thị, không ảnh hưởng logic submit)
+        // Khi submit thì sẽ sử dụng status của ReportRequest
+        // Nếu audit không tồn tại hoặc status không phải InProgress → không hiển thị
+        if (!audit) {
+          // Audit không tồn tại trong auditMap → không hiển thị
+          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+            console.log(`[LeadReports] Skipping report - audit not found:`, {
+              auditId,
+              reportRequestId: rr.reportRequestId
+            });
+          }
+          return; // Skip this report
+        }
+        
+        // Kiểm tra status của audit - chỉ hiển thị nếu status là "InProgress"
+        const auditStatus = String(audit.status || audit.state || '').trim();
+        const normalizedAuditStatus = auditStatus.toLowerCase().replace(/\s+/g, '').replace(/-/g, '');
+        
+        // Chỉ hiển thị nếu audit status là "InProgress" (hỗ trợ các format: InProgress, In-Progress, In Progress)
+        // Loại bỏ tất cả các status khác: Approved, Pending, Draft, Rejected, Closed, etc.
+        const isInProgress = normalizedAuditStatus === 'inprogress';
+        
+        // Debug log để kiểm tra
+        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+          console.log(`[LeadReports] Checking audit status:`, {
+            auditId,
+            auditStatus: auditStatus,
+            normalizedStatus: normalizedAuditStatus,
+            isInProgress: isInProgress,
+            reportRequestId: rr.reportRequestId
+          });
+        }
+        
+        if (!isInProgress) {
+          // Skip this report if audit status is not InProgress
+          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+            console.log(`[LeadReports] ❌ Skipping report - audit status is not InProgress:`, {
+              auditId,
+              auditStatus: auditStatus,
+              normalizedStatus: normalizedAuditStatus,
+              reportRequestId: rr.reportRequestId
+            });
+          }
+          return; // Skip this report
+        }
+        
+        // Kiểm tra thêm: Không hiển thị report đã được approve (status = "Approved")
+        // Chỉ hiển thị report khi audit status là "InProgress" VÀ report chưa được approve
+        const reportRequestStatus = String(rr.status || '').trim();
+        const normalizedReportStatus = reportRequestStatus.toLowerCase().replace(/\s+/g, '');
+        const isApproved = normalizedReportStatus === 'approved';
+        
+        if (isApproved) {
+          // Skip report đã được approve (hiển thị là "Closed")
+          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+            console.log(`[LeadReports] ❌ Skipping report - already approved (Closed):`, {
+              auditId,
+              auditStatus: auditStatus,
+              reportRequestStatus: reportRequestStatus,
+              reportRequestId: rr.reportRequestId
+            });
+          }
+          return; // Skip this report
+        }
+        
+        // Log khi report được hiển thị
+        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+          console.log(`[LeadReports] ✅ Report will be displayed - audit status is InProgress and not approved:`, {
+            auditId,
+            auditStatus: auditStatus,
+            reportRequestStatus: reportRequestStatus,
+            reportRequestId: rr.reportRequestId
+          });
+        }
+        
+        // Use status directly from ReportRequest (already selected as latest above)
+        // Backend returns "Returned" (capital R) when reject, normalize to lowercase for comparison
+        const finalStatus = rr.status || 'Pending';
+        
+        // Debug: Log status for each ReportRequest
+        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+          console.log(`[LeadReports] ReportRequest status:`, {
+            auditId,
+            reportRequestId: rr.reportRequestId,
+            status: rr.status,
+            finalStatus: finalStatus,
+            requestedAt: rr.requestedAt,
+            completedAt: rr.completedAt,
+            hasAudit: !!audit
+          });
+        }
+        
+        // Create report object from ReportRequest
+        const reportObj: any = {
+          auditId: auditId,
+          id: auditId,
+          $id: auditId,
+          status: finalStatus,
+          state: finalStatus,
+          approvalStatus: finalStatus,
+          title: audit?.title || audit?.name || rr.title || `Audit ${auditId}`,
+          name: audit?.title || audit?.name || rr.title,
+          startDate: audit?.startDate,
+          createdAt: rr.requestedAt || audit?.createdAt,
+          createdDate: rr.requestedAt || audit?.createdDate,
+          createdBy: rr.requestedBy,
+          submittedBy: rr.requestedBy,
+          submittedByUser: rr.requestedBy,
+          createdByUser: rr.requestedBy,
+          reportRequestId: rr.reportRequestId,
+          note: rr.note,
+        };
+        
+        combinedReports.push(reportObj);
       });
+      
+      // Debug: Log combined reports before filtering
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        console.log(`[LeadReports] Combined reports before filtering:`, {
+          totalReportRequests: reportRequests.length,
+          totalCombinedReports: combinedReports.length,
+          reportsByStatus: combinedReports.reduce((acc, r) => {
+            const status = String(r.status || '').toLowerCase();
+            acc[status] = (acc[status] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          reportTitles: combinedReports.map(r => ({ title: r.title, status: r.status, auditId: r.auditId }))
+        });
+      }
       
       // Filter chỉ lấy status: Pending, Approved, Returned
       const allowedStatuses = ['pending', 'approved', 'returned'];
       const filtered = combinedReports.filter((p: any) => {
-        const reportStatus = String(p.status || p.state || p.approvalStatus || '').toLowerCase().replace(/\s+/g, '');
+        const rawStatus = p.status || p.state || p.approvalStatus || '';
+        const reportStatus = String(rawStatus).toLowerCase().replace(/\s+/g, '');
         const hasAllowedStatus = allowedStatuses.includes(reportStatus);
+        
+        // Debug: Log reports that are filtered out
+        if (!hasAllowedStatus && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
+          console.warn(`[LeadReports] Report filtered out due to status:`, {
+            title: p.title,
+            auditId: p.auditId,
+            rawStatus: rawStatus,
+            normalizedStatus: reportStatus,
+            allowedStatuses: allowedStatuses
+          });
+        }
         
         if (!hasAllowedStatus) return false;
         
@@ -307,17 +443,21 @@ const AuditorLeadReports = () => {
         return dateB - dateA;
       });
       
-      // Merge with recently updated statuses to prevent overwriting
-      const updatedSorted = sorted.map((a: any) => {
-        const auditId = String(a.auditId || a.id || a.$id || '');
-        const recentUpdate = recentlyUpdatedStatusesRef.current.get(auditId);
-        if (recentUpdate && Date.now() - recentUpdate.timestamp < 10000) { // Keep for 10 seconds
-          return { ...a, status: recentUpdate.status, state: recentUpdate.status, approvalStatus: recentUpdate.status };
-        }
-        return a;
-      });
+      // Debug: Log filtered and sorted reports
+      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+        console.log(`[LeadReports] Filtered and sorted reports:`, {
+          totalFiltered: filtered.length,
+          totalSorted: sorted.length,
+          reportsByStatus: sorted.reduce((acc, r) => {
+            const status = String(r.status || '').toLowerCase();
+            acc[status] = (acc[status] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          reportTitles: sorted.map(r => ({ title: r.title, status: r.status, auditId: r.auditId }))
+        });
+      }
       
-      setAudits(updatedSorted);
+      setAudits(sorted);
       
       // Load revision requests for all audits to check extension approval
       const revisionMap: Record<string, ViewAuditPlanRevisionRequest[]> = {};
@@ -346,7 +486,35 @@ const AuditorLeadReports = () => {
     }
   }, [user, isLeadAuditorRole]);
 
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    reload();
+    
+    // Auto-reload every 30 seconds to catch new ReportRequests when Auditor resubmits
+    const intervalId = setInterval(() => {
+      reload();
+    }, 30000); // 30 seconds
+    
+    // Also reload when window regains focus (user switches back to tab)
+    const handleFocus = () => {
+      reload();
+    };
+    window.addEventListener('focus', handleFocus);
+    
+    // Listen for report submission events to reload immediately
+    const handleReportSubmitted = () => {
+      console.log('[LeadReports] Report submitted event received, reloading...');
+      reload();
+    };
+    window.addEventListener('reportSubmitted', handleReportSubmitted);
+    document.addEventListener('reportSubmitted', handleReportSubmitted);
+    
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('reportSubmitted', handleReportSubmitted);
+      document.removeEventListener('reportSubmitted', handleReportSubmitted);
+    };
+  }, [reload]);
 
   // Listen for Director's extension approval so "Edit Schedule & Team" button appears without full reload
   useEffect(() => {
@@ -524,8 +692,8 @@ const AuditorLeadReports = () => {
           // Submitted = Pending
           return s === 'pending';
         }
-        if (statusFilter === 'closed') {
-          // Closed = Approved
+        if (statusFilter === 'approved') {
+          // Approved filter shows Approved reports (after Director approval)
           return s === 'approved';
         }
         return true;
@@ -586,35 +754,14 @@ const AuditorLeadReports = () => {
     try {
       await approveAuditReport(approveAuditId);
       
-      // Update status immediately in local state
-      const updatedStatus = 'Approved';
-      recentlyUpdatedStatusesRef.current.set(String(approveAuditId), { 
-        status: updatedStatus, 
-        timestamp: Date.now() 
-      });
-      
-      setAudits(prev =>
-        prev.map(a => {
-          const id = String(a.auditId || a.id || a.$id);
-          const targetId = String(approveAuditId);
-          if (id === targetId) {
-            return { ...a, status: updatedStatus, state: updatedStatus, approvalStatus: updatedStatus };
-          }
-          return a;
-        })
-      );
-      
       toast.success('Approved the Audit Report successfully.');
       closeApproveModal();
       // After approve, hide details until user explicitly clicks View again
       setShowViewModal(false);
       setSelectedAuditId('');
       
-      // Wait longer before reloading to ensure backend has updated
-      // Use a longer delay to ensure backend has processed the approval
-      setTimeout(async () => {
-        await reload();
-      }, 2000);
+      // Reload immediately to get updated data
+      await reload();
     } catch (err: any) {
       console.error('Approve failed', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
@@ -646,33 +793,18 @@ const AuditorLeadReports = () => {
       
       await rejectAuditReport(rejectAuditId, { note: rejectionNote });
       
-      // Update status immediately in local state
-      const updatedStatus = 'Returned';
-      recentlyUpdatedStatusesRef.current.set(String(rejectAuditId), { 
-        status: updatedStatus, 
-        timestamp: Date.now() 
-      });
-      
-      setAudits(prev => prev.map(a => {
-        const id = String(a.auditId || a.id || a.$id);
-        const targetId = String(rejectAuditId);
-        if (id === targetId) {
-          return { ...a, status: updatedStatus, state: updatedStatus, approvalStatus: updatedStatus };
-        }
-        return a;
-      }));
-      
       toast.success('Rejected the Audit Report successfully.');
       closeRejectModal();
       // Clear changes after rejection
       setScheduleChanges([]);
       setTeamChanges([]);
       
-      // Wait longer before reloading to ensure backend has updated
-      // Use a longer delay to ensure backend has processed the rejection
-      setTimeout(async () => {
-        await reload();
-      }, 2000);
+      // Wait a bit for backend to process the rejection before reloading
+      // This ensures the ReportRequest status is updated to "Returned"
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Reload to get updated data
+      await reload();
     } catch (err: any) {
       console.error('Reject failed', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
@@ -981,17 +1113,63 @@ const AuditorLeadReports = () => {
         const scheduleId = schedule.scheduleId ? String(schedule.scheduleId) : null;
         
         if (scheduleId) {
+          // Validate scheduleId format (should be a valid GUID)
+          const guidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!guidRegex.test(scheduleId)) {
+            console.error('❌ Invalid scheduleId format (not a valid GUID):', {
+              scheduleId,
+              type: typeof scheduleId,
+              originalSchedule: schedule
+            });
+            throw new Error(`Invalid scheduleId format: ${scheduleId}. Expected GUID format.`);
+          }
+          
           // Update existing - backend receives scheduleId via route, NOT in body
           // UpdateAuditSchedule DTO only has: MilestoneName, DueDate, Notes, Status
           // Ensure dueDate is in correct format (ISO string with time)
+          // Format date to avoid timezone shift: use 12:00:00 UTC (midday) to prevent date shift
           let dueDateValue = schedule.dueDate || '';
           if (dueDateValue && !dueDateValue.includes('T')) {
-            // If it's just a date (YYYY-MM-DD), convert to ISO datetime
-            dueDateValue = new Date(dueDateValue + 'T00:00:00').toISOString();
+            // If it's just a date (YYYY-MM-DD), format as ISO datetime with 12:00:00 UTC
+            // Using 12:00:00 UTC (midday) prevents timezone shift that causes date to be off by 1 day
+            const dateParts = dueDateValue.split('-');
+            if (dateParts.length === 3) {
+              const year = parseInt(dateParts[0], 10);
+              const month = parseInt(dateParts[1], 10);
+              const day = parseInt(dateParts[2], 10);
+              // Format as YYYY-MM-DDTHH:mm:ssZ with 12:00:00 UTC to avoid timezone shift
+              dueDateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`;
+            } else {
+              // Fallback: try to parse and format
+              try {
+                const date = new Date(dueDateValue);
+                if (!isNaN(date.getTime())) {
+                  const year = date.getUTCFullYear();
+                  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                  const day = String(date.getUTCDate()).padStart(2, '0');
+                  dueDateValue = `${year}-${month}-${day}T12:00:00Z`;
+                } else {
+                  dueDateValue = dueDateValue + 'T12:00:00Z';
+                }
+              } catch {
+                dueDateValue = dueDateValue + 'T12:00:00Z';
+              }
+            }
+          }
+          
+          // Validate required fields
+          if (!schedule.milestoneName || !schedule.milestoneName.trim()) {
+            console.error('❌ Missing required field: milestoneName', schedule);
+            throw new Error(`Missing required field: milestoneName for schedule ${scheduleId}`);
+          }
+          
+          if (!dueDateValue) {
+            console.error('❌ Missing required field: dueDate', schedule);
+            throw new Error(`Missing required field: dueDate for schedule ${scheduleId}`);
           }
           
           const updatePayload: any = {
-            milestoneName: schedule.milestoneName || '',
+            milestoneName: schedule.milestoneName.trim(),
             dueDate: dueDateValue,
             notes: schedule.notes || '', // Ensure notes is not undefined
             status: schedule.status || 'Active',
@@ -999,33 +1177,68 @@ const AuditorLeadReports = () => {
           
           console.log('📝 Updating schedule:', {
             scheduleId,
+            scheduleIdType: typeof scheduleId,
+            scheduleIdIsValidGuid: guidRegex.test(scheduleId),
             milestoneName: updatePayload.milestoneName,
             dueDate: updatePayload.dueDate,
             originalDueDate: schedule.dueDate,
-            fullPayload: updatePayload
+            notes: updatePayload.notes,
+            status: updatePayload.status,
+            fullPayload: updatePayload,
+            apiUrl: `/AuditSchedule/${scheduleId}`
           });
           // DO NOT include id or auditId in update payload - scheduleId is in route
           try {
             const result = await updateAuditSchedule(scheduleId, updatePayload);
             console.log('✅ Schedule updated successfully:', {
               scheduleId,
-              result: result?.data || result
+              result: result?.data || result,
+              status: result?.status
             });
           } catch (updateErr: any) {
             console.error('❌ Failed to update schedule:', {
               scheduleId,
+              scheduleIdType: typeof scheduleId,
+              payload: updatePayload,
               error: updateErr?.response?.data || updateErr?.message || updateErr,
-              status: updateErr?.response?.status
+              status: updateErr?.response?.status,
+              statusText: updateErr?.response?.statusText,
+              responseData: updateErr?.response?.data,
+              fullError: updateErr
             });
             throw updateErr; // Re-throw to stop execution
           }
         } else {
           // Add new - CreateAuditSchedule DTO requires: AuditId, MilestoneName, DueDate, Notes (optional), Status (optional)
           // Ensure dueDate is in correct format (ISO string with time)
+          // Format date to avoid timezone shift: use 12:00:00 UTC (midday) to prevent date shift
           let dueDateValue = schedule.dueDate || '';
           if (dueDateValue && !dueDateValue.includes('T')) {
-            // If it's just a date (YYYY-MM-DD), convert to ISO datetime
-            dueDateValue = new Date(dueDateValue + 'T00:00:00').toISOString();
+            // If it's just a date (YYYY-MM-DD), format as ISO datetime with 12:00:00 UTC
+            // Using 12:00:00 UTC (midday) prevents timezone shift that causes date to be off by 1 day
+            const dateParts = dueDateValue.split('-');
+            if (dateParts.length === 3) {
+              const year = parseInt(dateParts[0], 10);
+              const month = parseInt(dateParts[1], 10);
+              const day = parseInt(dateParts[2], 10);
+              // Format as YYYY-MM-DDTHH:mm:ssZ with 12:00:00 UTC to avoid timezone shift
+              dueDateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`;
+            } else {
+              // Fallback: try to parse and format
+              try {
+                const date = new Date(dueDateValue);
+                if (!isNaN(date.getTime())) {
+                  const year = date.getUTCFullYear();
+                  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                  const day = String(date.getUTCDate()).padStart(2, '0');
+                  dueDateValue = `${year}-${month}-${day}T12:00:00Z`;
+                } else {
+                  dueDateValue = dueDateValue + 'T12:00:00Z';
+                }
+              } catch {
+                dueDateValue = dueDateValue + 'T12:00:00Z';
+              }
+            }
           }
           
           const addPayload: any = {
@@ -1051,14 +1264,18 @@ const AuditorLeadReports = () => {
         }
       }
 
-      // Update team members - always compare with current team, even if teamMembers is empty
-      // This ensures that if user unchecks all and only selects 2, we still delete the unchecked ones
+      // Update team members - only if teamMembers array is provided (not empty)
+      // If teamMembers is empty, it means user only edited schedule, not team - skip team update
       let teamUpdateErrors: any[] = [];
-      try {
-        // Build sets of userIds for comparison (empty set if teamMembers is empty)
-        const selectedUserIds = new Set<string>(
-          teamMembers.map((m: any) => String(m.userId || '').trim()).filter(Boolean)
-        );
+      
+      // Only update team if teamMembers array has items (user actually edited team)
+      // Empty array means user only edited schedule, so we skip team update to preserve existing team
+      if (teamMembers.length > 0) {
+        try {
+          // Build sets of userIds for comparison
+          const selectedUserIds = new Set<string>(
+            teamMembers.map((m: any) => String(m.userId || '').trim()).filter(Boolean)
+          );
 
         // Current auditors (exclude AuditeeOwner)
         const currentAuditors = (currentTeam || []).filter((m: any) => {
@@ -1171,9 +1388,12 @@ const AuditorLeadReports = () => {
             }
           }
         }
-      } catch (outerErr: any) {
-        console.error('❌ Team diff update failed:', outerErr);
-        teamUpdateErrors.push({ error: outerErr });
+        } catch (outerErr: any) {
+          console.error('❌ Team diff update failed:', outerErr);
+          teamUpdateErrors.push({ error: outerErr });
+        }
+      } else {
+        console.log('⏭️ Skipping team update - teamMembers is empty (user only edited schedule, not team)');
       }
       
       // Show warning if there were team update errors, but don't block the success flow

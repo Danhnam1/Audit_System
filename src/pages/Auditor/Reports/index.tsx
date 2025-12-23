@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import { getStatusColor } from '../../../constants';
 import { StatCard, BarChartCard, PieChartCard } from '../../../components';
 import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
-import { getReportRequestByAuditId, type ViewReportRequest } from '../../../api/reportRequest';
+import { getReportRequestByAuditId, getAllReportRequests, type ViewReportRequest } from '../../../api/reportRequest';
 import { getDepartments } from '../../../api/departments';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
 import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
@@ -41,6 +41,8 @@ const SQAStaffReports = () => {
   const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
   const [reportRequests, setReportRequests] = useState<Record<string, ViewReportRequest>>({});
+  const [allReportRequests, setAllReportRequests] = useState<ViewReportRequest[]>([]);
+  const [selectedInProgressAuditId, setSelectedInProgressAuditId] = useState<string>('');
   
   // Extension request states
   const [, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
@@ -51,12 +53,13 @@ const SQAStaffReports = () => {
   const [pieData, setPieData] = useState<Array<{ name: string; value: number; color: string }>>([]);
   const [barData, setBarData] = useState<Array<{ department: string; count: number }>>([]);
   const [findingsMap, setFindingsMap] = useState<Record<string, number>>({});
-  // Dynamic filter states (single filter active for reports)
-  const [reportFilters, setReportFilters] = useState<ActiveFilters>({});
+  // Dynamic filter states (single filter active for findings)
   const [findingFilters, setFindingFilters] = useState<ActiveFilters>({});
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [auditChecklistItems, setAuditChecklistItems] = useState<any[] | null>(null);
   const [summaryTab, setSummaryTab] = useState<'findings' | 'checklist'>('findings');
+  // Track recently updated audit statuses to prevent overwriting during reload
+  const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
 
   // Derived datasets for summary rendering
   const severityEntries = useMemo(() => {
@@ -247,12 +250,16 @@ const SQAStaffReports = () => {
   // Load audits list (only Open) and departments
   const reloadReports = useCallback(async () => {
     try {
-      const [res, depts, teamsRes, usersRes] = await Promise.all([
+      const [res, depts, teamsRes, usersRes, allReportRequestsRes] = await Promise.all([
         getAuditPlans(), 
         getDepartments(),
         getAuditTeam(),
-        getAdminUsers()
+        getAdminUsers(),
+        getAllReportRequests().catch(() => [])
       ]);
+      
+      // Set all report requests
+      setAllReportRequests(Array.isArray(allReportRequestsRes) ? allReportRequestsRes : []);
       
       // Get current user's userId - try multiple methods
       const users = Array.isArray(usersRes) ? usersRes : [];
@@ -328,27 +335,26 @@ const SQAStaffReports = () => {
         const v = String(s || '').toLowerCase().replace(/\s+/g, '');
         if (!v) return false;
 
+        // ReportRequest statuses (source of truth for reports)
+        const isPending = v === 'pending' || v.includes('pending');
+        const isApproved = v === 'approved' || v.includes('approved') || v.includes('approve');
+        const isReturned = v === 'returned' || v.includes('return') || v.includes('rejected') || v.includes('reject');
+
+        // Audit plan statuses (for audits not yet submitted)
         const isOpenLike =
           v.includes('inprogress') || v === 'inprogress';
-
         const isSubmittedLike =
           v.includes('submit') || v.includes('submitted') || v.includes('underreview');
-
         const isCompletedLike =
-          v.includes('closed') || v.includes('completed') || v.includes('complete') || v.includes('approve') || v.includes('approved');
+          v.includes('closed') || v.includes('completed') || v.includes('complete');
 
-        const isReturnedLike =
-          v.includes('return') || v.includes('rejected') || v.includes('reject');
-
-        return isOpenLike || isSubmittedLike || isCompletedLike || isReturnedLike;
+        // Show if matches any of these statuses
+        return isPending || isApproved || isReturned || isOpenLike || isSubmittedLike || isCompletedLike;
       };
       
-      // Filter audits: must match status AND user must be in audit team
-      const filtered = (Array.isArray(arr) ? arr : []).filter((a: any) => {
-        // First check status
-        const statusMatch = isVisibleStatus(a.status || a.state || a.approvalStatus);
-        if (!statusMatch) return false;
-        
+      // First, filter audits by user membership (must be in audit team)
+      // Don't filter by status yet - we need to load ReportRequest status first
+      const userAudits = (Array.isArray(arr) ? arr : []).filter((a: any) => {
         // If user is not in any audit team, don't show any audits
         if (!normalizedCurrentUserId || userAuditIds.size === 0) {
           return false;
@@ -373,6 +379,65 @@ const SQAStaffReports = () => {
         });
         
         return isUserAudit;
+      });
+      
+      // Load ReportRequest status cho TẤT CẢ user audits (before filtering by status)
+      // This ensures we can filter based on ReportRequest status even if audit status doesn't match
+      const reportRequestsMap: Record<string, ViewReportRequest> = {};
+      try {
+        await Promise.all(
+          userAudits.map(async (audit: any) => {
+            const auditId = String(audit.auditId || audit.id || audit.$id || '').trim();
+            if (auditId) {
+              try {
+                const reportRequest = await getReportRequestByAuditId(auditId);
+                if (reportRequest) {
+                  // Check if this audit was recently updated (within last 5 seconds)
+                  const recentUpdate = recentlyUpdatedStatusesRef.current.get(auditId);
+                  if (recentUpdate && (Date.now() - recentUpdate.timestamp < 5000)) {
+                    // Use the recently updated status instead of API response
+                    reportRequestsMap[auditId] = {
+                      ...reportRequest,
+                      status: recentUpdate.status
+                    } as ViewReportRequest;
+                    if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+                      console.log(`[Reports] Preserving recently updated status for audit ${auditId}:`, recentUpdate.status);
+                    }
+                  } else {
+                    reportRequestsMap[auditId] = reportRequest;
+                  }
+                }
+              } catch (err) {
+                // Ignore errors for individual report requests
+                console.debug(`Failed to load report request for audit ${auditId}:`, err);
+              }
+            }
+          })
+        );
+        setReportRequests(reportRequestsMap);
+      } catch (err) {
+        console.error('Failed to load report requests', err);
+      }
+      
+      // Filter by status: ONLY use ReportRequest status if exists, otherwise use audit status
+      // ReportRequest is the source of truth for report status (Pending, Approved, Returned)
+      // Audit plan status is for planning phase, not report phase
+      const filtered = userAudits.filter((a: any) => {
+        const auditId = String(a.auditId || a.id || a.$id || '').trim();
+        const reportRequest = reportRequestsMap[auditId];
+        
+        // If ReportRequest exists, use its status (source of truth for reports)
+        if (reportRequest?.status) {
+          const reportRequestStatus = String(reportRequest.status).toLowerCase().replace(/\s+/g, '');
+          // ReportRequest statuses: Pending, Approved, Returned
+          // All of these should be visible in Reports page
+          return isVisibleStatus(reportRequestStatus);
+        }
+        
+        // If no ReportRequest, check audit status (for audits not yet submitted)
+        // Only show audits that are in progress or submitted (not yet have ReportRequest)
+        const auditStatus = a.status || a.state || a.approvalStatus;
+        return isVisibleStatus(auditStatus);
       });
       
       setAudits(filtered);
@@ -420,29 +485,15 @@ const SQAStaffReports = () => {
         : [];
       setDepartments(deptList);
       
-      // Load ReportRequest status cho tất cả audits
-      try {
-        const reportRequestsMap: Record<string, ViewReportRequest> = {};
-        await Promise.all(
-          filtered.map(async (audit: any) => {
-            const auditId = String(audit.auditId || audit.id || audit.$id || '').trim();
-            if (auditId) {
-              try {
-                const reportRequest = await getReportRequestByAuditId(auditId);
-                if (reportRequest) {
-                  reportRequestsMap[auditId] = reportRequest;
-                }
-              } catch (err) {
-                // Ignore errors for individual report requests
-                console.debug(`Failed to load report request for audit ${auditId}:`, err);
-              }
-            }
-          })
-        );
-        setReportRequests(reportRequestsMap);
-      } catch (err) {
-        console.error('Failed to load report requests', err);
-      }
+      // Also update audits state with preserved statuses
+      setAudits(prev => prev.map(a => {
+        const auditId = String(a.auditId || a.id || a.$id || '').trim();
+        const recentUpdate = recentlyUpdatedStatusesRef.current.get(auditId);
+        if (recentUpdate && (Date.now() - recentUpdate.timestamp < 5000)) {
+          return { ...a, status: recentUpdate.status, state: recentUpdate.status, approvalStatus: recentUpdate.status };
+        }
+        return a;
+      }));
       
       const firstId = filtered?.[0]?.auditId || filtered?.[0]?.id || filtered?.[0]?.$id || '';
       if (firstId) setSelectedAuditId(String(firstId));
@@ -458,6 +509,24 @@ const SQAStaffReports = () => {
 
   useEffect(() => {
     reloadReports();
+    
+    // Auto-reload every 30 seconds to catch status changes from Lead Auditor
+    // This ensures Auditor sees "Returned" status when Lead Auditor rejects
+    const intervalId = setInterval(() => {
+      reloadReports();
+    }, 30000); // 30 seconds
+    
+    // Also reload when window regains focus (user switches back to tab)
+    // This ensures immediate update when user returns to the page
+    const handleFocus = () => {
+      reloadReports();
+    };
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [reloadReports]);
 
   // Fetch reject notes for any audits already marked Returned/Rejected
@@ -807,15 +876,54 @@ const SQAStaffReports = () => {
       // Backend sẽ trả về "Pending" sau khi submit
       const newStatus = 'Pending';
       
+      // Track this update to prevent reload from overriding it
+      recentlyUpdatedStatusesRef.current.set(String(selectedAuditId), { 
+        status: newStatus, 
+        timestamp: Date.now() 
+      });
+      
       // Update reportRequests immediately để button chuyển về "Submitted" ngay
+      const updatedReportRequest: ViewReportRequest = {
+        ...reportRequests[selectedAuditId],
+        auditId: selectedAuditId,
+        status: newStatus,
+        requestedAt: new Date().toISOString(),
+      } as ViewReportRequest;
+      
       setReportRequests(prev => ({
         ...prev,
-        [selectedAuditId]: {
-          ...prev[selectedAuditId],
-          auditId: selectedAuditId,
-          status: newStatus
-        } as ViewReportRequest
+        [selectedAuditId]: updatedReportRequest
       }));
+      
+      // Update allReportRequests để modal có thể hiển thị status mới ngay lập tức
+      setAllReportRequests(prev => {
+        const existingIndex = prev.findIndex(r => r.auditId === selectedAuditId);
+        if (existingIndex >= 0) {
+          // Update existing report request
+          const updated = [...prev];
+          updated[existingIndex] = {
+            ...updated[existingIndex],
+            status: newStatus,
+            requestedAt: new Date().toISOString(),
+          };
+          return updated;
+        } else {
+          // Add new report request if doesn't exist
+          return [...prev, updatedReportRequest];
+        }
+      });
+      
+      // Update audits state immediately để UI cập nhật ngay
+      setAudits(prev =>
+        prev.map(a => {
+          const id = String(a.auditId || a.id || a.$id);
+          const targetId = String(selectedAuditId);
+          if (id === targetId) {
+            return { ...a, status: newStatus, state: newStatus, approvalStatus: newStatus };
+          }
+          return a;
+        })
+      );
       
       // Clear reject note since report has been resubmitted
       setRejectNotes(prev => {
@@ -825,7 +933,7 @@ const SQAStaffReports = () => {
       });
       
       if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.log('[Reports] ✅ Submit successful, updated ReportRequest immediately:', {
+        console.log('[Reports] ✅ Submit successful, updated ReportRequest and audits immediately:', {
           auditId: selectedAuditId,
           status: newStatus,
           timestamp: Date.now()
@@ -835,11 +943,27 @@ const SQAStaffReports = () => {
       toast.success(`Submit successfully. Status: ${newStatus}`);
       setShowSubmitModal(false);
       
-      // Reload reports after a delay để sync với backend
-      // Nhưng giữ lại status "Pending" đã set ở trên
-      setTimeout(async () => {
-        await reloadReports();
-      }, 1500);
+      // Dispatch event to notify LeadReports page to reload
+      try {
+        const event = new CustomEvent('reportSubmitted', {
+          detail: { auditId: selectedAuditId, status: newStatus },
+          bubbles: true,
+          cancelable: true
+        });
+        window.dispatchEvent(event);
+        document.dispatchEvent(event);
+        console.log('[Reports] Dispatched reportSubmitted event for audit:', selectedAuditId);
+      } catch (err) {
+        console.warn('[Reports] Failed to dispatch reportSubmitted event:', err);
+      }
+      
+      // Reload immediately to get updated data from backend
+      // recentlyUpdatedStatusesRef will preserve the status during reload
+      await reloadReports();
+      // Clear the ref after reload completes (after a reasonable time)
+      setTimeout(() => {
+        recentlyUpdatedStatusesRef.current.delete(String(selectedAuditId));
+      }, 3000);
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
@@ -932,138 +1056,109 @@ const SQAStaffReports = () => {
     }
   };
 
-  // Build table rows from backend audits list
-  const reportRows = useMemo(() => {
-    const getCreatedByLabel = (a: any): string => {
-      const src =
-        a?.createdByUser ||
-        a?.createdBy ||
-        a?.submittedBy;
-      if (!src) return '—';
 
-      const normalize = (v: any) => String(v || '').toLowerCase().trim();
+  // Filter InProgress audits
+  const inProgressAudits = useMemo(() => {
+    return audits.filter((a: any) => {
+      const status = String(a.status || a.state || a.approvalStatus || '').toLowerCase().replace(/\s+/g, '');
+      return status.includes('inprogress') || status === 'inprogress' || status.includes('in progress');
+    });
+  }, [audits]);
 
-      if (typeof src === 'string') {
-        const sNorm = normalize(src);
-        const found = adminUsers.find(u => {
-          const id = u.userId || (u as any).$id;
-          const email = u.email;
-          return (id && normalize(id) === sNorm) || (email && normalize(email) === sNorm);
-        });
-        if (found?.fullName) return found.fullName;
-        if (found?.email) return found.email;
-        return src;
-      }
-
-      if (src.fullName) return src.fullName;
-      if (src.email) return src.email;
-
-      const id = src.userId || src.id || src.$id;
-      if (id) {
-        const idNorm = normalize(id);
-        const foundById = adminUsers.find(u => {
-          const uid = u.userId || (u as any).$id;
-          return uid && normalize(uid) === idNorm;
-        });
-        if (foundById?.fullName) return foundById.fullName;
-        if (foundById?.email) return foundById.email;
-        return String(id);
-      }
-
-      return '—';
-    };
-
-    const arr = Array.isArray(audits) ? audits : [];
-    return arr.map((a: any, idx: number) => {
+  // Build InProgress audit rows
+  const inProgressRows = useMemo(() => {
+    return inProgressAudits.map((a: any, idx: number) => {
       const id = String(a.auditId || a.id || a.$id || `audit_${idx}`);
       const title = a.title || a.name || `Audit ${idx + 1}`;
       const type = a.type || a.auditType || a.category || '—';
-      
-      // Ưu tiên lấy status từ ReportRequest nếu có, nếu không thì lấy từ Audit
-      const reportRequest = reportRequests[id];
-      const rawStatus = reportRequest?.status || a.status || a.state || a.approvalStatus || '—';
-      const norm = String(rawStatus).toLowerCase().replace(/\s+/g, '');
-      let status: string;
-      
-      // Nếu có ReportRequest, ưu tiên hiển thị status từ ReportRequest (Pending, Approved, Returned)
-      if (reportRequest?.status) {
-        const reportStatus = String(reportRequest.status).toLowerCase().replace(/\s+/g, '');
-        if (reportStatus === 'pending') {
-          status = 'Pending';
-        } else if (reportStatus === 'approved') {
-          status = 'Approved';
-        } else if (reportStatus === 'returned') {
-          status = 'Returned';
-        } else {
-          status = reportRequest.status; // Giữ nguyên nếu không match
-        }
-      } else {
-        // Fallback về logic cũ nếu không có ReportRequest
-        if (norm.includes('return') || norm.includes('reject')) {
-          status = 'Returned';
-        } else if (norm.includes('approve') || norm.includes('complete') || norm.includes('closed')) {
-          status = 'Closed';
-        } else if (norm.includes('submit') || norm.includes('submitted') || norm.includes('underreview')) {
-          status = 'Submitted';
-        } else if (norm.includes('open') || norm === 'inprogress' || norm.includes('draft')) {
-          status = 'In Progress';
-        } else {
-          status = rawStatus;
-        }
-      }
+      const status = 'In Progress';
       const createdRaw = a.createdAt || a.startDate || a.createdDate || a.start;
       const createdDate = createdRaw ? new Date(createdRaw).toISOString().slice(0, 10) : '';
-      const createdBy = getCreatedByLabel(a);
       const findings = (findingsMap[id] ?? a.totalFindings ?? a.findingsCount ?? a.findingCount ?? 0) as number;
-      // const capas = a.capaCount ?? a.capaTotal ?? 0;
-      // Check if audit has been submitted (has ReportRequest)
-      const hasReportRequest = !!reportRequests[id];
-      const reportRequestStatus = reportRequests[id]?.status || '';
       
-      return { 
-        id, 
-        auditId: id, 
-        title, 
-        type, 
-        status, 
-        findings, 
-        createdDate, 
+      // Get created by label
+      const src = a?.createdByUser || a?.createdBy || a?.submittedBy;
+      let createdBy = '—';
+      if (src) {
+        const normalize = (v: any) => String(v || '').toLowerCase().trim();
+        if (typeof src === 'string') {
+          const sNorm = normalize(src);
+          const found = adminUsers.find(u => {
+            const id = u.userId || (u as any).$id;
+            const email = u.email;
+            return (id && normalize(id) === sNorm) || (email && normalize(email) === sNorm);
+          });
+          createdBy = found?.fullName || found?.email || src;
+        } else if (src.fullName) {
+          createdBy = src.fullName;
+        } else if (src.email) {
+          createdBy = src.email;
+        }
+      }
+      
+      return {
+        id,
+        auditId: id,
+        title,
+        type,
+        status,
+        findings,
+        createdDate,
         createdBy,
-        hasReportRequest, // Flag để hiển thị indicator
-        reportRequestStatus // Status từ ReportRequest để hiển thị
       };
     });
-  }, [audits, findingsMap, adminUsers, reportRequests]);
+  }, [inProgressAudits, findingsMap, adminUsers]);
 
-  const filteredReportRows = useMemo(() => {
-    let rows = reportRows;
-    // Only one filter active (singleMode). Determine which key.
-    const keys = Object.keys(reportFilters);
-    if (!keys.length) return rows;
-    const k = keys[0];
-    const val = reportFilters[k];
-    switch (k) {
-      case 'status': {
-        if (val) rows = rows.filter(r => String(r.status || '').toLowerCase().replace(/\s+/g, '').includes(String(val).toLowerCase().replace(/\s+/g, '')));
-        break;
-      }
-      case 'type': {
-        if (val) rows = rows.filter(r => r.type === val);
-        break;
-      }
-      case 'date': {
-        if (val === 'asc') rows = [...rows].sort((a, b) => a.createdDate.localeCompare(b.createdDate));
-        else if (val === 'desc') rows = [...rows].sort((a, b) => b.createdDate.localeCompare(a.createdDate));
-        break;
-      }
-      case 'findings': {
-        if (val === 'asc') rows = [...rows].sort((a, b) => (a.findings || 0) - (b.findings || 0));
-        else if (val === 'desc') rows = [...rows].sort((a, b) => (b.findings || 0) - (a.findings || 0));
-        break;
-      }
+  // Filter report requests by selected InProgress audit
+  const filteredReportRequests = useMemo(() => {
+    if (!selectedInProgressAuditId) {
+      // If no audit selected, show all report requests for InProgress audits
+      const inProgressAuditIds = new Set(inProgressAudits.map((a: any) => String(a.auditId || a.id || a.$id || '')));
+      return allReportRequests.filter(r => inProgressAuditIds.has(r.auditId));
     }
-    return rows;
-  }, [reportRows, reportFilters]);
+    // Filter by selected audit
+    return allReportRequests.filter(r => r.auditId === selectedInProgressAuditId);
+  }, [allReportRequests, selectedInProgressAuditId, inProgressAudits]);
+
+
+  // Build report request rows
+  const reportRequestRows = useMemo(() => {
+    return filteredReportRequests.map((r, idx) => {
+      const requestedByUser = adminUsers.find(u => {
+        const userId = u.userId || (u as any).$id;
+        return userId === r.requestedBy || String(userId) === String(r.requestedBy);
+      });
+      
+      const requestedBy = requestedByUser?.fullName || requestedByUser?.email || r.requestedBy || '—';
+      const status = r.status || '—';
+      const requestedAt = r.requestedAt ? new Date(r.requestedAt).toLocaleString('vi-VN') : '—';
+      const completedAt = r.completedAt ? new Date(r.completedAt).toLocaleString('vi-VN') : '—';
+      
+      // Get audit details
+      const audit = audits.find((a: any) => {
+        const auditId = String(a.auditId || a.id || a.$id || '');
+        return auditId === r.auditId;
+      });
+      const auditTitle = audit?.title || audit?.name || r.auditId || '—';
+      const auditType = audit?.type || audit?.auditType || audit?.category || '—';
+      const findings = (findingsMap[r.auditId] ?? audit?.totalFindings ?? audit?.findingsCount ?? audit?.findingCount ?? 0) as number;
+      
+      return {
+        id: r.reportRequestId || `req_${idx}`,
+        reportRequestId: r.reportRequestId,
+        auditId: r.auditId,
+        auditTitle,
+        auditType,
+        findings,
+        requestedBy,
+        status,
+        requestedAt,
+        completedAt,
+        note: r.note || '—',
+        filePath: r.filePath || '—',
+      };
+    });
+  }, [filteredReportRequests, adminUsers, audits, findingsMap]);
 
 
   return (
@@ -1075,9 +1170,9 @@ const SQAStaffReports = () => {
 
       <div className="px-6 pb-6 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slideInRight animate-delay-100">
-          <StatCard title="Total Reports" value={reportRows.length} icon={<svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>} variant="primary" />
-          <StatCard title="Returned" value={reportRows.filter(r => String(r.status || '').toLowerCase().includes('returned')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>} variant="primary-light" />
-          <StatCard title="Submitted" value={reportRows.filter(r => String(r.status || '').toLowerCase().includes('submitted')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>} variant="primary-light" />
+          <StatCard title="Total Report Requests" value={reportRequestRows.length} icon={<svg className="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>} variant="primary" />
+          <StatCard title="Returned" value={reportRequestRows.filter(r => String(r.status || '').toLowerCase().includes('returned')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>} variant="primary-light" />
+          <StatCard title="Pending" value={reportRequestRows.filter(r => String(r.status || '').toLowerCase().includes('pending')).length} icon={<svg className="w-8 h-8 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>} variant="primary-light" />
         </div>
 
         {/* Audit selector */}
@@ -1136,29 +1231,11 @@ const SQAStaffReports = () => {
           </div>
         ) : null}
 
+        {/* In Progress Audits Table */}
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-200">
-          <div className="bg-white p-4">
-            <div className="px-2 py-3 space-y-3">
-            <FilterBar
-              singleMode
-              definitions={[
-                { id: 'type', label: 'Type', type: 'select', getOptions: () => Array.from(new Set(reportRows.map(r => r.type))).filter(t => t && t !== '—').sort().map(t => ({ value: t, label: t })) },
-                { id: 'status', label: 'Status', type: 'select', getOptions: () => Array.from(new Set(reportRows.map(r => r.status))).filter(Boolean).sort().map(s => ({ value: String(s).toLowerCase(), label: String(s) })) },
-                { id: 'findings', label: 'Findings', type: 'select', getOptions: () => [{ value: 'asc', label: 'Fewest → Most' }, { value: 'desc', label: 'Most → Fewest' }] },
-                { id: 'date', label: 'Date', type: 'select', getOptions: () => [{ value: 'asc', label: 'Oldest → Newest' }, { value: 'desc', label: 'Newest → Oldest' }] },
-              ]}
-              active={reportFilters}
-              onChange={setReportFilters}
-            />
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <span>{filteredReportRows.length} reports</span>
-              {Object.keys(reportFilters).length > 0 && (
-                <button
-                  onClick={() => setReportFilters({})}
-                  className="text-gray-400 hover:text-gray-600"
-                >Clear</button>
-              )}
-            </div>
+          <div className="bg-white p-4 border-b border-gray-100">
+            <h2 className="text-lg font-semibold text-gray-900">In Progress Audits</h2>
+            <p className="text-sm text-gray-500 mt-1">Audits currently in progress</p>
           </div>
           <div className="overflow-x-auto font-noto">
             <table className="w-full">
@@ -1170,180 +1247,53 @@ const SQAStaffReports = () => {
                   <th className="px-6 py-4 text-center text-sm font-bold text-black">Status</th>
                   <th className="px-6 py-4 text-center text-sm font-bold text-black">Findings</th>
                   <th className="px-6 py-4 text-center text-sm font-bold text-black">Created By</th>
-                  {/* <th className="px-6 py-4 text-center text-sm font-bold text-black">Submitted</th> */}
+                  <th className="px-6 py-4 text-center text-sm font-bold text-black">Created Date</th>
                   <th className="px-6 py-4 text-center text-sm font-bold text-black">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {filteredReportRows.map((report, idx) => (
-                  <tr key={report.auditId} className="border-b border-gray-100 transition-colors hover:bg-gray-50">
+                {inProgressRows.map((audit, idx) => (
+                  <tr 
+                    key={audit.auditId} 
+                    className={`border-b border-gray-100 transition-colors hover:bg-gray-50 ${
+                      selectedInProgressAuditId === audit.auditId ? 'bg-blue-50' : ''
+                    }`}
+                  >
                     <td className="px-4 py-4 text-sm text-gray-700 whitespace-nowrap">{idx + 1}</td>
-                    <td className="px-6 py-4"><span className="text-ms font-bold text-black">{report.title}</span></td>
-                    <td className="px-6 py-4 text-center"><span className="text-ms text-[#5b6166]">{report.type}</span></td>
-                    <td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(report.status)}`}>{report.status}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 text-sm font-semibold">{report.findings || 0}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="text-ms text-[#5b6166]">{report.createdBy || '—'}</span></td>
-                    {/* <td className="px-6 py-4 whitespace-nowrap text-center">
-                      {report.hasReportRequest ? (
-                        <div className="flex items-center justify-center gap-1.5">
-                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span className="text-xs font-medium text-green-700">
-                            {report.reportRequestStatus || 'Submitted'}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td> */}
+                    <td className="px-6 py-4"><span className="text-ms font-bold text-black">{audit.title}</span></td>
+                    <td className="px-6 py-4 text-center"><span className="text-ms text-[#5b6166]">{audit.type}</span></td>
+                    <td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(audit.status)}`}>{audit.status}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-100 text-red-700 text-sm font-semibold">{audit.findings || 0}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="text-ms text-[#5b6166]">{audit.createdBy || '—'}</span></td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center"><span className="text-ms text-[#5b6166]">{audit.createdDate || '—'}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                      <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => {
-                            const id = String(report.auditId);
-                            // Toggle mở/đóng summary khi bấm View (same UX as AuditPlanning)
-                            if (showSummary && selectedAuditId === id) {
-                              setShowSummary(false);
-                            } else {
-                              setSelectedAuditId(id);
-                              setShowSummary(true);
-                            }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const id = String(audit.auditId);
+                            // Mở modal summary để xem chi tiết và submit
+                            setSelectedAuditId(id);
+                            setShowSummary(true);
                           }}
                           className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="View summary"
-                          aria-label="View summary"
+                          title="View Report Summary"
+                          aria-label="View Report Summary"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
                         </button>
-                        {(() => {
-                          // Export/Upload is allowed for any team member once the report is Closed/Completed.
-                          const auditIdNorm = normalizeId(report.auditId);
-                          const canExportUpload = isCompletedStatus(report.status);
-                          if (canExportUpload) {
-                            return (
-                              <>
-                                <button
-                                  onClick={() =>
-                                    handleExportPdfForRow(String(report.auditId), report.title)
-                                  }
-                                  className="p-1.5 text-orange-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
-                                  title="Export PDF"
-                                  aria-label="Export PDF"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 21v-8a2 2 0 00-2-2H9a2 2 0 00-2 2v8" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11v6m0 0l-2-2m2 2l2-2" />
-                                  </svg>
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    onClickUpload(String(report.auditId))
-                                  }
-                                  disabled={
-                                    uploadLoading[auditIdNorm]
-                                  }
-                                  className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title={
-                                    uploadedAudits.has(auditIdNorm)
-                                      ? 'This report has already been uploaded.'
-                                      : 'Upload the signed PDF/scan report'
-                                  }
-                                  aria-label={
-                                    uploadedAudits.has(auditIdNorm)
-                                      ? 'Uploaded report (click to see message)'
-                                      : uploadLoading[auditIdNorm]
-                                      ? 'Uploading report'
-                                      : 'Upload report'
-                                  }
-                                >
-                                  {uploadLoading[auditIdNorm] ? (
-                                    <svg
-                                      className="w-4 h-4 animate-spin"
-                                      xmlns="http://www.w3.org/2000/svg"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                    >
-                                      <circle
-                                        className="opacity-25"
-                                        cx="12"
-                                        cy="12"
-                                        r="10"
-                                        stroke="currentColor"
-                                        strokeWidth="4"
-                                      />
-                                      <path
-                                        className="opacity-75"
-                                        fill="currentColor"
-                                        d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z"
-                                      />
-                                    </svg>
-                                  ) : (
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                    </svg>
-                                  )}
-                                </button>
-                                <input
-                                  ref={(el) => {
-                                    fileInputRefs.current[auditIdNorm] = el;
-                                  }}
-                                  type="file"
-                                  accept="application/pdf,image/*"
-                                  multiple
-                                  className="hidden"
-                                  onChange={(e) =>
-                                    onFileSelected(String(report.auditId), e)
-                                  }
-                                />
-                              </>
-                            );
-                          }
-
-                          // Disabled state when report is not in a completed/closed status
-                          const tooltip = 'Export/Upload are only available when the report is Closed.';
-
-                          return (
-                            <>
-                              <button
-                                disabled
-                                className="p-1.5 text-gray-400 cursor-not-allowed"
-                                title={tooltip}
-                                aria-label="Export PDF (disabled)"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 21v-8a2 2 0 00-2-2H9a2 2 0 00-2 2v8" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11v6m0 0l-2-2m2 2l2-2" />
-                                </svg>
-                              </button>
-                              <button
-                                disabled
-                                className="p-1.5 text-gray-400 cursor-not-allowed"
-                                title={tooltip}
-                                aria-label="Upload (disabled)"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                                </svg>
-                              </button>
-                            </>
-                          );
-                        })()}
                       </div>
                     </td>
                   </tr>
                 ))}
-                {filteredReportRows.length === 0 && (
-                  <tr><td colSpan={7} className="px-6 py-6 text-sm text-gray-500">No matching reports.</td></tr>
+                {inProgressRows.length === 0 && (
+                  <tr><td colSpan={8} className="px-6 py-6 text-sm text-gray-500 text-center">No in progress audits found.</td></tr>
                 )}
               </tbody>
             </table>
-            </div>
           </div>
         </div>
 
@@ -1569,7 +1519,7 @@ const SQAStaffReports = () => {
             {summaryTab === 'findings' && (
               <>
                 {/* KPI cards – high level overview */}
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3">
                   <SummaryCard title="Total Findings" value={summary?.totalFindings ?? 0} />
                   <SummaryCard
                     title="Open"
@@ -1580,16 +1530,6 @@ const SQAStaffReports = () => {
                     title="Overdue"
                     value={summary?.overdueFindings ?? 0}
                     valueClassName="text-red-600"
-                  />
-                  <SummaryCard
-                    title="Checklist Overdue"
-                    value={checklistOverview.totalOverdue}
-                    valueClassName="text-red-600"
-                  />
-                  <SummaryCard
-                    title="Checklist Compliant"
-                    value={checklistOverview.totalCompliant}
-                    valueClassName="text-emerald-600"
                   />
                 </div>
 
