@@ -23,6 +23,7 @@ interface Props {
   onApprove: (auditId: string) => void;
   onReject: (auditId: string) => void;
   onEditScheduleAndTeam?: (auditId: string) => void;
+  editedScheduleTeamOnce?: Set<string>;
   actionLoading: string;
   actionMsg: string | null;
   getStatusColor: (status: string) => string;
@@ -39,6 +40,7 @@ const AuditReportsTable: React.FC<Props> = ({
   onApprove,
   onReject,
   onEditScheduleAndTeam,
+  editedScheduleTeamOnce,
   actionLoading,
   actionMsg,
   getStatusColor
@@ -48,10 +50,12 @@ const AuditReportsTable: React.FC<Props> = ({
   // 1. Có extension request (revision request) đã được Director approve (isDirectorApproved = true)
   // 2. VÀ report status KHÔNG phải "Returned" (không bị reject) - kể cả sau khi đã edit
   // 3. VÀ report status KHÔNG phải "Approved" (chưa được approve)
-  const canEditScheduleAndTeam = (status: string, rawStatus?: string, isDirectorApproved?: boolean) => {
+  const canEditScheduleAndTeam = (auditId: string, status: string, rawStatus?: string, isDirectorApproved?: boolean) => {
     // Normalize status (check both status and rawStatus for edge cases)
     const statusLower = String(status || '').toLowerCase().trim().replace(/\s+/g, '');
     const rawStatusLower = String(rawStatus || '').toLowerCase().trim().replace(/\s+/g, '');
+    const key = String(auditId || '').toLowerCase().trim();
+    if (editedScheduleTeamOnce?.has(key)) return false; // already edited once
     
     // Nếu report đã bị reject (Returned) - ẩn button ngay cả khi đã edit trước đó
     // Check multiple variations: returned, reject, rejected
@@ -133,7 +137,7 @@ const AuditReportsTable: React.FC<Props> = ({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                       </Button>
-                      {canEditScheduleAndTeam(r.status, r.rawStatus, r.isDirectorApproved) && onEditScheduleAndTeam && (
+                      {canEditScheduleAndTeam(r.auditId, r.status, r.rawStatus, r.isDirectorApproved) && onEditScheduleAndTeam && (
                         <Button
                           variant="primary"
                           size="sm"

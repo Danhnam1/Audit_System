@@ -124,7 +124,7 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
             scheduleId: scheduleId ? String(scheduleId) : undefined, // Ensure it's a string or undefined
             milestoneName: s.milestoneName || s.milestone || `Schedule ${idx + 1}`,
             dueDate: formatDateForInput(s.dueDate),
-            status: s.status || 'Active',
+              status: s.status || 'Active',
             notes: s.notes || '', // Backend requires Notes field
           };
         })

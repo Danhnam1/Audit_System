@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
 import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsActionsSummary } from "../../../api/audits";
+import { getDepartments } from "../../../api/departments";
+import { getAuditTeam } from "../../../api/auditTeam";
+import { getAdminUsers } from "../../../api/adminUsers";
 import { submitFinalReport, getReportRequestByAuditId } from "../../../api/reportRequest";
+import { getAuditCriteria } from "../../../api/auditCriteria";
+import { getChecklistTemplates } from "../../../api/checklists";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
 import { useNavigate } from "react-router-dom";
@@ -49,6 +54,12 @@ export default function AuditorFinalSummaryPage() {
   // State for Findings-Actions-Summary API data (for charts)
   const [findingsActionsSummary, setFindingsActionsSummary] = useState<any>(null);
   const [loadingFindingsActionsSummary, setLoadingFindingsActionsSummary] = useState(false);
+  const [fasTab, setFasTab] = useState<"overview" | "severity" | "actions">("overview");
+  const [deptFilter, setDeptFilter] = useState<string>("");
+  const [departments, setDepartments] = useState<Array<{ deptId: string | number; name: string }>>([]);
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [auditCriteria, setAuditCriteria] = useState<any[]>([]);
+  const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   
   // State to track expanded images (Set of attachmentId/docId)
   const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
@@ -57,23 +68,110 @@ export default function AuditorFinalSummaryPage() {
   const [reportRequest, setReportRequest] = useState<{ status?: string; reportRequestId?: string; note?: string } | null>(null);
   const [loadingReportRequest, setLoadingReportRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
 
   // Load list of audits for dropdown (GET /Audits)
   useEffect(() => {
     const loadAudits = async () => {
       setLoadingAudits(true);
       try {
-        const res = await getAuditPlans();
-        const list = unwrap(res);
-        if (Array.isArray(list)) {
-          const mapped = list
-            .map((a: any) => ({
-              auditId: a.auditId || a.id || "",
-              title: a.title || a.auditTitle || "Untitled audit",
+        const [plansRes, teamsRes, usersRes, deptsRes, criteriaRes, templatesRes] = await Promise.all([
+          getAuditPlans(),
+          getAuditTeam().catch(() => []),
+          getAdminUsers().catch(() => []),
+          getDepartments().catch(() => []),
+          getAuditCriteria().catch(() => []),
+          getChecklistTemplates().catch(() => []),
+        ]);
+
+        const plans = unwrap(plansRes);
+        const deptList = Array.isArray(deptsRes)
+          ? deptsRes.map((d: any) => ({
+              deptId: d.deptId ?? d.id ?? d.$id,
+              name: d.name || d.code || String(d.deptId ?? d.id ?? d.$id ?? "N/A"),
             }))
-            .filter(x => x.auditId);
-          setAudits(mapped);
+          : [];
+        setDepartments(deptList);
+        const teams = Array.isArray(teamsRes) ? teamsRes : [];
+        const adminUsersArr = Array.isArray(usersRes) ? usersRes : [];
+        setAdminUsers(adminUsersArr);
+        const criteriaArr = Array.isArray(criteriaRes) ? criteriaRes : [];
+        setAuditCriteria(criteriaArr);
+        const templatesArr = Array.isArray(templatesRes) ? templatesRes : [];
+        setChecklistTemplates(templatesArr);
+
+        // Resolve current userId from email (fallback: user.userId if present)
+        let currentUserId: string | null = null;
+        if (user?.email) {
+          const found = adminUsersArr.find((u: any) => {
+            const uEmail = String(u?.email || "").toLowerCase().trim();
+            const userEmail = String(user.email || "").toLowerCase().trim();
+            return uEmail === userEmail;
+          });
+          if (found?.userId) {
+            currentUserId = String(found.userId);
+          } else if (found?.$id) {
+            currentUserId = String(found.$id);
+          }
         }
+        if (!currentUserId && (user as any)?.userId) {
+          currentUserId = String((user as any).userId);
+        }
+        const normalizedCurrentUserId = currentUserId ? currentUserId.toLowerCase().trim() : null;
+
+        // Collect audits where user is in team
+        const userAuditIds = new Set<string>();
+        if (normalizedCurrentUserId) {
+          teams.forEach((m: any) => {
+            const memberUserId = m?.userId ?? m?.id ?? m?.$id;
+            const normalizedMemberId = memberUserId != null ? String(memberUserId).toLowerCase().trim() : null;
+            if (normalizedMemberId === normalizedCurrentUserId) {
+              const auditId = m?.auditId ?? m?.auditPlanId ?? m?.planId ?? m?.id ?? m?.$id;
+              if (auditId) {
+                const val = String(auditId).trim();
+                if (val) {
+                  userAuditIds.add(val);
+                  userAuditIds.add(val.toLowerCase());
+                }
+              }
+            }
+          });
+        }
+
+        // Collect audits where user is creator
+        const creatorAuditIds = new Set<string>();
+        if (normalizedCurrentUserId) {
+          (Array.isArray(plans) ? plans : []).forEach((a: any) => {
+            const createdBy = a?.createdBy || a?.createdByUser?.userId || a?.createdByUser?.id || a?.createdByUser?.$id;
+            const createdByNorm = createdBy ? String(createdBy).toLowerCase().trim() : null;
+            if (createdByNorm === normalizedCurrentUserId) {
+              const auditId = a?.auditId || a?.id || a?.$id;
+              if (auditId) {
+                const val = String(auditId).trim();
+                if (val) {
+                  creatorAuditIds.add(val);
+                  creatorAuditIds.add(val.toLowerCase());
+                }
+              }
+            }
+          });
+        }
+
+        const filtered = (Array.isArray(plans) ? plans : [])
+          .filter((a: any) => {
+            const auditId = a?.auditId || a?.id || a?.$id;
+            if (!auditId) return false;
+            const auditIdStr = String(auditId).trim();
+            const auditIdLower = auditIdStr.toLowerCase();
+            return userAuditIds.has(auditIdStr) || userAuditIds.has(auditIdLower) || creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdLower);
+          })
+          .map((a: any) => ({
+            auditId: a.auditId || a.id || "",
+            title: a.title || a.auditTitle || "Untitled audit",
+          }))
+          .filter((x: any) => x.auditId);
+
+        setAudits(filtered);
       } finally {
         setLoadingAudits(false);
       }
@@ -180,6 +278,169 @@ export default function AuditorFinalSummaryPage() {
   const actionsArr = detail ? unwrapArray<any>(detail.actions) : [];
   const documentsArr = detail ? unwrapArray<any>(detail.documents) : [];
 
+  const isActionCompleted = (a: any) => {
+    const st = String(a?.status || '').toLowerCase();
+    return (st.includes('completed') || st.includes('approved')) && (!!a?.closedAt || !!a?.reviewFeedback || a?.progressPercent === 100);
+  };
+
+  // Department filter options & filtered lists
+  const getDeptName = useCallback(
+    (deptId: string | number | null | undefined) => {
+      if (deptId == null) return "N/A";
+      const match = departments.find(
+        (d) => String(d.deptId) === String(deptId) || String(d.deptId).toLowerCase() === String(deptId).toLowerCase()
+      );
+      return match?.name || String(deptId);
+    },
+    [departments]
+  );
+
+  const getUserName = useCallback(
+    (userId: string | number | null | undefined) => {
+      if (userId == null) return "N/A";
+      const match = adminUsers.find(
+        (u: any) =>
+          String(u.userId || u.$id || u.id) === String(userId) ||
+          String(u.userId || u.$id || u.id).toLowerCase() === String(userId).toLowerCase()
+      );
+      return match?.fullName || match?.email || String(userId);
+    },
+    [adminUsers]
+  );
+
+  const getCriteriaName = useCallback(
+    (criteriaId: string | null | undefined) => {
+      if (criteriaId == null) return "N/A";
+      const match = auditCriteria.find(
+        (c: any) =>
+          String(c.criteriaId || c.$id || c.id) === String(criteriaId) ||
+          String(c.criteriaId || c.$id || c.id).toLowerCase() === String(criteriaId).toLowerCase()
+      );
+      return match?.name || String(criteriaId);
+    },
+    [auditCriteria]
+  );
+
+  const getTemplateName = useCallback(
+    (templateId: string | null | undefined) => {
+      if (templateId == null) return "N/A";
+      const match = checklistTemplates.find(
+        (t: any) =>
+          String(t.templateId || t.$id || t.id) === String(templateId) ||
+          String(t.templateId || t.$id || t.id).toLowerCase() === String(templateId).toLowerCase()
+      );
+      return match?.name || String(templateId);
+    },
+    [checklistTemplates]
+  );
+
+  const deptOptions = useMemo(() => {
+    const opts = new Map<string, string>();
+    findingsArr.forEach((f: any) => {
+      const dept = f?.deptId != null ? String(f.deptId) : 'N/A';
+      const label = getDeptName(dept);
+      opts.set(dept, label);
+    });
+    return Array.from(opts.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [findingsArr, getDeptName]);
+
+  const findingsByIdMap = useMemo(() => {
+    const map = new Map<string, any>();
+    findingsArr.forEach((f: any) => {
+      const id = String(f.findingId || '').trim();
+      if (id) map.set(id, f);
+    });
+    return map;
+  }, [findingsArr]);
+
+  const filteredFindingsArr = useMemo(() => {
+    if (!deptFilter) return findingsArr;
+    return findingsArr.filter((f: any) => {
+      const dept = f?.deptId != null ? String(f.deptId) : 'N/A';
+      return dept === deptFilter;
+    });
+  }, [deptFilter, findingsArr]);
+
+  const filteredActionsArr = useMemo(() => {
+    if (!deptFilter) return actionsArr;
+    return actionsArr.filter((a: any) => {
+      const assignedDept = a?.assignedDeptId != null ? String(a.assignedDeptId) : null;
+      if (assignedDept && assignedDept === deptFilter) return true;
+      const f = findingsByIdMap.get(String(a.findingId || '').trim());
+      const findingDept = f?.deptId != null ? String(f.deptId) : null;
+      if (findingDept && findingDept === deptFilter) return true;
+      return false;
+    });
+  }, [deptFilter, actionsArr, findingsByIdMap]);
+
+  // Use counts from filtered lists
+  const findingsCount = filteredFindingsArr.length;
+  const openFindingsFiltered = filteredFindingsArr.filter((f: any) => {
+    const st = String(f?.status || '').toLowerCase();
+    return !st.includes('closed') && !st.includes('complete');
+  }).length;
+  const closedFindingsFiltered = filteredFindingsArr.filter((f: any) => {
+    const st = String(f?.status || '').toLowerCase();
+    return st.includes('closed') || st.includes('complete');
+  }).length;
+
+  const actionsCount = filteredActionsArr.length;
+  const completedActionsFiltered = filteredActionsArr.filter(isActionCompleted).length;
+  const overdueActionsFiltered = filteredActionsArr.filter((a: any) => {
+    if (isActionCompleted(a)) return false;
+    if (!a?.dueDate) return false;
+    const dl = new Date(a.dueDate);
+    if (isNaN(dl.getTime())) return false;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    dl.setHours(0,0,0,0);
+    return dl < today;
+  }).length;
+
+  const actionsByFindingMap = useMemo(() => {
+    const map = new Map<string, any[]>();
+    actionsArr.forEach((a: any) => {
+      const fid = String(a.findingId || '').trim();
+      if (!fid) return;
+      if (!map.has(fid)) map.set(fid, []);
+      map.get(fid)!.push(a);
+    });
+    return map;
+  }, [actionsArr]);
+
+  const isFindingResolved = (relatedActions: any[]) => {
+    if (!relatedActions || !relatedActions.length) return false;
+    return relatedActions.some(isActionCompleted);
+  };
+
+  const isFindingOverdue = (f: any, relatedActions: any[]) => {
+    const resolved = isFindingResolved(relatedActions);
+    if (resolved) return false;
+    if (!f?.deadline) return false;
+    const dl = new Date(f.deadline);
+    if (isNaN(dl.getTime())) return false;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    dl.setHours(0,0,0,0);
+    return dl < today;
+  };
+
+  const findingsDepartmentAgg = useMemo(() => {
+    const agg: Record<string, { deptId: string; total: number; resolved: number; overdue: number }> = {};
+    const source = filteredFindingsArr;
+    source.forEach((f: any) => {
+      const dept = f?.deptId != null ? String(f.deptId) : 'N/A';
+      if (!agg[dept]) agg[dept] = { deptId: dept, total: 0, resolved: 0, overdue: 0 };
+      const related = actionsByFindingMap.get(String(f.findingId || '')) || [];
+      const resolved = isFindingResolved(related);
+      const overdue = isFindingOverdue(f, related);
+      agg[dept].total += 1;
+      if (resolved) agg[dept].resolved += 1;
+      if (overdue) agg[dept].overdue += 1;
+    });
+    return Object.values(agg);
+  }, [filteredFindingsArr, actionsByFindingMap]);
+
   const period = useMemo(() => {
     const from = audit.startDate ? new Date(audit.startDate).toLocaleDateString() : "";
     const to = audit.endDate ? new Date(audit.endDate).toLocaleDateString() : "";
@@ -188,10 +449,6 @@ export default function AuditorFinalSummaryPage() {
     return from || to;
   }, [audit.startDate, audit.endDate]);
 
-  // Use counts from Summary API if available, otherwise count arrays
-  const findingsCount = summaryData?.totalFindings ?? findingsArr.length;
-  const actionsCount = actionsArr.length;
-  
   // Prepare chart data from findings-actions-summary
   const findingsSeverityChartData = useMemo(() => {
     if (!findingsActionsSummary) return [];
@@ -199,7 +456,7 @@ export default function AuditorFinalSummaryPage() {
       { name: 'Major', value: findingsActionsSummary.findingMajor || 0, color: '#ef4444' },
       { name: 'Medium', value: findingsActionsSummary.findingMedium || 0, color: '#f59e0b' },
       { name: 'Minor', value: findingsActionsSummary.findingMinor || 0, color: '#10b981' },
-    ].filter(item => item.value > 0);
+    ];
   }, [findingsActionsSummary]);
   
   const actionsStatusChartData = useMemo(() => {
@@ -207,7 +464,7 @@ export default function AuditorFinalSummaryPage() {
     return [
       { name: 'Completed', value: findingsActionsSummary.completedActions || 0, color: '#10b981' },
       { name: 'Overdue', value: findingsActionsSummary.overdueActions || 0, color: '#ef4444' },
-    ].filter(item => item.value > 0);
+    ];
   }, [findingsActionsSummary]);
   
   const actionsSeverityBreakdownData = useMemo(() => {
@@ -228,7 +485,46 @@ export default function AuditorFinalSummaryPage() {
         completed: findingsActionsSummary.completedActionsMinor || 0,
         overdue: findingsActionsSummary.overdueActionsMinor || 0,
       },
-    ].filter(item => item.completed > 0 || item.overdue > 0);
+    ];
+  }, [findingsActionsSummary]);
+
+  const findingsOverviewCards = useMemo(() => {
+    if (!findingsActionsSummary) return [];
+    const total = findingsActionsSummary.totalFindings || 0;
+    const completed = findingsActionsSummary.completedActions || 0;
+    const overdue = findingsActionsSummary.overdueActions || 0;
+    return [
+      { label: "Total Findings", value: total, color: "text-slate-900", bg: "from-slate-100 to-white", border: "border-slate-200" },
+      { label: "Completed / Remediated", value: completed, color: "text-emerald-800", bg: "from-emerald-50 to-white", border: "border-emerald-200" },
+      { label: "Overdue / Pending", value: overdue, color: "text-red-800", bg: "from-red-50 to-white", border: "border-red-200" },
+    ];
+  }, [findingsActionsSummary]);
+
+  const severityCards = useMemo(() => {
+    if (!findingsActionsSummary) return [];
+    return [
+      {
+        title: "Major findings",
+        count: findingsActionsSummary.findingMajor || 0,
+        completed: findingsActionsSummary.completedActionsMajor || 0,
+        overdue: findingsActionsSummary.overdueActionsMajor || 0,
+        color: "red",
+      },
+      {
+        title: "Medium findings",
+        count: findingsActionsSummary.findingMedium || 0,
+        completed: findingsActionsSummary.completedActionsMedium || 0,
+        overdue: findingsActionsSummary.overdueActionsMedium || 0,
+        color: "amber",
+      },
+      {
+        title: "Minor findings",
+        count: findingsActionsSummary.findingMinor || 0,
+        completed: findingsActionsSummary.completedActionsMinor || 0,
+        overdue: findingsActionsSummary.overdueActionsMinor || 0,
+        color: "emerald",
+      },
+    ];
   }, [findingsActionsSummary]);
 
   const headerSubtitle = useMemo(() => {
@@ -374,6 +670,13 @@ export default function AuditorFinalSummaryPage() {
               </div>
               {selectedAuditId && (
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAuditDetailModal(true)}
+                    className="px-3 py-1.5 border border-primary-600 text-primary-700 text-xs font-semibold rounded-md hover:bg-primary-50 transition-colors"
+                  >
+                    View audit details
+                  </button>
                   {loadingReportRequest ? (
                     <div className="text-xs text-gray-500">Checking status...</div>
                   ) : isSubmitted ? (
@@ -534,92 +837,146 @@ export default function AuditorFinalSummaryPage() {
                   </div>
                 </div>
 
-                {/* Charts Section - Findings & Actions Summary */}
+                {/* Findings & Actions Summary (API) with tabs */}
                 {findingsActionsSummary && (
                 <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
-                      <h2 className="text-sm font-semibold text-white uppercase">Findings & Actions Summary Charts</h2>
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg flex items-center justify-between gap-4 flex-wrap">
+                      <h2 className="text-sm font-semibold text-white uppercase">Findings & Actions Summary (API)</h2>
+                      <div className="flex items-center gap-2 text-xs bg-white/10 rounded-full p-1">
+                        {["overview", "severity", "actions"].map((tab) => (
+                          <button
+                            key={tab}
+                            onClick={() => setFasTab(tab as any)}
+                            className={`px-3 py-1 rounded-full font-semibold transition-all ${
+                              fasTab === tab
+                                ? "bg-white text-primary-700 shadow-sm"
+                                : "text-white/80 hover:bg-white/20"
+                            }`}
+                          >
+                            {tab === "overview" ? "Overview" : tab === "severity" ? "Severity" : "Actions"}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Findings Severity Pie Chart */}
-                      {findingsSeverityChartData.length > 0 && (
-                        <div>
-                          <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase">Findings by Severity</h3>
-                          <div style={{ width: '100%', height: 250 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie
-                                  data={findingsSeverityChartData}
-                                  cx="50%"
-                                  cy="50%"
-                                  labelLine={false}
-                                  label={(props: any) => {
-                                    const { name, value, percent } = props;
-                                    return `${name}: ${value} (${((percent as number) * 100).toFixed(0)}%)`;
-                                  }}
-                                  outerRadius={80}
-                                  fill="#8884d8"
-                                  dataKey="value"
+                    <div className="p-4 space-y-6">
+                      {fasTab === "overview" && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {findingsOverviewCards.map((card) => (
+                            <div
+                              key={card.label}
+                              className={`rounded-xl border ${card.border} bg-gradient-to-br ${card.bg} p-4 shadow-sm`}
+                            >
+                              <p className="text-[11px] font-semibold uppercase text-gray-600">{card.label}</p>
+                              <p className={`mt-2 text-3xl font-bold ${card.color}`}>{card.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {fasTab === "severity" && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                          <div className="space-y-3">
+                            <h3 className="text-xs font-semibold text-gray-700 uppercase">Findings by Severity</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {severityCards.map((c) => (
+                                <div
+                                  key={c.title}
+                                  className="rounded-lg border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-3 shadow-sm"
                                 >
-                                  {findingsSeverityChartData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.color} />
-                                  ))}
-                                </Pie>
-                                <Tooltip />
-                                <Legend />
-                              </PieChart>
-                            </ResponsiveContainer>
+                                  <p className="text-[11px] font-semibold text-gray-700 uppercase">{c.title}</p>
+                                  <p className="mt-1 text-xl font-bold text-gray-900">{c.count}</p>
+                                  <div className="mt-2 text-[11px] text-gray-700 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-semibold text-emerald-700">Completed</span>
+                                      <span>{c.completed}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-semibold text-red-700">Overdue</span>
+                                      <span>{c.overdue}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div>
+                            <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase">Charts</h3>
+                            <div className="grid grid-cols-1 gap-4">
+                              {findingsSeverityChartData.length > 0 && (
+                                <div className="rounded-lg border border-gray-200 p-3 shadow-sm">
+                                  <h4 className="text-[11px] font-semibold text-gray-700 mb-2 uppercase">Severity Pie</h4>
+                                  <div style={{ width: '100%', height: 240 }}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <PieChart>
+                                        <Pie
+                                          data={findingsSeverityChartData}
+                                          cx="50%"
+                                          cy="50%"
+                                          labelLine={false}
+                                          outerRadius={80}
+                                          fill="#8884d8"
+                                          dataKey="value"
+                                        >
+                                          {findingsSeverityChartData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                          ))}
+                                        </Pie>
+                                        <Tooltip />
+                                        <Legend />
+                                      </PieChart>
+                                    </ResponsiveContainer>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
-                      
-                      {/* Actions Status Pie Chart */}
-                      {actionsStatusChartData.length > 0 && (
-                        <div>
-                          <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase">Actions Status</h3>
-                          <div style={{ width: '100%', height: 250 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie
-                                  data={actionsStatusChartData}
-                                  cx="50%"
-                                  cy="50%"
-                                  labelLine={false}
-                                  label={(props: any) => {
-                                    const { name, value, percent } = props;
-                                    return `${name}: ${value} (${((percent as number) * 100).toFixed(0)}%)`;
-                                  }}
-                                  outerRadius={80}
-                                  fill="#8884d8"
-                                  dataKey="value"
-                                >
-                                  {actionsStatusChartData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.color} />
-                                  ))}
-                                </Pie>
-                                <Tooltip />
-                                <Legend />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Actions by Severity Breakdown Bar Chart */}
-                      {actionsSeverityBreakdownData.length > 0 && (
-                        <div className="md:col-span-2">
-                          <h3 className="text-xs font-semibold text-gray-700 mb-3 uppercase">Actions Breakdown by Severity</h3>
-                          <div style={{ width: '100%', height: 250 }}>
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={actionsSeverityBreakdownData}>
-                                <XAxis dataKey="severity" />
-                                <YAxis />
-                                <Tooltip />
-                                <Legend />
-                                <Bar dataKey="completed" fill="#10b981" name="Completed" />
-                                <Bar dataKey="overdue" fill="#ef4444" name="Overdue" />
-                              </BarChart>
-                            </ResponsiveContainer>
+
+                      {fasTab === "actions" && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="rounded-lg border border-gray-200 p-3 shadow-sm">
+                              <h4 className="text-[11px] font-semibold text-gray-700 mb-2 uppercase">Actions Status</h4>
+                              <div style={{ width: '100%', height: 240 }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie
+                                      data={actionsStatusChartData}
+                                      cx="50%"
+                                      cy="50%"
+                                      labelLine={false}
+                                      outerRadius={80}
+                                      fill="#8884d8"
+                                      dataKey="value"
+                                    >
+                                      {actionsStatusChartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                      ))}
+                                    </Pie>
+                                    <Tooltip />
+                                    <Legend />
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-gray-200 p-3 shadow-sm">
+                              <h4 className="text-[11px] font-semibold text-gray-700 mb-2 uppercase">Actions Breakdown by Severity</h4>
+                              <div style={{ width: '100%', height: 240 }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart data={actionsSeverityBreakdownData}>
+                                    <XAxis dataKey="severity" />
+                                    <YAxis />
+                                    <Tooltip />
+                                    <Legend />
+                                    <Bar dataKey="completed" fill="#10b981" name="Completed" />
+                                    <Bar dataKey="overdue" fill="#ef4444" name="Overdue" />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -628,34 +985,84 @@ export default function AuditorFinalSummaryPage() {
                 )}
 
                 {/* Findings Section - Separate and Clear */}
+                {fasTab !== "actions" && (
                 <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-to-r from-red-500 to-red-600 rounded-t-lg">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-to-r from-red-500 to-red-600 rounded-t-lg flex items-center justify-between gap-3 flex-wrap">
                     <h2 className="text-sm font-semibold text-white uppercase">Findings</h2>
+                    <div className="flex items-center gap-2 text-xs text-white">
+                      <span>Filter by Department:</span>
+                      <select
+                        value={deptFilter}
+                        onChange={(e) => setDeptFilter(e.target.value)}
+                        className="text-sm text-gray-800 rounded-md border border-gray-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      >
+                        <option value="">All</option>
+                        {deptOptions.map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                      {deptFilter && (
+                        <button
+                          onClick={() => setDeptFilter("")}
+                          className="underline text-white/90 hover:text-white text-xs"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="p-4 space-y-4 text-sm text-gray-700">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="rounded-lg bg-gradient-to-br from-red-100 to-red-50 border border-red-300 py-3 shadow-sm">
-                        <p className="text-[11px] font-semibold text-red-800 uppercase tracking-wide">Total Findings</p>
-                        <p className="mt-1 text-2xl font-bold text-red-900">{findingsCount}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Total Findings</p>
+                        <p className="mt-1 text-2xl font-bold text-gray-900">{findingsCount}</p>
                       </div>
-                      <div className="rounded-lg bg-gradient-to-br from-red-100 to-red-50 border border-red-300 py-3 shadow-sm">
-                        <p className="text-[11px] font-semibold text-red-800 uppercase tracking-wide">Open</p>
-                        <p className="mt-1 text-2xl font-bold text-red-900">{summaryData?.openFindings ?? 0}</p>
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Open</p>
+                        <p className="mt-1 text-2xl font-bold text-amber-700">{openFindingsFiltered}</p>
                       </div>
-                      <div className="rounded-lg bg-gradient-to-br from-red-100 to-red-50 border border-red-300 py-3 shadow-sm">
-                        <p className="text-[11px] font-semibold text-red-800 uppercase tracking-wide">Closed</p>
-                        <p className="mt-1 text-2xl font-bold text-red-900">{summaryData?.closedFindings ?? 0}</p>
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Closed</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-700">{closedFindingsFiltered}</p>
                       </div>
                     </div>
 
-                    {findingsArr.length > 0 && (
+                    {findingsDepartmentAgg.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase mb-2">Findings by Department</p>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-sm border border-gray-200 rounded-lg">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-3 py-2 text-left text-gray-700 font-semibold">Department</th>
+                                <th className="px-3 py-2 text-right text-gray-700 font-semibold">Total</th>
+                                <th className="px-3 py-2 text-right text-gray-700 font-semibold">Resolved</th>
+                                <th className="px-3 py-2 text-right text-gray-700 font-semibold">Overdue</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {findingsDepartmentAgg.map((row) => (
+                                <tr key={row.deptId}>
+                                <td className="px-3 py-2 text-gray-800">{getDeptName(row.deptId)}</td>
+                                  <td className="px-3 py-2 text-right text-gray-900 font-semibold">{row.total}</td>
+                                  <td className="px-3 py-2 text-right text-emerald-700 font-semibold">{row.resolved}</td>
+                                  <td className="px-3 py-2 text-right text-red-700 font-semibold">{row.overdue}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {filteredFindingsArr.length > 0 && (
                       <div className="mt-3">
                         <p className="text-[11px] font-semibold text-primary-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
                           <span className="inline-block w-1 h-4 rounded-full bg-primary-500" />
-                          Sample findings (top {Math.min(findingsArr.length, 5)})
+                          Sample findings (top {Math.min(filteredFindingsArr.length, 5)})
                         </p>
                         <ul className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                          {findingsArr.slice(0, 5).map((f: any) => {
+                          {filteredFindingsArr.slice(0, 5).map((f: any) => {
                             const attachments = unwrapArray<any>(f.attachments);
                             return (
                               <li
@@ -673,7 +1080,7 @@ export default function AuditorFinalSummaryPage() {
                                     {f.severity || "N/A"}
                                   </span>
                                   <span className="text-[11px] text-primary-600">
-                                    Department: {f.deptId ?? "N/A"}
+                                    Department: {getDeptName(f.deptId)}
                                   </span>
                                 </p>
                                 {f.description && (
@@ -763,6 +1170,36 @@ export default function AuditorFinalSummaryPage() {
                                     </ul>
                                   </div>
                                 )}
+
+                                {/* Actions under this finding */}
+                                {(actionsByFindingMap.get(String(f.findingId || '')) || []).length > 0 && (
+                                  <div className="mt-2 border-t border-gray-200 pt-2">
+                                    <p className="text-[11px] font-semibold text-gray-700 mb-1">
+                                      Actions for this finding ({(actionsByFindingMap.get(String(f.findingId || '')) || []).length})
+                                    </p>
+                                    <div className="space-y-1.5">
+                                      {(actionsByFindingMap.get(String(f.findingId || '')) || []).slice(0,4).map((a: any) => (
+                                        <div key={a.actionId} className="text-[11px] border border-gray-200 rounded-md p-2 bg-white">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="font-semibold text-gray-800 truncate">{a.title || "Action"}</span>
+                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 border text-[10px] ${
+                                              isActionCompleted(a)
+                                                ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                                                : (String(a.status || "").toLowerCase().includes("overdue") ? "border-red-200 text-red-700 bg-red-50" : "border-amber-200 text-amber-700 bg-amber-50")
+                                            }`}>
+                                              {a.status || "N/A"}
+                                            </span>
+                                          </div>
+                                          <div className="mt-1 flex flex-wrap gap-3 text-gray-600">
+                                            <span>Due: {a.dueDate ? new Date(a.dueDate).toLocaleDateString() : "—"}</span>
+                                            {a.assignedDeptId != null && <span>Dept: {getDeptName(a.assignedDeptId)}</span>}
+                                            {typeof a.progressPercent === 'number' && <span>Progress: {a.progressPercent}%</span>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </li>
                             );
                           })}
@@ -772,41 +1209,43 @@ export default function AuditorFinalSummaryPage() {
 
                   </div>
                 </div>
+                )}
 
                 {/* Actions Section - Separate and Clear */}
+                {fasTab !== "severity" && (
                 <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
                   <div className="px-4 py-3 border-b border-primary-300 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-t-lg">
                     <h2 className="text-sm font-semibold text-white uppercase">Actions</h2>
                   </div>
                   <div className="p-4 space-y-4 text-sm text-gray-700">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div className="rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-50 border border-emerald-300 py-3 shadow-sm">
-                        <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">Total Actions</p>
-                        <p className="mt-1 text-2xl font-bold text-emerald-900">{actionsCount}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Total Actions</p>
+                        <p className="mt-1 text-2xl font-bold text-gray-900">{actionsCount}</p>
                       </div>
-                      <div className="rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-50 border border-emerald-300 py-3 shadow-sm">
-                        <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">Completed</p>
-                        <p className="mt-1 text-2xl font-bold text-emerald-900">{findingsActionsSummary?.completedActions ?? 0}</p>
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Completed</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-700">{completedActionsFiltered}</p>
                       </div>
-                      <div className="rounded-lg bg-gradient-to-br from-emerald-100 to-emerald-50 border border-emerald-300 py-3 shadow-sm">
-                        <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">Overdue</p>
-                        <p className="mt-1 text-2xl font-bold text-emerald-900">{findingsActionsSummary?.overdueActions ?? 0}</p>
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Overdue</p>
+                        <p className="mt-1 text-2xl font-bold text-red-700">{overdueActionsFiltered}</p>
                       </div>
                     </div>
 
-                    {actionsArr.length > 0 && (
+                    {filteredActionsArr.length > 0 && (
                       <div className="mt-3">
                         <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
                           <span className="inline-block w-1 h-4 rounded-full bg-emerald-500" />
-                          Actions List ({actionsArr.length})
+                          Actions List ({filteredActionsArr.length})
                         </p>
                         <ul className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
-                          {actionsArr.map((a: any) => {
+                          {filteredActionsArr.map((a: any) => {
                             const attachments = unwrapArray<any>(a.attachments);
                             return (
                               <li
                                 key={a.actionId}
-                                className="border border-emerald-200 rounded-lg p-2.5 bg-gradient-to-br from-emerald-50 to-white shadow-sm hover:shadow-md hover:border-emerald-300 transition-shadow transition-colors"
+                                className="border border-gray-200 rounded-lg p-2.5 bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition-shadow transition-colors"
                               >
                                 <p className="text-xs font-semibold text-emerald-900 flex items-center justify-between gap-2">
                                   {a.title || "Untitled action"}
@@ -930,6 +1369,7 @@ export default function AuditorFinalSummaryPage() {
                     )}
                   </div>
                 </div>
+                )}
 
                 {/* Documents */}
                 <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
@@ -1058,6 +1498,249 @@ export default function AuditorFinalSummaryPage() {
             </div>
           )}
         </section>
+
+        {/* Audit detail modal */}
+        {showAuditDetailModal && detail && (
+          <div className="fixed inset-0 z-[12000] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowAuditDetailModal(false)} />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto border border-gray-200">
+              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Audit Details</h3>
+                  <p className="text-xs text-gray-500">Full snapshot from full-detail API</p>
+                </div>
+                <button
+                  onClick={() => setShowAuditDetailModal(false)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-5 space-y-4 text-sm text-gray-800">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase">Audit</p>
+                    <p className="text-base font-semibold text-gray-900 mt-1">{detail.audit?.title || "—"}</p>
+                    <p className="text-xs text-gray-600">Type: {detail.audit?.type || "—"}</p>
+                    <p className="text-xs text-gray-600">Status: {detail.audit?.status || "—"}</p>
+                    <p className="text-xs text-gray-600">Objective: {detail.audit?.objective || "—"}</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase">Period</p>
+                    <p className="mt-1 text-sm text-gray-900">
+                      {detail.audit?.startDate ? new Date(detail.audit.startDate).toLocaleDateString() : "—"} —{" "}
+                      {detail.audit?.endDate ? new Date(detail.audit.endDate).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Departments (scope)</p>
+                    <ul className="text-xs space-y-1">
+                      {scopeDepartmentsArr.length ? (
+                        scopeDepartmentsArr.map((d: any, idx: number) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary-500" />
+                            <span className="font-semibold text-gray-800">{getDeptName(d.deptId)}</span>
+                            <span className="text-gray-500">Status: {d.status || "—"}</span>
+                            {d.sensitiveFlag ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 border border-amber-200">
+                                Sensitive
+                              </span>
+                            ) : null}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-gray-500">No departments</li>
+                      )}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Teams</p>
+                    <ul className="text-xs space-y-1">
+                      {teamsArr.length ? (
+                        teamsArr.map((t: any, idx: number) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span className="font-semibold text-gray-800">{getUserName(t.userId)}</span>
+                            {t.roleInTeam && <span className="text-gray-500">Role: {t.roleInTeam}</span>}
+                            {t.isLead && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-700 border border-blue-200">
+                                Lead
+                              </span>
+                            )}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-gray-500">No team members</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Schedules / Milestones</p>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs border border-gray-200 rounded-lg">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-gray-700 font-semibold">Milestone</th>
+                          <th className="px-3 py-2 text-left text-gray-700 font-semibold">Due Date</th>
+                          <th className="px-3 py-2 text-left text-gray-700 font-semibold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {schedulesArr.length ? (
+                          schedulesArr.map((s: any, idx: number) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2 text-gray-800">{s.milestoneName || "—"}</td>
+                              <td className="px-3 py-2 text-gray-700">
+                                {s.dueDate ? new Date(s.dueDate).toLocaleDateString() : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-700">{s.status || "—"}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td className="px-3 py-2 text-gray-500" colSpan={3}>
+                              No schedules
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Audit Criteria Map</p>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs border border-gray-200 rounded-lg">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Dept</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Criteria Name</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {criteriaArr.length ? (
+                            criteriaArr.map((c: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="px-3 py-2 text-gray-800">{getDeptName(c.deptId)}</td>
+                                <td className="px-3 py-2 text-gray-700">{getCriteriaName(c.criteriaId)}</td>
+                                <td className="px-3 py-2 text-gray-700">{c.status || "—"}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="px-3 py-2 text-gray-500" colSpan={3}>
+                                No criteria mapped
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Checklist Templates</p>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs border border-gray-200 rounded-lg">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Template Name</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Assigned At</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Assigned By</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {checklistArr.length ? (
+                            checklistArr.map((t: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="px-3 py-2 text-gray-800">{getTemplateName(t.templateId)}</td>
+                                <td className="px-3 py-2 text-gray-700">
+                                  {t.assignedAt ? new Date(t.assignedAt).toLocaleString() : "—"}
+                                </td>
+                                <td className="px-3 py-2 text-gray-700">{getUserName(t.assignedBy)}</td>
+                                <td className="px-3 py-2 text-gray-700">{t.status || "—"}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="px-3 py-2 text-gray-500" colSpan={4}>
+                                No checklist templates assigned
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Findings (full-detail)</p>
+                    <p className="text-sm text-gray-800 font-semibold mb-2">Total: {findingsArr.length}</p>
+                    <ul className="text-xs space-y-1 max-h-48 overflow-y-auto pr-1">
+                      {findingsArr.length ? (
+                        findingsArr.slice(0, 10).map((f: any, idx: number) => (
+                          <li key={idx} className="border border-gray-200 rounded-md p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-gray-900">{f.title || "Finding"}</span>
+                              <span className="px-2 py-0.5 text-[10px] rounded-full border bg-gray-50 text-gray-700">
+                                {f.severity || "—"}
+                              </span>
+                            </div>
+                            <div className="text-gray-600 mt-1">
+                              Dept: {getDeptName(f.deptId)} • Status: {f.status || "—"} • Deadline:{" "}
+                              {f.deadline ? new Date(f.deadline).toLocaleDateString() : "—"}
+                            </div>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-gray-500">No findings</li>
+                      )}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Actions (full-detail)</p>
+                    <p className="text-sm text-gray-800 font-semibold mb-2">Total: {actionsArr.length}</p>
+                    <ul className="text-xs space-y-1 max-h-48 overflow-y-auto pr-1">
+                      {actionsArr.length ? (
+                        actionsArr.slice(0, 10).map((a: any, idx: number) => (
+                          <li key={idx} className="border border-gray-200 rounded-md p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-gray-900">{a.title || "Action"}</span>
+                              <span className="px-2 py-0.5 text-[10px] rounded-full border bg-gray-50 text-gray-700">
+                                {a.status || "—"}
+                              </span>
+                            </div>
+                            <div className="text-gray-600 mt-1">
+                              Dept: {getDeptName(a.assignedDeptId)} • Due:{" "}
+                              {a.dueDate ? new Date(a.dueDate).toLocaleDateString() : "—"} • Progress:{" "}
+                              {typeof a.progressPercent === "number" ? `${a.progressPercent}%` : "—"}
+                            </div>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-gray-500">No actions</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </MainLayout>
   );
