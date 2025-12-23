@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getChecklistItemsByDepartment, createAuditChecklistItem, type CreateAuditChecklistItemDto, getCompliantIdByAuditItemId } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
-import { getFindings, getMyFindings, type Finding} from '../../../api/findings';
+import { getFindings, getMyFindings, getFindingById, updateFinding, type Finding} from '../../../api/findings';
+import { getFindingSeverities } from '../../../api/findingSeverity';
 import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
 import CompliantModal from './CompliantModal';
@@ -70,6 +71,20 @@ const DepartmentChecklist = () => {
   const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null); // Compliant record ID from API response
   const [loadingCompliantId, setLoadingCompliantId] = useState(false); // Loading state for fetching compliant ID
   const [compliantIdMap, setCompliantIdMap] = useState<Record<string, string | number>>({}); // auditItemId -> compliant record id (persisted to sessionStorage)
+  
+  // Edit finding modal state (for Return status)
+  const [showEditFindingModal, setShowEditFindingModal] = useState(false);
+  const [editingFinding, setEditingFinding] = useState<Finding | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    title: '',
+    description: '',
+    severity: '',
+    deadline: '',
+  });
+  const [loadingFinding, setLoadingFinding] = useState(false);
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+  const [severities, setSeverities] = useState<Array<{ severity: string }>>([]);
+  const [loadingSeverities, setLoadingSeverities] = useState(false);
   const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasPending: boolean; pendingCount: number; hasApproved: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }>>({}); // findingId -> root cause status
 
   // Audit info state
@@ -278,6 +293,11 @@ const DepartmentChecklist = () => {
   const getStatusColor = (status: string) => {
     const statusLower = (status || '').toLowerCase().trim();
 
+    // Return/Returned - Orange
+    if (statusLower === 'return' || statusLower === 'returned') {
+      return 'bg-orange-50 hover:bg-orange-100 border-l-4 border-orange-400';
+    }
+
     // NonCompliant
     if (
       statusLower.startsWith('non') ||
@@ -307,6 +327,32 @@ const DepartmentChecklist = () => {
     const statusLower = status?.toLowerCase() || '';
     // Check if it's compliant but NOT non-compliant
     return (statusLower === 'compliant' || statusLower.includes('compliant')) && !isNonCompliant(status);
+  };
+
+  // Check if item is returned - check both checklist item status and finding status
+  const isReturned = (item: ChecklistItem, statusToCheck?: string) => {
+    // Use provided status or item status
+    const statusLower = (statusToCheck || item.status || '').toLowerCase().trim();
+    
+    // Check if status contains "return" (case-insensitive, handles "Return", "returned", "Returned", etc.)
+    if (statusLower === 'return' || statusLower === 'returned' || statusLower.includes('return')) {
+      return true;
+    }
+    
+    // Also check finding status if there's a finding associated with this item
+    const findingId = findingsMap[item.auditItemId];
+    if (findingId && myFindings.length > 0) {
+      // Try to get finding status from myFindings
+      const finding = myFindings.find(f => f.findingId === findingId);
+      if (finding) {
+        const findingStatusLower = (finding.status || '').toLowerCase().trim();
+        if (findingStatusLower === 'return' || findingStatusLower === 'returned' || findingStatusLower.includes('return')) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
   };
 
   // Load findings to map auditItemId to findingId
@@ -383,6 +429,148 @@ const DepartmentChecklist = () => {
     } else {
       console.warn('Finding not found for auditItemId:', item.auditItemId);
       toast.warning('Finding not found for this item');
+    }
+  };
+
+  // Load severities for edit modal
+  const loadSeverities = async () => {
+    if (severities.length > 0) return; // Already loaded
+    setLoadingSeverities(true);
+    try {
+      const data = await getFindingSeverities();
+      setSeverities(data.map(item => ({ severity: item.severity || item.name || '' })));
+    } catch (err) {
+      console.error('Error loading severities:', err);
+    } finally {
+      setLoadingSeverities(false);
+    }
+  };
+
+  // Handle edit finding submit
+  const handleEditFindingSubmit = async () => {
+    if (!editingFinding) return;
+
+    // Validate
+    if (!editFormData.title.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    if (!editFormData.description.trim()) {
+      toast.error('Description is required');
+      return;
+    }
+    if (!editFormData.severity) {
+      toast.error('Severity is required');
+      return;
+    }
+    if (!editFormData.deadline) {
+      toast.error('Deadline is required');
+      return;
+    }
+
+    setSubmittingEdit(true);
+    try {
+      const payload = {
+        title: editFormData.title.trim(),
+        description: editFormData.description.trim(),
+        severity: editFormData.severity,
+        deadline: new Date(editFormData.deadline).toISOString(),
+        // Keep other fields from original finding
+        auditId: editingFinding.auditId,
+        auditItemId: editingFinding.auditItemId,
+        deptId: editingFinding.deptId || 0,
+        status: editingFinding.status,
+        rootCauseId: editingFinding.rootCauseId || null,
+        reviewerId: editingFinding.reviewerId || null,
+        source: editingFinding.source || '',
+        externalAuditorName: editingFinding.externalAuditorName || null,
+      };
+
+      await updateFinding(editingFinding.findingId, payload);
+      toast.success('Finding updated successfully');
+      setShowEditFindingModal(false);
+      setEditingFinding(null);
+
+      // Reload findings to update the map
+      const reloadFindings = async () => {
+        try {
+          const findingsResponse = await getFindings();
+          const findingsArray = unwrap(findingsResponse);
+          const map: Record<string, string> = {};
+          findingsArray.forEach((finding: any) => {
+            if (finding.auditItemId && finding.findingId) {
+              map[finding.auditItemId] = finding.findingId;
+            }
+          });
+          setFindingsMap(map);
+
+          // Reload checklist items to update status
+          if (deptId) {
+            const deptIdNum = parseInt(deptId, 10);
+            const allItems = await getChecklistItemsByDepartment(deptIdNum);
+            
+            // Filter by auditId if available
+            let itemsByAudit = allItems;
+            if (auditId) {
+              itemsByAudit = allItems.filter((item: ChecklistItem | any) => {
+                const itemAuditId = item.auditId || 
+                                   item.auditPlanId || 
+                                   item.AuditId ||
+                                   item.audit?.auditId ||
+                                   item.audit?.id;
+                return String(itemAuditId) === String(auditId);
+              });
+            }
+            
+            // Filter out items with status "Archived"
+            const filteredItems = itemsByAudit.filter((item: ChecklistItem) => {
+              const statusLower = (item.status || '').toLowerCase().trim();
+              return statusLower !== 'archived';
+            });
+            
+            // Sort by order
+            const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
+            
+            // Fetch all compliant records to update status and build compliantIdMap
+            try {
+              const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
+              const allCompliantRecords = unwrapArray(compliantRes.data);
+              
+              // Build compliantIdMap: auditChecklistItemId -> compliant record id
+              const compliantMap: Record<string, string | number> = {};
+              allCompliantRecords.forEach((record: any) => {
+                if (record.auditChecklistItemId && record.id) {
+                  compliantMap[record.auditChecklistItemId] = record.id;
+                }
+              });
+              
+              // Update compliantIdMap state
+              setCompliantIdMap(compliantMap);
+              
+              // Update checklist items status: if item has compliant record, set status to "Compliant"
+              const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
+                if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
+                  return { ...item, status: 'Compliant' };
+                }
+                return item;
+              });
+              
+              setChecklistItems(itemsWithCompliantStatus);
+            } catch (compliantErr: any) {
+              console.error('Error loading compliant records:', compliantErr);
+              setChecklistItems(sortedItems);
+            }
+          }
+        } catch (err) {
+          console.error('Error reloading findings:', err);
+        }
+      };
+      await reloadFindings();
+    } catch (err: any) {
+      console.error('Error updating finding:', err);
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to update finding');
+    } finally {
+      setSubmittingEdit(false);
     }
   };
 
@@ -1103,11 +1291,18 @@ const DepartmentChecklist = () => {
                         </button>
                       </div>
                     )}
-                    {checklistItems.map((item, index) => (
-                      <div
-                        key={item.auditItemId}
-                        className={`px-3 sm:px-4 md:px-6 py-3 sm:py-4 transition-colors ${getStatusColor(item.status)} focus:outline-none focus:ring-0`}
-                      >
+                    {checklistItems.map((item, index) => {
+                      // Check if this item has a finding with Return status
+                      const findingId = findingsMap[item.auditItemId];
+                      const associatedFinding = findingId ? myFindings.find(f => f.findingId === findingId) : null;
+                      // Use finding status if available, otherwise use checklist item status
+                      const itemStatusToCheck = associatedFinding?.status || item.status;
+                      
+                      return (
+                        <div
+                          key={item.auditItemId}
+                          className={`px-3 sm:px-4 md:px-6 py-3 sm:py-4 transition-colors ${getStatusColor(itemStatusToCheck)} focus:outline-none focus:ring-0`}
+                        >
 
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 focus:outline-none focus:ring-0">
                           <div className="flex items-start sm:items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0">
@@ -1120,7 +1315,57 @@ const DepartmentChecklist = () => {
                             </p>
                           </div>
                           <div className="flex items-center justify-end sm:justify-start gap-2 sm:gap-3 flex-shrink-0">
-                            {isCompliant(item.status) ? (
+                            {isReturned(item, itemStatusToCheck) ? (
+                              /* Edit button for Returned items */
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-orange-100 text-orange-700 border border-orange-300">
+                                  Returned
+                                </span>
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const findingId = findingsMap[item.auditItemId];
+                                    if (findingId) {
+                                      setLoadingFinding(true);
+                                      try {
+                                        const finding = await getFindingById(findingId);
+                                        setEditingFinding(finding);
+                                        setEditFormData({
+                                          title: finding.title || '',
+                                          description: finding.description || '',
+                                          severity: finding.severity || '',
+                                          deadline: finding.deadline ? new Date(finding.deadline).toISOString().split('T')[0] : '',
+                                        });
+                                        setShowEditFindingModal(true);
+                                        // Load severities for dropdown
+                                        await loadSeverities();
+                                      } catch (err: any) {
+                                        console.error('Error loading finding:', err);
+                                        toast.error('Failed to load finding details');
+                                      } finally {
+                                        setLoadingFinding(false);
+                                      }
+                                    } else {
+                                      toast.warning('Finding not found for this item');
+                                    }
+                                  }}
+                                  disabled={loadingFinding}
+                                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                  title="Edit Finding"
+                                >
+                                  {loadingFinding ? (
+                                    <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
+                                  ) : (
+                                    <>
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                      <span>Edit</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            ) : isCompliant(item.status) ? (
                               /* View button for Compliant items */
                               <div className="flex items-center gap-2">
                                 <div className="px-2 sm:px-4 py-1 sm:py-2 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap border shadow-sm flex items-center gap-1.5">
@@ -1255,8 +1500,9 @@ const DepartmentChecklist = () => {
                             )}
                           </div>
                         </div>
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1869,6 +2115,139 @@ const DepartmentChecklist = () => {
                   className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submittingItem ? 'Creating...' : 'Create Item'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Finding Modal */}
+      {showEditFindingModal && editingFinding && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => {
+              setShowEditFindingModal(false);
+              setEditingFinding(null);
+            }}
+          />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div
+              className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-orange-600 px-6 py-4 flex items-center justify-between z-10 rounded-t-xl">
+                <h2 className="text-xl font-semibold text-white">Edit Finding</h2>
+                <button
+                  onClick={() => {
+                    setShowEditFindingModal(false);
+                    setEditingFinding(null);
+                  }}
+                  className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                {/* Title */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Title <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormData.title}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, title: e.target.value }))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="Enter finding title"
+                  />
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={editFormData.description}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, description: e.target.value }))}
+                    rows={4}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
+                    placeholder="Enter finding description"
+                  />
+                </div>
+
+                {/* Severity */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Severity <span className="text-red-500">*</span>
+                  </label>
+                  {loadingSeverities ? (
+                    <div className="flex items-center gap-2 py-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
+                      <span className="text-sm text-gray-500">Loading severities...</span>
+                    </div>
+                  ) : (
+                    <select
+                      value={editFormData.severity}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, severity: e.target.value }))}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="">-- Select Severity --</option>
+                      {severities.map((sev, index) => (
+                        <option key={index} value={sev.severity}>
+                          {sev.severity}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Deadline */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Deadline <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={editFormData.deadline}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, deadline: e.target.value }))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-end gap-3 rounded-b-xl border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    setShowEditFindingModal(false);
+                    setEditingFinding(null);
+                  }}
+                  disabled={submittingEdit}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditFindingSubmit}
+                  disabled={submittingEdit || !editFormData.title.trim() || !editFormData.description.trim() || !editFormData.severity || !editFormData.deadline}
+                  className="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {submittingEdit ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      Updating...
+                    </>
+                  ) : (
+                    'Update Finding'
+                  )}
                 </button>
               </div>
             </div>

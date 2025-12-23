@@ -62,7 +62,6 @@ const [findingTime, setFindingTime] = useState(() => {
 });
 
 
-  const [findingType, setFindingType] = useState('');
 
 
   // Update time to current time when modal opens and keep it updated
@@ -89,7 +88,6 @@ const [findingTime, setFindingTime] = useState(() => {
     severity?: string;
     deadline?: string;
     files?: string;
-    findingType?: string;
   }>({});
 
   // Confirmation modals
@@ -301,7 +299,6 @@ const [findingTime, setFindingTime] = useState(() => {
         
         if (deadlineDate > maxDeadlineDate) {
           const maxDeadlineStr = maxDeadlineDate.toISOString().split('T')[0];
-          const evidenceDueStr = evidenceDueDate.toISOString().split('T')[0];
           newErrors.deadline = `Deadline must be on or before ${maxDeadlineStr} `;
         }
       }
@@ -377,7 +374,6 @@ const [findingTime, setFindingTime] = useState(() => {
         findingDate,
         findingTime,
         departmentName,
-        findingType,
         witnesses: witnesses,
         witnessesDisplay: getSelectedWitnessesDisplay(),
       });

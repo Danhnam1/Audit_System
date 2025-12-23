@@ -511,13 +511,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     }
   };
 
-  const getSeverityColor = (severity: string) => {
-    const severityLower = severity?.toLowerCase() || '';
-    if (severityLower.includes('high')) return 'bg-orange-50 text-orange-600 border border-orange-200';
-    if (severityLower.includes('medium')) return 'bg-yellow-100 text-yellow-800';
-    if (severityLower.includes('low')) return 'bg-green-100 text-green-800';
-    return 'bg-gray-100 text-gray-800';
-  };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">

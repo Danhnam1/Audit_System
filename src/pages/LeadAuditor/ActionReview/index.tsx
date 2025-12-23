@@ -52,8 +52,7 @@ const ActionReview = () => {
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
   const [approvingAll, setApprovingAll] = useState(false);
-  const [showApproveAllModal, setShowApproveAllModal] = useState(false);
-  const [approveAllFeedback, setApproveAllFeedback] = useState('');
+  const [approveAllFeedback] = useState(''); // Used in approveFindingActionHigherLevel call
   const [approveResults, setApproveResults] = useState<{
     succeeded: Array<{actionId: string, title: string}>;
     failed: Array<{actionId: string, title: string, error: string}>;
@@ -357,11 +356,6 @@ const ActionReview = () => {
 
 
 
-  // Handle approve all actions at once
-  const handleApproveAll = () => {
-    setApproveAllFeedback('');
-    setShowApproveAllModal(true);
-  };
 
   // Retry failed actions - one by one
   const handleRetryFailed = async () => {
@@ -472,135 +466,6 @@ const ActionReview = () => {
     }
   };
 
-  // Confirm approve all actions - approve one by one
-  const handleConfirmApproveAll = async () => {
-    const approvedActions = actions.filter(a => a.status?.toLowerCase() === 'approved');
-    
-    if (approvedActions.length === 0) {
-      toast.warning('No actions to approve');
-      return;
-    }
-
-    setApprovingAll(true);
-    setShowApproveAllModal(false);
-
-    const succeeded: Array<{actionId: string, title: string}> = [];
-    const failed: Array<{actionId: string, title: string, error: string}> = [];
-
-    try {
-      // Approve each action one by one
-      for (let i = 0; i < approvedActions.length; i++) {
-        const action = approvedActions[i];
-        
-        // Update progress
-        setApprovingProgress({
-          total: approvedActions.length,
-          current: i + 1,
-          currentAction: action.title
-        });
-
-        try {
-          // IMPORTANT: Before approving action, we should only approve attachments with status "Open"
-          // Currently, the backend API approveFindingActionHigherLevel may approve all attachments
-          // This is a known issue that needs to be fixed on the backend
-          // For now, we log which attachments should be approved (only "Open" status)
-          try {
-            const attachments = await getAttachments('Action', action.actionId);
-            const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
-            const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
-            
-            console.log(`📋 [Bulk Approve] Action: ${action.title} (${action.actionId})`);
-            console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`, openAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
-            console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`, rejectedAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
-            
-            // IMPORTANT: Approve only attachments with status "Open" before approving the action
-            // This ensures rejected attachments are not approved
-            if (openAttachments.length > 0) {
-              console.log(`✅ [Bulk Approve] Approving ${openAttachments.length} attachment(s) with "Open" status for action: ${action.title}`);
-              const approvePromises = openAttachments.map(async (attachment) => {
-                try {
-                  await updateAttachmentStatus(attachment.attachmentId, 'Approved');
-                  console.log(`  ✓ Approved attachment: ${attachment.fileName}`);
-                } catch (err: any) {
-                  console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
-                  // Continue with other attachments even if one fails
-                }
-              });
-              
-              await Promise.all(approvePromises);
-              console.log(`✅ [Bulk Approve] Approved ${openAttachments.length} attachment(s) for action: ${action.title}`);
-            } else {
-              console.log(`⚠️ [Bulk Approve] No attachments with "Open" status to approve for action: ${action.title}`);
-            }
-          } catch (attErr) {
-            console.warn('Could not load attachments for action:', action.actionId, attErr);
-          }
-          
-          // Now approve the action (backend should not approve rejected attachments)
-          await approveFindingActionHigherLevel(action.actionId, approveAllFeedback || '');
-          
-          // Dispatch custom event to notify other components (e.g., CAPA Owner ActionDetailModal) that action was updated
-          window.dispatchEvent(new CustomEvent('actionUpdated', { 
-            detail: { actionId: action.actionId, status: 'approved' } 
-          }));
-          console.log('🚀 [Bulk Approve] Dispatched actionUpdated event for actionId:', action.actionId);
-          
-          // Add to succeeded list
-          succeeded.push({ actionId: action.actionId, title: action.title });
-          
-          // Show success toast for each action
-          toast.success(`✅ Approved: ${action.title}`, { autoClose: 2000 });
-        } catch (error: any) {
-          // Add to failed list
-          const errorMsg = error?.response?.data?.message || error?.message || 'Unknown error';
-          failed.push({
-            actionId: action.actionId,
-            title: action.title,
-            error: errorMsg
-          });
-          
-          // Show error toast
-          toast.error(`❌ Failed: ${action.title} - ${errorMsg}`, { autoClose: 3000 });
-        }
-
-        // Small delay between approvals for better UX
-        if (i < approvedActions.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
-      }
-      
-      // Store results
-      setApproveResults({ succeeded, failed });
-      
-      // Show final summary message
-      if (failed.length === 0) {
-        toast.success(`🎉 Successfully approved all ${succeeded.length} action${succeeded.length > 1 ? 's' : ''}!`, { autoClose: 5000 });
-      } else if (succeeded.length === 0) {
-        toast.error(`❌ Failed to approve all ${failed.length} action${failed.length > 1 ? 's' : ''}`);
-        setShowResultsModal(true);
-      } else {
-        toast.warning(`⚠️ Completed: ${succeeded.length} succeeded, ${failed.length} failed`);
-        setShowResultsModal(true);
-      }
-      
-      // Reload actions and findings
-      if (selectedFindingId) {
-        const actionsData = await getActionsByFinding(selectedFindingId);
-        setActions(Array.isArray(actionsData) ? actionsData : []);
-      }
-      
-      if (selectedAuditId && selectedDeptId) {
-        await loadFindings(selectedDeptId);
-      }
-    } catch (err: any) {
-      console.error('Error in approve all process:', err);
-      toast.error('An unexpected error occurred during bulk approval');
-    } finally {
-      setApprovingProgress(null);
-      setApprovingAll(false);
-      setApproveAllFeedback('');
-    }
-  };
   const handleBack = () => {
     if (selectedFindingId) {
       setSelectedFindingId(null);
