@@ -1850,7 +1850,7 @@ export default function AuditAssignment() {
                         </div>
                       </div>
                       
-                      {/* QR Code Validity Info */}
+                      QR Code Validity Info
                       <div className={`rounded-lg p-4 ${auditHasEnded ? 'bg-amber-50 border border-amber-200' : 'bg-blue-50 border border-blue-200'}`}>
                         <div className="flex items-start gap-2">
                           {auditHasEnded ? (
@@ -1862,14 +1862,14 @@ export default function AuditAssignment() {
                               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                             </svg>
                           )}
-                          {/* <div className="flex-1">
+                          <div className="flex-1">
                             <p className={`text-xs font-semibold ${auditHasEnded ? 'text-amber-900' : 'text-blue-900'}`}>
                               QR Code Validity Period
                             </p>
                           <p className={`text-xs mt-1 ${auditHasEnded ? 'text-amber-800' : 'text-blue-800'}`}>
                               {validityFrom && validityTo ? (
                                 <>
-                                  QR codes will be valid from <strong>Evidence Due ({validityTo.toLocaleDateString()})</strong>.
+                                  QR codes will be valid from <strong>Evidence Due ({validityFrom.toLocaleDateString()})</strong>.
                                 </>
                               ) : (
                                 <>
@@ -1877,7 +1877,7 @@ export default function AuditAssignment() {
                                 </>
                               )}
                             </p> 
-                          </div> */}
+                          </div>
                         </div>
                       </div>
                     </div>

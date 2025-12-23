@@ -8,7 +8,6 @@ import { StatCard, BarChartCard, PieChartCard } from '../../../components';
 import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
 import { getReportRequestByAuditId, getAllReportRequests, type ViewReportRequest } from '../../../api/reportRequest';
 import { getDepartments } from '../../../api/departments';
-import { getAuditSchedules } from '../../../api/auditSchedule';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
 import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
 import { getAuditTeam } from '../../../api/auditTeam';
@@ -43,7 +42,7 @@ const SQAStaffReports = () => {
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
   const [reportRequests, setReportRequests] = useState<Record<string, ViewReportRequest>>({});
   const [allReportRequests, setAllReportRequests] = useState<ViewReportRequest[]>([]);
-  const [selectedInProgressAuditId, setSelectedInProgressAuditId] = useState<string>('');
+  const [selectedInProgressAuditId] = useState<string>('');
   
   // Extension request states
   const [, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
@@ -884,6 +883,16 @@ const SQAStaffReports = () => {
     return auditStatusMatch;
   };
 
+  // Only allow export/upload when report request is approved
+  const isReportApproved = useCallback(
+    (auditId: string) => {
+      const rr = reportRequests[auditId];
+      const status = String(rr?.status || '').toLowerCase().trim();
+      return status === 'approved' || status.includes('approved');
+    },
+    [reportRequests]
+  );
+
   const selectedAuditRow = useMemo(() => {
     const sid = String(selectedAuditId || '');
     return (audits || []).find((a: any) => String(a.auditId || a.id || a.$id) === sid);
@@ -957,34 +966,7 @@ const SQAStaffReports = () => {
       console.warn('[Reports] Could not determine audit creator, allowing submit for backward compatibility');
     }
     
-    // Validate: Check Evidence Due date - only allow submit after Evidence Due date has passed
-    try {
-      const schedules = await getAuditSchedules(selectedAuditId);
-      const schedulesArray = Array.isArray(schedules) ? schedules : (schedules?.$values || []);
-      
-      // Find "Evidence Due" milestone
-      const evidenceDue = schedulesArray.find((s: any) => {
-        const milestoneName = String(s?.milestoneName || '').toLowerCase().trim();
-        return milestoneName.includes('evidence due') || milestoneName.includes('evidence');
-      });
-      
-      if (evidenceDue?.dueDate) {
-        const evidenceDueDate = new Date(evidenceDue.dueDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
-        evidenceDueDate.setHours(0, 0, 0, 0);
-        
-        // Only allow submit if Evidence Due date has passed (today >= evidence due date)
-        if (today < evidenceDueDate) {
-          const daysRemaining = Math.ceil((evidenceDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-          toast.error(`Cannot submit report yet. Evidence Due date is ${evidenceDueDate.toLocaleDateString()}. ${daysRemaining} day(s) remaining.`);
-          return;
-        }
-      }
-    } catch (scheduleErr) {
-      console.warn('[Reports] Failed to check Evidence Due date, allowing submit for backward compatibility:', scheduleErr);
-      // Don't block submit if schedule check fails (backward compatibility)
-    }
+    // Evidence Due validation removed per request
     
     try {
       setSubmitLoading(true);
@@ -1403,37 +1385,69 @@ const SQAStaffReports = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
                         </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleExportPdfForRow(String(audit.auditId), audit.title);
-                          }}
-                          className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
-                          title="Export PDF"
-                          aria-label="Export PDF"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onClickUpload(String(audit.auditId));
-                          }}
-                          disabled={uploadedAudits.has(String(audit.auditId)) || uploadLoading[String(audit.auditId)]}
-                          className={`p-1.5 rounded-lg transition-colors ${
-                            uploadedAudits.has(String(audit.auditId)) || uploadLoading[String(audit.auditId)]
-                              ? 'text-gray-400 cursor-not-allowed'
-                              : 'text-purple-600 hover:text-purple-700 hover:bg-purple-50'
-                          }`}
-                          title={uploadedAudits.has(String(audit.auditId)) ? 'Already Uploaded' : 'Upload Signed Report'}
-                          aria-label="Upload Signed Report"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                          </svg>
-                        </button>
+                        {(() => {
+                          const auditIdStr = String(audit.auditId);
+                          const auditIdNorm = normalizeId(auditIdStr);
+                          const approved = isReportApproved(auditIdStr);
+                          const disableExport = !approved;
+                          const disableUpload =
+                            !approved ||
+                            uploadedAudits.has(auditIdNorm) ||
+                            uploadLoading[auditIdNorm];
+                          const tooltip = approved
+                            ? uploadedAudits.has(auditIdNorm)
+                              ? 'Already uploaded'
+                              : 'Upload signed report'
+                            : 'Export / Upload are available only after the report request is approved.';
+                          return (
+                            <>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!approved) {
+                                    toast.error('Cannot export. Report request must be approved by Lead Auditor.');
+                                    return;
+                                  }
+                                  handleExportPdfForRow(auditIdStr, audit.title);
+                                }}
+                                disabled={disableExport}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  disableExport
+                                    ? 'text-gray-400 cursor-not-allowed'
+                                    : 'text-green-600 hover:text-green-700 hover:bg-green-50'
+                                }`}
+                                title={approved ? 'Export PDF' : tooltip}
+                                aria-label="Export PDF"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!approved) {
+                                    toast.error('Cannot upload. Report request must be approved by Lead Auditor.');
+                                    return;
+                                  }
+                                  onClickUpload(auditIdStr);
+                                }}
+                                disabled={disableUpload}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  disableUpload
+                                    ? 'text-gray-400 cursor-not-allowed'
+                                    : 'text-purple-600 hover:text-purple-700 hover:bg-purple-50'
+                                }`}
+                                title={tooltip}
+                                aria-label="Upload Signed Report"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                              </button>
+                            </>
+                          );
+                        })()}
                       </div>
                     </td>
                   </tr>

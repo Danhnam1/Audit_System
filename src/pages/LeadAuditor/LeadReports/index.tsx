@@ -69,6 +69,8 @@ const AuditorLeadReports = () => {
   const [auditPeriodDates, setAuditPeriodDates] = useState<{ periodFrom?: string; periodTo?: string }>({});
   const [scheduleChanges, setScheduleChanges] = useState<any[]>([]);
   const [teamChanges, setTeamChanges] = useState<any[]>([]);
+  // Track audits that have already edited schedule & team once (FE guard)
+  const [editedScheduleTeamOnce, setEditedScheduleTeamOnce] = useState<Set<string>>(new Set());
 
   const [showReturnFindingModal, setShowReturnFindingModal] = useState(false);
   const [returnFindingNote, setReturnFindingNote] = useState('');
@@ -815,6 +817,11 @@ const AuditorLeadReports = () => {
   };
 
   const openEditScheduleTeamModal = async (auditId: string) => {
+    const auditKey = String(auditId).toLowerCase().trim();
+    if (editedScheduleTeamOnce.has(auditKey)) {
+      toast.error('Schedule & Team can only be edited once.');
+      return;
+    }
     setEditScheduleTeamAuditId(auditId);
     setShowEditScheduleTeamModal(true);
     
@@ -1414,6 +1421,7 @@ const AuditorLeadReports = () => {
 
       // Store auditId before closing modal
       const auditIdToNotify = String(editScheduleTeamAuditId);
+      const auditKey = auditIdToNotify.toLowerCase().trim();
       console.log('📝 Schedule and team saved for audit:', auditIdToNotify);
       
       // Show success message (even if some team updates failed)
@@ -1425,6 +1433,13 @@ const AuditorLeadReports = () => {
         toast.success('Schedule updated successfully.');
       }
       
+      // Mark this audit as edited once (prevent further edits - FE guard)
+      setEditedScheduleTeamOnce((prev) => {
+        const next = new Set(prev);
+        next.add(auditKey);
+        return next;
+      });
+
       closeEditScheduleTeamModal();
       
       // Reload data first
@@ -1681,6 +1696,7 @@ const AuditorLeadReports = () => {
           onApprove={openApproveModal}
           onReject={openRejectModal}
           onEditScheduleAndTeam={openEditScheduleTeamModal}
+        editedScheduleTeamOnce={editedScheduleTeamOnce}
           actionLoading={actionLoading}
           actionMsg={actionMsg}
           getStatusColor={getStatusColor}
