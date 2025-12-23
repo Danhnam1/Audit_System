@@ -679,33 +679,15 @@ export default function AuditorFinalSummaryPage() {
                   </button>
                   {loadingReportRequest ? (
                     <div className="text-xs text-gray-500">Checking status...</div>
-                  ) : isSubmitted ? (
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs text-gray-600">
-                        Status: <span className={`font-semibold ${
-                          reportRequest?.status === "Approved" ? "text-green-600" :
-                          reportRequest?.status === "RejectedFirstLevel" || reportRequest?.status === "RejectedSecondLevel" ? "text-red-600" :
-                          "text-primary-600"
-                        }`}>
-                          {reportRequest?.status === "PendingFirstApproval" ? "Pending Lead Auditor Review" :
-                           reportRequest?.status === "PendingSecondApproval" ? "Pending Director Approval" :
-                           reportRequest?.status === "Approved" ? "Approved" :
-                           reportRequest?.status === "RejectedFirstLevel" ? "Rejected - Revision Required" :
-                           reportRequest?.status === "RejectedSecondLevel" ? "Rejected - Revision Required" :
-                           reportRequest?.status}
-                        </span>
-                      </div>
-                      {(reportRequest?.status === "RejectedFirstLevel" || reportRequest?.status === "RejectedSecondLevel") && (
-                        <button
-                          onClick={handleSubmitReport}
-                          disabled={submitting}
-                          className="px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                        >
-                          {submitting ? "Submitting..." : "Resubmit"}
-                        </button>
-                      )}
-                    </div>
-                  ) : (
+                  ) : isRejected ? (
+                    <button
+                      onClick={handleSubmitReport}
+                      disabled={submitting}
+                      className="px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {submitting ? "Submitting..." : "Resubmit"}
+                    </button>
+                  ) : !isSubmitted && (
                     <button
                       onClick={handleSubmitReport}
                       disabled={!canSubmit || submitting}
