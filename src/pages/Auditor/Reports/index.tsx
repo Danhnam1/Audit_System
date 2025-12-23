@@ -8,6 +8,7 @@ import { StatCard, BarChartCard, PieChartCard } from '../../../components';
 import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
 import { getReportRequestByAuditId, getAllReportRequests, type ViewReportRequest } from '../../../api/reportRequest';
 import { getDepartments } from '../../../api/departments';
+import { getAuditSchedules } from '../../../api/auditSchedule';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
 import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
 import { getAuditTeam } from '../../../api/auditTeam';
@@ -320,11 +321,35 @@ const SQAStaffReports = () => {
       // Set lead audit IDs
       setLeadAuditIds(leadAuditIdsSet);
       
+      // Get audit IDs where current user is the creator
+      const creatorAuditIds = new Set<string>();
+      if (normalizedCurrentUserId) {
+        const arrForCreator = unwrap(res);
+        (Array.isArray(arrForCreator) ? arrForCreator : []).forEach((a: any) => {
+          // Get createdBy from audit (try multiple fields)
+          const createdBy = a?.createdBy || a?.createdByUser?.userId || a?.createdByUser?.id || a?.createdByUser?.$id;
+          const createdByStr = createdBy ? String(createdBy).toLowerCase().trim() : null;
+          
+          if (createdByStr === normalizedCurrentUserId) {
+            // Add all possible auditId formats
+            const auditId = a?.auditId || a?.id || a?.$id;
+            if (auditId) {
+              const auditIdStr = String(auditId).trim();
+              if (auditIdStr) {
+                creatorAuditIds.add(auditIdStr);
+                creatorAuditIds.add(auditIdStr.toLowerCase());
+              }
+            }
+          }
+        });
+      }
+      
       // Debug logging (only in development mode)
       if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
         console.log('[Reports] Filtering audits:', {
           currentUserId: normalizedCurrentUserId,
           userAuditIds: Array.from(userAuditIds),
+          creatorAuditIds: Array.from(creatorAuditIds),
           totalTeams: teams.length,
           totalAudits: Array.isArray(res) ? res.length : 0
         });
@@ -352,30 +377,43 @@ const SQAStaffReports = () => {
         return isPending || isApproved || isReturned || isOpenLike || isSubmittedLike || isCompletedLike;
       };
       
-      // First, filter audits by user membership (must be in audit team)
+      // First, filter audits by user membership (must be in audit team OR be the creator)
       // Don't filter by status yet - we need to load ReportRequest status first
       const userAudits = (Array.isArray(arr) ? arr : []).filter((a: any) => {
-        // If user is not in any audit team, don't show any audits
-        if (!normalizedCurrentUserId || userAuditIds.size === 0) {
+        // Check if user is in audit team OR is the creator
+        const hasTeamAccess = normalizedCurrentUserId && userAuditIds.size > 0;
+        const hasCreatorAccess = normalizedCurrentUserId && creatorAuditIds.size > 0;
+        
+        if (!hasTeamAccess && !hasCreatorAccess) {
           return false;
         }
         
-        // Check if this audit is in user's audit list
+        // Check if this audit is in user's audit list (team member) OR creator list
         // Try all possible auditId formats
         const auditIdCandidates = [
           a.auditId,
-          
+          a.id,
+          a.$id
         ].filter(Boolean).map(id => String(id).trim());
         
-        // Check if any auditId format matches
+        // Check if any auditId format matches (team member OR creator)
         const isUserAudit = auditIdCandidates.some(auditId => {
-          // Direct match
+          // Check team membership
           if (userAuditIds.has(auditId)) return true;
-          // Case-insensitive match
           if (userAuditIds.has(auditId.toLowerCase())) return true;
-          // Try lowercase version
+          
+          // Check creator access
+          if (creatorAuditIds.has(auditId)) return true;
+          if (creatorAuditIds.has(auditId.toLowerCase())) return true;
+          
+          // Try lowercase version for team
           const lowerAuditId = auditId.toLowerCase();
-          return Array.from(userAuditIds).some(uid => uid.toLowerCase() === lowerAuditId);
+          if (Array.from(userAuditIds).some(uid => uid.toLowerCase() === lowerAuditId)) return true;
+          
+          // Try lowercase version for creator
+          if (Array.from(creatorAuditIds).some(uid => uid.toLowerCase() === lowerAuditId)) return true;
+          
+          return false;
         });
         
         return isUserAudit;
@@ -441,6 +479,23 @@ const SQAStaffReports = () => {
       });
       
       setAudits(filtered);
+      
+      // Initialize file input refs for all audits
+      filtered.forEach((a: any) => {
+        const auditId = normalizeId(String(a.auditId || a.id || a.$id || ''));
+        if (auditId && !fileInputRefs.current[auditId]) {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = '.pdf,.doc,.docx';
+          input.multiple = true;
+          input.style.display = 'none';
+          input.onchange = (e: any) => {
+            onFileSelected(String(a.auditId || a.id || a.$id || ''), e);
+          };
+          document.body.appendChild(input);
+          fileInputRefs.current[auditId] = input;
+        }
+      });
       
       // Check which audits already have uploaded documents
       const uploadedSet = new Set<string>();
@@ -834,6 +889,29 @@ const SQAStaffReports = () => {
     return (audits || []).find((a: any) => String(a.auditId || a.id || a.$id) === sid);
   }, [audits, selectedAuditId]);
 
+  // Check if current user is the audit plan creator
+  const isAuditCreator = useMemo(() => {
+    if (!selectedAuditRow || !user?.email || !adminUsers.length) return null;
+    
+    // Get current user ID
+    const currentUser = adminUsers.find((u: any) => {
+      const uEmail = String(u?.email || '').toLowerCase().trim();
+      const userEmail = String(user.email).toLowerCase().trim();
+      return uEmail === userEmail;
+    });
+    const currentUserIdStr = currentUser?.userId ? String(currentUser.userId).toLowerCase().trim() : null;
+    
+    if (!currentUserIdStr) return null;
+    
+    // Get createdBy from audit (try multiple fields)
+    const createdBy = selectedAuditRow?.createdBy || selectedAuditRow?.createdByUser?.userId || selectedAuditRow?.createdByUser?.id || selectedAuditRow?.createdByUser?.$id;
+    const createdByStr = createdBy ? String(createdBy).toLowerCase().trim() : null;
+    
+    if (!createdByStr) return null; // Can't determine, return null
+    
+    return currentUserIdStr === createdByStr;
+  }, [selectedAuditRow, user, adminUsers]);
+
   // NOTE: Previously we restricted export/upload to the creator only.
   // Now we allow any team member (already filtered in `reloadReports`) once the report is Closed/Completed.
 
@@ -866,6 +944,46 @@ const SQAStaffReports = () => {
     if (isLeadAuditor) {
       toast.error('Lead Auditor cannot submit reports. Only regular Auditors can submit.');
       return;
+    }
+    
+    // Validate: Only audit plan creator can submit
+    if (isAuditCreator === false) {
+      toast.error('Only the audit plan creator can submit reports.');
+      return;
+    }
+    
+    // If we can't determine creator, show warning but allow (for backward compatibility)
+    if (isAuditCreator === null) {
+      console.warn('[Reports] Could not determine audit creator, allowing submit for backward compatibility');
+    }
+    
+    // Validate: Check Evidence Due date - only allow submit after Evidence Due date has passed
+    try {
+      const schedules = await getAuditSchedules(selectedAuditId);
+      const schedulesArray = Array.isArray(schedules) ? schedules : (schedules?.$values || []);
+      
+      // Find "Evidence Due" milestone
+      const evidenceDue = schedulesArray.find((s: any) => {
+        const milestoneName = String(s?.milestoneName || '').toLowerCase().trim();
+        return milestoneName.includes('evidence due') || milestoneName.includes('evidence');
+      });
+      
+      if (evidenceDue?.dueDate) {
+        const evidenceDueDate = new Date(evidenceDue.dueDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
+        evidenceDueDate.setHours(0, 0, 0, 0);
+        
+        // Only allow submit if Evidence Due date has passed (today >= evidence due date)
+        if (today < evidenceDueDate) {
+          const daysRemaining = Math.ceil((evidenceDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          toast.error(`Cannot submit report yet. Evidence Due date is ${evidenceDueDate.toLocaleDateString()}. ${daysRemaining} day(s) remaining.`);
+          return;
+        }
+      }
+    } catch (scheduleErr) {
+      console.warn('[Reports] Failed to check Evidence Due date, allowing submit for backward compatibility:', scheduleErr);
+      // Don't block submit if schedule check fails (backward compatibility)
     }
     
     try {
@@ -1285,6 +1403,37 @@ const SQAStaffReports = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
                         </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExportPdfForRow(String(audit.auditId), audit.title);
+                          }}
+                          className="p-1.5 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                          title="Export PDF"
+                          aria-label="Export PDF"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onClickUpload(String(audit.auditId));
+                          }}
+                          disabled={uploadedAudits.has(String(audit.auditId)) || uploadLoading[String(audit.auditId)]}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            uploadedAudits.has(String(audit.auditId)) || uploadLoading[String(audit.auditId)]
+                              ? 'text-gray-400 cursor-not-allowed'
+                              : 'text-purple-600 hover:text-purple-700 hover:bg-purple-50'
+                          }`}
+                          title={uploadedAudits.has(String(audit.auditId)) ? 'Already Uploaded' : 'Upload Signed Report'}
+                          aria-label="Upload Signed Report"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -1339,7 +1488,8 @@ const SQAStaffReports = () => {
 
                       const key = String(selectedAuditId || '').trim();
                       const hasRejectNote = key && rejectNotes[key] && rejectNotes[key].trim().length > 0;
-                      const disabled = submitLoading || !selectedAuditId || (submitted && !rejected) || (rejected && !hasRejectNote);
+                      // Disable if: loading, no audit selected, already submitted (not rejected), rejected without note, or not the creator
+                      const disabled = submitLoading || !selectedAuditId || (submitted && !rejected) || (rejected && !hasRejectNote) || isAuditCreator === false;
 
                       let label = submitLoading
                         ? 'Submitting...'
@@ -1363,6 +1513,8 @@ const SQAStaffReports = () => {
                           title={
                             disabled && submitted && !rejected
                               ? 'Report has been submitted and is pending review'
+                              : disabled && isAuditCreator === false
+                              ? 'Only the audit plan creator can submit reports'
                               : undefined
                           }
                         >

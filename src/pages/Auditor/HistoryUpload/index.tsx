@@ -96,29 +96,63 @@ const HistoryUploadPage = () => {
         const res = await getAuditPlans();
         const arr = unwrap(res);
         
-        // Filter audits: only show audits where user is in audit team
+        // Get audit IDs where current user is the creator
+        const creatorAuditIds = new Set<string>();
+        if (normalizedCurrentUserId) {
+          (Array.isArray(arr) ? arr : []).forEach((a: any) => {
+            // Get createdBy from audit (try multiple fields)
+            const createdBy = a?.createdBy || a?.createdByUser?.userId || a?.createdByUser?.id || a?.createdByUser?.$id;
+            const createdByStr = createdBy ? String(createdBy).toLowerCase().trim() : null;
+            
+            if (createdByStr === normalizedCurrentUserId) {
+              // Add all possible auditId formats
+              const auditId = a?.auditId || a?.id || a?.$id;
+              if (auditId) {
+                const auditIdStr = String(auditId).trim();
+                if (auditIdStr) {
+                  creatorAuditIds.add(auditIdStr);
+                  creatorAuditIds.add(auditIdStr.toLowerCase());
+                }
+              }
+            }
+          });
+        }
+        
+        // Filter audits: show audits where user is in audit team OR is the creator
         const filtered = (Array.isArray(arr) ? arr : []).filter((a: any) => {
-          // If user is not in any audit team, don't show any audits
-          if (!normalizedCurrentUserId || userAuditIds.size === 0) {
+          // Check if user is in audit team OR is the creator
+          const hasTeamAccess = normalizedCurrentUserId && userAuditIds.size > 0;
+          const hasCreatorAccess = normalizedCurrentUserId && creatorAuditIds.size > 0;
+          
+          if (!hasTeamAccess && !hasCreatorAccess) {
             return false;
           }
           
-          // Check if this audit is in user's audit list
+          // Check if this audit is in user's audit list (team member) OR creator list
           const auditIdCandidates = [
             a.auditId,
             a.id,
             a.$id
           ].filter(Boolean).map(id => String(id).trim());
           
-          // Check if any auditId format matches
+          // Check if any auditId format matches (team member OR creator)
           const isUserAudit = auditIdCandidates.some(auditId => {
-            // Direct match
+            // Check team membership
             if (userAuditIds.has(auditId)) return true;
-            // Case-insensitive match
             if (userAuditIds.has(auditId.toLowerCase())) return true;
-            // Try lowercase version
+            
+            // Check creator access
+            if (creatorAuditIds.has(auditId)) return true;
+            if (creatorAuditIds.has(auditId.toLowerCase())) return true;
+            
+            // Try lowercase version for team
             const lowerAuditId = auditId.toLowerCase();
-            return Array.from(userAuditIds).some(uid => uid.toLowerCase() === lowerAuditId);
+            if (Array.from(userAuditIds).some(uid => uid.toLowerCase() === lowerAuditId)) return true;
+            
+            // Try lowercase version for creator
+            if (Array.from(creatorAuditIds).some(uid => uid.toLowerCase() === lowerAuditId)) return true;
+            
+            return false;
           });
           
           return isUserAudit;
@@ -230,6 +264,9 @@ const HistoryUploadPage = () => {
   useEffect(() => {
     if (!audits.length) {
       lastDocFetchKeyRef.current = '';
+      setLoadingDocs(false);
+      setDocsLoaded(true);
+      setDocumentsMap({});
       return;
     }
     const fetchDocs = async () => {
