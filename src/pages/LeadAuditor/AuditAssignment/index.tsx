@@ -1830,9 +1830,9 @@ export default function AuditAssignment() {
                   const auditEndDate = audit.endDate ? new Date(audit.endDate) : null;
                   const auditHasEnded = auditEndDate && auditEndDate < now;
 
-                  // Lấy QR validity window từ schedule backend nếu có
-                  const validityFrom: Date | null = qrValidityFrom;
-                  const validityTo: Date | null = qrValidityTo;
+                  // Lấy QR validity window từ schedule backend nếu có (unused)
+                  // const _validityFrom: Date | null = qrValidityFrom;
+                  // const _validityTo: Date | null = qrValidityTo;
                   
                   return (
                     <div className="space-y-3">

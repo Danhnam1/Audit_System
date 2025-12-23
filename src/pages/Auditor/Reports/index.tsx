@@ -43,7 +43,7 @@ const SQAStaffReports = () => {
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
   const [reportRequests, setReportRequests] = useState<Record<string, ViewReportRequest>>({});
   const [allReportRequests, setAllReportRequests] = useState<ViewReportRequest[]>([]);
-  const [selectedInProgressAuditId, setSelectedInProgressAuditId] = useState<string>('');
+  const [selectedInProgressAuditId] = useState<string>('');
   
   // Extension request states
   const [, setExtensionRequests] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});

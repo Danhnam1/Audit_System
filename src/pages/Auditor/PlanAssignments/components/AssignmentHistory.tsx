@@ -3,7 +3,7 @@ import { getAuditPlanAssignmentsByAuditor } from '../../../../api/auditPlanAssig
 import { useUserId } from '../../../../store/useAuthStore';
 import { getAdminUsers, type AdminUserDto } from '../../../../api/adminUsers';
 import { toast } from 'react-toastify';
-import { DRLTemplateViewer } from '../../../AuditPlanning/components/PlanForm/DRLTemplateViewer';
+import { DRLTemplateViewer } from '../../AuditPlanning/components/PlanForm/DRLTemplateViewer';
 
 interface AssignmentFile {
   fileName?: string;
@@ -33,7 +33,7 @@ export const AssignmentHistory: React.FC = () => {
   const [filterStartDate, setFilterStartDate] = useState<string>('');
   const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [selectedAssignment, setSelectedAssignment] = useState<string | null>(null);
-  const [allUsers, setAllUsers] = useState<AdminUserDto[]>([]);
+  const [_allUsers, setAllUsers] = useState<AdminUserDto[]>([]);
 
   useEffect(() => {
     const loadData = async () => {

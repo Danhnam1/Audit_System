@@ -21,6 +21,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
   ownerOptions = [],
   departments = [],
   onAuditorsChange,
+  // @ts-expect-error - unused parameter
   sensitiveFlag = false,
 }) => {
   const { user } = useAuth();

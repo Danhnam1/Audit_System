@@ -1340,7 +1340,9 @@ const SQAStaffAuditPlanning = () => {
   }, [departments]);
 
   // Function to check permission (reusable)
-  const checkPlanCreationPermission = async () => {
+  // Unused function - kept for potential future use
+  // @ts-expect-error - unused function
+  const _checkPlanCreationPermission = async () => {
     if (!user?.email) {
       setIsCheckingPermission(false);
       setHasPlanPermission(false);

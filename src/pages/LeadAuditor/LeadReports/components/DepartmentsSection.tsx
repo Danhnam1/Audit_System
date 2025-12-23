@@ -8,7 +8,6 @@ interface Props {
   setSelectedDeptKey: (key: string) => void;
   findings: any[];
   onViewFinding: (finding: any) => void;
-  unwrapValues: (v: any) => any[];
   findingsSearch: string;
   setFindingsSearch: (v: string) => void;
   findingsSeverity: string;
@@ -21,7 +20,6 @@ const DepartmentsSection: React.FC<Props> = ({
   setSelectedDeptKey,
   findings,
   onViewFinding,
-  unwrapValues,
   findingsSearch,
   setFindingsSearch,
   findingsSeverity,

@@ -19,7 +19,7 @@ const CAPAOwnerActionDetailModal = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [_loadingAttachments, setLoadingAttachments] = useState(false);
   const [assignedToUser, setAssignedToUser] = useState<AdminUserDto | null>(null);
   const [rootCause, setRootCause] = useState<RootCause | null>(null);
   const [loadingRootCause, setLoadingRootCause] = useState(false);
@@ -160,14 +160,15 @@ const CAPAOwnerActionDetailModal = ({
     }
   };
 
-  const getStatusColor = (status: string) => {
-    const statusLower = status?.toLowerCase() || '';
-    if (statusLower === 'completed' || statusLower === 'approved') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    if (statusLower === 'active' || statusLower === 'open') return 'bg-blue-100 text-blue-700 border-blue-200';
-    if (statusLower === 'closed') return 'bg-gray-100 text-gray-700 border-gray-200';
-    if (statusLower === 'pending' || statusLower === 'reviewed') return 'bg-amber-100 text-amber-700 border-amber-200';
-    return 'bg-gray-100 text-gray-700 border-gray-200';
-  };
+  // Unused function
+  // const getStatusColor = (_status: string) => {
+  //   const statusLower = _status?.toLowerCase() || '';
+  //   if (statusLower === 'completed' || statusLower === 'approved') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+  //   if (statusLower === 'active' || statusLower === 'open') return 'bg-blue-100 text-blue-700 border-blue-200';
+  //   if (statusLower === 'closed') return 'bg-gray-100 text-gray-700 border-gray-200';
+  //   if (statusLower === 'pending' || statusLower === 'reviewed') return 'bg-amber-100 text-amber-700 border-amber-200';
+  //   return 'bg-gray-100 text-gray-700 border-gray-200';
+  // };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">

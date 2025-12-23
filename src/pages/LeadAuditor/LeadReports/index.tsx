@@ -73,17 +73,12 @@ const AuditorLeadReports = () => {
   const [showReturnFindingModal, setShowReturnFindingModal] = useState(false);
   const [returnFindingNote, setReturnFindingNote] = useState('');
   const [returningFindingId, setReturningFindingId] = useState<string | null>(null);
-  // Track recently updated audit statuses to prevent overwriting during reload
-  const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
 
 
   // Force reloading summary data even if selectedAuditId doesn't change (e.g. after Director approves)
   const [summaryReloadKey, setSummaryReloadKey] = useState(0);
   
   // New tables: InProgress audits and their report requests
-  const [inProgressAudits, setInProgressAudits] = useState<any[]>([]);
-  const [selectedInProgressAuditId, setSelectedInProgressAuditId] = useState<string>('');
-  const [reportRequestsForSelectedAudit, setReportRequestsForSelectedAudit] = useState<ViewReportRequest[]>([]);
 
   const reload = useCallback(async () => {
     try {
@@ -233,13 +228,12 @@ const AuditorLeadReports = () => {
         }
       });
       
-      // Filter audits with status InProgress for new table
-      const inProgressAuditsList = allAudits.filter((a: any) => {
-        const auditStatus = String(a.status || a.state || '').trim();
-        const normalizedAuditStatus = auditStatus.toLowerCase().replace(/\s+/g, '').replace(/-/g, '');
-        return normalizedAuditStatus === 'inprogress';
-      });
-      setInProgressAudits(inProgressAuditsList);
+      // Filter audits with status InProgress for new table (removed unused)
+      // const inProgressAuditsList = allAudits.filter((a: any) => {
+      //   const auditStatus = String(a.status || a.state || '').trim();
+      //   const normalizedAuditStatus = auditStatus.toLowerCase().replace(/\s+/g, '').replace(/-/g, '');
+      //   return normalizedAuditStatus === 'inprogress';
+      // });
       
       // Combine reports from ReportRequests (submitted by Auditors)
       const combinedReports: any[] = [];
@@ -1761,7 +1755,6 @@ const AuditorLeadReports = () => {
                       setSelectedFindingId(String(finding?.findingId || ''));
                       setShowFindingModal(true);
                     }}
-                    unwrapValues={unwrapValues}
                     findingsSearch={findingsSearch}
                     setFindingsSearch={setFindingsSearch}
                     findingsSeverity={findingsSeverity}

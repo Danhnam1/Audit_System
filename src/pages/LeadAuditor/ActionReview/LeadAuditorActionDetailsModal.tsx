@@ -281,28 +281,29 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
     );
   };
 
-  const getStatusColor = (status: string) => {
-    const statusLower = status?.toLowerCase() || '';
-    if (statusLower === 'open' || statusLower === 'pending') {
-      return 'bg-blue-100 text-blue-800 border-blue-200';
-    }
-    if (statusLower === 'closed' || statusLower === 'resolved' || statusLower === 'reviewed') {
-      return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-    if (statusLower === 'in progress' || statusLower === 'in-progress') {
-      return 'bg-cyan-100 text-cyan-800 border-cyan-200';
-    }
-    if (statusLower === 'approved' || statusLower === 'verified') {
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    }
-    if (statusLower === 'completed') {
-      return 'bg-teal-100 text-teal-800 border-teal-200';
-    }
-    if (statusLower === 'rejected') {
-      return 'bg-red-100 text-red-800 border-red-200';
-    }
-    return 'bg-gray-100 text-gray-800 border-gray-200';
-  };
+  // Unused function
+  // const _getStatusColor = (_status: string) => {
+  //   const statusLower = _status?.toLowerCase() || '';
+  //   if (statusLower === 'open' || statusLower === 'pending') {
+  //     return 'bg-blue-100 text-blue-800 border-blue-200';
+  //   }
+  //   if (statusLower === 'closed' || statusLower === 'resolved' || statusLower === 'reviewed') {
+  //     return 'bg-gray-100 text-gray-800 border-gray-200';
+  //   }
+  //   if (statusLower === 'in progress' || statusLower === 'in-progress') {
+  //     return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+  //   }
+  //   if (statusLower === 'approved' || statusLower === 'verified') {
+  //     return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  //   }
+  //   if (statusLower === 'completed') {
+  //     return 'bg-teal-100 text-teal-800 border-teal-200';
+  //   }
+  //   if (statusLower === 'rejected') {
+  //     return 'bg-red-100 text-red-800 border-red-200';
+  //   }
+  //   return 'bg-gray-100 text-gray-800 border-gray-200';
+  // };
 
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase();
