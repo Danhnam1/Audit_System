@@ -33,8 +33,25 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
         getAttachments('Action', actionId),
       ]);
       setAction(actionData);
-      // Show all attachments, including old evidence when action is rejected
-      setAttachments(Array.isArray(attachmentsData) ? attachmentsData : []);
+      
+      // Filter out duplicate attachments by attachmentId
+      const attachmentsArray = Array.isArray(attachmentsData) ? attachmentsData : [];
+      const uniqueAttachments = attachmentsArray.filter((att, index, self) => 
+        index === self.findIndex((a) => a.attachmentId === att.attachmentId)
+      );
+      
+      console.log('📎 [LeadAuditor] Loaded attachments:', {
+        total: attachmentsArray.length,
+        unique: uniqueAttachments.length,
+        duplicates: attachmentsArray.length - uniqueAttachments.length,
+        attachments: uniqueAttachments.map(a => ({
+          id: a.attachmentId,
+          name: a.fileName,
+          status: a.status
+        }))
+      });
+      
+      setAttachments(uniqueAttachments);
     } catch (err: any) {
       console.error('Failed to load action details', err);
       toast.error('Failed to load action details: ' + (err?.message || 'Unknown error'));
@@ -48,33 +65,64 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
     
     setProcessing(true);
     try {
+      // IMPORTANT: Reload attachments to ensure we have the latest status
+      // This ensures we're working with the most up-to-date attachment statuses
+      let currentAttachments = attachments;
+      try {
+        const freshAttachments = await getAttachments('Action', action.actionId);
+        currentAttachments = Array.isArray(freshAttachments) ? freshAttachments : [];
+        setAttachments(currentAttachments);
+        console.log('🔄 [LeadAuditor] Reloaded attachments before approval:', currentAttachments.length);
+      } catch (attErr) {
+        console.warn('⚠️ [LeadAuditor] Could not reload attachments, using cached:', attErr);
+        // Continue with cached attachments if reload fails
+      }
+      
       // IMPORTANT: Before approving action, we should only approve attachments with status "Open"
-      // Currently, the backend API approveFindingActionHigherLevel may approve all attachments
-      // This is a known issue that needs to be fixed on the backend
-      // For now, we log which attachments should be approved (only "Open" status)
-      const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
-      const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
+      // Filter to get only attachments with status "Open" (case-insensitive)
+      const openAttachments = currentAttachments.filter(att => {
+        const status = att.status?.toLowerCase() || '';
+        return status === 'open';
+      });
+      
+      const rejectedAttachments = currentAttachments.filter(att => {
+        const status = att.status?.toLowerCase() || '';
+        return status === 'rejected';
+      });
+      
+      const approvedAttachments = currentAttachments.filter(att => {
+        const status = att.status?.toLowerCase() || '';
+        return status === 'approved';
+      });
       
       console.log('📋 [LeadAuditor] Approving action:', action.actionId);
       console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`, openAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
       console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`, rejectedAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
+      console.log(`✅ Attachments already approved: ${approvedAttachments.length}`, approvedAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
       
-      // IMPORTANT: Approve only attachments with status "Open" before approving the action
-      // This ensures rejected attachments are not approved
+      // IMPORTANT: Approve ONLY attachments with status "Open" before approving the action
+      // This ensures rejected attachments are NOT approved
       if (openAttachments.length > 0) {
-        console.log('✅ [LeadAuditor] Approving attachments with "Open" status...');
+        console.log(`✅ [LeadAuditor] Approving ${openAttachments.length} attachment(s) with "Open" status...`);
         const approvePromises = openAttachments.map(async (attachment) => {
           try {
             await updateAttachmentStatus(attachment.attachmentId, 'Approved');
             console.log(`  ✓ Approved attachment: ${attachment.fileName} (${attachment.attachmentId})`);
+            return { success: true, attachmentId: attachment.attachmentId, fileName: attachment.fileName };
           } catch (err: any) {
             console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
-            // Continue with other attachments even if one fails
+            return { success: false, attachmentId: attachment.attachmentId, fileName: attachment.fileName, error: err };
           }
         });
         
-        await Promise.all(approvePromises);
-        console.log(`✅ [LeadAuditor] Approved ${openAttachments.length} attachment(s) with "Open" status`);
+        const results = await Promise.all(approvePromises);
+        const succeeded = results.filter(r => r.success).length;
+        const failed = results.filter(r => !r.success).length;
+        
+        console.log(`✅ [LeadAuditor] Approved ${succeeded} attachment(s) with "Open" status`);
+        if (failed > 0) {
+          console.warn(`⚠️ [LeadAuditor] Failed to approve ${failed} attachment(s)`);
+        }
       } else {
         console.log('⚠️ [LeadAuditor] No attachments with "Open" status to approve');
       }
@@ -83,6 +131,28 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
       await approveFindingActionHigherLevel(action.actionId, '');
       
       toast.success('Action approved successfully!');
+      
+      // Reload attachments to reflect the updated statuses
+      try {
+        const updatedAttachments = await getAttachments('Action', action.actionId);
+        const attachmentsArray = Array.isArray(updatedAttachments) ? updatedAttachments : [];
+        // Filter out duplicate attachments by attachmentId
+        const uniqueAttachments = attachmentsArray.filter((att, index, self) => 
+          index === self.findIndex((a) => a.attachmentId === att.attachmentId)
+        );
+        setAttachments(uniqueAttachments);
+        console.log('🔄 [LeadAuditor] Reloaded attachments after approval:', {
+          total: attachmentsArray.length,
+          unique: uniqueAttachments.length,
+          attachments: uniqueAttachments.map(a => ({
+            id: a.attachmentId,
+            name: a.fileName,
+            status: a.status
+          }))
+        });
+      } catch (reloadErr) {
+        console.warn('⚠️ [LeadAuditor] Could not reload attachments after approval:', reloadErr);
+      }
       
       // Dispatch custom event to notify other components (e.g., CAPA Owner ActionDetailModal) that action was updated
       window.dispatchEvent(new CustomEvent('actionUpdated', { 
@@ -195,10 +265,18 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
         </span>
       );
     }
-    // Default: show status as-is
+    if (statusLower === 'completed') {
+      return (
+        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-semibold rounded border border-purple-300 flex-shrink-0">
+          Completed
+        </span>
+      );
+    }
+    // Default: show status as-is (capitalize first letter)
+    const displayStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
     return (
       <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded border border-gray-300 flex-shrink-0">
-        {status}
+        {displayStatus}
       </span>
     );
   };
@@ -413,11 +491,11 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                       </div>
                       <h4 className="text-lg font-bold text-gray-900">Attachments</h4>
                       <span className="ml-auto bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-bold border border-purple-200">
-                        {attachments.length} {attachments.length === 1 ? 'file' : 'files'}
+                        {attachments.filter(att => att.status?.toLowerCase() !== 'rejected').length} {attachments.filter(att => att.status?.toLowerCase() !== 'rejected').length === 1 ? 'file' : 'files'}
                       </span>
                     </div>
                     
-                    {attachments.length === 0 ? (
+                    {attachments.filter(att => att.status?.toLowerCase() !== 'rejected').length === 0 ? (
                       <div className="text-center py-8">
                         <div className="bg-gray-100 rounded-full p-4 inline-block mb-3">
                           <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -428,14 +506,15 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        {[...attachments].sort((a, b) => {
-                          // Sort: Rejected attachments first, then others
-                          const aIsRejected = a.status?.toLowerCase() === 'rejected';
-                          const bIsRejected = b.status?.toLowerCase() === 'rejected';
-                          if (aIsRejected && !bIsRejected) return -1;
-                          if (!aIsRejected && bIsRejected) return 1;
-                          return 0;
-                        }).map((att) => {
+                        {[...attachments]
+                          .filter((att, index, self) => {
+                            // Remove duplicates by attachmentId
+                            const isUnique = index === self.findIndex((a) => a.attachmentId === att.attachmentId);
+                            // Filter out Rejected attachments
+                            const isNotRejected = att.status?.toLowerCase() !== 'rejected';
+                            return isUnique && isNotRejected;
+                          })
+                          .map((att) => {
                           const isImage = att.contentType?.toLowerCase().startsWith('image/');
                           const filePath = att.filePath || att.blobPath || '';
                           
@@ -521,11 +600,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                                   <p className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
                                     {att.fileName}
                                   </p>
-                                  {att.status?.toLowerCase() === 'rejected' && (
-                                    <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded border border-red-300 flex-shrink-0">
-                                      Rejected
-                                    </span>
-                                  )}
+                                  {getAttachmentStatusBadge(att.status)}
                                 </div>
                                 <p className="text-sm text-gray-500 mt-0.5">
                                   {formatFileSize(att.fileSize || 0)} • Uploaded {formatDate(att.uploadedAt)}

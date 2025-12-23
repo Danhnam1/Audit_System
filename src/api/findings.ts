@@ -217,6 +217,15 @@ export const rejectFindingActionHigherLevel = async (actionId: string, feedback:
   });
 };
 
+// Return finding
+export const returnFinding = async (findingId: string, reasonReturn: string): Promise<any> => {
+  // Convert to PascalCase for .NET API
+  const payload = {
+    ReasonReturn: reasonReturn
+  };
+  return apiClient.put(`/Findings/${findingId}/return`, payload) as any;
+};
+
 export default {
   getFindings,
   getFindingById,
