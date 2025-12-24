@@ -9,6 +9,7 @@ import { toast } from 'react-toastify';
 import useAuthStore from '../../../store/useAuthStore';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { QRCodeSVG } from 'qrcode.react';
+import QRCode from 'qrcode';
 
 interface AccessGrant {
   grantId: string;
@@ -168,6 +169,94 @@ export default function MyQR() {
     return 'bg-yellow-100 text-yellow-800';
   };
 
+  const downloadQRCode = async (grant: AccessGrant) => {
+    try {
+      // Create a canvas element
+      const canvas = document.createElement('canvas');
+      const qrSize = 300; // QR code size
+      const padding = 40;
+      const textHeight = 100; // Space for text below QR
+      const totalHeight = qrSize + padding * 2 + textHeight;
+      canvas.width = qrSize + padding * 2;
+      canvas.height = totalHeight;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        toast.error('Failed to create download image');
+        return;
+      }
+
+      // Fill white background
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Create QR code data URL
+      const qrDataUrl = await QRCode.toDataURL(
+        grant.qrUrl || grant.qrToken || '',
+        {
+          width: qrSize,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        }
+      );
+
+      // Draw QR code on canvas
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, padding, padding);
+        
+        // Add text labels below QR code
+        ctx.fillStyle = '#000000';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        
+        const auditTitle = getAuditTitle(grant.auditId);
+        const deptName = getDeptName(grant.deptId);
+        const validPeriod = `${formatDate(grant.validFrom)} - ${formatDate(grant.validTo)}`;
+        
+        let yPos = qrSize + padding + 15;
+        ctx.font = 'bold 16px Arial';
+        ctx.fillText(auditTitle, canvas.width / 2, yPos);
+        yPos += 25;
+        ctx.font = '14px Arial';
+        ctx.fillText(deptName, canvas.width / 2, yPos);
+        yPos += 20;
+        ctx.font = '12px Arial';
+        ctx.fillText(validPeriod, canvas.width / 2, yPos);
+
+        // Convert canvas to blob and download
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            toast.error('Failed to create download image');
+            return;
+          }
+          
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          const fileName = `QR_${auditTitle.replace(/[^a-z0-9]/gi, '_')}_${deptName.replace(/[^a-z0-9]/gi, '_')}_${grant.grantId.substring(0, 8)}.png`;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          toast.success('QR code downloaded successfully!');
+        }, 'image/png');
+      };
+      img.onerror = () => {
+        toast.error('Failed to load QR code image');
+      };
+      img.src = qrDataUrl;
+    } catch (error) {
+      console.error('Failed to download QR code:', error);
+      toast.error('Failed to download QR code. Please try again.');
+    }
+  };
+
 
   return (
     <MainLayout user={layoutUser}>
@@ -224,7 +313,7 @@ export default function MyQR() {
                     >
                       {/* QR Code */}
                       <div className="flex justify-center mb-4">
-                        <div className="bg-white p-4 rounded-lg border-2 border-gray-200">
+                        <div className="bg-white p-4 rounded-lg border-2 border-gray-200 relative">
                           {grant.qrUrl || grant.qrToken ? (
                             <QRCodeSVG
                               value={grant.qrUrl || grant.qrToken || ''}
@@ -238,6 +327,19 @@ export default function MyQR() {
                             </div>
                           )}
                         </div>
+                      </div>
+
+                      {/* Download Button */}
+                      <div className="mb-4">
+                        <button
+                          onClick={() => downloadQRCode(grant)}
+                          className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium flex items-center justify-center gap-2"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          Download QR Code
+                        </button>
                       </div>
 
                       {/* Audit Info */}
