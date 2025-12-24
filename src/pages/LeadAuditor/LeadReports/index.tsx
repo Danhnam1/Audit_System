@@ -268,18 +268,10 @@ const AuditorLeadReports = () => {
           return; // Skip this report
         }
         
-        // Kiểm tra thêm: Không hiển thị report đã được approve (status = "Approved")
-        // Chỉ hiển thị report khi audit status là "InProgress" VÀ report chưa được approve
+        // Lấy status của report request để hiển thị (bao gồm cả Approved)
         const reportRequestStatus = String(rr.status || '').trim();
-        const normalizedReportStatus = reportRequestStatus.toLowerCase().replace(/\s+/g, '');
-        const isApproved = normalizedReportStatus === 'approved';
         
-        if (isApproved) {
-          
-          return; 
-        }
         
-       
         
         // Backend returns "Returned" (capital R) when reject, normalize to lowercase for comparison
         const finalStatus = rr.status || 'Pending';

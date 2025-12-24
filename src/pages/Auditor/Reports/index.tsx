@@ -60,6 +60,10 @@ const SQAStaffReports = () => {
   const [summaryTab, setSummaryTab] = useState<'findings' | 'checklist'>('findings');
   // Track recently updated audit statuses to prevent overwriting during reload
   const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
+  // Attachments modal state
+  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
+  const [selectedAttachments, setSelectedAttachments] = useState<any[]>([]);
+  const [selectedFindingTitle, setSelectedFindingTitle] = useState<string>('');
 
   // Derived datasets for summary rendering
   const severityEntries = useMemo(() => {
@@ -120,6 +124,7 @@ const SQAStaffReports = () => {
 
     const byDeptMap = new Map<string, { deptId: string; overdue: number; compliant: number }>();
     const overdueItems: any[] = [];
+    const compliantItems: any[] = [];
     let totalOverdue = 0;
     let totalCompliant = 0;
 
@@ -150,6 +155,7 @@ const SQAStaffReports = () => {
       if (isCompliant) {
         agg.compliant += 1;
         totalCompliant += 1;
+        compliantItems.push(item);
       }
     });
 
@@ -165,6 +171,7 @@ const SQAStaffReports = () => {
       totalCompliant,
       overdueByDept,
       overdueItems,
+      compliantItems,
     };
   }, [auditChecklistItems]);
 
@@ -1428,9 +1435,7 @@ const SQAStaffReports = () => {
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-1">
                     <h2 className="text-xl font-semibold text-gray-900">Audit Report Summary</h2>
-                    <p className="text-sm text-gray-500">
-                      Overview, checklist status and findings for the selected audit.
-                    </p>
+                    
                   </div>
                   <div className="flex items-center gap-3">
                     {(() => {
@@ -1634,7 +1639,7 @@ const SQAStaffReports = () => {
             {summaryTab === 'findings' && (
               <>
                 {/* KPI cards – high level overview */}
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
                   <SummaryCard title="Total Findings" value={summary?.totalFindings ?? 0} />
                   <SummaryCard
                     title="Open"
@@ -1645,6 +1650,11 @@ const SQAStaffReports = () => {
                     title="Overdue"
                     value={summary?.overdueFindings ?? 0}
                     valueClassName="text-red-600"
+                  />
+                  <SummaryCard
+                    title="Compliant (Non-finding)"
+                    value={summary?.compliantFindings ?? summary?.nonFindings ?? 0}
+                    valueClassName="text-emerald-600"
                   />
                 </div>
 
@@ -1747,7 +1757,6 @@ const SQAStaffReports = () => {
                         singleMode
                         definitions={[
                           { id: 'dept', label: 'Department', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.deptId != null ? resolveDeptName(String(f.deptId), departments) : '')))).filter(Boolean).sort().map(d => ({ value: d, label: d })) },
-                          { id: 'status', label: 'Status', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.status)))).filter(Boolean).sort().map(s => ({ value: String(s).toLowerCase(), label: String(s) })) },
                           { id: 'severity', label: 'Severity', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.severity)))).filter(Boolean).sort().map(s => ({ value: String(s).toLowerCase(), label: String(s) })) },
                           { id: 'deadline', label: 'Deadline', type: 'dateRange' }
                         ]}
@@ -1789,9 +1798,8 @@ const SQAStaffReports = () => {
                               <th className="text-left px-3 py-2 text-gray-700">Title</th>
                               <th className="text-left px-3 py-2 text-gray-700">Dept</th>
                               <th className="text-left px-3 py-2 text-gray-700">Severity</th>
-                              <th className="text-left px-3 py-2 text-gray-700">Status</th>
                               <th className="text-left px-3 py-2 text-gray-700">Deadline</th>
-                              <th className="text-left px-3 py-2 text-gray-700">Progress</th>
+                              <th className="text-left px-3 py-2 text-gray-700">Attachments</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
@@ -1815,38 +1823,37 @@ const SQAStaffReports = () => {
                                     {f.severity || '—'}
                                   </span>
                                 </td>
-                                <td className="px-3 py-2">{f.status || '—'}</td>
                                 <td className="px-3 py-2">
                                   {f.deadline ? new Date(f.deadline).toLocaleDateString() : '—'}
                                 </td>
-                                <td className="px-3 py-2 w-32">
-                                  {typeof f?.progressPercent === 'number' ? (
-                                    <div className="flex items-center gap-2">
-                                      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                        <div
-                                          className="h-1.5 rounded-full bg-primary-500"
-                                          style={{
-                                            width: `${Math.min(
-                                              Math.max(f.progressPercent, 0),
-                                              100
-                                            )}%`,
-                                          }}
-                                        />
-                                      </div>
-                                      <span className="text-xs text-gray-600 min-w-[2.5rem] text-right">
-                                        {Math.round(f.progressPercent)}%
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">—</span>
-                                  )}
+                                <td className="px-3 py-2">
+                                  {(() => {
+                                    const attachments = unwrap(f?.attachments) || [];
+                                    if (attachments.length === 0) return <span className="text-xs text-gray-400">—</span>;
+                                    return (
+                                      <button
+                                        onClick={() => {
+                                          setSelectedAttachments(attachments);
+                                          setSelectedFindingTitle(f?.title || 'Finding Attachments');
+                                          setShowAttachmentsModal(true);
+                                        }}
+                                        className="flex items-center gap-1 hover:bg-gray-100 px-2 py-1 rounded transition-colors cursor-pointer"
+                                        title={`Click to view ${attachments.length} attachment(s)`}
+                                      >
+                                        <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                        </svg>
+                                        <span className="text-xs text-primary-600 font-medium">{attachments.length}</span>
+                                      </button>
+                                    );
+                                  })()}
                                 </td>
                               </tr>
                             ))}
                             {m.items.length === 0 && (
                               <tr>
                                 <td
-                                  colSpan={7}
+                                  colSpan={6}
                                   className="px-3 py-4 text-center text-gray-500"
                                 >
                                   No data available.
@@ -1924,15 +1931,110 @@ const SQAStaffReports = () => {
                 )}
 
                 {/* Overdue checklist items table */}
-                {checklistOverview.overdueItems.length > 0 && (
+                <div className="mt-8 pt-4 border-t border-gray-100">
+                  <div className="rounded-lg border border-gray-100 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-semibold text-gray-700">
+                        Overdue Checklist Items Details
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        Only items with status <span className="font-semibold">Overdue</span>.
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto max-h-72">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-700">#</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Department</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Template / Section</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Status</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Due date</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {checklistOverview.overdueItems.length > 0 ? (
+                            checklistOverview.overdueItems.map((item: any, idx: number) => {
+                              // Use section as functional department name for checklist context
+                              const deptName =
+                                item.section ||
+                                item.departmentName ||
+                                item.deptName ||
+                                item.department ||
+                                '—';
+                              const section =
+                                item.templateName ||
+                                item.templateTitle ||
+                                item.template ||
+                                item.section ||
+                                '—';
+                              const question =
+                                item.questionTextSnapshot ||
+                                item.questionText ||
+                                item.title ||
+                                '—';
+                              const status = item.status || '—';
+                              const notes = item.notes || item.note || '—';
+                              const due =
+                                item.dueDate ||
+                                item.deadline ||
+                                item.due ||
+                                item.targetDate ||
+                                null;
+                              const dueDisplay = due
+                                ? new Date(due).toLocaleDateString()
+                                : '—';
+
+                              return (
+                                <tr
+                                  key={item.auditChecklistItemId || item.itemId || idx}
+                                  className="hover:bg-gray-50"
+                                >
+                                  <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
+                                  <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
+                                  <td className="px-3 py-2 whitespace-nowrap">{section}</td>
+                                  <td className="px-3 py-2">
+                                    <span className="line-clamp-2">{question}</span>
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 border border-red-200">
+                                      {status}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap text-red-600 font-medium">
+                                    {dueDisplay}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <span className="line-clamp-2 text-gray-600">{notes}</span>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={7} className="px-3 py-4 text-center text-gray-500">
+                                No overdue checklist items.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Compliant checklist items table */}
+                {checklistOverview.compliantItems && checklistOverview.compliantItems.length > 0 && (
                   <div className="mt-8 pt-4 border-t border-gray-100">
                     <div className="rounded-lg border border-gray-100 p-4">
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-sm font-semibold text-gray-700">
-                          Overdue Checklist Items
+                          Compliant Checklist Items
                         </div>
                         <span className="text-xs text-gray-500">
-                          Only items with status <span className="font-semibold">Overdue</span>.
+                          Only items with status <span className="font-semibold">Compliant</span>.
                         </span>
                       </div>
                       <div className="overflow-x-auto max-h-72">
@@ -1947,7 +2049,7 @@ const SQAStaffReports = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {checklistOverview.overdueItems.map((item: any, idx: number) => {
+                            {checklistOverview.compliantItems.map((item: any, idx: number) => {
                               // Use section as functional department name for checklist context
                               const deptName =
                                 item.section ||
@@ -1987,7 +2089,7 @@ const SQAStaffReports = () => {
                                   <td className="px-3 py-2">
                                     <span className="line-clamp-2">{question}</span>
                                   </td>
-                                  <td className="px-3 py-2 whitespace-nowrap text-red-600 font-medium">
+                                  <td className="px-3 py-2 whitespace-nowrap text-emerald-600 font-medium">
                                     {dueDisplay}
                                   </td>
                                 </tr>
@@ -2116,6 +2218,111 @@ const SQAStaffReports = () => {
                     Close
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Attachments Modal */}
+        {showAttachmentsModal && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => setShowAttachmentsModal(false)}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 flex-shrink-0">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Attachments</h2>
+                  <p className="text-sm text-gray-500 mt-1">{selectedFindingTitle}</p>
+                </div>
+                <button
+                  onClick={() => setShowAttachmentsModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {selectedAttachments.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-gray-500 font-medium">No attachments</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedAttachments.map((att: any, idx: number) => {
+                      const name = att?.fileName || att?.documentName || att?.name || att?.originalName || `Attachment ${idx + 1}`;
+                      const url = att?.blobPath || att?.url || att?.link || att?.path;
+                      const size = att?.fileSize || att?.size;
+                      const sizeDisplay = size ? (size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(2)} KB` : `${(size / (1024 * 1024)).toFixed(2)} MB`) : '';
+                      const uploadedAt = att?.uploadedAt || att?.createdAt || att?.uploadDate;
+                      
+                      return (
+                        <div key={idx} className="flex items-center gap-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-4 py-3 transition-colors">
+                          <div className="flex-shrink-0 w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{name}</div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                              {sizeDisplay && <span>{sizeDisplay}</span>}
+                              {uploadedAt && (
+                                <span>
+                                  {new Date(uploadedAt).toLocaleDateString('en-US', { 
+                                    year: 'numeric', 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {url ? (
+                            <a 
+                              href={url} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="flex-shrink-0 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              Open
+                            </a>
+                          ) : (
+                            <span className="flex-shrink-0 px-3 py-2 text-xs text-gray-500 bg-gray-200 rounded-lg">No link</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 flex-shrink-0">
+                <button
+                  onClick={() => setShowAttachmentsModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>,
