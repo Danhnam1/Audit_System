@@ -787,7 +787,6 @@ const SpecifyCreatePlan = () => {
               </div>
             ) : (
               <>
-<<<<<<< HEAD
                 {/* Calculate pagination for Available tab */}
                 {(() => {
                   const totalPages = Math.ceil(availableAuditors.length / ITEMS_PER_PAGE);
@@ -841,34 +840,7 @@ const SpecifyCreatePlan = () => {
                     </>
                   );
                 })()}
-=======
-                <AuditorSelectionTable
-                  auditors={availableAuditors}
-                  selectedAuditorId={selectedAuditorId}
-                  onSelectionChange={(id) => {
-                    setSelectedAuditorId(id);
-                  }}
-                  drlFiles={drlFiles}
-                  onDrlFileChange={(auditorId, files) => {
-                    setDrlFiles((prev) => {
-                      const newMap = new Map(prev);
-                      if (files && files.length > 0) {
-                        // Merge with existing files if any
-                        const existingFiles = newMap.get(auditorId) || [];
-                        const allFiles = [...existingFiles, ...files];
-                        // Remove duplicates based on file name and size
-                        const uniqueFiles = allFiles.filter((file, index, self) =>
-                          index === self.findIndex(f => f.name === file.name && f.size === file.size)
-                        );
-                        newMap.set(auditorId, uniqueFiles);
-                      } else {
-                        newMap.delete(auditorId);
-                      }
-                      return newMap;
-                    });
-                  }}
-                />
->>>>>>> e770b07533b47411f0cdc2fc553b19873294c446
+
 
                 {/* Remarks Input */}
                     <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
