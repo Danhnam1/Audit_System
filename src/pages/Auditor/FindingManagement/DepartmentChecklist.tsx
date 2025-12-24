@@ -2,7 +2,7 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getChecklistItemsByDepartment, createAuditChecklistItem, type CreateAuditChecklistItemDto, getCompliantIdByAuditItemId } from '../../../api/checklists';
+import { getChecklistItemsByDepartment, createAuditChecklistItem, updateAuditChecklistItem, deleteAuditChecklistItem, type CreateAuditChecklistItemDto, type UpdateAuditChecklistItemDto, getCompliantIdByAuditItemId } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
 import { getFindings, getMyFindings, getFindingById, updateFinding, type Finding} from '../../../api/findings';
 import { getFindingSeverities } from '../../../api/findingSeverity';
@@ -97,6 +97,23 @@ const DepartmentChecklist = () => {
     section: '',
   });
   const [submittingItem, setSubmittingItem] = useState(false);
+
+  // Edit checklist item modal state
+  const [showEditItemModal, setShowEditItemModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<ChecklistItem | null>(null);
+  const [editItemForm, setEditItemForm] = useState({
+    questionTextSnapshot: '',
+    section: '',
+    order: 0,
+    status: '',
+    comment: '',
+  });
+  const [submittingEditItem, setSubmittingEditItem] = useState(false);
+
+  // Delete checklist item modal state
+  const [showDeleteItemModal, setShowDeleteItemModal] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<ChecklistItem | null>(null);
+  const [deletingItem, setDeletingItem] = useState(false);
 
 
   const getStatusBadgeColor = (status: string) => {
@@ -573,6 +590,190 @@ const DepartmentChecklist = () => {
     }
   };
 
+  // Handle edit checklist item
+  const handleEditItem = (item: ChecklistItem) => {
+    setEditingItem(item);
+    setEditItemForm({
+      questionTextSnapshot: item.questionTextSnapshot || '',
+      section: item.section || '',
+      order: item.order || 0,
+      status: item.status || 'Open',
+      comment: item.comment || '',
+    });
+    setShowEditItemModal(true);
+  };
+
+  // Handle submit edit checklist item
+  const handleEditItemSubmit = async () => {
+    if (!editingItem) return;
+
+    if (!editItemForm.questionTextSnapshot.trim()) {
+      toast.error('Question text is required');
+      return;
+    }
+
+    setSubmittingEditItem(true);
+    try {
+      const payload: UpdateAuditChecklistItemDto = {
+        questionTextSnapshot: editItemForm.questionTextSnapshot.trim(),
+        section: editItemForm.section || undefined,
+        order: editItemForm.order,
+        status: editItemForm.status || 'Open',
+        comment: editItemForm.comment || '',
+      };
+
+      await updateAuditChecklistItem(editingItem.auditItemId, payload);
+      toast.success('Checklist item updated successfully');
+      setShowEditItemModal(false);
+      setEditingItem(null);
+
+      // Reload checklist items
+      if (deptId) {
+        const deptIdNum = parseInt(deptId, 10);
+        const allItems = await getChecklistItemsByDepartment(deptIdNum);
+        
+        // Filter by auditId if available
+        let itemsByAudit = allItems;
+        if (auditId) {
+          itemsByAudit = allItems.filter((item: ChecklistItem | any) => {
+            const itemAuditId = item.auditId || 
+                               item.auditPlanId || 
+                               item.AuditId ||
+                               item.audit?.auditId ||
+                               item.audit?.id;
+            return String(itemAuditId) === String(auditId);
+          });
+        }
+        
+        // Filter out items with status "Archived"
+        const filteredItems = itemsByAudit.filter((item: ChecklistItem) => {
+          const statusLower = (item.status || '').toLowerCase().trim();
+          return statusLower !== 'archived';
+        });
+        
+        // Sort by order
+        const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
+        
+        // Fetch all compliant records to update status and build compliantIdMap
+        try {
+          const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
+          const allCompliantRecords = unwrapArray(compliantRes.data);
+          
+          // Build compliantIdMap: auditChecklistItemId -> compliant record id
+          const compliantMap: Record<string, string | number> = {};
+          allCompliantRecords.forEach((record: any) => {
+            if (record.auditChecklistItemId && record.id) {
+              compliantMap[record.auditChecklistItemId] = record.id;
+            }
+          });
+          
+          // Update compliantIdMap state
+          setCompliantIdMap(compliantMap);
+          
+          // Update checklist items status: if item has compliant record, set status to "Compliant"
+          const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
+            if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
+              return { ...item, status: 'Compliant' };
+            }
+            return item;
+          });
+          
+          setChecklistItems(itemsWithCompliantStatus);
+        } catch (compliantErr: any) {
+          console.error('Error loading compliant records:', compliantErr);
+          setChecklistItems(sortedItems);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error updating checklist item:', err);
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to update checklist item');
+    } finally {
+      setSubmittingEditItem(false);
+    }
+  };
+
+  // Handle delete checklist item
+  const handleDeleteItem = (item: ChecklistItem) => {
+    setItemToDelete(item);
+    setShowDeleteItemModal(true);
+  };
+
+  // Confirm delete checklist item
+  const handleConfirmDeleteItem = async () => {
+    if (!itemToDelete) return;
+
+    setDeletingItem(true);
+    try {
+      await deleteAuditChecklistItem(itemToDelete.auditItemId);
+      toast.success('Checklist item deleted successfully');
+      setShowDeleteItemModal(false);
+      setItemToDelete(null);
+
+      // Reload checklist items
+      if (deptId) {
+        const deptIdNum = parseInt(deptId, 10);
+        const allItems = await getChecklistItemsByDepartment(deptIdNum);
+        
+        // Filter by auditId if available
+        let itemsByAudit = allItems;
+        if (auditId) {
+          itemsByAudit = allItems.filter((item: ChecklistItem | any) => {
+            const itemAuditId = item.auditId || 
+                               item.auditPlanId || 
+                               item.AuditId ||
+                               item.audit?.auditId ||
+                               item.audit?.id;
+            return String(itemAuditId) === String(auditId);
+          });
+        }
+        
+        // Filter out items with status "Archived"
+        const filteredItems = itemsByAudit.filter((item: ChecklistItem) => {
+          const statusLower = (item.status || '').toLowerCase().trim();
+          return statusLower !== 'archived';
+        });
+        
+        // Sort by order
+        const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
+        
+        // Fetch all compliant records to update status and build compliantIdMap
+        try {
+          const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
+          const allCompliantRecords = unwrapArray(compliantRes.data);
+          
+          // Build compliantIdMap: auditChecklistItemId -> compliant record id
+          const compliantMap: Record<string, string | number> = {};
+          allCompliantRecords.forEach((record: any) => {
+            if (record.auditChecklistItemId && record.id) {
+              compliantMap[record.auditChecklistItemId] = record.id;
+            }
+          });
+          
+          // Update compliantIdMap state
+          setCompliantIdMap(compliantMap);
+          
+          // Update checklist items status: if item has compliant record, set status to "Compliant"
+          const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
+            if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
+              return { ...item, status: 'Compliant' };
+            }
+            return item;
+          });
+          
+          setChecklistItems(itemsWithCompliantStatus);
+        } catch (compliantErr: any) {
+          console.error('Error loading compliant records:', compliantErr);
+          setChecklistItems(sortedItems);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error deleting checklist item:', err);
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to delete checklist item');
+    } finally {
+      setDeletingItem(false);
+    }
+  };
+
   // Handle mark item as compliant - show modal first
   const handleMarkCompliant = (item: ChecklistItem) => {
     setItemToMarkCompliant(item);
@@ -796,7 +997,7 @@ const DepartmentChecklist = () => {
   useEffect(() => {
     const handleRootCauseUpdated = async (event: Event) => {
       const customEvent = event as CustomEvent;
-      const findingId = customEvent.detail?.findingId;
+      const _findingId = customEvent.detail?.findingId;
       
       // Small delay to ensure backend has updated
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1263,6 +1464,35 @@ const DepartmentChecklist = () => {
                             </p>
                           </div>
                           <div className="flex items-center justify-end sm:justify-start gap-2 sm:gap-3 flex-shrink-0">
+                            {/* Edit and Delete buttons for External audit type */}
+                            {auditType?.toLowerCase() === 'external' && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditItem(item);
+                                  }}
+                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 border border-blue-200 shadow-sm hover:shadow-md active:scale-95 transition-colors"
+                                  title="Edit Item"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteItem(item);
+                                  }}
+                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-red-100 hover:bg-red-200 text-red-600 border border-red-200 shadow-sm hover:shadow-md active:scale-95 transition-colors"
+                                  title="Delete Item"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
                             {isReturned(item, itemStatusToCheck) ? (
                               /* Edit button for Returned items */
                               <div className="flex items-center gap-2">
@@ -2175,6 +2405,153 @@ const DepartmentChecklist = () => {
                     'Update Finding'
                   )}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Checklist Item Modal */}
+      {showEditItemModal && editingItem && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={() => setShowEditItemModal(false)} />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+                <h2 className="text-xl font-semibold text-gray-900">Edit Checklist Item</h2>
+                <button
+                  onClick={() => setShowEditItemModal(false)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Question Text <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={editItemForm.questionTextSnapshot}
+                    onChange={(e) => setEditItemForm(prev => ({ ...prev, questionTextSnapshot: e.target.value }))}
+                    placeholder="Enter the question text for this checklist item"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
+                    rows={4}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Section
+                  </label>
+                  <input
+                    type="text"
+                    value={editItemForm.section}
+                    onChange={(e) => setEditItemForm(prev => ({ ...prev, section: e.target.value }))}
+                    placeholder="Enter section name (optional)"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Order
+                  </label>
+                  <input
+                    type="number"
+                    value={editItemForm.order}
+                    onChange={(e) => setEditItemForm(prev => ({ ...prev, order: parseInt(e.target.value) || 0 }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Status
+                  </label>
+                  <select
+                    value={editItemForm.status}
+                    onChange={(e) => setEditItemForm(prev => ({ ...prev, status: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    <option value="Open">Open</option>
+                    <option value="Compliant">Compliant</option>
+                    <option value="NonCompliant">Non-Compliant</option>
+                    <option value="Archived">Archived</option>
+                  </select>
+                </div>
+
+               
+              </div>
+
+              <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setShowEditItemModal(false)}
+                  disabled={submittingEditItem}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleEditItemSubmit}
+                  disabled={submittingEditItem || !editItemForm.questionTextSnapshot.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submittingEditItem ? 'Updating...' : 'Update Item'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Checklist Item Modal */}
+      {showDeleteItemModal && itemToDelete && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" onClick={() => setShowDeleteItemModal(false)} />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6">
+                <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full">
+                  <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 text-center mb-2">
+                  Delete Checklist Item
+                </h3>
+                <p className="text-sm text-gray-600 text-center mb-6">
+                  Are you sure you want to delete this checklist item? This action cannot be undone.
+                </p>
+                <div className="bg-gray-50 rounded-lg p-3 mb-6">
+                  <p className="text-sm text-gray-700 font-medium">{itemToDelete.questionTextSnapshot}</p>
+                </div>
+                <div className="flex items-center justify-center gap-3">
+                  <button
+                    onClick={() => setShowDeleteItemModal(false)}
+                    disabled={deletingItem}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmDeleteItem}
+                    disabled={deletingItem}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {deletingItem ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        Deleting...
+                      </>
+                    ) : (
+                      'Delete Item'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
