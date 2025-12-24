@@ -4,7 +4,7 @@ import { useAuth } from '../../../contexts';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getAuditScopeDepartmentsByAuditId, getAuditPlans, getSensitiveDepartments } from '../../../api/audits';
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
-import { createAuditAssignment, getAuditAssignments, bulkCreateAuditAssignments } from '../../../api/auditAssignments';
+import { createAuditAssignment, getAuditAssignments, bulkCreateAuditAssignments, getAllAuditAssignmentRequests, approveAuditAssignmentRequest, rejectAuditAssignmentRequest } from '../../../api/auditAssignments';
 import { getDepartmentById } from '../../../api/departments';
 import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
 import { issueAccessGrant, getAccessGrants } from '../../../api/accessGrant';
@@ -94,11 +94,37 @@ export default function AuditAssignment() {
   const [loadingQrGrants, setLoadingQrGrants] = useState(false);
   const [expandedAuditorIds, setExpandedAuditorIds] = useState<Set<string>>(new Set());
   const [auditorNamesForDetail, setAuditorNamesForDetail] = useState<Record<string, string>>({});
+  const [auditorEmailsForDetail, setAuditorEmailsForDetail] = useState<Record<string, string>>({});
+  const [expandedUserIds, setExpandedUserIds] = useState<Set<string>>(new Set());
   
   // QR Grant state
   const [showQrGrantModal, setShowQrGrantModal] = useState(false);
   const [issuingQr, setIssuingQr] = useState(false);
   const [qrGrantResults, setQrGrantResults] = useState<Array<{ auditorId: string; auditorName: string; success: boolean; qrUrl?: string; error?: string }>>([]);
+  
+  // Request state
+  const [assignmentRequests, setAssignmentRequests] = useState<Array<{
+    requestId: string;
+    auditId: string;
+    deptId: number;
+    auditAssignmentId: string;
+    reasonRequest: string;
+    actualAuditDate: string;
+    status: string;
+    createdByName?: string;
+  }>>([]);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<{
+    requestId: string;
+    auditId: string;
+    deptId: number;
+    auditAssignmentId: string;
+    reasonRequest: string;
+    actualAuditDate: string;
+    status: string;
+    createdByName?: string;
+  } | null>(null);
+  const [processingRequest, setProcessingRequest] = useState(false);
 
   // Load audits first
   useEffect(() => {
@@ -141,6 +167,17 @@ export default function AuditAssignment() {
         // Load assignments
         const assignmentsData = await getAuditAssignments().catch(() => []);
         setAssignments(assignmentsData || []);
+        
+        // Load assignment requests
+        try {
+          const requestsData = await getAllAuditAssignmentRequests();
+          const requestsList = unwrap<any>(requestsData);
+          const requestsArray = Array.isArray(requestsList) ? requestsList : [];
+          setAssignmentRequests(requestsArray);
+        } catch (reqErr: any) {
+          console.error('[AuditAssignment] Failed to load assignment requests:', reqErr);
+          setAssignmentRequests([]);
+        }
 
         // Fetch departments for selected audit
         try {
@@ -456,31 +493,35 @@ export default function AuditAssignment() {
       return;
     }
     
-    // Validate dates if provided
+    // Validate required fields
+    if (!plannedStartDate || !plannedEndDate) {
+      toast.error('Planned start date and end date are required');
+      return;
+    }
+    
+    if (!estimatedDuration || estimatedDuration <= 0) {
+      toast.error('Estimated duration is required and must be greater than 0');
+      return;
+    }
+    
+    // Validate dates
     const selectedAudit = audits.find(a => a.auditId === selectedAuditId);
-    if (plannedStartDate || plannedEndDate) {
-      if (!plannedStartDate || !plannedEndDate) {
-        toast.error('Both planned start date and end date are required');
+    const startDate = new Date(plannedStartDate);
+    const endDate = new Date(plannedEndDate);
+    
+    if (endDate < startDate) {
+      toast.error('Planned end date must be after start date');
+      return;
+    }
+    
+    // Validate dates are within audit plan timeframe
+    if (selectedAudit) {
+      const auditStart = new Date(selectedAudit.startDate);
+      const auditEnd = new Date(selectedAudit.endDate);
+      
+      if (startDate < auditStart || endDate > auditEnd) {
+        toast.error(`Planned dates must be within audit timeframe: ${auditStart.toLocaleDateString()} - ${auditEnd.toLocaleDateString()}`);
         return;
-      }
-      
-      const startDate = new Date(plannedStartDate);
-      const endDate = new Date(plannedEndDate);
-      
-      if (endDate < startDate) {
-        toast.error('Planned end date must be after start date');
-        return;
-      }
-      
-      // Validate dates are within audit plan timeframe
-      if (selectedAudit) {
-        const auditStart = new Date(selectedAudit.startDate);
-        const auditEnd = new Date(selectedAudit.endDate);
-        
-        if (startDate < auditStart || endDate > auditEnd) {
-          toast.error(`Planned dates must be within audit timeframe: ${auditStart.toLocaleDateString()} - ${auditEnd.toLocaleDateString()}`);
-          return;
-        }
       }
     }
     
@@ -648,29 +689,39 @@ export default function AuditAssignment() {
         setQrGrantsForDetail(grants || []);
         
         // Fetch auditor names for the grants and assignments (combine to avoid missing names)
+        // Filter out assignments with "Rejected" status
+        const activeAssignments = deptAssignments.filter(a => {
+          const status = (a.status || '').toLowerCase().trim();
+          return status !== 'rejected';
+        });
+        
         const uniqueAuditorIds = new Set<string>();
         (grants || []).forEach(g => g.auditorId && uniqueAuditorIds.add(g.auditorId));
-        deptAssignments.forEach(a => a.auditorId && uniqueAuditorIds.add(a.auditorId));
+        activeAssignments.forEach(a => a.auditorId && uniqueAuditorIds.add(a.auditorId));
 
         if (uniqueAuditorIds.size > 0) {
         Promise.all(
             Array.from(uniqueAuditorIds).map(async (auditorId) => {
             try {
               const user = await getUserById(auditorId);
-              return { auditorId, name: user?.fullName || 'Unknown' };
+              return { auditorId, name: user?.fullName || 'Unknown', email: user?.email || 'N/A' };
             } catch {
-              return { auditorId, name: 'Unknown' };
+              return { auditorId, name: 'Unknown', email: 'N/A' };
             }
           })
         ).then((results) => {
           const namesMap: Record<string, string> = {};
-          results.forEach(({ auditorId, name }) => {
+          const emailsMap: Record<string, string> = {};
+          results.forEach(({ auditorId, name, email }) => {
             namesMap[auditorId] = name;
+            emailsMap[auditorId] = email;
           });
           setAuditorNamesForDetail(namesMap);
+          setAuditorEmailsForDetail(emailsMap);
         });
         } else {
           setAuditorNamesForDetail({});
+          setAuditorEmailsForDetail({});
         }
       } catch (err: any) {
         setQrGrantsForDetail([]);
@@ -692,6 +743,8 @@ export default function AuditAssignment() {
     setQrGrantsForDetail([]);
     setExpandedAuditorIds(new Set());
     setAuditorNamesForDetail({});
+    setAuditorEmailsForDetail({});
+    setExpandedUserIds(new Set());
   };
 
   const toggleAuditorExpand = (auditorId: string) => {
@@ -941,19 +994,40 @@ export default function AuditAssignment() {
                           const deptAssignments = assignments.filter(
                             (a) => a.deptId === dept.deptId && a.auditId === selectedAuditId
                           );
-                          const isAssigned = deptAssignments.length > 0 || isDepartmentAssigned(dept.deptId);
-                          // Check if any assignment has Rejected status
+                          
+                          // Filter out rejected assignments
+                          const activeAssignments = deptAssignments.filter(a => {
+                            const status = (a.status || '').toLowerCase().trim();
+                            return status !== 'rejected';
+                          });
+                          
+                          const isAssigned = activeAssignments.length > 0 || isDepartmentAssigned(dept.deptId);
+                          
+                          // Check if any assignment has Rejected status AND no active assignments exist
                           const hasRejectedAssignment = deptAssignments.some(
                             (a) => a.status?.toLowerCase() === 'rejected'
-                          );
-                          // Deduplicate by auditorId
+                          ) && activeAssignments.length === 0;
+                          
+                          // Only show auditor names from active (non-rejected) assignments
                           const auditorNames = Array.from(
                             new Map(
-                              deptAssignments
+                              activeAssignments
                                 .filter((a) => a.auditorId)
                                 .map((a) => [String(a.auditorId), a.auditorName || 'N/A'])
                             ).values()
                           );
+
+                          // Check if there's a pending request matching any active assignment
+                          // Match by: auditAssignmentId, deptId, auditId
+                          const matchedRequest = activeAssignments.length > 0 ? assignmentRequests.find(req => {
+                            const matchesAssignment = activeAssignments.some(assignment => 
+                              req.auditAssignmentId === assignment.assignmentId
+                            );
+                            return matchesAssignment &&
+                              req.deptId === dept.deptId &&
+                              req.auditId === selectedAuditId &&
+                              req.status?.toLowerCase() === 'pending';
+                          }) : null;
 
                           // Determine if this department has sensitive areas
                           const isSensitiveDept = !!(
@@ -1000,7 +1074,21 @@ export default function AuditAssignment() {
                                   )}
                                 </div>
                                 <div className="ml-4 flex items-center gap-2">
-                                  {hasRejectedAssignment ? (
+                                  {matchedRequest ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedRequest(matchedRequest);
+                                        setShowRequestModal(true);
+                                      }}
+                                      className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center gap-2"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                      </svg>
+                                      Request
+                                    </button>
+                                  ) : hasRejectedAssignment ? (
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -1340,7 +1428,15 @@ export default function AuditAssignment() {
                 <button
                   type="button"
                   onClick={handleAssignClick}
-                  disabled={selectedAuditorIds.length === 0 || loadingAuditors || submitting}
+                  disabled={
+                    selectedAuditorIds.length === 0 || 
+                    loadingAuditors || 
+                    submitting ||
+                    !plannedStartDate ||
+                    !plannedEndDate ||
+                    !estimatedDuration ||
+                    estimatedDuration <= 0
+                  }
                   className="px-5 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-medium shadow-sm"
                 >
                   {submitting ? (
@@ -1514,22 +1610,51 @@ export default function AuditAssignment() {
 
                 {/* Auditor Information - Show all assigned auditors */}
                 {(() => {
-                  // Get unique auditor IDs from QR grants (most accurate source)
+                  // Get all assignments for this department to filter out rejected ones
+                  const deptAssignments = assignments.filter(
+                    (a) => a.deptId === (selectedDepartmentForDetail?.deptId || selectedAssignment?.deptId) && 
+                           a.auditId === selectedAuditId
+                  );
+                  
+                  // Filter out assignments with "Rejected" status
+                  const activeAssignments = deptAssignments.filter(a => {
+                    const status = (a.status || '').toLowerCase().trim();
+                    return status !== 'rejected';
+                  });
+                  
+                  // Get unique auditor IDs from active assignments and QR grants
                   const assignedAuditorIds = new Set<string>();
-                  qrGrantsForDetail.forEach(grant => {
-                    if (grant.auditorId) {
-                      assignedAuditorIds.add(grant.auditorId);
+                  
+                  // Add auditor IDs from active assignments
+                  activeAssignments.forEach(a => {
+                    if (a.auditorId) {
+                      assignedAuditorIds.add(a.auditorId);
                     }
                   });
                   
-                  // Fallback: if no QR grants yet, use selectedAssignment
+                  // Also add from QR grants (but only if the assignment is not rejected)
+                  qrGrantsForDetail.forEach(grant => {
+                    if (grant.auditorId) {
+                      // Check if this grant's auditor has an active assignment
+                      const hasActiveAssignment = activeAssignments.some(a => a.auditorId === grant.auditorId);
+                      if (hasActiveAssignment) {
+                        assignedAuditorIds.add(grant.auditorId);
+                      }
+                    }
+                  });
+                  
+                  // Fallback: if no active assignments or QR grants, use selectedAssignment (only if not rejected)
                   if (assignedAuditorIds.size === 0 && selectedAssignment?.auditorId) {
-                    assignedAuditorIds.add(selectedAssignment.auditorId);
+                    const selectedStatus = (selectedAssignment.status || '').toLowerCase().trim();
+                    if (selectedStatus !== 'rejected') {
+                      assignedAuditorIds.add(selectedAssignment.auditorId);
+                    }
                   }
 
                   const assignedAuditors = Array.from(assignedAuditorIds).map(auditorId => ({
                     auditorId,
-                    name: auditorNamesForDetail[auditorId] || 'Loading...'
+                    name: auditorNamesForDetail[auditorId] || 'Loading...',
+                    email: auditorEmailsForDetail[auditorId] || 'N/A'
                   }));
 
                   if (assignedAuditors.length === 0 && !selectedAssignment) {
@@ -1550,26 +1675,105 @@ export default function AuditAssignment() {
                       </div>
                       {assignedAuditors.length > 0 ? (
                         <div className="space-y-3">
-                          {assignedAuditors.map((auditor) => (
-                            <div key={auditor.auditorId} className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg px-4 py-3 border border-gray-200 hover:shadow-md transition-shadow">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
-                                  <span className="text-sm font-bold text-white">
-                                    {auditor.name.charAt(0).toUpperCase()}
-                                  </span>
-                                </div>
-                                <div className="flex-1">
-                                  <p className="text-sm font-semibold text-gray-900">{auditor.name}</p>
+                          {assignedAuditors.map((auditor) => {
+                            const isExpanded = expandedUserIds.has(auditor.auditorId);
+                            return (
+                              <div 
+                                key={auditor.auditorId} 
+                                className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg px-4 py-3 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer"
+                                onClick={() => {
+                                  setExpandedUserIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(auditor.auditorId)) {
+                                      next.delete(auditor.auditorId);
+                                    } else {
+                                      next.add(auditor.auditorId);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                                    <span className="text-sm font-bold text-white">
+                                      {auditor.name.charAt(0).toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-semibold text-gray-900">{auditor.name}</p>
+                                    {isExpanded && (
+                                      <p className="text-xs text-gray-600 mt-0.5">{auditor.email}</p>
+                                    )}
+                                  </div>
+                                  <svg 
+                                    className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                                    fill="none" 
+                                    stroke="currentColor" 
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : selectedAssignment?.auditorName ? (
-                        <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg px-4 py-3 border border-gray-200">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {selectedAssignment.auditorName}
-                          </p>
+                        <div 
+                          className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg px-4 py-3 border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+                          onClick={async () => {
+                            if (selectedAssignment.auditorId) {
+                              const isExpanded = expandedUserIds.has(selectedAssignment.auditorId);
+                              setExpandedUserIds((prev) => {
+                                const next = new Set(prev);
+                                if (isExpanded) {
+                                  next.delete(selectedAssignment.auditorId!);
+                                } else {
+                                  next.add(selectedAssignment.auditorId!);
+                                  // Fetch email if not already loaded
+                                  if (!auditorEmailsForDetail[selectedAssignment.auditorId!]) {
+                                    getUserById(selectedAssignment.auditorId!)
+                                      .then((user) => {
+                                        setAuditorEmailsForDetail((prev) => ({
+                                          ...prev,
+                                          [selectedAssignment.auditorId!]: user?.email || 'N/A'
+                                        }));
+                                      })
+                                      .catch(() => {
+                                        setAuditorEmailsForDetail((prev) => ({
+                                          ...prev,
+                                          [selectedAssignment.auditorId!]: 'N/A'
+                                        }));
+                                      });
+                                  }
+                                }
+                                return next;
+                              });
+                            }
+                          }}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-gray-900">
+                                {selectedAssignment.auditorName}
+                              </p>
+                              {selectedAssignment.auditorId && expandedUserIds.has(selectedAssignment.auditorId) && (
+                                <p className="text-xs text-gray-600 mt-0.5">
+                                  {auditorEmailsForDetail[selectedAssignment.auditorId] || 'Loading...'}
+                                </p>
+                              )}
+                            </div>
+                            {selectedAssignment.auditorId && (
+                              <svg 
+                                className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${expandedUserIds.has(selectedAssignment.auditorId) ? 'rotate-180' : ''}`}
+                                fill="none" 
+                                stroke="currentColor" 
+                                viewBox="0 0 24 24"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            )}
+                          </div>
                         </div>
                       ) : null}
                     </div>
@@ -2101,6 +2305,197 @@ export default function AuditAssignment() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Request Modal */}
+      {showRequestModal && selectedRequest && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
+            onClick={() => !processingRequest && setShowRequestModal(false)}
+          />
+          
+          {/* Modal */}
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header with gradient */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-white bg-opacity-20 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-white">
+                    Assignment Request
+                  </h3>
+                </div>
+                <button
+                  onClick={() => !processingRequest && setShowRequestModal(false)}
+                  disabled={processingRequest}
+                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+              <div className="space-y-6">
+                {/* Request Information */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center shadow-sm">
+                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <h4 className="text-lg font-bold text-gray-900">Request Information</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2.5">
+                        Requested By
+                      </label>
+                      <div className="flex items-center gap-3 bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3.5 rounded-xl border border-gray-200 shadow-sm">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                          <span className="text-sm font-bold text-white">
+                            {(selectedRequest.createdByName || 'U').charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <p className="text-base text-gray-900 font-semibold">
+                          {selectedRequest.createdByName || 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                    {selectedRequest.actualAuditDate && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2.5">
+                          Actual Audit Date
+                        </label>
+                        <div className="flex items-center gap-3 bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3.5 rounded-xl border border-gray-200 shadow-sm">
+                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <p className="text-base text-gray-900 font-semibold">
+                            {new Date(selectedRequest.actualAuditDate).toLocaleDateString('en-GB', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric'
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Reason Request */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center shadow-sm">
+                      <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </div>
+                    <h4 className="text-lg font-bold text-gray-900">
+                      Reason Request
+                    </h4>
+                  </div>
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-5 border-2 border-gray-200 shadow-inner">
+                    <p className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed font-medium">
+                      {selectedRequest.reasonRequest || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-6 pb-6 px-8 border-t-2 border-gray-200 bg-white">
+              <button
+                type="button"
+                onClick={() => !processingRequest && setShowRequestModal(false)}
+                disabled={processingRequest}
+                className="px-6 py-2.5 border-2 border-gray-300 rounded-xl text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!selectedRequest) return;
+                  setProcessingRequest(true);
+                  try {
+                    await rejectAuditAssignmentRequest(selectedRequest.requestId);
+                    toast.success('Request rejected successfully');
+                    setShowRequestModal(false);
+                    setSelectedRequest(null);
+                    // Reload requests
+                    const requestsData = await getAllAuditAssignmentRequests();
+                    const requestsList = unwrap<any>(requestsData);
+                    const requestsArray = Array.isArray(requestsList) ? requestsList : [];
+                    setAssignmentRequests(requestsArray);
+                    // Reload assignments
+                    const assignmentsData = await getAuditAssignments().catch(() => []);
+                    setAssignments(assignmentsData || []);
+                  } catch (err: any) {
+                    console.error('Failed to reject request:', err);
+                    toast.error(err?.response?.data?.message || err?.message || 'Failed to reject request');
+                  } finally {
+                    setProcessingRequest(false);
+                  }
+                }}
+                disabled={processingRequest}
+                className="px-6 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-lg hover:shadow-xl font-bold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Reject
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!selectedRequest) return;
+                  setProcessingRequest(true);
+                  try {
+                    await approveAuditAssignmentRequest(selectedRequest.requestId);
+                    toast.success('Request approved successfully');
+                    setShowRequestModal(false);
+                    setSelectedRequest(null);
+                    // Reload requests
+                    const requestsData = await getAllAuditAssignmentRequests();
+                    const requestsList = unwrap<any>(requestsData);
+                    const requestsArray = Array.isArray(requestsList) ? requestsList : [];
+                    setAssignmentRequests(requestsArray);
+                    // Reload assignments
+                    const assignmentsData = await getAuditAssignments().catch(() => []);
+                    setAssignments(assignmentsData || []);
+                  } catch (err: any) {
+                    console.error('Failed to approve request:', err);
+                    toast.error(err?.response?.data?.message || err?.message || 'Failed to approve request');
+                  } finally {
+                    setProcessingRequest(false);
+                  }
+                }}
+                disabled={processingRequest}
+                className="px-6 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-lg hover:shadow-xl font-bold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                </svg>
+                Approve
+              </button>
             </div>
           </div>
         </div>
