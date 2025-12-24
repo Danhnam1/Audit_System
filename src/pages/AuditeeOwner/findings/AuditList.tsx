@@ -96,26 +96,16 @@ const AuditeeOwnerAuditList = () => {
           return;
         }
 
-        console.log('🔍 Fetching findings for department:', deptId);
         const findings = await getFindingsByDepartment(deptId);
-        console.log('📦 Findings from API:', findings);
-        console.log('📦 Total findings count:', findings?.length || 0);
         
         // Log each finding's status
         if (findings && findings.length > 0) {
           findings.forEach((f: Finding, index: number) => {
-            console.log(`Finding ${index + 1}:`, {
-              findingId: f.findingId,
-              title: f.title,
-              status: f.status,
-              auditId: f.auditId,
-              deptId: f.deptId
-            });
+          
           });
         }
 
         if (!findings || findings.length === 0) {
-          console.log('⚠️ No findings found');
           setAudits([]);
           setLoading(false);
           return;
@@ -126,12 +116,10 @@ const AuditeeOwnerAuditList = () => {
           const statusLower = (f.status || '').toLowerCase().trim();
           const isArchived = statusLower === 'archived';
           if (isArchived) {
-            console.log(`🚫 Filtering out archived finding: ${f.title} (status: "${f.status}")`);
           }
           return !isArchived;
         });
         
-        console.log('✅ Active findings after filtering archived:', activeFindings.length);
 
         // Group findings by auditId
         const auditMap = new Map<string, Finding[]>();
@@ -139,7 +127,6 @@ const AuditeeOwnerAuditList = () => {
           // Try to get auditId from multiple possible locations
           const auditId = finding.auditId || (finding as any).audit?.auditId;
           if (!auditId) {
-            console.log('⚠️ Finding without auditId:', finding);
           } else {
             if (!auditMap.has(auditId)) {
               auditMap.set(auditId, []);
@@ -148,29 +135,19 @@ const AuditeeOwnerAuditList = () => {
           }
         });
 
-        console.log('📊 Grouped audits:', Array.from(auditMap.keys()));
-        console.log('📊 Total unique audits:', auditMap.size);
-        auditMap.forEach((findings, auditId) => {
-          console.log(`  - Audit ${auditId}: ${findings.length} findings`);
-        });
+    
 
         // Load audit info and create audit cards
         const auditPromises = Array.from(auditMap.entries()).map(async ([auditId, auditFindings]) => {
           try {
-            console.log(`📥 Fetching audit info for ${auditId}...`);
             
             // Get initial audit data from finding (as fallback)
             const findingWithAudit = auditFindings.find(f => (f as any).audit);
             const nestedAuditData = findingWithAudit ? (findingWithAudit as any).audit : null;
             
             const auditData = await getAuditPlanById(auditId);
-            console.log(`📋 Raw audit data for ${auditId}:`, auditData);
-            console.log(`🔍 Available fields in audit data:`, Object.keys(auditData));
-            console.log(`📊 Full audit data structure:`, JSON.stringify(auditData, null, 2));
             
-            if (nestedAuditData) {
-              console.log(`📋 Nested audit data from finding:`, nestedAuditData);
-            }
+        
 
             // Try multiple possible field names for title (with nested audit data as fallback)
             let auditTitle = auditData.title ||
@@ -188,10 +165,8 @@ const AuditeeOwnerAuditList = () => {
               '';
 
             if (!auditTitle) {
-              console.warn(`⚠️ No title found for audit ${auditId}. Available fields:`, Object.keys(auditData));
               auditTitle = `Audit ${auditId.substring(0, 8)}...`;
             } else {
-              console.log(`✅ Found title for audit ${auditId}: "${auditTitle}"`);
             }
 
             const auditType = auditData.type ||
@@ -259,10 +234,9 @@ const AuditeeOwnerAuditList = () => {
               isPublished: auditData.isPublished,
               rawData: auditData,
             };
-            console.log(`✅ Created card for audit ${auditId}:`, auditCard);
             return auditCard;
           } catch (err) {
-            console.error(`❌ Error loading audit ${auditId}:`, err);
+            console.error(` Error loading audit ${auditId}:`, err);
             // Fallback: create card with basic info
             return {
               auditId: auditId,
@@ -288,23 +262,17 @@ const AuditeeOwnerAuditList = () => {
                                statusLower === 'inactive';
 
           if (shouldFilter) {
-            console.log(`🚫 Filtering out audit: ${audit.auditTitle} (status: "${status}")`);
           } else {
-            console.log(`✅ Keeping audit: ${audit.auditTitle} (status: "${status}")`);
           }
 
           return !shouldFilter;
         });
 
-        console.log('🎯 Final audits to display (excluding archived):', {
-          total: validAudits.length,
-          nonArchived: nonArchivedAudits.length,
-          audits: nonArchivedAudits
-        });
+      
 
         setAudits(nonArchivedAudits);
       } catch (err: any) {
-        console.error('❌ Error loading audits:', err);
+        console.error(' Error loading audits:', err);
         setError(err?.message || 'Failed to load audits');
       } finally {
         setLoading(false);

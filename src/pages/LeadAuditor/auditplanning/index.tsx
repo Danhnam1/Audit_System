@@ -321,7 +321,6 @@ const LeadAuditorAuditPlanning = () => {
         const merged = await getPlansWithDepartments();
         setExistingPlans(merged);
       } catch (error) {
-        console.error('❌ Failed to load audit plans', error);
         setExistingPlans([]);
       } finally {
         setLoadingPlans(false);
@@ -458,7 +457,6 @@ const LeadAuditorAuditPlanning = () => {
           templateIds: formState.selectedTemplateIds,
         });
       } catch (templateMapErr) {
-        console.error('❌ Failed to sync checklist templates', templateMapErr);
         toast.error('Failed to save checklist template mappings. Please retry from Step 3.');
       }
 
@@ -483,7 +481,6 @@ const LeadAuditorAuditPlanning = () => {
           }
           }
         } catch (scopeErr) {
-          console.error('❌ Attach departments to audit failed', scopeErr);
       }
 
       // Attach criteria
@@ -493,7 +490,6 @@ const LeadAuditorAuditPlanning = () => {
             formState.selectedCriteriaIds.map((cid) => addCriterionToAudit(String(newAuditId), String(cid)))
           );
         } catch (critErr) {
-          console.error('❌ Attach criteria to audit failed', critErr);
         }
       }
 
@@ -526,7 +522,6 @@ const LeadAuditorAuditPlanning = () => {
           await Promise.allSettled(calls);
         }
       } catch (teamErr) {
-        console.error('❌ Attach team failed', teamErr);
       }
 
       // Post schedules
@@ -552,7 +547,6 @@ const LeadAuditorAuditPlanning = () => {
           await Promise.allSettled(schedulePromises);
         }
       } catch (scheduleErr) {
-        console.error('❌ Failed to post schedules', scheduleErr);
       }
 
       // Refresh plans list
@@ -560,7 +554,6 @@ const LeadAuditorAuditPlanning = () => {
         const merged = await getPlansWithDepartments();
         setExistingPlans(merged);
       } catch (refreshErr) {
-        console.error('❌ Failed to refresh plans list', refreshErr);
       }
 
       // Reset form (closes form after successful creation)

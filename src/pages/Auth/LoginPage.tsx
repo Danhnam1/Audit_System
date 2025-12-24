@@ -22,11 +22,7 @@ export default function LoginPage() {
 
     try {
       const response = await authService.login({ email, password })
-      
-      console.log('=== LOGIN RESPONSE ===')
-      console.log('Full response:', response)
-      console.log('Response.data:', response.data)
-      console.log('=====================')
+
       
       const userData = (response as any).token 
         ? response
@@ -41,37 +37,28 @@ export default function LoginPage() {
         setRole(userRole)
         setRememberMeStore(rememberMe)
 
-        console.log('User data:', userData)
-        console.log('Token:', token)
-        console.log('Role:', userRole)
+     
 
         const roleName = userRole?.toLowerCase().replace(/\s+/g, '')
         
-        console.log('Navigating with role:', roleName)
         
         switch (roleName) {
           case 'admin':
-            console.log('Navigating to: /admin/departments')
             navigate('/admin/departments')
             break
           case 'leadauditor':
-            console.log('Navigating to: /sqahead/dashboard')
             navigate('/sqahead/dashboard')
             break
           case 'auditor':
-            console.log('Navigating to: /auditor/planning')
             navigate('/auditor/planning')
             break
           case 'auditeeowner':
-            console.log('Navigating to: /departmenthead/dashboard')
             navigate('/departmenthead/dashboard')
             break
           case 'capaowner':
-            console.log('Navigating to: /capa-owner/tasks')
             navigate('/capa-owner/tasks')
             break
           case 'director':
-            console.log('Navigating to: /director/review-plans')
             navigate('/director/review-plans')
             break
           default:

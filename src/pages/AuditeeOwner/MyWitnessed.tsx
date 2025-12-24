@@ -31,7 +31,6 @@ const MyWitnessed = () => {
 
         // Fetch witnessed findings from dedicated API endpoint
         const witnessedFindings = await getMyWitnessedFindings();
-        console.log('Witnessed Findings:', witnessedFindings);
 
         // API already returns audit object, just extract the needed fields
         const findingsWithAudit = witnessedFindings.map((finding) => ({

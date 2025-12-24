@@ -27,27 +27,22 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
   // Helper function to register handler with current callback
   const registerHandler = useCallback(() => {
     const connected = signalRService.isConnected();
-    console.log('[SignalRContext] registerHandler invoked', { connected, hasCallback: !!notificationCallbackRef.current, alreadyRegistered: handlerRegisteredRef.current });
     
     if (!connected) {
-      console.log('[SignalRContext] Connection not ready, skipping handler registration');
       handlerRegisteredRef.current = false;
       return;
     }
 
     // Only register if not already registered
     if (handlerRegisteredRef.current) {
-      console.log('[SignalRContext] Handler already registered, skipping');
       return;
     }
 
     // Create handler that always uses the latest callback ref
     const handler = (data: NotificationData) => {
-      console.log('[SignalRContext] Incoming notification payload', data);
       setLatestNotification(data);
       // Always check the latest callback ref
       if (notificationCallbackRef.current) {
-        console.log('[SignalRContext] Dispatching notification to registered callback');
         try {
           notificationCallbackRef.current(data);
         } catch (error) {
@@ -60,7 +55,6 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
 
     signalRService.onReceiveNotification(handler);
     handlerRegisteredRef.current = true;
-    console.log('[SignalRContext] SignalR handler registered');
   }, []);
 
   // Initialize SignalR connection when user is authenticated
@@ -84,7 +78,6 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
 
         // Register notification handler immediately after connection
         registerHandler();
-        console.log('[SignalRContext] Connection established; handler registration attempted');
       } catch (error) {
         console.error('[SignalRContext] Failed to connect:', error);
         setIsConnected(false);
@@ -124,7 +117,6 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
   }, [isConnected, registerHandler]);
 
   const onNotification = useCallback((callback: (data: NotificationData) => void) => {
-    console.log('[SignalRContext] Registering notification callback');
     notificationCallbackRef.current = callback;
     
     // Re-register handler if connection is ready (this will be a no-op if already registered)
@@ -135,7 +127,6 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
     
     // If there's a pending notification (arrived before callback was registered), trigger it now
     if (latestNotification) {
-      console.log('[SignalRContext] Triggering callback for pending notification');
       try {
         callback(latestNotification);
       } catch (error) {
@@ -145,7 +136,6 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
   }, [registerHandler, latestNotification]);
 
   const offNotification = useCallback(() => {
-    console.log('[SignalRContext] Unregistering notification callback');
     notificationCallbackRef.current = null;
     handlerRegisteredRef.current = false;
   }, []);

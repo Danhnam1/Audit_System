@@ -30,30 +30,22 @@ export const getCriteriaForAuditByDepartment = async (auditId: string, deptId?: 
   if (deptId !== undefined && deptId !== null) {
     url += `?deptId=${deptId}`;
   }
-  console.log(`[getCriteriaForAuditByDepartment] Calling API: ${url}`);
   const res: any = await apiClient.get(url);
-  console.log(`[getCriteriaForAuditByDepartment] Raw response:`, res);
   
   // Unwrap first level to get $values array
   const topLevelValues = unwrap(res);
-  console.log(`[getCriteriaForAuditByDepartment] Top level unwrapped:`, topLevelValues);
   
-  if (!Array.isArray(topLevelValues) || topLevelValues.length === 0) {
-    console.log(`[getCriteriaForAuditByDepartment] No data found`);
-    return [];
-  }
+ 
   
   // If deptId is provided, find the matching department
   if (deptId !== undefined && deptId !== null) {
     const deptMapping = topLevelValues.find((item: any) => Number(item.deptId) === Number(deptId));
     if (!deptMapping) {
-      console.log(`[getCriteriaForAuditByDepartment] No mapping found for deptId: ${deptId}`);
       return [];
     }
     
     // Extract criteriaIds from the matching department
     const criteriaIds = unwrap(deptMapping.criteriaIds);
-    console.log(`[getCriteriaForAuditByDepartment] Criteria IDs for dept ${deptId}:`, criteriaIds);
     
     // Return array of criteria objects with criteriaId field
     return criteriaIds.map((id: string) => ({ criteriaId: id }));
@@ -67,7 +59,6 @@ export const getCriteriaForAuditByDepartment = async (auditId: string, deptId?: 
     allCriteriaIds.push(...criteriaIds);
   });
   
-  console.log(`[getCriteriaForAuditByDepartment] All criteria IDs:`, allCriteriaIds);
   return allCriteriaIds.map((id: string) => ({ criteriaId: id }));
 }
 
@@ -88,9 +79,7 @@ export interface BulkAuditCriteriaMapRequest {
 }
 
 export const bulkCreateAuditCriteriaMappings = async (request: BulkAuditCriteriaMapRequest) => {
-  console.log('[bulkCreateAuditCriteriaMappings] Request:', request);
   const res = await apiClient.post('/AuditCriteriaMap/bulk', request);
-  console.log('[bulkCreateAuditCriteriaMappings] Response:', res);
   return res;
 }
 

@@ -151,21 +151,11 @@ const AuditorLeadReports = () => {
         
         Object.entries(groupedByAuditId).forEach(([auditId, requests]) => {
           if (requests.length > 1) {
-            console.log(`[LeadReports] Found ${requests.length} ReportRequests for audit ${auditId}:`, 
-              requests.map(r => ({
-                reportRequestId: r.reportRequestId,
-                status: r.status,
-                requestedAt: r.requestedAt,
-                completedAt: r.completedAt
-              }))
-            );
+          
           }
         });
       }
       
-      // For each auditId, get the LATEST ReportRequest
-      // When resubmit: new ReportRequest is created with new requestedAt
-      // When reject/approve: existing ReportRequest gets completedAt updated
       // So we compare: max(completedAt, requestedAt) for each ReportRequest to find the most recent action
       const reportRequestMap = new Map<string, ViewReportRequest>();
       rawReportRequests.forEach((rr) => {
@@ -195,10 +185,7 @@ const AuditorLeadReports = () => {
             reportRequestMap.set(key, rr);
             // Debug log in development
             if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-              console.log(`[LeadReports] Selected newer ReportRequest for audit ${auditId}:`, {
-                existing: { status: existing.status, requestedAt: existing.requestedAt, completedAt: existing.completedAt, latest: new Date(existingLatest).toISOString() },
-                current: { status: rr.status, requestedAt: rr.requestedAt, completedAt: rr.completedAt, latest: new Date(currentLatest).toISOString() }
-              });
+            
             }
           } else if (currentLatest === existingLatest) {
             // If timestamps are equal, prefer the one with status "Pending" (newer submission)
@@ -207,7 +194,6 @@ const AuditorLeadReports = () => {
             if (currentStatus === 'pending' && existingStatus !== 'pending') {
               reportRequestMap.set(key, rr);
               if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-                console.log(`[LeadReports] Selected ReportRequest with Pending status for audit ${auditId}`);
               }
             }
           }
@@ -259,16 +245,10 @@ const AuditorLeadReports = () => {
           });
         }
         
-        // Filter: Chỉ hiển thị các audit có status là "InProgress" (chỉ để hiển thị, không ảnh hưởng logic submit)
-        // Khi submit thì sẽ sử dụng status của ReportRequest
-        // Nếu audit không tồn tại hoặc status không phải InProgress → không hiển thị
         if (!audit) {
           // Audit không tồn tại trong auditMap → không hiển thị
           if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-            console.log(`[LeadReports] Skipping report - audit not found:`, {
-              auditId,
-              reportRequestId: rr.reportRequestId
-            });
+            
           }
           return; // Skip this report
         }
@@ -281,27 +261,10 @@ const AuditorLeadReports = () => {
         // Loại bỏ tất cả các status khác: Approved, Pending, Draft, Rejected, Closed, etc.
         const isInProgress = normalizedAuditStatus === 'inprogress';
         
-        // Debug log để kiểm tra
-        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-          console.log(`[LeadReports] Checking audit status:`, {
-            auditId,
-            auditStatus: auditStatus,
-            normalizedStatus: normalizedAuditStatus,
-            isInProgress: isInProgress,
-            reportRequestId: rr.reportRequestId
-          });
-        }
+      
         
         if (!isInProgress) {
-          // Skip this report if audit status is not InProgress
-          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-            console.log(`[LeadReports] ❌ Skipping report - audit status is not InProgress:`, {
-              auditId,
-              auditStatus: auditStatus,
-              normalizedStatus: normalizedAuditStatus,
-              reportRequestId: rr.reportRequestId
-            });
-          }
+       
           return; // Skip this report
         }
         
@@ -312,44 +275,16 @@ const AuditorLeadReports = () => {
         const isApproved = normalizedReportStatus === 'approved';
         
         if (isApproved) {
-          // Skip report đã được approve (hiển thị là "Closed")
-          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-            console.log(`[LeadReports] ❌ Skipping report - already approved (Closed):`, {
-              auditId,
-              auditStatus: auditStatus,
-              reportRequestStatus: reportRequestStatus,
-              reportRequestId: rr.reportRequestId
-            });
-          }
-          return; // Skip this report
+          
+          return; 
         }
         
-        // Log khi report được hiển thị
-        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-          console.log(`[LeadReports] ✅ Report will be displayed - audit status is InProgress and not approved:`, {
-            auditId,
-            auditStatus: auditStatus,
-            reportRequestStatus: reportRequestStatus,
-            reportRequestId: rr.reportRequestId
-          });
-        }
+       
         
-        // Use status directly from ReportRequest (already selected as latest above)
         // Backend returns "Returned" (capital R) when reject, normalize to lowercase for comparison
         const finalStatus = rr.status || 'Pending';
         
-        // Debug: Log status for each ReportRequest
-        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-          console.log(`[LeadReports] ReportRequest status:`, {
-            auditId,
-            reportRequestId: rr.reportRequestId,
-            status: rr.status,
-            finalStatus: finalStatus,
-            requestedAt: rr.requestedAt,
-            completedAt: rr.completedAt,
-            hasAudit: !!audit
-          });
-        }
+       
         
         // Create report object from ReportRequest
         const reportObj: any = {
@@ -375,19 +310,7 @@ const AuditorLeadReports = () => {
         combinedReports.push(reportObj);
       });
       
-      // Debug: Log combined reports before filtering
-      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.log(`[LeadReports] Combined reports before filtering:`, {
-          totalReportRequests: reportRequests.length,
-          totalCombinedReports: combinedReports.length,
-          reportsByStatus: combinedReports.reduce((acc, r) => {
-            const status = String(r.status || '').toLowerCase();
-            acc[status] = (acc[status] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>),
-          reportTitles: combinedReports.map(r => ({ title: r.title, status: r.status, auditId: r.auditId }))
-        });
-      }
+     
       
       // Filter chỉ lấy status: Pending, Approved, Returned
       const allowedStatuses = ['pending', 'approved', 'returned'];
@@ -439,19 +362,7 @@ const AuditorLeadReports = () => {
         return dateB - dateA;
       });
       
-      // Debug: Log filtered and sorted reports
-      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.log(`[LeadReports] Filtered and sorted reports:`, {
-          totalFiltered: filtered.length,
-          totalSorted: sorted.length,
-          reportsByStatus: sorted.reduce((acc, r) => {
-            const status = String(r.status || '').toLowerCase();
-            acc[status] = (acc[status] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>),
-          reportTitles: sorted.map(r => ({ title: r.title, status: r.status, auditId: r.auditId }))
-        });
-      }
+   
       
       setAudits(sorted);
       
@@ -466,10 +377,8 @@ const AuditorLeadReports = () => {
             
             // Debug log (only in development)
             if (revisionMap[auditId].length > 0 && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
-              console.log(`[LeadReports] Loaded ${revisionMap[auditId].length} revision requests for audit ${auditId}:`, revisionMap[auditId]);
             }
           } catch (err) {
-            console.error(`Failed to load revision requests for audit ${auditId}`, err);
             revisionMap[auditId] = [];
           }
         }
@@ -498,7 +407,6 @@ const AuditorLeadReports = () => {
     
     // Listen for report submission events to reload immediately
     const handleReportSubmitted = () => {
-      console.log('[LeadReports] Report submitted event received, reloading...');
       reload();
     };
     window.addEventListener('reportSubmitted', handleReportSubmitted);
@@ -655,13 +563,7 @@ const AuditorLeadReports = () => {
         return reqStatus.toLowerCase() === 'approved';
       });
       
-      // Debug log (only in development)
-      if (auditRevisionRequests.length > 0 && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
-        console.log(`[LeadReports] Audit ${auditId} revision requests:`, auditRevisionRequests.map(r => ({ id: r.requestId, status: r.status })));
-      }
-      if (hasApprovedExtension && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
-        console.log(`[LeadReports] ✅ Audit ${auditId} has approved extension request - enabling Edit Schedule & Team button`);
-      }
+   
       
       // Only allow Edit Schedule & Team button when extension request has been approved by Director
       const isDirectorApproved = hasApprovedExtension;
@@ -843,18 +745,7 @@ const AuditorLeadReports = () => {
                         || audit.endDate 
                         || audit.EndDate;
         
-        console.log('🔍 Loaded period dates from full detail:', {
-          auditId,
-          auditKeys: Object.keys(audit),
-          hasAuditPlan: !!audit.auditPlan,
-          auditPlanKeys: audit.auditPlan ? Object.keys(audit.auditPlan) : [],
-          periodFromRaw: periodFrom,
-          periodToRaw: periodTo,
-          auditPlanPeriodFrom: audit.auditPlan?.periodFrom,
-          auditPlanPeriodTo: audit.auditPlan?.periodTo,
-          auditStartDate: audit.startDate,
-          auditEndDate: audit.endDate,
-        });
+     
         
         // Convert to YYYY-MM-DD format, avoiding timezone shifts
         const formatDate = (date: any): string | undefined => {
@@ -889,10 +780,6 @@ const AuditorLeadReports = () => {
         const formattedFrom = formatDate(periodFrom);
         const formattedTo = formatDate(periodTo);
         
-        console.log('📅 Formatted period dates:', {
-          periodFrom: formattedFrom,
-          periodTo: formattedTo,
-        });
 
         setAuditPeriodDates({
           periodFrom: formattedFrom,
@@ -943,17 +830,7 @@ const AuditorLeadReports = () => {
                         || audit.endDate 
                         || audit.EndDate;
         
-        console.log('🔍 Getting period dates for audit:', auditId, {
-          auditKeys: Object.keys(audit),
-          hasAuditPlan: !!audit.auditPlan,
-          auditPlanKeys: audit.auditPlan ? Object.keys(audit.auditPlan) : [],
-          periodFromRaw: periodFrom,
-          periodToRaw: periodTo,
-          hasPeriodFrom: !!periodFrom,
-          hasPeriodTo: !!periodTo,
-          auditPlanPeriodFrom: audit.auditPlan?.periodFrom,
-          auditPlanPeriodTo: audit.auditPlan?.periodTo,
-        });
+      
         
         // Convert to YYYY-MM-DD format, avoiding timezone shifts
         const formatDate = (date: any): string | undefined => {
@@ -987,11 +864,7 @@ const AuditorLeadReports = () => {
 
         const formattedFrom = formatDate(periodFrom);
         const formattedTo = formatDate(periodTo);
-        
-        console.log('📅 Formatted period dates:', {
-          periodFrom: formattedFrom,
-          periodTo: formattedTo
-        });
+    
 
         return {
           periodFrom: formattedFrom,
@@ -999,7 +872,6 @@ const AuditorLeadReports = () => {
         };
       }
 
-      console.warn('⚠️ Audit not found for period dates:', auditId);
       return {};
     };
   }, [audits]);
@@ -1010,14 +882,9 @@ const AuditorLeadReports = () => {
   };
 
   const handleSaveScheduleAndTeam = async (schedules: any[], teamMembers: any[]) => {
-    console.log('🚀 handleSaveScheduleAndTeam called', {
-      auditId: editScheduleTeamAuditId,
-      schedulesCount: schedules.length,
-      teamMembersCount: teamMembers.length
-    });
+ 
     
     if (!editScheduleTeamAuditId) {
-      console.warn('⚠️ No editScheduleTeamAuditId, returning early');
       return;
     }
 
@@ -1050,15 +917,8 @@ const AuditorLeadReports = () => {
         return tAuditId === auditIdStr;
       });
       
-      console.log('🔍 Filtering teams by auditId:', {
-        auditId: auditIdStr,
-        allTeamsCount: allTeams.length,
-        currentTeamWithIdsCount: currentTeamWithIds.length,
-        sampleAllTeam: allTeams[0],
-        sampleFilteredTeam: currentTeamWithIds[0],
-      });
+   
       
-      // Merge: prefer currentTeamWithIds (has auditTeamId), fallback to currentTeamFromAuditors
       // Create a map of userId -> team member with auditTeamId
       const teamMap = new Map<string, any>();
       currentTeamWithIds.forEach((t: any) => {
@@ -1099,16 +959,7 @@ const AuditorLeadReports = () => {
         return m;
       });
       
-      console.log('🔍 Team data loaded and merged:', {
-        allTeamsCount: allTeams.length,
-        currentTeamWithIdsCount: currentTeamWithIds.length,
-        currentTeamFromAuditorsCount: currentTeamFromAuditors.length,
-        mergedCurrentTeamCount: currentTeam.length,
-        teamMapSize: teamMap.size,
-        sampleTeamMember: currentTeam[0],
-        sampleTeamWithId: currentTeamWithIds[0],
-      });
-
+  
       // Update schedules
       for (const schedule of schedules) {
         const scheduleId = schedule.scheduleId ? String(schedule.scheduleId) : null;
@@ -1117,11 +968,7 @@ const AuditorLeadReports = () => {
           // Validate scheduleId format (should be a valid GUID)
           const guidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!guidRegex.test(scheduleId)) {
-            console.error('❌ Invalid scheduleId format (not a valid GUID):', {
-              scheduleId,
-              type: typeof scheduleId,
-              originalSchedule: schedule
-            });
+         
             throw new Error(`Invalid scheduleId format: ${scheduleId}. Expected GUID format.`);
           }
           
@@ -1160,12 +1007,10 @@ const AuditorLeadReports = () => {
           
           // Validate required fields
           if (!schedule.milestoneName || !schedule.milestoneName.trim()) {
-            console.error('❌ Missing required field: milestoneName', schedule);
             throw new Error(`Missing required field: milestoneName for schedule ${scheduleId}`);
           }
           
           if (!dueDateValue) {
-            console.error('❌ Missing required field: dueDate', schedule);
             throw new Error(`Missing required field: dueDate for schedule ${scheduleId}`);
           }
           
@@ -1176,37 +1021,13 @@ const AuditorLeadReports = () => {
             status: schedule.status || 'Active',
           };
           
-          console.log('📝 Updating schedule:', {
-            scheduleId,
-            scheduleIdType: typeof scheduleId,
-            scheduleIdIsValidGuid: guidRegex.test(scheduleId),
-            milestoneName: updatePayload.milestoneName,
-            dueDate: updatePayload.dueDate,
-            originalDueDate: schedule.dueDate,
-            notes: updatePayload.notes,
-            status: updatePayload.status,
-            fullPayload: updatePayload,
-            apiUrl: `/AuditSchedule/${scheduleId}`
-          });
+       
           // DO NOT include id or auditId in update payload - scheduleId is in route
           try {
             const result = await updateAuditSchedule(scheduleId, updatePayload);
-            console.log('✅ Schedule updated successfully:', {
-              scheduleId,
-              result: result?.data || result,
-              status: result?.status
-            });
+         
           } catch (updateErr: any) {
-            console.error('❌ Failed to update schedule:', {
-              scheduleId,
-              scheduleIdType: typeof scheduleId,
-              payload: updatePayload,
-              error: updateErr?.response?.data || updateErr?.message || updateErr,
-              status: updateErr?.response?.status,
-              statusText: updateErr?.response?.statusText,
-              responseData: updateErr?.response?.data,
-              fullError: updateErr
-            });
+        
             throw updateErr; // Re-throw to stop execution
           }
         } else {
@@ -1290,20 +1111,13 @@ const AuditorLeadReports = () => {
           if (uid) currentUserIds.add(uid);
         });
 
-        console.log('🔍 Team update comparison:', {
-          selectedUserIds: Array.from(selectedUserIds),
-          currentUserIds: Array.from(currentUserIds),
-          teamMembersLength: teamMembers.length,
-        });
+     
 
         // 1) Add new members: in selectedUserIds but not in currentUserIds
         for (const userId of Array.from(selectedUserIds)) {
           if (!currentUserIds.has(userId)) {
             try {
-              console.log('📝 Adding team member (diff-based):', {
-                auditId: editScheduleTeamAuditId,
-                userId,
-              });
+        
               await addTeamMember({
                 auditId: editScheduleTeamAuditId,
                 userId,
@@ -1311,11 +1125,7 @@ const AuditorLeadReports = () => {
                 isLead: false,
               });
             } catch (addErr: any) {
-              console.error('❌ Failed to add team member (diff-based):', {
-                userId,
-                error: addErr?.response?.data || addErr?.message || addErr,
-                status: addErr?.response?.status,
-              });
+        
               teamUpdateErrors.push({ userId, error: addErr });
             }
           }
@@ -1337,28 +1147,15 @@ const AuditorLeadReports = () => {
             || (currentMember as any).auditTeam?.$id;
           
           // Log full member structure for debugging
-          console.log('🔍 Processing team member for deletion:', {
-            userId: uid,
-            auditTeamId: currentId,
-            memberKeys: Object.keys(currentMember),
-            memberStructure: currentMember,
-          });
+         
           
           if (!uid) {
-            console.warn('⚠️ Skipping team member (missing userId):', {
-              currentMember,
-              memberKeys: Object.keys(currentMember),
-            });
+        
             continue;
           }
           
           if (!currentId) {
-            console.error('❌ Cannot delete team member - missing auditTeamId:', {
-              userId: uid,
-              fullName: currentMember.fullName || 'Unknown',
-              memberKeys: Object.keys(currentMember),
-              memberStructure: currentMember,
-            });
+          
             teamUpdateErrors.push({ 
               member: currentMember, 
               error: new Error('Missing auditTeamId - cannot delete without ID'),
@@ -1369,37 +1166,22 @@ const AuditorLeadReports = () => {
 
           if (!selectedUserIds.has(uid)) {
             try {
-              console.log('🗑 Deleting team member (diff-based):', {
-                auditTeamId: currentId,
-                userId: uid,
-                fullName: currentMember.fullName || 'Unknown',
-              });
+            
               await deleteTeamMember(String(currentId));
-              console.log('✅ Successfully deleted team member:', uid);
             } catch (deleteErr: any) {
-              console.error('❌ Failed to delete team member (diff-based):', {
-                auditTeamId: currentId,
-                userId: uid,
-                fullName: currentMember.fullName || 'Unknown',
-                error: deleteErr?.response?.data || deleteErr?.message || deleteErr,
-                status: deleteErr?.response?.status,
-                responseData: deleteErr?.response?.data,
-              });
+            
               teamUpdateErrors.push({ member: currentMember, error: deleteErr, userId: uid });
             }
           }
         }
         } catch (outerErr: any) {
-          console.error('❌ Team diff update failed:', outerErr);
           teamUpdateErrors.push({ error: outerErr });
         }
       } else {
-        console.log('⏭️ Skipping team update - teamMembers is empty (user only edited schedule, not team)');
       }
       
       // Show warning if there were team update errors, but don't block the success flow
       if (teamUpdateErrors.length > 0) {
-        console.warn('⚠️ Some team member updates failed:', teamUpdateErrors);
         toast.warning(`Schedule updated successfully, but ${teamUpdateErrors.length} team member update(s) failed.`);
       }
 
@@ -1407,16 +1189,10 @@ const AuditorLeadReports = () => {
       setScheduleChanges(schedules);
       setTeamChanges(teamMembers);
 
-      // Note: We don't update audit status here because:
-      // 1. This is the Reports page, not Planning page
-      // 2. Status update requires valid status from AuditStatus table
-      // 3. Schedule/team updates don't necessarily require status change
-      // If status update is needed, it should be done separately with proper status validation
 
       // Store auditId before closing modal
       const auditIdToNotify = String(editScheduleTeamAuditId);
       const auditKey = auditIdToNotify.toLowerCase().trim();
-      console.log('📝 Schedule and team saved for audit:', auditIdToNotify);
       
       // Show success message (even if some team updates failed)
       if (teamUpdateErrors && teamUpdateErrors.length === 0) {
@@ -1442,7 +1218,6 @@ const AuditorLeadReports = () => {
       // Notify PlanDetailsModal and other components to refresh AFTER reload
       // Use multiple attempts to ensure modal receives the event
       // Also dispatch to localStorage for cross-tab communication
-      console.log('📢 Starting to dispatch refresh events for audit:', auditIdToNotify);
       try {
         const eventData = { 
           auditId: auditIdToNotify,
@@ -1461,11 +1236,7 @@ const AuditorLeadReports = () => {
           window.dispatchEvent(event);
           document.dispatchEvent(event); // Also dispatch on document
           
-          console.log(`✅ [Attempt ${attempt}] Dispatched auditPlanUpdated event for audit:`, auditIdToNotify, {
-            eventType: event.type,
-            detail: event.detail,
-            bubbles: event.bubbles
-          });
+     
         };
         
         // Dispatch immediately
@@ -1485,7 +1256,6 @@ const AuditorLeadReports = () => {
             _timestamp: Date.now()
           };
           localStorage.setItem('auditPlanUpdated', JSON.stringify(storageData));
-          console.log('💾 Saved to localStorage:', storageData);
           
           // Trigger storage event manually for same-tab
           const storageEvent = new StorageEvent('storage', {
@@ -1494,12 +1264,11 @@ const AuditorLeadReports = () => {
             storageArea: localStorage
           });
           window.dispatchEvent(storageEvent);
-          console.log('📦 Dispatched storage event');
         } catch (storageErr) {
-          console.warn('⚠️ Failed to use localStorage for event:', storageErr);
+          console.warn(' Failed to use localStorage for event:', storageErr);
         }
       } catch (err) {
-        console.error('❌ Failed to dispatch update event:', err);
+        console.error(' Failed to dispatch update event:', err);
       }
     } catch (err: any) {
       console.error('Failed to save schedule and team', err);

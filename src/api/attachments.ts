@@ -28,16 +28,7 @@ export interface Attachment {
 
 // Upload attachment with multipart/form-data
 export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attachment> => {
-  console.log('========== EVIDENCE UPLOAD DEBUG ==========');
-  console.log('1. Upload DTO received:', {
-    entityType: dto.entityType,
-    entityId: dto.entityId,
-    uploadedBy: dto.uploadedBy,
-    status: dto.status,
-    fileName: dto.file?.name,
-    fileSize: dto.file?.size,
-    fileType: dto.file?.type,
-  });
+ 
 
   const formData = new FormData();
   formData.append('EntityType', dto.entityType);
@@ -50,12 +41,7 @@ export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attach
   
   // Note: uploadedBy is handled by backend from token, not included in formData
 
-  console.log('2. FormData entries:');
-  for (const [key, value] of formData.entries()) {
-    console.log(`   ${key}:`, value instanceof File ? `File(${value.name})` : value);
-  }
   
-  console.log('3. Sending POST to /admin/AdminAttachment...');
 
   try {
     const res = await apiClient.post('/admin/AdminAttachment', formData, {
@@ -63,12 +49,8 @@ export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attach
         'Content-Type': 'multipart/form-data',
       },
     });
-    console.log('4. Upload successful! Response:', res.data);
     return res.data;
   } catch (error: any) {
-    console.error('========== UPLOAD ERROR ==========');
-    console.error('Error response:', error?.response);
-    console.error('Error data:', error?.response?.data);
     console.error('Error status:', error?.response?.status);
     
     // Extract validation errors if available
@@ -90,7 +72,6 @@ export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attach
     }
     
     console.error('Error headers:', error?.response?.headers);
-    console.error('Full error:', error);
     throw error;
   }
 };

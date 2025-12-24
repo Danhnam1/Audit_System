@@ -65,12 +65,7 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
   // Log period dates when they change
   useEffect(() => {
     if (show) {
-      console.log('📅 EditScheduleAndTeamModal: Period dates', {
-        periodFrom,
-        periodTo,
-        hasPeriodFrom: !!periodFrom,
-        hasPeriodTo: !!periodTo
-      });
+     
       setPeriodFromLocal(periodFrom);
       setPeriodToLocal(periodTo);
     }

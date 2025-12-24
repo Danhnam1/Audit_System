@@ -27,7 +27,6 @@ export default function AuditeeActionReviewModal({
   const handleVerify = async (actionIdParam: string, feedback: string) => {
     setProcessing(true);
     try {
-      console.log('📤 [AuditeeOwner] Verifying action:', actionIdParam);
       
       await approveActionWithFeedback(actionIdParam, feedback || '');
       
@@ -44,10 +43,9 @@ export default function AuditeeActionReviewModal({
       // Wait for UI to update
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      console.log('✅ [AuditeeOwner] Verification complete');
       onClose();
     } catch (err: any) {
-      console.error('❌ [AuditeeOwner] Verify error:', err);
+      console.error(' [AuditeeOwner] Verify error:', err);
       toast.error(err?.response?.data?.message || 'Failed to verify action');
     } finally {
       setProcessing(false);
@@ -57,7 +55,6 @@ export default function AuditeeActionReviewModal({
   const handleDecline = async (actionIdParam: string, feedback: string) => {
     setProcessing(true);
     try {
-      console.log('📤 [AuditeeOwner] Declining action:', actionIdParam);
       
       await rejectAction(actionIdParam, feedback || '');
       
@@ -74,10 +71,9 @@ export default function AuditeeActionReviewModal({
       // Wait for UI to update
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      console.log('✅ [AuditeeOwner] Decline complete');
       onClose();
     } catch (err: any) {
-      console.error('❌ [AuditeeOwner] Decline error:', err);
+      console.error(' [AuditeeOwner] Decline error:', err);
       toast.error(err?.response?.data?.message || 'Failed to decline action');
     } finally {
       setProcessing(false);

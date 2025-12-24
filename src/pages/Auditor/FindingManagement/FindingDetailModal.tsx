@@ -61,7 +61,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const isAuditor = role === 'Auditor';
   
   // Debug logging
-  console.log('🔍 Role check:', { role, isAuditor, isAuditeeOwner, findingCreatedBy: finding?.createdBy });
 
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
@@ -182,7 +181,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       try {
         const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
         const rootCausesList = res.data.$values || [];
-        console.log('Loaded root causes for finding:', findingId, rootCausesList);
         
         // Fetch history for each root cause
         const rootCausesWithHistory = await Promise.all(
@@ -274,7 +272,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           reviewBy: currentRootCause?.reviewBy || '',
         };
         
-        console.log('📤 Updating root cause with payload:', rootCauseDto);
         await updateRootCause(editingRootCauseId, rootCauseDto as any);
         showToast('Root cause saved as draft!', 'success');
         setEditingRootCauseId(null);
@@ -309,7 +306,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       await new Promise(resolve => setTimeout(resolve, 300));
       
       // Dispatch event to notify other components about root cause update
-      console.log('📢 Dispatching rootCauseUpdated event for finding:', findingId);
       window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
         detail: { findingId: findingId }
       }));
@@ -360,7 +356,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       await new Promise(resolve => setTimeout(resolve, 300));
       
       // Dispatch event to notify other components about root cause update
-      console.log('📢 Dispatching rootCauseUpdated event for finding:', findingId);
       window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
         detail: { findingId: findingId }
       }));
@@ -437,7 +432,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       await new Promise(resolve => setTimeout(resolve, 300));
       
       // Dispatch event to notify other components about root cause update
-      console.log('📢 Dispatching rootCauseUpdated event for finding:', findingId);
       window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
         detail: { findingId: findingId }
       }));
@@ -472,7 +466,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       await new Promise(resolve => setTimeout(resolve, 300));
       
       // Dispatch event to notify other components about root cause update
-      console.log('📢 Dispatching rootCauseUpdated event for finding:', findingId);
       window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
         detail: { findingId: findingId }
       }));
@@ -1002,15 +995,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                             const isApproved = statusLower === 'approved';
                             const isRejected = statusLower === 'rejected';
                             
-                            // Debug log to check status
-                            console.log(`Root Cause #${index + 1} "${rc.name}":`, {
-                              status: rc.status,
-                              isPending,
-                              isApproved,
-                              isRejected,
-                              isAuditor,
-                              isAuditeeOwner
-                            });
+                          
                             
                             return (
                               <div 
@@ -1127,7 +1112,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   if (logsWithChanges.length === 0) return null;
                                   
                                   return (
-                                    <div className="mt-3 pl-10 border-l-2 border-gray-300 pl-4">
+                                    <div className="mt-3 pl-10 border-l-2 border-gray-300">
                                       <h5 className="text-xs font-semibold text-gray-600 mb-2 uppercase">History</h5>
                                       <div className="space-y-2">
                                         {logsWithChanges.map((log: any) => {

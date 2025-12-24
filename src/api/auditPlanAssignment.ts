@@ -94,10 +94,8 @@ export const getAuditPlanAssignmentsByAuditor = async (auditorId: number | strin
       return assignmentAuditorId === auditorIdStr;
     });
     
-    console.log('[getAuditPlanAssignmentsByAuditor] Filtered assignments for auditorId:', auditorIdStr, 'Result:', filtered);
     return filtered;
   } catch (error) {
-    console.error('[getAuditPlanAssignmentsByAuditor] Error:', error);
     return [];
   }
 };
@@ -128,7 +126,6 @@ export const createAuditPlanAssignment = async (
       formData.append('files', file);
     });
     
-    console.log('[createAuditPlanAssignment] Uploading with files:', files.map(f => f.name));
     
     try {
       const res: any = await apiClient.post('/AuditPlanAssignment', formData, {
@@ -138,7 +135,6 @@ export const createAuditPlanAssignment = async (
       });
       return res?.data || res;
     } catch (error: any) {
-      console.error('[createAuditPlanAssignment] API Error (with files):', error);
       console.error('[createAuditPlanAssignment] Error response:', error?.response?.data);
       throw error;
     }
@@ -166,15 +162,11 @@ export const createAuditPlanAssignment = async (
       remarks: String(remarksValue) // Required field
     };
     
-    console.log('[createAuditPlanAssignment] Original dto:', dto);
-    console.log('[createAuditPlanAssignment] Final payload (camelCase, direct):', JSON.stringify(payload, null, 2));
     
     try {
       const res: any = await apiClient.post('/AuditPlanAssignment', payload);
       return res?.data || res;
     } catch (error: any) {
-      console.error('[createAuditPlanAssignment] API Error:', error);
-      console.error('[createAuditPlanAssignment] Error response:', error?.response?.data);
       console.error('[createAuditPlanAssignment] Payload that was sent:', JSON.stringify(payload, null, 2));
       throw error;
     }
@@ -198,14 +190,10 @@ export const deleteAuditPlanAssignment = async (assignmentId: string): Promise<v
     throw new Error('AssignmentId is required for deletion');
   }
   
-  console.log('[deleteAuditPlanAssignment] Deleting assignment with assignmentId:', assignmentId);
   
   try {
     await apiClient.delete(`/AuditPlanAssignment/${assignmentId}`);
-    console.log('[deleteAuditPlanAssignment] Successfully deleted assignment:', assignmentId);
   } catch (error: any) {
-    console.error('[deleteAuditPlanAssignment] Failed to delete assignment:', error);
-    console.error('[deleteAuditPlanAssignment] Error response:', error?.response?.data);
     throw error;
   }
 };
@@ -268,27 +256,23 @@ export const hasAuditPlanCreationPermission = async (auditorId: number | string)
       return false;
     }
     
-    console.log('[hasAuditPlanCreationPermission] Checking permission for auditorId:', auditorIdStr);
 
     const isApproved = (a: AuditPlanAssignment) =>
       String(a.status || '').toLowerCase().trim() === 'approved';
     
     // Try to get assignments by auditor ID
     const assignments = await getAuditPlanAssignmentsByAuditor(auditorIdStr);
-    console.log('[hasAuditPlanCreationPermission] Found assignments:', assignments);
     const approvedAssignments = assignments.filter(isApproved);
 
     // Also check all assignments and compare by string (in case API endpoint doesn't work)
     if (approvedAssignments.length === 0) {
       const allAssignments = await getAuditPlanAssignments();
-      console.log('[hasAuditPlanCreationPermission] All assignments:', allAssignments);
       
       const matchingApproved = allAssignments.filter((a: AuditPlanAssignment) => {
         const assignmentAuditorId = String(a.auditorId || '').trim();
         return assignmentAuditorId === auditorIdStr && isApproved(a);
       });
       
-      console.log('[hasAuditPlanCreationPermission] Matching approved assignments:', matchingApproved);
       return matchingApproved.length > 0;
     }
     

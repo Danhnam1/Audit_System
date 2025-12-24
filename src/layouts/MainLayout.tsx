@@ -62,10 +62,6 @@ export const MainLayout = ({
   const role = authUser?.role || (authUser as any)?.roleName;
   const normalizedRole = role?.toLowerCase().replace(/\s+/g, '') || '';
   
-  console.log('=== MainLayout Debug ===');
-  console.log('Auth User:', authUser);
-  console.log('Role:', role);
-  console.log('UserId from token:', userIdFromToken);
   
   // Check if auditor has permission to create plans
   const [hasPlanPermission, setHasPlanPermission] = useState<boolean | null>(null);
@@ -77,28 +73,21 @@ export const MainLayout = ({
         const userId = userIdFromToken;
         
         if (!userId) {
-          console.warn('[MainLayout] No userId found in token, cannot check permission');
           setHasPlanPermission(false);
           return;
         }
         
         try {
-          // Use userId directly (can be UUID string or number)
-          console.log('[MainLayout] Checking permission for auditor:', {
-            userId,
-            userIdType: typeof userId,
-            userIdFromToken,
-          });
+       
+      
           
           if (!userId) {
-            console.warn('[MainLayout] Invalid userId, cannot check permission');
             setHasPlanPermission(false);
             return;
           }
           
           // Pass userId directly (string or number)
           const hasPermission = await hasAuditPlanCreationPermission(userId);
-          console.log('[MainLayout] Permission check result:', hasPermission);
           setHasPlanPermission(hasPermission);
         } catch (error) {
           console.error('[MainLayout] Failed to check plan creation permission', error);

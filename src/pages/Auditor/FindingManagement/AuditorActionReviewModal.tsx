@@ -27,7 +27,6 @@ export default function AuditorActionReviewModal({
   const handleApprove = async (actionIdParam: string, feedback: string) => {
     setProcessing(true);
     try {
-      console.log('📤 [Auditor] Approving action:', actionIdParam);
       
       await approveFindingAction(actionIdParam, feedback);
       
@@ -44,10 +43,8 @@ export default function AuditorActionReviewModal({
       // Wait for UI to update
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      console.log('✅ [Auditor] Approval complete');
       onClose();
     } catch (err: any) {
-      console.error('❌ [Auditor] Approve error:', err);
       toast.error(err?.response?.data?.message || 'Failed to approve action');
     } finally {
       setProcessing(false);
@@ -57,7 +54,6 @@ export default function AuditorActionReviewModal({
   const handleReturn = async (actionIdParam: string, feedback: string) => {
     setProcessing(true);
     try {
-      console.log('📤 [Auditor] Returning action:', actionIdParam);
       
       await returnFindingAction(actionIdParam, feedback.trim());
       
@@ -74,10 +70,8 @@ export default function AuditorActionReviewModal({
       // Wait for UI to update
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      console.log('✅ [Auditor] Return complete');
       onClose();
     } catch (err: any) {
-      console.error('❌ [Auditor] Return error:', err);
       toast.error(err?.response?.data?.message || 'Failed to return action');
     } finally {
       setProcessing(false);

@@ -38,12 +38,10 @@ class SignalRService {
   // Start connection
   async start(): Promise<void> {
     if (this.connection?.state === signalR.HubConnectionState.Connected) {
-      console.log('[SignalR] Already connected');
       return;
     }
 
     if (this.isConnecting) {
-      console.log('[SignalR] Connection already in progress');
       return;
     }
 
@@ -62,7 +60,6 @@ class SignalRService {
       }
 
       const hubUrl = this.getHubUrl();
-      console.log('[SignalR] Connecting to:', hubUrl);
 
       this.connection = new signalR.HubConnectionBuilder()
         .withUrl(hubUrl, {
@@ -84,7 +81,6 @@ class SignalRService {
       // Start connection
       await this.connection.start();
       this.reconnectAttempts = 0;
-      console.log('[SignalR] Connected successfully');
 
       this.isConnecting = false;
     } catch (error) {
@@ -99,7 +95,6 @@ class SignalRService {
     if (this.connection) {
       try {
         await this.connection.stop();
-        console.log('[SignalR] Disconnected');
       } catch (error) {
         console.error('[SignalR] Error stopping connection:', error);
       } finally {
@@ -115,17 +110,14 @@ class SignalRService {
 
     // Connection state changes
     this.connection.onclose((error) => {
-      console.log('[SignalR] Connection closed', error);
       this.reconnectAttempts = 0;
     });
 
     this.connection.onreconnecting((error) => {
-      console.log('[SignalR] Reconnecting...', error);
       this.reconnectAttempts++;
     });
 
     this.connection.onreconnected((connectionId) => {
-      console.log('[SignalR] Reconnected:', connectionId);
       this.reconnectAttempts = 0;
     });
   }
@@ -142,7 +134,6 @@ class SignalRService {
 
     // Register new handler
     this.connection.on('ReceiveNotification', (data: NotificationData) => {
-      console.log('[SignalR] Received notification:', data);
       try {
         callback(data);
       } catch (error) {
@@ -150,7 +141,6 @@ class SignalRService {
       }
     });
     
-    console.log('[SignalR] Notification handler registered successfully');
   }
 
   // Remove notification handler

@@ -184,7 +184,6 @@ export default function LeadFinalReview() {
         const auditIdsArr = normalizeArray(
           body.auditIds ? (body.auditIds.$values || body.auditIds) : body.$values || body
         );
-        console.log('[LeadFinalReview] raw lead audits payload:', auditIdsArr);
         const mapped: Audit[] = auditIdsArr
           .map((a: any) => {
             if (typeof a === 'string') return { auditId: a, title: a };
@@ -203,14 +202,12 @@ export default function LeadFinalReview() {
               title: titleCandidate ? String(titleCandidate) : 'Untitled audit',
               status: statusCandidate || '-',
             };
-            console.log('[LeadFinalReview] normalized audit item:', { raw: a, normalized });
             return normalized;
           })
           .filter((a: Audit) => !!a.auditId);
         const needHydrate = mapped.filter(a => !a.title || a.title === a.auditId || a.title === 'Untitled audit');
         let finalAudits = mapped;
         if (needHydrate.length > 0) {
-          console.log('[LeadFinalReview] Hydrating audits for titles/status', needHydrate.map(a => a.auditId));
           const hydrated = await Promise.all(
             mapped.map(async auditItem => {
               if (!auditItem.auditId) return auditItem;
@@ -401,22 +398,15 @@ export default function LeadFinalReview() {
           const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
           const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
           
-          console.log(`📋 [LeadFinalReview] Approving action: ${selectedAction.actionId}`);
-          console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`);
-          console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`);
           
           if (openAttachments.length > 0) {
-            console.log(`✅ [LeadFinalReview] Approving ${openAttachments.length} attachment(s) with "Open" status...`);
             const approvePromises = openAttachments.map(async (attachment) => {
               try {
                 await updateAttachmentStatus(attachment.attachmentId, 'Approved');
-                console.log(`  ✓ Approved attachment: ${attachment.fileName}`);
               } catch (err: any) {
-                console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
               }
             });
             await Promise.all(approvePromises);
-            console.log(`✅ [LeadFinalReview] Approved ${openAttachments.length} attachment(s)`);
           }
         } catch (attErr) {
           console.warn('Could not load/approve attachments:', attErr);
@@ -431,9 +421,7 @@ export default function LeadFinalReview() {
         try {
           const { updateActionProgressPercent } = await import('../../../api/actions');
           await updateActionProgressPercent(selectedAction.actionId, 0);
-          console.log('✅ [LeadFinalReview] Progress reset to 0 after rejection');
         } catch (progressError: any) {
-          console.error('⚠️ [LeadFinalReview] Failed to reset progress:', progressError);
           // Don't fail the whole operation if progress reset fails
         }
         

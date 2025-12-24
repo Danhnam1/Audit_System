@@ -40,16 +40,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
         index === self.findIndex((a) => a.attachmentId === att.attachmentId)
       );
       
-      console.log('📎 [LeadAuditor] Loaded attachments:', {
-        total: attachmentsArray.length,
-        unique: uniqueAttachments.length,
-        duplicates: attachmentsArray.length - uniqueAttachments.length,
-        attachments: uniqueAttachments.map(a => ({
-          id: a.attachmentId,
-          name: a.fileName,
-          status: a.status
-        }))
-      });
+    
       
       setAttachments(uniqueAttachments);
     } catch (err: any) {
@@ -72,9 +63,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
         const freshAttachments = await getAttachments('Action', action.actionId);
         currentAttachments = Array.isArray(freshAttachments) ? freshAttachments : [];
         setAttachments(currentAttachments);
-        console.log('🔄 [LeadAuditor] Reloaded attachments before approval:', currentAttachments.length);
       } catch (attErr) {
-        console.warn('⚠️ [LeadAuditor] Could not reload attachments, using cached:', attErr);
         // Continue with cached attachments if reload fails
       }
       
@@ -95,22 +84,14 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
         return status === 'approved';
       });
       
-      console.log('📋 [LeadAuditor] Approving action:', action.actionId);
-      console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`, openAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
-      console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`, rejectedAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
-      console.log(`✅ Attachments already approved: ${approvedAttachments.length}`, approvedAttachments.map(a => ({ id: a.attachmentId, name: a.fileName, status: a.status })));
       
-      // IMPORTANT: Approve ONLY attachments with status "Open" before approving the action
       // This ensures rejected attachments are NOT approved
       if (openAttachments.length > 0) {
-        console.log(`✅ [LeadAuditor] Approving ${openAttachments.length} attachment(s) with "Open" status...`);
         const approvePromises = openAttachments.map(async (attachment) => {
           try {
             await updateAttachmentStatus(attachment.attachmentId, 'Approved');
-            console.log(`  ✓ Approved attachment: ${attachment.fileName} (${attachment.attachmentId})`);
             return { success: true, attachmentId: attachment.attachmentId, fileName: attachment.fileName };
           } catch (err: any) {
-            console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
             return { success: false, attachmentId: attachment.attachmentId, fileName: attachment.fileName, error: err };
           }
         });
@@ -119,12 +100,9 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
         const succeeded = results.filter(r => r.success).length;
         const failed = results.filter(r => !r.success).length;
         
-        console.log(`✅ [LeadAuditor] Approved ${succeeded} attachment(s) with "Open" status`);
         if (failed > 0) {
-          console.warn(`⚠️ [LeadAuditor] Failed to approve ${failed} attachment(s)`);
         }
       } else {
-        console.log('⚠️ [LeadAuditor] No attachments with "Open" status to approve');
       }
       
       // Now approve the action (backend should not approve rejected attachments)
@@ -141,24 +119,14 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
           index === self.findIndex((a) => a.attachmentId === att.attachmentId)
         );
         setAttachments(uniqueAttachments);
-        console.log('🔄 [LeadAuditor] Reloaded attachments after approval:', {
-          total: attachmentsArray.length,
-          unique: uniqueAttachments.length,
-          attachments: uniqueAttachments.map(a => ({
-            id: a.attachmentId,
-            name: a.fileName,
-            status: a.status
-          }))
-        });
+        
       } catch (reloadErr) {
-        console.warn('⚠️ [LeadAuditor] Could not reload attachments after approval:', reloadErr);
       }
       
       // Dispatch custom event to notify other components (e.g., CAPA Owner ActionDetailModal) that action was updated
       window.dispatchEvent(new CustomEvent('actionUpdated', { 
         detail: { actionId: action.actionId, status: 'approved' } 
       }));
-      console.log('🚀 [LeadAuditor] Dispatched actionUpdated event for actionId:', action.actionId);
       
       await new Promise(resolve => setTimeout(resolve, 300));
       
@@ -192,9 +160,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
       // Reset progress to 0 when action is rejected
       try {
         await updateActionProgressPercent(action.actionId, 0);
-        console.log('✅ [LeadAuditor] Progress reset to 0 after rejection');
       } catch (progressError: any) {
-        console.error('⚠️ [LeadAuditor] Failed to reset progress:', progressError);
         // Don't fail the whole operation if progress reset fails
       }
       

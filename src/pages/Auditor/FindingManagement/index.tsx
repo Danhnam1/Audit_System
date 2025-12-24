@@ -44,39 +44,27 @@ const SQAStaffFindingManagement = () => {
       setError(null);
       
       try {
-        console.log('🔍 Fetching my assignments...');
         const assignmentsResponse: any = await getMyAssignments();
-        console.log('📦 Raw assignments response:', assignmentsResponse);
         
         let responseData = assignmentsResponse;
         if (assignmentsResponse?.status && assignmentsResponse?.data) {
           responseData = assignmentsResponse.data;
-          console.log('📦 Extracted data from axios response:', responseData);
         }
-        console.log('📦 Processed responseData:', responseData);
         let assignments: any[] = [];
         if (Array.isArray(responseData)) {
           assignments = responseData;
-          console.log('✅ Response is direct array');
         } else if (responseData?.$values && Array.isArray(responseData.$values)) {
           assignments = responseData.$values;
-          console.log('✅ Found $values array with', assignments.length, 'items');
         } else if (responseData?.values && Array.isArray(responseData.values)) {
           assignments = responseData.values;
-          console.log('✅ Found values array');
         } else if (responseData?.data && Array.isArray(responseData.data)) {
           assignments = responseData.data;
-          console.log('✅ Found data array');
         } else {
           assignments = unwrap(responseData);
-          console.log('✅ Used unwrap fallback, got', assignments.length, 'items');
         }
         
-        console.log('✅ Final assignments array:', assignments);
-        console.log('✅ Assignments count:', assignments.length);
         
         if (!assignments || assignments.length === 0) {
-          console.log('⚠️ No assignments found');
           setAudits([]);
           setLoading(false);
           return;
@@ -87,10 +75,8 @@ const SQAStaffFindingManagement = () => {
           const status = (a.status || '').toLowerCase().trim();
           return status !== 'archived';
         });
-        console.log('✅ Active assignments (excluding archived):', activeAssignments.length);
 
         if (activeAssignments.length === 0) {
-          console.log('⚠️ No active assignments found (all are archived)');
           setAudits([]);
           setLoading(false);
           return;
@@ -108,12 +94,10 @@ const SQAStaffFindingManagement = () => {
           }
         });
 
-        console.log('📊 Grouped audits:', Array.from(auditMap.keys()));
 
         // Load audit info and create audit cards
         const auditPromises = Array.from(auditMap.entries()).map(async ([auditId, auditAssignments]) => {
           try {
-            console.log(`📥 Fetching audit info for ${auditId}...`);
             const auditData = await getAuditPlanById(auditId);
             
             // Data is nested in audit object
@@ -138,14 +122,11 @@ const SQAStaffFindingManagement = () => {
                   );
                   if (fieldworkSchedule && fieldworkSchedule.dueDate) {
                     fieldworkStartDate = fieldworkSchedule.dueDate;
-                    console.log(`✅ Found Fieldwork Start date for ${auditId}:`, fieldworkStartDate);
                   } else {
-                    console.log(`⚠️ No Fieldwork Start schedule found for ${auditId}`);
                   }
                 }
               }
             } catch (scheduleErr) {
-              console.warn(`⚠️ Error extracting Fieldwork Start date for ${auditId}:`, scheduleErr);
             }
             
             // Fallback to startDate if Fieldwork Start not found
@@ -170,10 +151,8 @@ const SQAStaffFindingManagement = () => {
               scope: scope,
               objective: objective,
             };
-            console.log(`✅ Created card for audit ${auditId}:`, auditCard);
             return auditCard;
           } catch (err) {
-            console.error(`❌ Error loading audit ${auditId}:`, err);
             // Fallback: use assignment data
             const firstAssignment = auditAssignments[0];
             const uniqueDeptIds = new Set(auditAssignments.map((a: any) => a.deptId));
@@ -209,7 +188,6 @@ const SQAStaffFindingManagement = () => {
           const isInactive = statusLower === 'inactive';
           
           if (isArchived || isInactive) {
-            console.log(`🚫 Filtering out closed audit: ${audit.auditTitle} (status: "${status}")`);
             return false;
           }
           
@@ -222,47 +200,21 @@ const SQAStaffFindingManagement = () => {
               
               // Only show if Fieldwork Start date is today or in the past
               if (fieldworkStartDate > today) {
-                console.log(`🚫 Filtering out future audit: ${audit.auditTitle} (Fieldwork Start: ${audit.startDate})`);
                 return false;
               }
             } catch (err) {
-              console.warn(`⚠️ Invalid Fieldwork Start date for audit ${audit.auditTitle}:`, audit.startDate);
-              // If we can't parse the date, include it to be safe
             }
           } else {
-            // If no Fieldwork Start date, include it (might be using fallback startDate)
-            console.log(`⚠️ Audit ${audit.auditTitle} has no Fieldwork Start date, including it`);
           }
           
           return true;
         });
         
-        console.log('🎯 Final audits to display (excluding archived/inactive/future):', {
-          total: validAudits.length,
-          active: activeAudits.length,
-          removed: validAudits.length - activeAudits.length,
-          audits: activeAudits.map(a => ({ 
-            title: a.auditTitle, 
-            status: a.status,
-            startDate: a.startDate 
-          }))
-        });
-        
-        // Debug: Log all statuses to see what we're getting
-        console.log('📊 All audit statuses:', validAudits.map(a => ({
-          title: a.auditTitle,
-          status: a.status,
-          statusType: typeof a.status
-        })));
+     
         
         setAudits(activeAudits);
       } catch (err: any) {
-        console.error('❌ Error loading audits:', err);
-        console.error('Error details:', {
-          message: err?.message,
-          response: err?.response,
-          stack: err?.stack
-        });
+      
         setError(err?.message || 'Failed to load audits');
       } finally {
         setLoading(false);

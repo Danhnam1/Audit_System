@@ -29,7 +29,6 @@ export const AuditorSelectionTable = ({
 
   // Handle individual selection (radio button - only one can be selected)
   const handleSelection = (auditorId: string) => {
-    console.log('[AuditorSelectionTable] handleSelection called:', { auditorId, type: typeof auditorId });
     // Always select the clicked auditor (radio button behavior)
     onSelectionChange(auditorId);
   };
@@ -113,11 +112,6 @@ export const AuditorSelectionTable = ({
                     if ((e.target as HTMLElement).tagName === 'INPUT') {
                       return;
                     }
-                    console.log('[AuditorSelectionTable] Row clicked:', { 
-                      auditorId, 
-                      userId: auditor.userId,
-                      selectedAuditorId 
-                    });
                     if (auditorId && auditorId !== '') {
                       handleSelection(auditorId);
                     } else {
@@ -127,11 +121,6 @@ export const AuditorSelectionTable = ({
 
                   const handleRadioChange = (e: React.ChangeEvent<HTMLInputElement>) => {
                     e.stopPropagation();
-                    console.log('[AuditorSelectionTable] Radio changed:', { 
-                      auditorId, 
-                      userId: auditor.userId,
-                      checked: e.target.checked
-                    });
                     if (e.target.checked && auditorId && auditorId !== '') {
                       handleSelection(auditorId);
                     }

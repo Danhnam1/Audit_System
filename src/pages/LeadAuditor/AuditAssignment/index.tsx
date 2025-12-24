@@ -257,7 +257,6 @@ export default function AuditAssignment() {
               setQrValidityTo(null);
             }
           } catch (scheduleErr) {
-            console.error('[AuditAssignment] Failed to load audit schedule for QR validity:', scheduleErr);
             setQrValidityFrom(null);
             setQrValidityTo(null);
           }
@@ -272,7 +271,6 @@ export default function AuditAssignment() {
           }
         }
       } catch (err: any) {
-        console.error('[AuditAssignment] Load failed:', err);
         setError(err?.message || 'Failed to load departments');
       } finally {
         setLoading(false);
@@ -303,7 +301,6 @@ export default function AuditAssignment() {
       const auditorsData = await getAuditorsByAuditId(auditId);
       setAuditors(auditorsData || []);
     } catch (err: any) {
-      console.error('Failed to load auditors:', err);
       setAuditors([]);
     } finally {
       setLoadingAuditors(false);
@@ -415,12 +412,7 @@ export default function AuditAssignment() {
             // ttlMinutes is optional, so we don't include it if undefined
           };
           
-          console.log('[AuditAssignment] Issuing QR grant for auditor:', auditorId, {
-            requestPayload,
-            validFrom,
-            validTo,
-          });
-          
+        
           const qrGrant = await issueAccessGrant(requestPayload);
 
           results.push({
@@ -430,7 +422,6 @@ export default function AuditAssignment() {
             qrUrl: qrGrant.qrUrl,
           });
         } catch (qrError: any) {
-          console.error(`Failed to issue QR for auditor ${auditorId}:`, qrError);
           results.push({
             auditorId,
             auditorName,
@@ -452,7 +443,6 @@ export default function AuditAssignment() {
         toast.warning(`${failCount} QR code(s) failed to issue. Check details below.`);
       }
     } catch (error: any) {
-      console.error('Failed to issue QR grants:', error);
       toast.error('Failed to issue QR grants. Please try again.');
     } finally {
       setIssuingQr(false);
@@ -548,19 +538,12 @@ export default function AuditAssignment() {
       if (isSensitiveDept) {
         // Add checklist items from template to this audit and department
         try {
-          console.log(
-            '📝 Adding checklist items from template - AuditId:',
-            selectedAuditId,
-            'DeptId:',
-            selectedDepartment.deptId
-          );
+       
           await createAuditChecklistItemsFromTemplate(
             selectedAuditId,
             selectedDepartment.deptId
           );
-          console.log('✅ Checklist items added successfully');
         } catch (checklistError: any) {
-          console.error('Failed to add checklist items:', checklistError);
           // Do not block assignment if checklist creation fails
         }
 
@@ -586,7 +569,6 @@ export default function AuditAssignment() {
         setDepartments(deptList);
       }
     } catch (error: any) {
-      console.error('Failed to assign auditors:', error);
       toast.error(error?.response?.data?.message || error?.message || 'Failed to assign auditors. Please try again.');
     } finally {
       setSubmitting(false);
@@ -650,7 +632,6 @@ export default function AuditAssignment() {
         const deptDetail = await getDepartmentById(dept.deptId);
         setDepartmentDetail(deptDetail);
       } catch (err: any) {
-        console.error('Failed to load department details:', err);
         setDepartmentDetail(null);
       } finally {
         setLoadingDepartmentDetail(false);
@@ -692,7 +673,6 @@ export default function AuditAssignment() {
           setAuditorNamesForDetail({});
         }
       } catch (err: any) {
-        console.error('Failed to load QR grants:', err);
         setQrGrantsForDetail([]);
       } finally {
         setLoadingQrGrants(false);
@@ -1285,26 +1265,45 @@ export default function AuditAssignment() {
 
                         const totalDays = calculateTotalDays();
                         const currentValue = estimatedDuration || 0;
-                        // Max value should be strictly less than totalDays, so max = totalDays - 0.5 (since step is 0.5)
-                        const maxValue = totalDays !== undefined ? totalDays - 0.5 : undefined;
+                        // Max value should be strictly less than totalDays
+                        const maxValue = totalDays !== undefined ? totalDays - 1 : undefined;
 
                         return (
                           <>
                             <input
                               type="number"
                               min="0"
-                              step="0.5"
+                              step="1"
                               max={maxValue}
                               value={estimatedDuration || ''}
                               onChange={(e) => {
-                                const value = Number(e.target.value) || 0;
+                                const inputValue = e.target.value;
+                                // Only allow integers (no decimal points)
+                                if (inputValue === '' || inputValue === '-') {
+                                  setEstimatedDuration(0);
+                                  return;
+                                }
+                                // Check if input contains decimal point
+                                if (inputValue.includes('.')) {
+                                  // Remove decimal part and keep only integer
+                                  const intValue = Math.floor(Number(inputValue)) || 0;
+                                  setEstimatedDuration(intValue);
+                                  return;
+                                }
+                                const value = Math.floor(Number(inputValue)) || 0;
                                 if (value < 0) {
                                   setEstimatedDuration(0);
                                 } else if (totalDays !== undefined && value >= totalDays) {
                                   // Strictly less than totalDays
-                                  setEstimatedDuration(Math.max(0, totalDays - 0.5));
+                                  setEstimatedDuration(Math.max(0, totalDays - 1));
                                 } else {
                                   setEstimatedDuration(value);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                // Prevent decimal point and minus sign (except for backspace, delete, arrow keys, etc.)
+                                if (e.key === '.' || e.key === ',' || (e.key === '-' && e.currentTarget.value.length > 0)) {
+                                  e.preventDefault();
                                 }
                               }}
                               placeholder="Enter days"
@@ -1404,36 +1403,56 @@ export default function AuditAssignment() {
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm transition-opacity"
             onClick={handleCloseDetailModal}
           />
           
           {/* Modal */}
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-gray-900">
-                  Assignment Details
-                </h3>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-auto max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header with gradient */}
+            <div className="bg-gradient-to-r from-primary-600 to-primary-700 px-6 py-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-white bg-opacity-20 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-white">
+                    Assignment Details
+                  </h3>
+                </div>
                 <button
                   onClick={handleCloseDetailModal}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="text-white hover:bg-white hover:bg-opacity-20 rounded-lg p-2 transition-all duration-200"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
+            </div>
 
-              <div className="space-y-4">
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+
+              <div className="space-y-6">
                 {/* Audit Information */}
                 {selectedAuditId && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center">
+                        <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <h4 className="text-base font-semibold text-gray-900">Audit Information</h4>
+                    </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                         Audit Title
                       </label>
-                      <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                      <p className="text-base text-gray-900 bg-gray-50 px-4 py-3 rounded-lg border border-gray-200 font-medium">
                         {audits.find(a => a.auditId === selectedAuditId)?.title || 'N/A'}
                       </p>
                     </div>
@@ -1441,49 +1460,56 @@ export default function AuditAssignment() {
                 )}
 
                 {/* Department Information */}
-                <div className="border-t border-gray-200 pt-4">
-                  <h4 className="text-base font-semibold text-gray-900 mb-3">Department Information</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                    </div>
+                    <h4 className="text-base font-semibold text-gray-900">Department Information</h4>
+                  </div>
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                         Department Name
                       </label>
-                      <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+                      <p className="text-base text-gray-900 bg-gray-50 px-4 py-3 rounded-lg border border-gray-200 font-medium">
                         {selectedDepartmentForDetail?.name || selectedAssignment?.departmentName || 'N/A'}
                       </p>
                     </div>
+                    
+                    {/* Department Details from API */}
+                    {loadingDepartmentDetail ? (
+                      <div className="flex items-center gap-2 text-sm text-gray-600 py-4">
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-primary-600 border-t-transparent"></div>
+                        <span>Loading department details...</span>
+                      </div>
+                    ) : departmentDetail ? (
+                      <div className="space-y-4">
+                        {departmentDetail.code && (
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                              Department Code
+                            </label>
+                            <p className="text-base text-gray-900 bg-gray-50 px-4 py-3 rounded-lg border border-gray-200 font-mono">
+                              {departmentDetail.code}
+                            </p>
+                          </div>
+                        )}
+                        {departmentDetail.description && (
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                              Description
+                            </label>
+                            <p className="text-sm text-gray-700 bg-gray-50 px-4 py-3 rounded-lg border border-gray-200 leading-relaxed">
+                              {departmentDetail.description}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
-                  
-                  {/* Department Details from API */}
-                  {loadingDepartmentDetail ? (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
-                      Loading department details...
-                    </div>
-                  ) : departmentDetail ? (
-                    <div className="mt-3 space-y-2">
-                      {departmentDetail.code && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Department Code
-                          </label>
-                          <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                            {departmentDetail.code}
-                          </p>
-                        </div>
-                      )}
-                      {departmentDetail.description && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Description
-                          </label>
-                          <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                            {departmentDetail.description}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
                 </div>
 
                 {/* Auditor Information - Show all assigned auditors */}
@@ -1511,31 +1537,37 @@ export default function AuditAssignment() {
                   }
 
                   return (
-                    <div className="border-t border-gray-200 pt-4">
-                      <h4 className="text-base font-semibold text-gray-900 mb-3">
-                        Auditor Information {assignedAuditors.length > 1 && `(${assignedAuditors.length})`}
-                      </h4>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                        <h4 className="text-base font-semibold text-gray-900">
+                          Auditor Information {assignedAuditors.length > 1 && <span className="text-gray-500 font-normal">({assignedAuditors.length})</span>}
+                        </h4>
+                      </div>
                       {assignedAuditors.length > 0 ? (
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           {assignedAuditors.map((auditor) => (
-                            <div key={auditor.auditorId} className="bg-gray-50 rounded-lg px-3 py-2">
+                            <div key={auditor.auditorId} className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg px-4 py-3 border border-gray-200 hover:shadow-md transition-shadow">
                               <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
-                                  <span className="text-xs font-semibold text-primary-700">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-sm">
+                                  <span className="text-sm font-bold text-white">
                                     {auditor.name.charAt(0).toUpperCase()}
                                   </span>
                                 </div>
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">{auditor.name}</p>
-                         
+                                <div className="flex-1">
+                                  <p className="text-sm font-semibold text-gray-900">{auditor.name}</p>
                                 </div>
                               </div>
                             </div>
                           ))}
                         </div>
                       ) : selectedAssignment?.auditorName ? (
-                        <div className="bg-gray-50 rounded-lg px-3 py-2">
-                          <p className="text-sm font-medium text-gray-900">
+                        <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg px-4 py-3 border border-gray-200">
+                          <p className="text-sm font-semibold text-gray-900">
                             {selectedAssignment.auditorName}
                           </p>
                         </div>
@@ -1546,24 +1578,31 @@ export default function AuditAssignment() {
 
                 {/* Status and Dates - Only show if assigned */}
                 {selectedAssignment && (
-                  <div className="border-t border-gray-200 pt-4">
-                    <h4 className="text-base font-semibold text-gray-900 mb-3">Status & Timeline</h4>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <h4 className="text-base font-semibold text-gray-900">Status & Timeline</h4>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                           Status
                         </label>
                         <span
-                          className={`inline-block px-3 py-2 text-sm font-medium rounded-lg ${
+                          className={`inline-flex items-center px-4 py-2 text-sm font-semibold rounded-lg shadow-sm ${
                             selectedAssignment.status === 'Assigned'
-                              ? 'bg-green-100 text-green-800'
+                              ? 'bg-gradient-to-r from-green-500 to-green-600 text-white'
                               : selectedAssignment.status === 'In Progress'
-                              ? 'bg-blue-100 text-blue-800'
+                              ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
                               : selectedAssignment.status === 'Completed'
-                              ? 'bg-gray-100 text-gray-800'
+                              ? 'bg-gradient-to-r from-gray-500 to-gray-600 text-white'
                               : selectedAssignment.status === 'Rejected'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-yellow-100 text-yellow-800'
+                              ? 'bg-gradient-to-r from-red-500 to-red-600 text-white'
+                              : 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-white'
                           }`}
                         >
                           {selectedAssignment.status}
@@ -1571,24 +1610,29 @@ export default function AuditAssignment() {
                       </div>
                       {selectedAssignment.assignedAt && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                             Assigned At
                           </label>
-                          <p className="text-sm text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
-                            {new Date(selectedAssignment.assignedAt).toLocaleString()}
-                          </p>
+                          <div className="flex items-center gap-2 bg-gray-50 px-4 py-3 rounded-lg border border-gray-200">
+                            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <p className="text-sm text-gray-900 font-medium">
+                              {new Date(selectedAssignment.assignedAt).toLocaleString()}
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>
                     {/* Reassign button for Rejected status */}
                     {selectedAssignment.status === 'Rejected' && selectedDepartmentForDetail && (
-                      <div className="mt-4">
+                      <div className="mt-5 pt-4 border-t border-gray-200">
                         <button
                           onClick={() => {
                             handleCloseDetailModal();
                             handleOpenAssignModal(selectedDepartmentForDetail);
                           }}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                          className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center gap-2 shadow-md hover:shadow-lg font-medium"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -1602,12 +1646,19 @@ export default function AuditAssignment() {
 
                 {/* Notes - Only show if assigned */}
                 {selectedAssignment?.notes && (
-                  <div className="border-t border-gray-200 pt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Notes
-                    </label>
-                    <div className="bg-gray-50 rounded-lg p-3">
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap">
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                        <svg className="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </div>
+                      <label className="text-base font-semibold text-gray-900">
+                        Notes
+                      </label>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
                         {selectedAssignment.notes}
                       </p>
                     </div>
@@ -1629,46 +1680,53 @@ export default function AuditAssignment() {
                   const auditorIds = Object.keys(grantsByAuditor);
 
                   return (
-                    <div className="border-t border-gray-200 pt-4">
-                      <h4 className="text-base font-semibold text-gray-900 mb-3">QR Codes</h4>
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
+                          <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                          </svg>
+                        </div>
+                        <h4 className="text-base font-semibold text-gray-900">QR Codes</h4>
+                      </div>
                       {loadingQrGrants ? (
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
                           Loading QR codes...
                         </div>
                       ) : auditorIds.length > 0 ? (
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           {auditorIds.map((auditorId) => {
                             const grants = grantsByAuditor[auditorId];
                             const auditorName = auditorNamesForDetail[auditorId] || 'Loading...';
                             const isExpanded = expandedAuditorIds.has(auditorId);
                             
                             return (
-                              <div key={auditorId} className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
+                              <div key={auditorId} className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                                 {/* Auditor Header - Clickable */}
                                 <button
                                   onClick={() => toggleAuditorExpand(auditorId)}
-                                  className="w-full flex items-center justify-between p-4 hover:bg-gray-100 transition-colors"
+                                  className="w-full flex items-center justify-between p-4 hover:bg-white hover:bg-opacity-50 transition-all duration-200"
                                 >
                                   <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center">
-                                      <span className="text-sm font-semibold text-primary-700">
+                                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-400 to-indigo-600 flex items-center justify-center shadow-sm">
+                                      <span className="text-sm font-bold text-white">
                                         {auditorName.charAt(0).toUpperCase()}
                                       </span>
                                     </div>
                                     <div className="text-left">
-                                      <p className="text-sm font-medium text-gray-900">{auditorName}</p>
-                                      <p className="text-xs text-gray-600">{grants.length} QR code(s)</p>
+                                      <p className="text-sm font-semibold text-gray-900">{auditorName}</p>
+                                      <p className="text-xs text-gray-500 mt-0.5">{grants.length} QR code(s)</p>
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-3">
                                     {grants.some(g => g.status === 'Active') && (
-                                      <span className="px-2 py-1 text-xs font-medium rounded bg-green-100 text-green-800">
+                                      <span className="px-3 py-1 text-xs font-semibold rounded-full bg-gradient-to-r from-green-500 to-green-600 text-white shadow-sm">
                                         Active
                                       </span>
                                     )}
                                     <svg
-                                      className={`w-5 h-5 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                      className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                                       fill="none"
                                       stroke="currentColor"
                                       viewBox="0 0 24 24"
@@ -1680,30 +1738,35 @@ export default function AuditAssignment() {
                                 
                                 {/* QR Codes Content - Collapsible */}
                                 {isExpanded && (
-                                  <div className="px-4 pb-4 space-y-3 border-t border-gray-200 pt-3">
+                                  <div className="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4 bg-white">
                                     {grants.map((grant) => (
-                                      <div key={grant.grantId} className="bg-white rounded-lg p-4 border border-gray-200">
-                                        <div className="flex items-center gap-2 mb-3">
-                                          <span className={`px-2 py-1 text-xs font-medium rounded ${
+                                      <div key={grant.grantId} className="bg-gradient-to-br from-white to-gray-50 rounded-xl p-5 border border-gray-200 shadow-sm">
+                                        <div className="flex items-center justify-between mb-4">
+                                          <span className={`px-3 py-1.5 text-xs font-semibold rounded-lg shadow-sm ${
                                             grant.status === 'Active' 
-                                              ? 'bg-green-100 text-green-800' 
+                                              ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' 
                                               : grant.status === 'Expired'
-                                              ? 'bg-red-100 text-red-800'
-                                              : 'bg-gray-100 text-gray-800'
+                                              ? 'bg-gradient-to-r from-red-500 to-red-600 text-white'
+                                              : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white'
                                           }`}>
                                             {grant.status}
                                           </span>
-                                          <span className="text-xs text-gray-600">
-                                            Valid: {new Date(grant.validFrom).toLocaleDateString()} - {new Date(grant.validTo).toLocaleDateString()}
-                                          </span>
+                                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                            <span className="font-medium">
+                                              {new Date(grant.validFrom).toLocaleDateString()} - {new Date(grant.validTo).toLocaleDateString()}
+                                            </span>
+                                          </div>
                                         </div>
                                         
                                         {/* QR Code Display */}
-                                        <div className="flex justify-center mb-3">
-                                          <div className="bg-white p-3 rounded-lg border-2 border-gray-200">
+                                        <div className="flex justify-center">
+                                          <div className="bg-white p-4 rounded-xl border-2 border-gray-300 shadow-inner">
                                             <QRCodeSVG
                                               value={grant.qrUrl}
-                                              size={150}
+                                              size={160}
                                               level="M"
                                               includeMargin={true}
                                             />
@@ -1720,8 +1783,13 @@ export default function AuditAssignment() {
                           })}
                         </div>
                       ) : (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                          <p className="text-sm text-yellow-800">No QR codes have been issued for this assignment yet.</p>
+                        <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <p className="text-sm text-yellow-800 font-medium">No QR codes have been issued for this assignment yet.</p>
                         </div>
                       )}
                     </div>
@@ -1730,32 +1798,45 @@ export default function AuditAssignment() {
 
                 {/* Show message if not assigned */}
                 {!selectedAssignment && selectedDepartmentForDetail && (
-                  <div className="border-t border-gray-200 pt-4">
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                      <p className="text-sm text-yellow-800">
-                        This department has not been assigned to an auditor yet.
-                      </p>
-                      <button
-                        onClick={() => {
-                          handleCloseDetailModal();
-                          handleOpenAssignModal(selectedDepartmentForDetail);
-                        }}
-                        className="mt-3 px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
-                      >
-                        Assign Auditor
-                      </button>
+                  <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-xl p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-5 h-5 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-yellow-800 font-medium mb-3">
+                          This department has not been assigned to an auditor yet.
+                        </p>
+                        <button
+                          onClick={() => {
+                            handleCloseDetailModal();
+                            handleOpenAssignModal(selectedDepartmentForDetail);
+                          }}
+                          className="px-5 py-2.5 bg-gradient-to-r from-primary-600 to-primary-700 text-white text-sm font-semibold rounded-lg hover:from-primary-700 hover:to-primary-800 transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Assign Auditor
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-end gap-3 mt-6 pt-5 border-t border-gray-200 bg-white px-6 py-4 -mx-6 -mb-6">
                 <button
                   type="button"
                   onClick={handleCloseDetailModal}
-                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                  className="px-6 py-2.5 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg hover:from-primary-700 hover:to-primary-800 transition-all duration-200 shadow-md hover:shadow-lg font-semibold flex items-center gap-2"
                 >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                   Close
                 </button>
               </div>

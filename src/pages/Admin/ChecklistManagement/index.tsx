@@ -98,10 +98,8 @@ const AdminChecklistManagement = () => {
     setLoading(true);
     try {
       const res = await getChecklistTemplates();
-      console.log('Fetched templates:', res);
       setTemplates(Array.isArray(res) ? res : []);
     } catch (err) {
-      console.error('Failed to load templates', err);
       toast.error('Failed to load checklist templates. Please try again.');
     } finally {
       setLoading(false);
@@ -136,10 +134,8 @@ const AdminChecklistManagement = () => {
     setLoadingItems(true);
     try {
       const res = await getChecklistItemsByTemplate(templateId);
-      console.log('Fetched items:', res);
       setItems(Array.isArray(res) ? res : []);
     } catch (err) {
-      console.error('Failed to load items', err);
       toast.error('Failed to load checklist items. Please try again.');
     } finally {
       setLoadingItems(false);
@@ -178,7 +174,6 @@ const AdminChecklistManagement = () => {
       toast.success('Checklist template created successfully!');
       await fetchTemplates();
     } catch (err: any) {
-      console.error('Failed to create template', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to create template: ' + errorMessage);
     } finally {
@@ -228,8 +223,6 @@ const AdminChecklistManagement = () => {
         updatePayload.deptId = templateForm.deptId;
       }
       
-      console.log('Update payload:', JSON.stringify(updatePayload, null, 2));
-      console.log('Template ID:', editingTemplate.templateId);
       
       await updateChecklistTemplate(editingTemplate.templateId, updatePayload);
       setEditOpen(false);
@@ -237,7 +230,6 @@ const AdminChecklistManagement = () => {
       toast.success('Checklist template updated successfully!');
       await fetchTemplates();
     } catch (err: any) {
-      console.error('Failed to update template', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to update template: ' + errorMessage);
     } finally {
@@ -267,7 +259,6 @@ const AdminChecklistManagement = () => {
       closeDeleteModal();
       toast.success('Checklist template deleted successfully!');
     } catch (err: any) {
-      console.error('Failed to delete template', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to delete template: ' + errorMessage);
     }
@@ -400,7 +391,6 @@ const AdminChecklistManagement = () => {
       toast.success('Checklist item updated successfully!');
       await fetchItems(String(templateId));
     } catch (err: any) {
-      console.error('Failed to update item', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to update item: ' + errorMessage);
     } finally {
@@ -431,7 +421,6 @@ const AdminChecklistManagement = () => {
       closeDeleteItemModal();
       toast.success('Checklist item deleted successfully!');
     } catch (err: any) {
-      console.error('Failed to delete item', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to delete item: ' + errorMessage);
     }
@@ -511,7 +500,6 @@ const AdminChecklistManagement = () => {
       await fetchItems(String(templateId));
       toast.success('Items order updated successfully!');
     } catch (err: any) {
-      console.error('Failed to update items order', err);
       setItems(previousItems);
       toast.error('Failed to update items order. Please try again.');
     } finally {

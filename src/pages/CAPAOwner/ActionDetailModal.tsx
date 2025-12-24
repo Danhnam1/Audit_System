@@ -48,32 +48,20 @@ const ActionDetailModal = ({
   // Sync selectedActionId with actionId prop when modal opens
   useEffect(() => {
     if (isOpen && actionId) {
-      console.log('🔄 Syncing selectedActionId with actionId prop:', actionId);
       setSelectedActionId(actionId);
     }
   }, [isOpen, actionId]);
 
   useEffect(() => {
-    console.log('=== ActionDetailModal useEffect ===');
-    console.log('isOpen:', isOpen);
-    console.log('selectedActionId:', selectedActionId);
-    console.log('findingId:', findingId);
-    console.log('Current action state:', action ? {
-      actionId: action.actionId,
-      status: action.status,
-      progressPercent: action.progressPercent
-    } : null);
+   
     
     if (isOpen && selectedActionId) {
       loadAction();
       if (findingId) {
-        console.log('✅ findingId exists, calling loadRelatedActions()');
         loadRelatedActions();
       } else {
-        console.log('⚠️ No findingId provided, skipping loadRelatedActions()');
       }
     } else {
-      console.log('❌ Modal closed or no selectedActionId, resetting state');
       // Reset state when modal closes
       setAction(null);
       setAssignedToUser(null);
@@ -95,7 +83,6 @@ const ActionDetailModal = ({
       
       // Only reload if the updated action matches the current action
       if (updatedActionId === selectedActionId) {
-        console.log('🔄 [ActionDetailModal] Action updated event received, reloading attachments for action:', selectedActionId);
         // Wait a bit for backend to update
         await new Promise(resolve => setTimeout(resolve, 500));
         // Reload attachments to get updated status
@@ -104,9 +91,7 @@ const ActionDetailModal = ({
           // Also reload action to get updated status
           const data = await getActionById(selectedActionId);
           setAction(data);
-          console.log('✅ [ActionDetailModal] Reloaded action and attachments after update');
         } catch (err) {
-          console.error('❌ [ActionDetailModal] Error reloading after action update:', err);
         }
       }
     };
@@ -120,22 +105,14 @@ const ActionDetailModal = ({
 
   const loadRelatedActions = async () => {
     if (!findingId) {
-      console.log('No findingId provided, skipping related actions load');
       return;
     }
     
-    console.log('🔄 [loadRelatedActions] Loading actions for finding:', findingId);
     setLoadingRelatedActions(true);
     try {
       // Load all actions for this finding using the correct API function
       const actions = await getActionsByFinding(findingId);
-      console.log('✅ [loadRelatedActions] Loaded actions:', actions?.map((a, i) => ({
-        index: i + 1,
-        actionId: a.actionId,
-        status: a.status,
-        progressPercent: a.progressPercent,
-        assignedTo: a.assignedTo
-      })));
+    
       setRelatedActions(actions || []);
       
       // Load user info for all actions
@@ -146,7 +123,6 @@ const ActionDetailModal = ({
             const user = await getUserById(action.assignedTo);
             if (user) {
               usersMap[action.assignedTo] = user;
-              console.log('Loaded user:', user.fullName, 'for action:', action.actionId);
             }
           } catch (error) {
             console.error(`Error loading user ${action.assignedTo}:`, error);
@@ -154,7 +130,6 @@ const ActionDetailModal = ({
         }
       }
       setRelatedActionsUsers(usersMap);
-      console.log('Total users loaded:', Object.keys(usersMap).length);
     } catch (err: any) {
       console.error('Error loading related actions:', err);
     } finally {
@@ -164,19 +139,11 @@ const ActionDetailModal = ({
 
   const loadAction = async () => {
     if (!selectedActionId) return;
-    console.log('📥 [loadAction] Fetching action:', selectedActionId);
     setLoading(true);
     setError(null);
     try {
       const data = await getActionById(selectedActionId);
-      console.log('✅ [loadAction] Received data:', {
-        actionId: data.actionId,
-        title: data.title,
-        status: data.status,
-        progressPercent: data.progressPercent,
-        assignedTo: data.assignedTo,
-        rootCauseId: data.rootCauseId
-      });
+    
       setAction(data);
       // Load attachments for this action
       if (selectedActionId) loadAttachments(selectedActionId);
@@ -191,7 +158,6 @@ const ActionDetailModal = ({
         setRootCause(null);
       }
     } catch (err: any) {
-      console.error('❌ [loadAction] Error loading action:', err);
       setError(err?.response?.data?.message || err?.message || 'Failed to load action details');
     } finally {
       setLoading(false);
@@ -202,7 +168,6 @@ const ActionDetailModal = ({
     setLoadingRootCause(true);
     try {
       const data = await getRootCauseById(rootCauseId);
-      console.log('✅ Loaded root cause:', data);
       setRootCause(data);
     } catch (err: any) {
       console.error('Error loading root cause:', err);
@@ -417,8 +382,6 @@ const ActionDetailModal = ({
                             <button
                               key={action.actionId}
                               onClick={() => {
-                                console.log('🖱️ [Sidebar Click] Switching to action:', action.actionId);
-                                console.log('Previous selectedActionId:', selectedActionId);
                                 setSelectedActionId(action.actionId);
                                 setShowFeedbackInput(false);
                                 setReviewFeedback('');
@@ -843,20 +806,13 @@ const ActionDetailModal = ({
                   </button>
                   <button
                     onClick={async () => {
-                      console.log('🔵 Confirm Rejection button clicked');
-                      console.log('reviewFeedback:', reviewFeedback);
-                      console.log('onReject exists:', !!onReject);
                       
                       if (reviewFeedback.trim() && onReject && selectedActionId) {
-                        console.log('❌ Calling onReject with actionId:', selectedActionId, 'feedback:', reviewFeedback);
                         await onReject(selectedActionId, reviewFeedback);
-                        console.log('🔄 Reloading action details in modal...');
                         await loadAction();
-                        console.log('✅ Action reloaded in modal');
                         setShowFeedbackInput(false);
                         setReviewFeedback('');
                       } else {
-                        console.log('⚠️ No action taken - feedback required for rejection');
                       }
                     }}
                     disabled={isProcessing || !reviewFeedback.trim()}
@@ -892,27 +848,7 @@ const ActionDetailModal = ({
               : true; // If no expected status, don't filter by status
             
             const shouldShowButtons = showReviewButtons && onApprove && onReject && action && !showFeedbackInput && statusMatches;
-            
-            console.log('🔍 [Footer Buttons Check - DETAILED]', {
-              '1_showReviewButtons': showReviewButtons,
-              '2_onApprove_exists': !!onApprove,
-              '3_onReject_exists': !!onReject,
-              '4_hasAction': !!action,
-              '5_showFeedbackInput': showFeedbackInput,
-              '6_action_status_raw': action?.status,
-              '7_action_status_lower': action?.status?.toLowerCase(),
-              '8_expectedStatus': expectedStatus,
-              '9_expectedStatus_lower': expectedStatus?.toLowerCase(),
-              '10_statusMatches': statusMatches,
-              '11_FINAL_shouldShowButtons': shouldShowButtons,
-              'ALL_CONDITIONS': {
-                showReviewButtons,
-                hasCallbacks: !!(onApprove && onReject),
-                hasAction: !!action,
-                showFeedbackInput,
-                statusMatches
-              }
-            });
+        
             
             return shouldShowButtons;
           })() && (
@@ -942,17 +878,10 @@ const ActionDetailModal = ({
                 </button>
                 <button
                   onClick={async () => {
-                    console.log('✅ [Footer] Approve button clicked - Direct approval for action:', {
-                      selectedActionId,
-                      currentActionId: action?.actionId,
-                      currentStatus: action?.status
-                    });
+              
                     if (onApprove && selectedActionId) {
-                      console.log('✅ Calling onApprove directly without feedback');
                       await onApprove(selectedActionId, '');
-                      console.log('🔄 Reloading action details in modal...');
                       await loadAction();
-                      console.log('✅ Action reloaded in modal');
                     }
                   }}
                   disabled={isProcessing}

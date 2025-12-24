@@ -159,14 +159,7 @@ const AdminUserManagement = () => {
         deptId: formData.deptId ? Number(formData.deptId) : null,
       });
 
-      console.log('=== Registration Response Debug ===');
-      console.log('Full response:', response);
-      console.log('Response keys:', response ? Object.keys(response) : 'null');
-      console.log('Response.status:', response?.status);
-      console.log('Response.data:', response?.data);
-      console.log('Response.message:', response?.message);
-      console.log('Type of response:', typeof response);
-      console.log('================================');
+
 
       // If we reach here without error, registration was successful
       // The API call didn't throw, so it succeeded
@@ -219,7 +212,6 @@ const AdminUserManagement = () => {
         })
       } catch (err) {
         // ignore dept fetch errors, we'll show raw id
-        console.warn('Failed to fetch departments', err)
       }
 
       // Use centralized API helper which normalizes envelopes

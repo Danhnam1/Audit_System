@@ -12,22 +12,18 @@ const getBaseURL = () => {
   if (url.startsWith('/')) {
     // Force absolute URL for production
     url = 'https://moca.mom/api';
-    console.warn('[apiClient] Detected relative URL, converted to absolute:', url);
   }
   
   // Remove port 80 from HTTPS URLs (HTTPS uses port 443 by default, not 80)
   if (url.startsWith('https://') && url.includes(':80')) {
     url = url.replace(':80', '');
-    console.warn('[apiClient] Removed :80 from baseURL, normalized to:', url);
   }
   
   // Ensure URL is absolute (starts with http:// or https://)
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = 'https://moca.mom/api';
-    console.warn('[apiClient] URL is not absolute, using default:', url);
   }
   
-  console.log('[apiClient] Base URL:', url);
   return url;
 };
 
@@ -53,7 +49,6 @@ apiClient.interceptors.request.use(
     if (config.baseURL) {
       if (config.baseURL.startsWith('https://') && config.baseURL.includes(':80')) {
         config.baseURL = config.baseURL.replace(':80', '');
-        console.log('[apiClient] Removed :80 from baseURL:', config.baseURL);
       }
     }
     
@@ -61,19 +56,13 @@ apiClient.interceptors.request.use(
     if (config.url && (config.url.startsWith('http://') || config.url.startsWith('https://'))) {
       if (config.url.startsWith('https://') && config.url.includes(':80')) {
         config.url = config.url.replace(':80', '');
-        console.log('[apiClient] Removed :80 from url:', config.url);
       }
     }
     
     // Log full URL for debugging
     if (config.baseURL && config.url) {
       const fullUrl = config.url.startsWith('http') ? config.url : config.baseURL + config.url;
-      console.log('[apiClient] Request:', {
-        method: config.method?.toUpperCase(),
-        url: config.url,
-        baseURL: config.baseURL,
-        fullUrl: fullUrl,
-      });
+     
       if (fullUrl.includes(':80')) {
         console.warn('[apiClient] WARNING: Full URL still contains :80:', fullUrl);
       }

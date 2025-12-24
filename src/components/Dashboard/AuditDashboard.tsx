@@ -36,7 +36,6 @@ const RadarSummary: React.FC = () => {
         const auditsList = (data.$values && data.$values) || (Array.isArray(data) ? data : []);
         setAudits(auditsList);
       } catch (error) {
-        console.error('Failed to fetch audits:', error);
         setAudits([]);
       } finally {
         setLoadingAudits(false);
@@ -90,7 +89,6 @@ const RadarSummary: React.FC = () => {
           setAudit2Data(null);
         }
       } catch (error) {
-        console.error('Failed to load comparison statistics:', error);
         setAudit1Data(null);
         setAudit2Data(null);
       } finally {
@@ -329,7 +327,6 @@ const MonthlyRevenueCard: React.FC = () => {
           { name: 'Sunday', value: dayCounts['Sunday'] },
         ]);
       } catch (error) {
-        console.error('Failed to fetch findings by range:', error);
         // Reset to zeros on error
         setWeeklyData([
           { name: 'Monday', value: 0 },
@@ -498,7 +495,6 @@ const ProfitCard: React.FC = () => {
           { name: 'Sunday', value: dayCounts['Sunday'] },
         ]);
       } catch (error) {
-        console.error('Failed to fetch actions by range:', error);
         // Reset to zeros on error
         setWeeklyData([
           { name: 'Monday', value: 0 },

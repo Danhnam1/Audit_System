@@ -15,37 +15,6 @@ import {
  * Business Rule 1: Validate giới hạn 5 audits trong thời kỳ A-B
  * @deprecated - Đã bỏ giới hạn số lần tạo plan, không còn sử dụng
  */
-// export const validateAuditLimit = async (
-//   startDate: string,
-//   endDate: string
-// ): Promise<{ isValid: boolean; message: string; currentCount?: number }> => {
-//   try {
-//     const audits = await getAuditsByPeriod(startDate, endDate);
-//     const currentCount = Array.isArray(audits) ? audits.length : 0;
-//     const maxAllowed = 5;
-
-//     if (currentCount >= maxAllowed) {
-//       return {
-//         isValid: false,
-//         message: `Maximum ${maxAllowed} audits allowed in this period (${startDate} to ${endDate}). Current count: ${currentCount}.`,
-//         currentCount,
-//       };
-//     }
-
-//     return {
-//       isValid: true,
-//       message: `Valid. Current count: ${currentCount}/${maxAllowed}`,
-//       currentCount,
-//     };
-//   } catch (error: any) {
-//     console.error('[validateAuditLimit] Error:', error);
-//     return {
-//       isValid: false,
-//       message: error?.response?.data?.message || error?.message || 'Failed to validate audit limit',
-//     };
-//   }
-// };
-
 /**
  * Business Rule 2: Validate department với điều kiện (KHÔNG cấm trùng tuyệt đối)
  * Logic: Check trùng time + trùng phòng ban → Nếu trùng → check scope

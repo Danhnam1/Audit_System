@@ -243,7 +243,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         return;
       }
 
-      console.log('PlanDetailsModal: Reloading schedules and teams for audit', auditId, 'refreshKey:', refreshKey);
       try {
         const [schedulesRes, teamsRes] = await Promise.all([
           getAuditSchedules(String(auditId)),
@@ -256,22 +255,13 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         const schedulesArray = Array.isArray(schedules) ? schedules : [];
         const teamsArray = Array.isArray(teams) ? teams : [];
 
-        console.log('PlanDetailsModal: Loaded', schedulesArray.length, 'schedules and', teamsArray.length, 'team members');
-        console.log('PlanDetailsModal: Sample schedule:', schedulesArray[0]);
-        console.log('PlanDetailsModal: Sample team member:', teamsArray[0]);
-        console.log('PlanDetailsModal: All schedules:', schedulesArray.map((s: any) => ({
-          scheduleId: s.scheduleId || s.id,
-          milestoneName: s.milestoneName,
-          dueDate: s.dueDate,
-          dueDateFormatted: s.dueDate ? new Date(s.dueDate).toLocaleDateString() : 'N/A'
-        })));
+     
         
         // Force state update to trigger re-render by creating new array references
         setRefreshedSchedules([...schedulesArray]); // Create new array reference
         setRefreshedTeams([...teamsArray]); // Create new array reference
         setHasLoadedRefreshedData(true); // Mark that we've loaded refreshed data
         
-        console.log('PlanDetailsModal: State updated with', schedulesArray.length, 'schedules');
       } catch (error) {
         console.error('PlanDetailsModal: Failed to reload schedules and teams:', error);
         // Fallback to original data
@@ -288,17 +278,14 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   // Poll for changes when modal is open (fallback mechanism)
   useEffect(() => {
     if (!showModal) {
-      console.log('⏸️ PlanDetailsModal: Polling disabled - modal not open');
       return;
     }
     
     const auditId = selectedPlanDetails?.auditId || selectedPlanDetails?.id;
     if (!auditId) {
-      console.log('⏸️ PlanDetailsModal: Polling disabled - no auditId');
       return;
     }
 
-    console.log('🔄 PlanDetailsModal: Starting polling for audit', auditId);
 
     // Check localStorage periodically for updates
     const checkForUpdates = () => {
@@ -315,43 +302,27 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           const isRecent = timestamp && age < 30000;
           const matches = updatedAuditId && String(updatedAuditId).toLowerCase().trim() === String(auditId).toLowerCase().trim();
           
-          console.log('🔍 PlanDetailsModal: Polling check', {
-            stored: !!stored,
-            updatedAuditId,
-            currentAuditId: auditId,
-            matches,
-            timestamp,
-            age: age < 30000 ? `${age}ms ago` : 'too old',
-            isRecent,
-            shouldRefresh: isRecent && matches
-          });
-          
+      
           if (isRecent && matches) {
-            console.log('🔄 PlanDetailsModal: Detected recent update via polling - refreshing');
             // Clear localStorage to prevent duplicate refreshes
             localStorage.removeItem('auditPlanUpdated');
             setRefreshKey(prev => {
               const newKey = prev + 1;
-              console.log('🔄 PlanDetailsModal: Setting refreshKey from', prev, 'to', newKey, 'via polling');
               setHasLoadedRefreshedData(false);
               return newKey;
             });
           }
         } else {
-          console.log('🔍 PlanDetailsModal: Polling check - no stored data');
         }
       } catch (err) {
-        console.error('❌ PlanDetailsModal: Polling error', err);
       }
     };
 
     // Check immediately and then every 2 seconds
     checkForUpdates();
     const interval = setInterval(checkForUpdates, 2000);
-    console.log('✅ PlanDetailsModal: Polling started, interval:', interval);
 
     return () => {
-      console.log('🛑 PlanDetailsModal: Stopping polling');
       clearInterval(interval);
     };
   }, [showModal, selectedPlanDetails?.auditId, selectedPlanDetails?.id]);
@@ -363,10 +334,8 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     const auditId = selectedPlanDetails?.auditId || selectedPlanDetails?.id;
     
     const handleRefresh = () => {
-      console.log('🔄 PlanDetailsModal: Triggering refresh for audit', auditId);
       setRefreshKey(prev => {
         const newKey = prev + 1;
-        console.log('🔄 PlanDetailsModal: Setting refreshKey from', prev, 'to', newKey);
         setHasLoadedRefreshedData(false);
         return newKey;
       });
@@ -376,26 +345,13 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       const customEvent = e as CustomEvent;
       const updatedAuditId = customEvent.detail?.auditId;
       
-      console.log('🔔 PlanDetailsModal: Received auditPlanUpdated event', {
-        updatedAuditId,
-        updatedAuditIdType: typeof updatedAuditId,
-        currentAuditId: auditId,
-        currentAuditIdType: typeof auditId,
-        updatedAuditIdStr: String(updatedAuditId || ''),
-        currentAuditIdStr: String(auditId || ''),
-        action: customEvent.detail?.action,
-        match: updatedAuditId && String(updatedAuditId).toLowerCase().trim() === String(auditId).toLowerCase().trim()
-      });
+    
       
       // Compare with case-insensitive string comparison
       if (updatedAuditId && String(updatedAuditId).toLowerCase().trim() === String(auditId).toLowerCase().trim()) {
-        console.log('✅ PlanDetailsModal: Detected update for audit', auditId, '- refreshing schedules and teams');
         handleRefresh();
       } else {
-        console.log('❌ PlanDetailsModal: Audit ID mismatch - not refreshing', {
-          updatedAuditId,
-          auditId
-        });
+     
       }
     };
 
@@ -404,13 +360,9 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         try {
           const data = JSON.parse(e.newValue);
           const updatedAuditId = data.auditId;
-          console.log('🔔 PlanDetailsModal: Received storage event', {
-            updatedAuditId,
-            currentAuditId: auditId
-          });
+      
           
           if (updatedAuditId && String(updatedAuditId).toLowerCase().trim() === String(auditId).toLowerCase().trim()) {
-            console.log('✅ PlanDetailsModal: Storage event matches audit ID - refreshing');
             handleRefresh();
           }
         } catch (err) {
@@ -424,13 +376,11 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     document.addEventListener('auditPlanUpdated', handleAuditPlanUpdate, true);
     window.addEventListener('storage', handleStorageEvent);
     
-    console.log('PlanDetailsModal: Registered listeners for auditPlanUpdated event');
     
     return () => {
       window.removeEventListener('auditPlanUpdated', handleAuditPlanUpdate, true);
       document.removeEventListener('auditPlanUpdated', handleAuditPlanUpdate, true);
       window.removeEventListener('storage', handleStorageEvent);
-      console.log('PlanDetailsModal: Removed listeners for auditPlanUpdated event');
     };
   }, [showModal, selectedPlanDetails?.auditId, selectedPlanDetails?.id]);
 
@@ -440,13 +390,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     const result = hasLoadedRefreshedData
       ? refreshedSchedules 
       : (selectedPlanDetails.schedules?.values || []);
-    console.log('PlanDetailsModal: Computing schedulesToDisplay', {
-      hasLoadedRefreshedData,
-      refreshKey,
-      refreshedSchedulesCount: refreshedSchedules.length,
-      resultCount: result.length,
-      'first schedule': result[0]
-    });
+
     return result;
   }, [hasLoadedRefreshedData, refreshedSchedules, refreshKey, selectedPlanDetails.schedules?.values]);
 
@@ -463,29 +407,11 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         return role !== 'auditeeowner';
       })
           : []);
-    console.log('PlanDetailsModal: Computing auditTeamsFromDetails', {
-      hasLoadedRefreshedData,
-      refreshKey,
-      refreshedTeamsCount: refreshedTeams.length,
-      resultCount: result.length,
-      'first team member': result[0]
-    });
+   
     return result;
   }, [hasLoadedRefreshedData, refreshedTeams, refreshKey, selectedPlanDetails.auditTeams?.values]);
-  
-  console.log('PlanDetailsModal: Final render values', {
-    hasLoadedRefreshedData,
-    refreshKey,
-    refreshedSchedulesCount: refreshedSchedules.length,
-    refreshedTeamsCount: refreshedTeams.length,
-    schedulesToDisplayCount: schedulesToDisplay.length,
-    auditTeamsFromDetailsCount: auditTeamsFromDetails.length,
-    originalSchedulesCount: selectedPlanDetails.schedules?.values?.length || 0,
-    originalTeamsCount: selectedPlanDetails.auditTeams?.values?.length || 0,
-  });
+ 
 
-  // Note: AuditeeOwner is a system role, not part of auditTeam
-  // Do not add AuditeeOwner to audit team display
 
   // Build user lookup map from auditorOptions and ownerOptions
   const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
@@ -551,17 +477,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     
     // Use found user's fullName, or keep existing fullName, or fallback to User ID
     const fullName = member.fullName || user?.fullName || user?.name;
-    
-    // Debug logging only if we couldn't find the user
-    if (showModal && !fullName && userIdStr && userMap.size > 0) {
-      console.warn('⚠️ PlanDetailsModal - Could not find fullName for userId:', userIdStr, {
-        memberKeys: Object.keys(member),
-        userIdType: typeof userId,
-        userFound: !!user,
-        userMapSize: userMap.size,
-        sampleKeys: Array.from(userMap.keys()).slice(0, 3),
-      });
-    }
+  
     
     return {
       ...member,

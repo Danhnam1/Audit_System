@@ -100,16 +100,13 @@ const CompliantModal = ({
       // Filter users to only show AuditeeOwner role
       const auditeeOwners = users.filter(user => user.roleName === 'AuditeeOwner');
       setDepartmentUsers(auditeeOwners);
-      console.log(`Loaded ${auditeeOwners.length} AuditeeOwner users from department ${deptId} (out of ${users.length} total users):`, auditeeOwners);
       
       // Auto-select witness if there's exactly one AuditeeOwner
       if (auditeeOwners.length === 1 && auditeeOwners[0].userId) {
         setSelectedWitnesses(auditeeOwners[0].userId);
-        console.log('Auto-selected witness:', auditeeOwners[0].fullName || auditeeOwners[0].email);
       } else if (auditeeOwners.length > 1 && !selectedWitnesses) {
         // If multiple AuditeeOwners exist and no selection yet, auto-select the first one
         setSelectedWitnesses(auditeeOwners[0].userId || '');
-        console.log('Auto-selected first witness:', auditeeOwners[0].fullName || auditeeOwners[0].email);
       }
     } catch (err: any) {
       console.error('Error loading department users:', err);
@@ -201,53 +198,25 @@ const CompliantModal = ({
       retentionDate.setDate(retentionDate.getDate() + 30);
       const retentionUntil = retentionDate.toISOString().split('T')[0];
 
-      // Get current user ID from auth hook (decodes JWT token)
-      // currentUserId is a GUID string from JWT, keep it as string
-      console.log('currentUserId (GUID from JWT):', currentUserId);
-
-      // Get witness userId (it's a GUID string from departmentUsers)
-      console.log('Selected witness userId:', selectedWitnesses);
-
-      // Create compliant payload for API
-      // Backend expects: auditChecklistItemId, title, reason, dateOfCompliance, timeOfCompliance, department, witnessId (GUID string), createdBy (GUID string)
       const compliantData = {
         title: checklistItem.questionTextSnapshot,
         reason: reason.trim(),
         dateOfCompliance: complianceDate,
         timeOfCompliance: complianceTime,
         department: departmentName,
-        witnessId: selectedWitnesses || '', // Single witness's userId (GUID string)
-        createdBy: currentUserId || '', // Current user ID as GUID string from JWT token
+        witnessId: selectedWitnesses || '',
+        createdBy: currentUserId || '',
       };
 
-      console.log('========== MARK COMPLIANT DEBUG ==========');
-      console.log('1. Checklist Item:', checklistItem);
-      console.log('1a. Checklist Item ALL FIELDS:', Object.keys(checklistItem).reduce((acc: any, key) => {
-        acc[key] = (checklistItem as any)[key];
-        return acc;
-      }, {}));
-      console.log('2. Form Data:', {
-        reason,
-        witnesses: selectedWitnesses,
-        witnessesDisplay: getSelectedWitnessesDisplay(),
-        department: departmentName,
-        complianceDate,
-        complianceTime,
-        filesCount: files.length,
-      });
-      console.log('3. Compliant Payload:', JSON.stringify(compliantData, null, 2));
+   
 
       // Call API to create compliant record with details
       const response = await markChecklistItemCompliant1(checklistItem.auditItemId, compliantData);
-      console.log('✅ Compliant record created:', response);
 
       // Call API to update checklist item status to "Compliant"
       try {
         await markChecklistItemCompliant(checklistItem.auditItemId);
-        console.log('✅ Checklist item status updated to Compliant');
       } catch (statusError: any) {
-        console.warn('⚠️ Failed to update checklist item status:', statusError);
-        // Don't fail the whole operation if status update fails
         // The compliant record was already created successfully
       }
 
@@ -255,16 +224,13 @@ const CompliantModal = ({
       // NOT the numeric 'id'
       const compliantItemId = response?.auditChecklistItemId || checklistItem.auditItemId;
       
-      console.log('Using compliantItemId (GUID) for file upload:', compliantItemId);
       
       // Upload files if any
       if (files.length > 0 && compliantItemId) {
-        console.log(`Uploading ${files.length} file(s) with entityId: ${compliantItemId}...`);
         
         const uploadResults = [];
         for (const file of files) {
           try {
-            console.log(`Uploading file: ${file.name}...`);
             const result = await uploadAttachment({
               entityType: 'compliant', // EntityType is 'compliant' for compliance items
               entityId: compliantItemId,
@@ -273,16 +239,8 @@ const CompliantModal = ({
               isArchived: false,
               file: file,
             });
-            console.log(`✅ File ${file.name} uploaded successfully:`, result);
             uploadResults.push({ file: file.name, success: true });
           } catch (fileError: any) {
-            console.error(`❌ Error uploading file ${file.name}:`, fileError);
-            console.error('Upload error details:', {
-              message: fileError?.message,
-              response: fileError?.response,
-              data: fileError?.response?.data,
-              status: fileError?.response?.status,
-            });
             uploadResults.push({ file: file.name, success: false, error: fileError?.message });
           }
         }
@@ -291,12 +249,9 @@ const CompliantModal = ({
         const successCount = uploadResults.filter(r => r.success).length;
         const failCount = uploadResults.filter(r => !r.success).length;
         if (failCount > 0) {
-          console.warn(`⚠️ ${successCount} file(s) uploaded, ${failCount} file(s) failed`);
         } else {
-          console.log(`✅ All ${successCount} file(s) uploaded successfully`);
         }
       } else if (files.length > 0) {
-        console.warn('⚠️ Cannot upload files: compliantItemId is missing');
       }
       
       // Reset form
