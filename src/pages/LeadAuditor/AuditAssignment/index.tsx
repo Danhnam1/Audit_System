@@ -171,8 +171,31 @@ export default function AuditAssignment() {
         // Load assignment requests
         try {
           const requestsData = await getAllAuditAssignmentRequests();
-          const requestsList = unwrap<any>(requestsData);
-          const requestsArray = Array.isArray(requestsList) ? requestsList : [];
+          console.log('[AuditAssignment] Raw requests data:', requestsData);
+          console.log('[AuditAssignment] Type of requestsData:', typeof requestsData);
+          console.log('[AuditAssignment] Is array?', Array.isArray(requestsData));
+          console.log('[AuditAssignment] Has $values?', requestsData?.$values);
+          
+          // Handle different response formats
+          let requestsArray: any[] = [];
+          if (Array.isArray(requestsData)) {
+            requestsArray = requestsData;
+          } else if (requestsData?.$values && Array.isArray(requestsData.$values)) {
+            requestsArray = requestsData.$values;
+          } else if (requestsData?.data?.$values && Array.isArray(requestsData.data.$values)) {
+            requestsArray = requestsData.data.$values;
+          } else if (requestsData?.data && Array.isArray(requestsData.data)) {
+            requestsArray = requestsData.data;
+          } else {
+            const requestsList = unwrap<any>(requestsData);
+            requestsArray = Array.isArray(requestsList) ? requestsList : [];
+          }
+          
+          console.log('[AuditAssignment] Processed assignment requests:', requestsArray);
+          console.log('[AuditAssignment] Number of requests:', requestsArray.length);
+          if (requestsArray.length > 0) {
+            console.log('[AuditAssignment] First request sample:', requestsArray[0]);
+          }
           setAssignmentRequests(requestsArray);
         } catch (reqErr: any) {
           console.error('[AuditAssignment] Failed to load assignment requests:', reqErr);
@@ -1017,17 +1040,69 @@ export default function AuditAssignment() {
                             ).values()
                           );
 
-                          // Check if there's a pending request matching any active assignment
-                          // Match by: auditAssignmentId, deptId, auditId
-                          const matchedRequest = activeAssignments.length > 0 ? assignmentRequests.find(req => {
-                            const matchesAssignment = activeAssignments.some(assignment => 
-                              req.auditAssignmentId === assignment.assignmentId
-                            );
-                            return matchesAssignment &&
-                              req.deptId === dept.deptId &&
-                              req.auditId === selectedAuditId &&
-                              req.status?.toLowerCase() === 'pending';
-                          }) : null;
+                          // Check if there's a pending request matching this department and audit
+                          // Match by: deptId, auditId, and optionally auditAssignmentId if assignment exists
+                          console.log(`[AuditAssignment] Checking requests for dept ${dept.deptId}, audit ${selectedAuditId}:`, {
+                            totalRequests: assignmentRequests.length,
+                            activeAssignments: activeAssignments.length,
+                            activeAssignmentIds: activeAssignments.map(a => a.assignmentId)
+                          });
+                          
+                          const matchedRequest = assignmentRequests.find(req => {
+                            // Check deptId match (handle both number and string)
+                            const matchesDept = Number(req.deptId) === Number(dept.deptId);
+                            // Check auditId match (case-insensitive)
+                            const matchesAudit = String(req.auditId || '').toLowerCase().trim() === String(selectedAuditId || '').toLowerCase().trim();
+                            // Check status is pending
+                            const isPending = (req.status || '').toLowerCase().trim() === 'pending';
+                            
+                            console.log(`[AuditAssignment] Checking request ${req.requestId}:`, {
+                              reqDeptId: req.deptId,
+                              deptId: dept.deptId,
+                              matchesDept,
+                              reqAuditId: req.auditId,
+                              selectedAuditId,
+                              matchesAudit,
+                              reqStatus: req.status,
+                              isPending,
+                              reqAuditAssignmentId: req.auditAssignmentId
+                            });
+                            
+                            // If there are active assignments, also check auditAssignmentId match
+                            if (activeAssignments.length > 0) {
+                              const matchesAssignment = activeAssignments.some(assignment => 
+                                String(req.auditAssignmentId || '').toLowerCase().trim() === String(assignment.assignmentId || '').toLowerCase().trim()
+                              );
+                              console.log(`[AuditAssignment] Request ${req.requestId} matchesAssignment:`, matchesAssignment);
+                              if (matchesDept && matchesAudit && isPending && matchesAssignment) {
+                                console.log('[AuditAssignment] ✓ Found matched request with assignment:', {
+                                  request: req,
+                                  assignment: activeAssignments.find(a => String(req.auditAssignmentId || '') === String(a.assignmentId || '')),
+                                  dept: dept.deptId,
+                                  audit: selectedAuditId
+                                });
+                                return true;
+                              }
+                              return false;
+                            } else {
+                              // If no active assignments, just check deptId and auditId
+                              if (matchesDept && matchesAudit && isPending) {
+                                console.log('[AuditAssignment] ✓ Found matched request without assignment:', {
+                                  request: req,
+                                  dept: dept.deptId,
+                                  audit: selectedAuditId
+                                });
+                                return true;
+                              }
+                              return false;
+                            }
+                          });
+                          
+                          if (matchedRequest) {
+                            console.log('[AuditAssignment] ✓ Matched request found for dept:', dept.deptId, matchedRequest);
+                          } else {
+                            console.log('[AuditAssignment] ✗ No matched request for dept:', dept.deptId);
+                          }
 
                           // Determine if this department has sensitive areas
                           const isSensitiveDept = !!(
@@ -2440,14 +2515,19 @@ export default function AuditAssignment() {
                     toast.success('Request rejected successfully');
                     setShowRequestModal(false);
                     setSelectedRequest(null);
-                    // Reload requests
-                    const requestsData = await getAllAuditAssignmentRequests();
-                    const requestsList = unwrap<any>(requestsData);
-                    const requestsArray = Array.isArray(requestsList) ? requestsList : [];
-                    setAssignmentRequests(requestsArray);
-                    // Reload assignments
-                    const assignmentsData = await getAuditAssignments().catch(() => []);
-                    setAssignments(assignmentsData || []);
+                    // Reload requests and assignments
+                    try {
+                      const requestsData = await getAllAuditAssignmentRequests();
+                      const requestsList = unwrap<any>(requestsData);
+                      const requestsArray = Array.isArray(requestsList) ? requestsList : [];
+                      console.log('[AuditAssignment] Reloaded requests after reject:', requestsArray);
+                      setAssignmentRequests(requestsArray);
+                      
+                      const assignmentsData = await getAuditAssignments().catch(() => []);
+                      setAssignments(assignmentsData || []);
+                    } catch (reloadErr) {
+                      console.error('[AuditAssignment] Failed to reload after reject:', reloadErr);
+                    }
                   } catch (err: any) {
                     console.error('Failed to reject request:', err);
                     toast.error(err?.response?.data?.message || err?.message || 'Failed to reject request');
@@ -2473,14 +2553,19 @@ export default function AuditAssignment() {
                     toast.success('Request approved successfully');
                     setShowRequestModal(false);
                     setSelectedRequest(null);
-                    // Reload requests
-                    const requestsData = await getAllAuditAssignmentRequests();
-                    const requestsList = unwrap<any>(requestsData);
-                    const requestsArray = Array.isArray(requestsList) ? requestsList : [];
-                    setAssignmentRequests(requestsArray);
-                    // Reload assignments
-                    const assignmentsData = await getAuditAssignments().catch(() => []);
-                    setAssignments(assignmentsData || []);
+                    // Reload requests and assignments
+                    try {
+                      const requestsData = await getAllAuditAssignmentRequests();
+                      const requestsList = unwrap<any>(requestsData);
+                      const requestsArray = Array.isArray(requestsList) ? requestsList : [];
+                      console.log('[AuditAssignment] Reloaded requests after approve:', requestsArray);
+                      setAssignmentRequests(requestsArray);
+                      
+                      const assignmentsData = await getAuditAssignments().catch(() => []);
+                      setAssignments(assignmentsData || []);
+                    } catch (reloadErr) {
+                      console.error('[AuditAssignment] Failed to reload after approve:', reloadErr);
+                    }
                   } catch (err: any) {
                     console.error('Failed to approve request:', err);
                     toast.error(err?.response?.data?.message || err?.message || 'Failed to approve request');

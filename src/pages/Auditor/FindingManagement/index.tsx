@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuditFindings } from '../../../hooks/useAuditFindings';
 import { getMyAssignments } from '../../../api/auditAssignments';
 import { getAuditPlanById } from '../../../api/audits';
+import { getCurrentTime } from '../../../api/time';
 import { unwrap } from '../../../utils/normalize';
 
 interface AuditCard {
@@ -26,6 +27,7 @@ const SQAStaffFindingManagement = () => {
   const [audits, setAudits] = useState<AuditCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -38,8 +40,31 @@ const SQAStaffFindingManagement = () => {
     fetchAuditPlans();
   }, [fetchAuditPlans]);
 
+  // Load current time from API
+  useEffect(() => {
+    const loadCurrentTime = async () => {
+      try {
+        const timeResponse = await getCurrentTime();
+        // Parse currentTime string "2025-12-24 18:26:47" to Date
+        const parsedTime = new Date(timeResponse.currentTime);
+        setCurrentTime(parsedTime);
+      } catch (err) {
+        console.error('Failed to load current time from API, using local time:', err);
+        // Fallback to local time if API fails
+        setCurrentTime(new Date());
+      }
+    };
+    
+    loadCurrentTime();
+  }, []);
+
   useEffect(() => {
     const loadAudits = async () => {
+      // Wait for currentTime to be loaded
+      if (!currentTime) {
+        return;
+      }
+      
       setLoading(true);
       setError(null);
       
@@ -170,9 +195,8 @@ const SQAStaffFindingManagement = () => {
         const auditResults = await Promise.all(auditPromises);
         const validAudits: AuditCard[] = auditResults.filter((audit): audit is AuditCard => audit !== null);
         
-        // Get today's date at midnight for comparison
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // Use currentTime from API for comparison (already loaded in state)
+        const apiCurrentTime = currentTime || new Date();
         
         // Filter out audits with status "Archived" or "Inactive" (case-insensitive)
         const activeAudits = validAudits.filter((audit) => {
@@ -191,20 +215,19 @@ const SQAStaffFindingManagement = () => {
             return false;
           }
           
-          // Filter out future audits - only show audits where Fieldwork Start date is today or in the past
+          // Filter out future audits - only show audits where Fieldwork Start date <= currentTime from API
           // Note: startDate now contains Fieldwork Start date (or fallback to audit startDate)
           if (audit.startDate) {
             try {
               const fieldworkStartDate = new Date(audit.startDate);
-              fieldworkStartDate.setHours(0, 0, 0, 0);
-              
-              // Only show if Fieldwork Start date is today or in the past
-              if (fieldworkStartDate > today) {
+              // Compare with currentTime from API (includes time, not just date)
+              // Only show if Fieldwork Start date <= currentTime from API
+              if (fieldworkStartDate > apiCurrentTime) {
                 return false;
               }
             } catch (err) {
+              console.error('Error parsing fieldwork start date:', err);
             }
-          } else {
           }
           
           return true;
@@ -222,7 +245,7 @@ const SQAStaffFindingManagement = () => {
     };
 
     loadAudits();
-  }, []);
+  }, [currentTime]);
 
   const handleAuditClick = (audit: AuditCard) => {
     navigate(`/auditor/findings/audit/${audit.auditId}`);

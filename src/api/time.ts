@@ -27,7 +27,8 @@ export interface SetTimeRequest {
  */
 export const getCurrentTime = async (): Promise<TimeResponse> => {
   const response = await apiClient.get<TimeResponse>('/Time');
-  return response.data;
+  // apiClient interceptor may return response.data directly, so handle both cases
+  return (response as any).data || response;
 };
 
 /**
