@@ -287,6 +287,25 @@ export const createAuditChecklistItem = async (data: CreateAuditChecklistItemDto
   return res.data || res;
 };
 
+// Update audit checklist item
+export interface UpdateAuditChecklistItemDto {
+  questionTextSnapshot?: string;
+  section?: string;
+  order?: number;
+  status?: string;
+  comment?: string;
+}
+
+export const updateAuditChecklistItem = async (auditItemId: string, data: UpdateAuditChecklistItemDto): Promise<any> => {
+  const res: any = await apiClient.put(`/AuditChecklistItems/${auditItemId}`, data);
+  return res.data || res;
+};
+
+// Delete audit checklist item
+export const deleteAuditChecklistItem = async (auditItemId: string): Promise<void> => {
+  await apiClient.delete(`/AuditChecklistItems/${auditItemId}`);
+};
+
 // Get compliant details for a compliant item by its ID
 export const getChecklistItemCompliantDetails = async (compliantItemId: string | number): Promise<any> => {
   const res = await apiClient.get(`/ChecklistItemNoFinding/${compliantItemId}`);
@@ -352,6 +371,8 @@ export default {
   markChecklistItemNonCompliant,
   createAuditChecklistItemsFromTemplate,
   createAuditChecklistItem,
+  updateAuditChecklistItem,
+  deleteAuditChecklistItem,
   getChecklistItemCompliantDetails,
   getCompliantIdByAuditItemId,
   updateOverdueToActiveByAuditId,
