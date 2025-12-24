@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
-import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsActionsSummary } from "../../../api/audits";
+import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsActionsSummary, archiveAudit } from "../../../api/audits";
 import { getDepartments } from "../../../api/departments";
 import { getAuditTeam } from "../../../api/auditTeam";
 import { getAdminUsers } from "../../../api/adminUsers";
 import { getAuditCriteria } from "../../../api/auditCriteria";
 import { getChecklistTemplates } from "../../../api/checklists";
-import { approveFinalReport, rejectFinalReport, getReportRequestByAuditId, getAllReportRequests } from "../../../api/reportRequest";
+import { getReportRequestByAuditId, getAllReportRequests } from "../../../api/reportRequest";
 import { getAuditResultByAuditId, calculateAuditResult, updateAuditResultManager } from "../../../api/auditResult";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
@@ -105,8 +105,6 @@ export default function DirectorFinalSummaryPage() {
   const [reportRequest, setReportRequest] = useState<{ status?: string; reportRequestId?: string; note?: string } | null>(null);
   const [loadingReportRequest, setLoadingReportRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  
-  const [comments, setComments] = useState("");
 
   // Audit Effectiveness
   const [auditResult, setAuditResult] = useState<any>(null);
@@ -117,6 +115,7 @@ const lastCalculatedAuditRef = useRef<string>("");
   const [editPercentage, setEditPercentage] = useState<string>('');
   const [editComment, setEditComment] = useState<string>('');
   const [savingResult, setSavingResult] = useState(false);
+  const [archivingAudit, setArchivingAudit] = useState(false);
 
   // Load list of audits for dropdown - only those sent from Lead Auditor to Director
   useEffect(() => {
@@ -171,10 +170,15 @@ const lastCalculatedAuditRef = useRef<string>("");
 
         // Only show audits that have a report request sent to Director
         const filteredAudits = (Array.isArray(plans) ? plans : [])
-          .map((a: any) => ({
-            auditId: a.auditId || a.id || "",
-            title: a.title || a.auditTitle || "Untitled audit",
-          }))
+          .map((a: any) => {
+            let title = a.title || a.auditTitle || "Untitled audit";
+            // Remove "true" or "false" from title if present
+            title = title.replace(/\s*(true|false)\s*$/i, '').trim();
+            return {
+              auditId: a.auditId || a.id || "",
+              title: title,
+            };
+          })
           .filter((x: any) => {
             if (!x.auditId) return false;
             const idLower = x.auditId.toLowerCase();
@@ -552,7 +556,7 @@ const lastCalculatedAuditRef = useRef<string>("");
     if (loadingDetail) {
       return "Loading audit information...";
     }
-    return "Review, approve/reject the final audit summary report and evaluate effectiveness.";
+    return "Review the final audit summary report and evaluate effectiveness.";
   }, [selectedAuditId, loadingDetail]);
 
   const isImage = (contentType?: string, fileName?: string): boolean => {
@@ -605,90 +609,6 @@ const lastCalculatedAuditRef = useRef<string>("");
     }
   };
 
-  const handleApprove = async () => {
-    if (!reportRequest?.reportRequestId) {
-      alert("No report request found.");
-      return;
-    }
-
-    if (!window.confirm("Are you sure you want to approve this report as final?")) {
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await approveFinalReport(reportRequest.reportRequestId, comments);
-      alert("Report approved successfully as final!");
-      
-      setTimeout(async () => {
-        try {
-          const rr = await getReportRequestByAuditId(selectedAuditId);
-          if (rr) {
-            setReportRequest({
-              status: rr.status,
-              reportRequestId: rr.reportRequestId,
-              note: rr.note,
-            });
-          }
-        } catch (error) {
-          console.error("Failed to reload report request:", error);
-        }
-      }, 500);
-      
-      setComments("");
-    } catch (error: any) {
-      console.error("Failed to approve report:", error);
-      const errorMessage = error?.response?.data?.message || error?.message || "Failed to approve report. Please try again.";
-      alert(errorMessage);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleReject = async () => {
-    if (!reportRequest?.reportRequestId) {
-      alert("No report request found.");
-      return;
-    }
-
-    if (!comments.trim()) {
-      alert("Please provide rejection comments.");
-      return;
-    }
-
-    if (!window.confirm("Are you sure you want to reject this report? It will be sent back to Lead Auditor for review.")) {
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await rejectFinalReport(reportRequest.reportRequestId, comments);
-      alert("Report rejected. Lead Auditor will be notified to review the report.");
-      
-      setTimeout(async () => {
-        try {
-          const rr = await getReportRequestByAuditId(selectedAuditId);
-          if (rr) {
-            setReportRequest({
-              status: rr.status,
-              reportRequestId: rr.reportRequestId,
-              note: rr.note,
-            });
-          }
-        } catch (error) {
-          console.error("Failed to reload report request:", error);
-        }
-      }, 500);
-      
-      setComments("");
-    } catch (error: any) {
-      console.error("Failed to reject report:", error);
-      const errorMessage = error?.response?.data?.message || error?.message || "Failed to reject report. Please try again.";
-      alert(errorMessage);
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleCalculateEffectiveness = async () => {
     if (!selectedAuditId) {
@@ -776,6 +696,34 @@ useEffect(() => {
     }
   };
 
+  const handleCloseAudit = async () => {
+    if (!selectedAuditId) {
+      alert("No audit selected.");
+      return;
+    }
+    
+    const confirmClose = window.confirm("Are you sure you want to close this audit? This action cannot be undone.");
+    if (!confirmClose) {
+      return;
+    }
+
+    setArchivingAudit(true);
+    try {
+      await archiveAudit(selectedAuditId);
+      alert("Audit closed successfully.");
+      // Clear selection - the useEffect will reload the audit list automatically
+      setSelectedAuditId("");
+      // Reload page to refresh audit list
+      window.location.reload();
+    } catch (error: any) {
+      console.error("Failed to close audit:", error);
+      const msg = error?.response?.data?.message || error?.message || "Failed to close audit.";
+      alert(msg);
+    } finally {
+      setArchivingAudit(false);
+    }
+  };
+
   return (
     <MainLayout user={layoutUser}>
       <div className="px-4 sm:px-6 lg:px-8 pb-8 space-y-6">
@@ -809,26 +757,6 @@ useEffect(() => {
                   >
                     View audit details
                   </button>
-                  {loadingReportRequest ? (
-                    <div className="text-xs text-gray-500">Checking status...</div>
-                  ) : isPendingApproval && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleApprove}
-                        disabled={submitting}
-                        className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {submitting ? "Processing..." : "Approve Final"}
-                      </button>
-                      <button
-                        onClick={handleReject}
-                        disabled={submitting}
-                        className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {submitting ? "Processing..." : "Reject"}
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -837,20 +765,6 @@ useEffect(() => {
 
         <StageBar current={getCurrentStep} />
 
-        {selectedAuditId && isPendingApproval && (
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Director Comments
-            </label>
-            <textarea
-              rows={3}
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-              placeholder="Add your comments here... (required for rejection)"
-            />
-          </div>
-        )}
 
         <section className="pb-2">
           {!selectedAuditId ? (
@@ -1605,6 +1519,24 @@ useEffect(() => {
                               : "—"}
                           </p>
                         </div>
+                        
+                        {/* Display saved Result and Comment */}
+                        {(resultLabel || auditResult?.comment) && (
+                          <div className="space-y-2 pt-2 border-t border-gray-200">
+                            {resultLabel && (
+                              <div className="flex items-start gap-2">
+                                <p className="text-[11px] font-semibold text-gray-700 uppercase min-w-[80px]">Result:</p>
+                                <p className="text-xs text-gray-900 font-medium">{resultLabel}</p>
+                              </div>
+                            )}
+                            {auditResult?.comment && (
+                              <div className="flex items-start gap-2">
+                                <p className="text-[11px] font-semibold text-gray-700 uppercase min-w-[80px]">Comment:</p>
+                                <p className="text-xs text-gray-900 flex-1 whitespace-pre-wrap">{auditResult.comment}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="text-center py-4 text-xs text-gray-500">
@@ -1648,13 +1580,20 @@ useEffect(() => {
                         </div>
                       </div>
 
-                      <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex flex-col gap-2">
                         <button
                           onClick={handleSaveResult}
                           disabled={savingResult || !selectedAuditId}
                           className="w-full px-3 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-md hover:bg-emerald-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                         >
                           {savingResult ? "Saving..." : "Save Result"}
+                        </button>
+                        <button
+                          onClick={handleCloseAudit}
+                          disabled={archivingAudit || !selectedAuditId}
+                          className="w-full px-3 py-2 bg-red-600 text-white text-xs font-semibold rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {archivingAudit ? "Closing..." : "Closed Audit"}
                         </button>
                       </div>
                     </div>
@@ -1788,7 +1727,7 @@ useEffect(() => {
                       <table className="min-w-full text-xs border border-gray-200 rounded-lg">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Dept</th>
+                            
                             <th className="px-3 py-2 text-left text-gray-700 font-semibold">Criteria Name</th>
                             <th className="px-3 py-2 text-left text-gray-700 font-semibold">Status</th>
                           </tr>
@@ -1797,7 +1736,7 @@ useEffect(() => {
                           {criteriaArr.length ? (
                             criteriaArr.map((c: any, idx: number) => (
                               <tr key={idx}>
-                                <td className="px-3 py-2 text-gray-800">{getDeptName(c.deptId)}</td>
+                                
                                 <td className="px-3 py-2 text-gray-700">{getCriteriaName(c.criteriaId)}</td>
                                 <td className="px-3 py-2 text-gray-700">{c.status || "—"}</td>
                               </tr>

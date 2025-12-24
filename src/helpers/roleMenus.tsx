@@ -104,7 +104,9 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <AuditIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
         { icon: <ClockIcon />, label: 'Extension Requests', path: '/director/extension-requests' },
         { icon: <ArchiveIcon />, label: 'Archived History', path: '/director/archived-history' },
+        // Review final audit summary reports and evaluate audit effectiveness (no approve/reject buttons)
         { icon: <DocumentIcon />, label: 'Final Summary & Effectiveness', path: '/director/final-summary' },
+        { icon: <ReportsIcon />, label: 'Result History', path: '/director/result-history' },
         // { icon: <AuditIcon />, label: 'Review Audit Results', path: '/director/review-results' },
         // { icon: <ReportsIcon />, label: 'Summary Report', path: '/director/summary-report' },
       ];

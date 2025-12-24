@@ -169,11 +169,12 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           .map((a: any) => {
             const auditId = String(a.auditId || a.id || '').trim();
             const status = auditStatusMap.get(auditId) || '';
-            const title = a.title || a.auditTitle || "Untitled audit";
-            const statusLabel = status === 'PendingSecondApproval' ;
+            let title = a.title || a.auditTitle || "Untitled audit";
+            // Remove "true" or "false" from title if present
+            title = title.replace(/\s*(true|false)\s*$/i, '').trim();
             return {
               auditId: auditId,
-              title: `${title}${statusLabel}`,
+              title: title,
               status: status,
             };
           })
@@ -685,7 +686,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                   {/* Keep selected audit in dropdown even if it's no longer in filtered list (e.g., after submission) */}
                   {selectedAuditId && !audits.find(a => a.auditId === selectedAuditId) && detail?.audit?.title && (
                     <option value={selectedAuditId} disabled>
-                      {detail.audit.title} (Sent to Director)
+                      {detail.audit.title.replace(/\s*(true|false)\s*$/i, '').trim()}
                     </option>
                   )}
                 </select>
@@ -1447,14 +1448,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                       <p className="text-[11px] font-medium text-primary-800">Team members</p>
                       <p className="mt-0.5 text-lg font-bold text-primary-900">{teamsArr.length}</p>
                     </div>
-                    <div className="rounded-md bg-gradient-to-br from-red-100 to-red-50 border border-red-300 px-3 py-2.5 shadow-sm col-span-2">
-                      <p className="text-[11px] font-medium text-red-800">Total Findings</p>
-                      <p className="mt-0.5 text-lg font-bold text-red-900">{findingsCount}</p>
-                    </div>
-                    <div className="rounded-md bg-gradient-to-br from-emerald-100 to-emerald-50 border border-emerald-300 px-3 py-2.5 shadow-sm col-span-2">
-                      <p className="text-[11px] font-medium text-emerald-800">Total Actions</p>
-                      <p className="mt-0.5 text-lg font-bold text-emerald-900">{actionsCount}</p>
-                    </div>
                   </div>
                 </div>
               </aside>
@@ -1584,8 +1577,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-xs border border-gray-200 rounded-lg">
                         <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Dept</th>
+                          <tr> 
                             <th className="px-3 py-2 text-left text-gray-700 font-semibold">Criteria Name</th>
                             <th className="px-3 py-2 text-left text-gray-700 font-semibold">Status</th>
                           </tr>
@@ -1594,7 +1586,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                           {criteriaArr.length ? (
                             criteriaArr.map((c: any, idx: number) => (
                               <tr key={idx}>
-                                <td className="px-3 py-2 text-gray-800">{getDeptName(c.deptId)}</td>
+                                
                                 <td className="px-3 py-2 text-gray-700">{getCriteriaName(c.criteriaId)}</td>
                                 <td className="px-3 py-2 text-gray-700">{c.status || "—"}</td>
                               </tr>

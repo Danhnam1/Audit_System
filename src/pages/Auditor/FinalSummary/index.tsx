@@ -1587,7 +1587,7 @@ export default function AuditorFinalSummaryPage() {
                       <table className="min-w-full text-xs border border-gray-200 rounded-lg">
                         <thead className="bg-gray-50">
                           <tr>
-                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Dept</th>
+                            
                             <th className="px-3 py-2 text-left text-gray-700 font-semibold">Criteria Name</th>
                             <th className="px-3 py-2 text-left text-gray-700 font-semibold">Status</th>
                           </tr>
@@ -1596,7 +1596,7 @@ export default function AuditorFinalSummaryPage() {
                           {criteriaArr.length ? (
                             criteriaArr.map((c: any, idx: number) => (
                               <tr key={idx}>
-                                <td className="px-3 py-2 text-gray-800">{getDeptName(c.deptId)}</td>
+                                
                                 <td className="px-3 py-2 text-gray-700">{getCriteriaName(c.criteriaId)}</td>
                                 <td className="px-3 py-2 text-gray-700">{c.status || "—"}</td>
                               </tr>
