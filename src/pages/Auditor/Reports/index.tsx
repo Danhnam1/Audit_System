@@ -58,6 +58,9 @@ const SQAStaffReports = () => {
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [auditChecklistItems, setAuditChecklistItems] = useState<any[] | null>(null);
   const [summaryTab, setSummaryTab] = useState<'findings' | 'checklist'>('findings');
+  const [overdueDeptFilter, setOverdueDeptFilter] = useState<string>('all');
+  const [compliantStatusFilter, setCompliantStatusFilter] = useState<'all' | 'compliant' | 'noncompliant'>('all');
+  const [compliantDeptFilter, setCompliantDeptFilter] = useState<string>('all');
   // Track recently updated audit statuses to prevent overwriting during reload
   const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
   // Attachments modal state
@@ -174,6 +177,85 @@ const SQAStaffReports = () => {
       compliantItems,
     };
   }, [auditChecklistItems]);
+
+  // Get unique departments from checklist items
+  const checklistDepartments = useMemo(() => {
+    const deptSet = new Set<string>();
+    if (auditChecklistItems) {
+      auditChecklistItems.forEach((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        if (deptName) deptSet.add(String(deptName).trim());
+      });
+    }
+    return Array.from(deptSet).sort();
+  }, [auditChecklistItems]);
+
+  // Filtered overdue items
+  const filteredOverdueItems = useMemo(() => {
+    if (!checklistOverview.overdueItems) return [];
+    let filtered = [...checklistOverview.overdueItems];
+    if (overdueDeptFilter !== 'all') {
+      filtered = filtered.filter((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        return String(deptName).trim() === overdueDeptFilter;
+      });
+    }
+    return filtered;
+  }, [checklistOverview.overdueItems, overdueDeptFilter]);
+
+  // Filtered compliant items (includes both compliant and non-compliant)
+  const filteredCompliantItems = useMemo(() => {
+    if (!auditChecklistItems) return [];
+    let filtered: any[] = [];
+    
+    // Get all items that are either compliant or non-compliant (not overdue)
+    auditChecklistItems.forEach((item: any) => {
+      const rawStatus = String(item.status || '').toLowerCase();
+      const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
+      
+      // Check noncompliant first (because "noncompliant" contains "compliant")
+      const isNonCompliant = rawStatus === 'noncompliant' || rawStatus === 'non-compliant' || rawStatus.includes('noncompliant') || rawStatus.includes('non-compliant');
+      // Then check compliant (exact match or contains, but not if it's noncompliant)
+      const isCompliant = !isNonCompliant && (rawStatus === 'compliant' || rawStatus.includes('compliant'));
+      
+      if (!isOverdue) {
+        // Include both compliant and non-compliant (but not overdue)
+        // Also include Return status items when filter is 'all'
+        if (compliantStatusFilter === 'all') {
+          filtered.push(item); // Includes Return and all other non-overdue statuses
+        } else if (compliantStatusFilter === 'compliant' && isCompliant) {
+          filtered.push(item);
+        } else if (compliantStatusFilter === 'noncompliant' && isNonCompliant) {
+          filtered.push(item);
+        }
+        // Note: Return items are included when filter is 'all'
+      }
+    });
+
+    // Filter by department
+    if (compliantDeptFilter !== 'all') {
+      filtered = filtered.filter((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        return String(deptName).trim() === compliantDeptFilter;
+      });
+    }
+    return filtered;
+  }, [auditChecklistItems, compliantStatusFilter, compliantDeptFilter]);
 
   // Chuẩn hóa id (tránh lệch hoa/thường, khoảng trắng)
   const normalizeId = (id: string | number | null | undefined) =>
@@ -548,12 +630,24 @@ const SQAStaffReports = () => {
         }
         return a;
       }));
-      
-      const firstId = filtered?.[0]?.auditId || filtered?.[0]?.id || filtered?.[0]?.$id || '';
-      if (firstId) setSelectedAuditId(String(firstId));
-      else {
-        setSelectedAuditId('');
-        setShowSummary(false);
+      // Preserve selectedAuditId if it still exists in the filtered list
+      const currentSelectedId = String(selectedAuditId || '').trim();
+      const currentSelectedExists = currentSelectedId && filtered.some((a: any) => {
+        const auditId = String(a.auditId || a.id || a.$id || '').trim();
+        return auditId === currentSelectedId;
+      });
+      if (currentSelectedExists) {
+        // Keep the current selected audit
+        // Don't change selectedAuditId or close summary
+      } else {
+        // Current selected audit no longer exists, select first one or clear
+        const firstId = filtered?.[0]?.auditId || filtered?.[0]?.id || filtered?.[0]?.$id || '';
+        if (firstId) {
+          setSelectedAuditId(String(firstId));
+        } else {
+          setSelectedAuditId('');
+          setShowSummary(false);
+        }
       }
     } catch (err) {
       console.error('Failed to load audits for Reports', err);
@@ -739,31 +833,38 @@ const SQAStaffReports = () => {
   useEffect(() => {
     const loadSummary = async () => {
       if (!selectedAuditId) return;
+      const currentAuditId = selectedAuditId; // Capture current auditId to check for changes
       setSummaryTab('findings');
       try {
         const [sum, requests] = await Promise.all([
-          getAuditSummary(selectedAuditId),
-          getAuditPlanRevisionRequestsByAuditId(selectedAuditId).catch(() => [])
+          getAuditSummary(currentAuditId),
+          getAuditPlanRevisionRequestsByAuditId(currentAuditId).catch(() => [])
         ]);
-        setSummary(sum);
-        setExtensionRequests(prev => ({ ...prev, [selectedAuditId]: requests }));
-        const total = Number((sum as any)?.totalFindings ?? 0);
-        if (!isNaN(total)) {
-          setFindingsMap((prev) => ({ ...prev, [String(selectedAuditId)]: total }));
-        }
+        // Only update summary if selectedAuditId hasn't changed during the async call
+        // This prevents race conditions where reloadReports() might change selectedAuditId
+        if (String(selectedAuditId) === String(currentAuditId)) {
+          setSummary(sum);
+          setExtensionRequests(prev => ({ ...prev, [currentAuditId]: requests }));
+          const total = Number((sum as any)?.totalFindings ?? 0);
+          if (!isNaN(total)) {
+            setFindingsMap((prev) => ({ ...prev, [String(currentAuditId)]: total }));
+          }
 
-        // Load checklist items for this audit (used for overdue/compliant overview)
-        try {
-          const items = await getAuditChecklistItems(selectedAuditId);
-          setAuditChecklistItems(Array.isArray(items) ? items : unwrap(items));
-        } catch (checkErr) {
-          console.error('Failed to load audit checklist items for overview', checkErr);
-          setAuditChecklistItems(null);
+          // Load checklist items for this audit (used for overdue/compliant overview)
+          try {
+            const items = await getAuditChecklistItems(currentAuditId);
+            if (String(selectedAuditId) === String(currentAuditId)) {
+              setAuditChecklistItems(Array.isArray(items) ? items : unwrap(items));
+            }
+          } catch (checkErr) {
+            console.error('Failed to load audit checklist items for overview', checkErr);
+            // Don't clear checklist items on error - keep existing data
+          }
         }
       } catch (err) {
         console.error('Failed to load summary', err);
-        setSummary(null);
-        setAuditChecklistItems(null);
+        // Don't clear summary on error - keep existing data to prevent UI flicker
+        // This ensures findings details don't disappear when there's a temporary API error
       }
     };
     loadSummary();
@@ -1639,23 +1740,8 @@ const SQAStaffReports = () => {
             {summaryTab === 'findings' && (
               <>
                 {/* KPI cards – high level overview */}
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="mt-3 grid grid-cols-1 gap-3">
                   <SummaryCard title="Total Findings" value={summary?.totalFindings ?? 0} />
-                  <SummaryCard
-                    title="Open"
-                    value={summary?.openFindings ?? 0}
-                    valueClassName="text-amber-600"
-                  />
-                  <SummaryCard
-                    title="Overdue"
-                    value={summary?.overdueFindings ?? 0}
-                    valueClassName="text-red-600"
-                  />
-                  <SummaryCard
-                    title="Compliant (Non-finding)"
-                    value={summary?.compliantFindings ?? summary?.nonFindings ?? 0}
-                    valueClassName="text-emerald-600"
-                  />
                 </div>
 
                 {/* Severity + Findings by Department */}
@@ -1774,19 +1860,12 @@ const SQAStaffReports = () => {
                   {(filteredMonths.length ? filteredMonths : monthsFindings).map((m) => (
                     <div key={m.key} className="mb-6 last:mb-0">
                       <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-semibold text-gray-700">
-                          Month {isNaN(m.monthNum) || m.monthNum < 1 ? m.label : m.monthNum}
-                        </div>
+                        
                         <div className="flex items-center gap-2 text-xs">
                           <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
                             Total: {m.total}
                           </span>
-                          <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                            Open: {m.open}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700">
-                            Overdue: {m.overdue}
-                          </span>
+                          
                         </div>
                       </div>
 
@@ -1884,62 +1963,34 @@ const SQAStaffReports = () => {
                     valueClassName="text-red-600"
                   />
                   <SummaryCard
-                    title="Checklist Compliant"
+                    title="Total checklist complaint/non-compliant"
                     value={checklistOverview.totalCompliant}
                     valueClassName="text-emerald-600"
                   />
                 </div>
 
-                {/* Checklist overview by department */}
-                {checklistOverview.overdueByDept.length > 0 && (
-                  <div className="mt-6">
-                    <div className="rounded-lg border border-gray-100 p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-semibold text-gray-700">
-                          Checklist Status by Department
-                        </div>
-                        <span className="text-xs text-gray-500">
-                          Showing only overdue and compliant counts.
-                        </span>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="text-left px-3 py-2 text-gray-700">Department</th>
-                              <th className="text-right px-3 py-2 text-gray-700">Overdue Items</th>
-                              <th className="text-right px-3 py-2 text-gray-700">Compliant Items</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {checklistOverview.overdueByDept.map((row) => (
-                              <tr key={row.deptId || row.deptName}>
-                                <td className="px-3 py-2">{row.deptName}</td>
-                                <td className="px-3 py-2 text-right text-red-600 font-semibold">
-                                  {row.overdue}
-                                </td>
-                                <td className="px-3 py-2 text-right text-emerald-600 font-semibold">
-                                  {row.compliant}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Overdue checklist items table */}
                 <div className="mt-8 pt-4 border-t border-gray-100">
                   <div className="rounded-lg border border-gray-100 p-4">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-4">
                       <div className="text-sm font-semibold text-gray-700">
                         Overdue Checklist Items Details
                       </div>
-                      <span className="text-xs text-gray-500">
-                        Only items with status <span className="font-semibold">Overdue</span>.
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={overdueDeptFilter}
+                          onChange={(e) => setOverdueDeptFilter(e.target.value)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All Departments</option>
+                          {checklistDepartments.map((dept) => (
+                            <option key={dept} value={dept}>
+                              {dept}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                     <div className="overflow-x-auto max-h-72">
                       <table className="min-w-full text-xs">
@@ -1947,7 +1998,6 @@ const SQAStaffReports = () => {
                           <tr>
                             <th className="px-3 py-2 text-left text-gray-700">#</th>
                             <th className="px-3 py-2 text-left text-gray-700">Department</th>
-                            <th className="px-3 py-2 text-left text-gray-700">Template / Section</th>
                             <th className="px-3 py-2 text-left text-gray-700">Question</th>
                             <th className="px-3 py-2 text-left text-gray-700">Status</th>
                             <th className="px-3 py-2 text-left text-gray-700">Due date</th>
@@ -1955,20 +2005,13 @@ const SQAStaffReports = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {checklistOverview.overdueItems.length > 0 ? (
-                            checklistOverview.overdueItems.map((item: any, idx: number) => {
-                              // Use section as functional department name for checklist context
+                          {filteredOverdueItems.length > 0 ? (
+                            filteredOverdueItems.map((item: any, idx: number) => {
                               const deptName =
                                 item.section ||
                                 item.departmentName ||
                                 item.deptName ||
                                 item.department ||
-                                '—';
-                              const section =
-                                item.templateName ||
-                                item.templateTitle ||
-                                item.template ||
-                                item.section ||
                                 '—';
                               const question =
                                 item.questionTextSnapshot ||
@@ -1976,16 +2019,6 @@ const SQAStaffReports = () => {
                                 item.title ||
                                 '—';
                               const status = item.status || '—';
-                              const notes = item.notes || item.note || '—';
-                              const due =
-                                item.dueDate ||
-                                item.deadline ||
-                                item.due ||
-                                item.targetDate ||
-                                null;
-                              const dueDisplay = due
-                                ? new Date(due).toLocaleDateString()
-                                : '—';
 
                               return (
                                 <tr
@@ -1994,7 +2027,6 @@ const SQAStaffReports = () => {
                                 >
                                   <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
                                   <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
-                                  <td className="px-3 py-2 whitespace-nowrap">{section}</td>
                                   <td className="px-3 py-2">
                                     <span className="line-clamp-2">{question}</span>
                                   </td>
@@ -2003,18 +2035,12 @@ const SQAStaffReports = () => {
                                       {status}
                                     </span>
                                   </td>
-                                  <td className="px-3 py-2 whitespace-nowrap text-red-600 font-medium">
-                                    {dueDisplay}
-                                  </td>
-                                  <td className="px-3 py-2">
-                                    <span className="line-clamp-2 text-gray-600">{notes}</span>
-                                  </td>
                                 </tr>
                               );
                             })
                           ) : (
                             <tr>
-                              <td colSpan={7} className="px-3 py-4 text-center text-gray-500">
+                              <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
                                 No overdue checklist items.
                               </td>
                             </tr>
@@ -2026,57 +2052,71 @@ const SQAStaffReports = () => {
                 </div>
 
                 {/* Compliant checklist items table */}
-                {checklistOverview.compliantItems && checklistOverview.compliantItems.length > 0 && (
-                  <div className="mt-8 pt-4 border-t border-gray-100">
-                    <div className="rounded-lg border border-gray-100 p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-semibold text-gray-700">
-                          Compliant Checklist Items
-                        </div>
-                        <span className="text-xs text-gray-500">
-                          Only items with status <span className="font-semibold">Compliant</span>.
-                        </span>
+                <div className="mt-8 pt-4 border-t border-gray-100">
+                  <div className="rounded-lg border border-gray-100 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="text-sm font-semibold text-gray-700">
+                        Compliant Checklist Items Details
                       </div>
-                      <div className="overflow-x-auto max-h-72">
-                        <table className="min-w-full text-xs">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-3 py-2 text-left text-gray-700">#</th>
-                              <th className="px-3 py-2 text-left text-gray-700">Department</th>
-                              <th className="px-3 py-2 text-left text-gray-700">Template / Section</th>
-                              <th className="px-3 py-2 text-left text-gray-700">Question</th>
-                              <th className="px-3 py-2 text-left text-gray-700">Due date</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {checklistOverview.compliantItems.map((item: any, idx: number) => {
-                              // Use section as functional department name for checklist context
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={compliantStatusFilter}
+                          onChange={(e) => setCompliantStatusFilter(e.target.value as 'all' | 'compliant' | 'noncompliant')}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All Status</option>
+                          <option value="compliant">Compliant</option>
+                          <option value="noncompliant">Non-Compliant</option>
+                        </select>
+                        <select
+                          value={compliantDeptFilter}
+                          onChange={(e) => setCompliantDeptFilter(e.target.value)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All Departments</option>
+                          {checklistDepartments.map((dept) => (
+                            <option key={dept} value={dept}>
+                              {dept}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto max-h-72">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-700">#</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Department</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filteredCompliantItems.length > 0 ? (
+                            filteredCompliantItems.map((item: any, idx: number) => {
                               const deptName =
                                 item.section ||
                                 item.departmentName ||
                                 item.deptName ||
                                 item.department ||
                                 '—';
-                              const section =
-                                item.templateName ||
-                                item.templateTitle ||
-                                item.template ||
-                                item.section ||
-                                '—';
                               const question =
                                 item.questionTextSnapshot ||
                                 item.questionText ||
                                 item.title ||
                                 '—';
-                              const due =
-                                item.dueDate ||
-                                item.deadline ||
-                                item.due ||
-                                item.targetDate ||
-                                null;
-                              const dueDisplay = due
-                                ? new Date(due).toLocaleDateString()
-                                : '—';
+                              const status = item.status || '—';
+
+                              // Determine status color
+                              const statusLower = String(status).toLowerCase();
+                              const isCompliantStatus = statusLower === 'compliant' || statusLower.includes('compliant');
+                              const isNonCompliantStatus = statusLower === 'noncompliant' || statusLower.includes('noncompliant') || statusLower === 'non-compliant' || statusLower.includes('non-compliant');
+                              const statusColorClass = isCompliantStatus 
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                : isNonCompliantStatus
+                                ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                : 'bg-gray-100 text-gray-700 border-gray-200';
 
                               return (
                                 <tr
@@ -2085,22 +2125,29 @@ const SQAStaffReports = () => {
                                 >
                                   <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
                                   <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
-                                  <td className="px-3 py-2 whitespace-nowrap">{section}</td>
                                   <td className="px-3 py-2">
                                     <span className="line-clamp-2">{question}</span>
                                   </td>
-                                  <td className="px-3 py-2 whitespace-nowrap text-emerald-600 font-medium">
-                                    {dueDisplay}
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
+                                      {status}
+                                    </span>
                                   </td>
                                 </tr>
                               );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                                No compliant checklist items.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                )}
+                </div>
               </>
             )}
               </div>

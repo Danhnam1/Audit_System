@@ -1,4 +1,5 @@
 import React from 'react';
+import { unwrap } from '../../../../utils/normalize';
 
 interface DeptEntry { key: string; name: string; count: number; deptId?: any }
 
@@ -12,6 +13,7 @@ interface Props {
   setFindingsSearch: (v: string) => void;
   findingsSeverity: string;
   setFindingsSeverity: (v: string) => void;
+  onViewAttachments?: (attachments: any[], findingTitle: string) => void;
 }
 
 const DepartmentsSection: React.FC<Props> = ({
@@ -23,7 +25,8 @@ const DepartmentsSection: React.FC<Props> = ({
   findingsSearch,
   setFindingsSearch,
   findingsSeverity,
-  setFindingsSeverity
+  setFindingsSeverity,
+  onViewAttachments
 }) => {
   const filteredFindings = findings.filter((f: any) => {
     const sev = String(f?.severity || '').toLowerCase();
@@ -96,9 +99,9 @@ const DepartmentsSection: React.FC<Props> = ({
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Title</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Severity</th>
-                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Status</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Created</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Deadline</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Attachments</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Actions</th>
                 </tr>
               </thead>
@@ -117,9 +120,30 @@ const DepartmentsSection: React.FC<Props> = ({
                       <td className="px-4 py-2 text-sm">
                         <span className={`px-2 py-0.5 rounded text-xs font-semibold ${String(f?.severity||'').toLowerCase().includes('major') ? 'bg-amber-100 text-amber-700' : String(f?.severity||'').toLowerCase().includes('minor') ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{f?.severity || '—'}</span>
                       </td>
-                      <td className="px-4 py-2 text-sm text-gray-700">{f?.status || '—'}</td>
                       <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{created}</td>
                       <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{deadline}</td>
+                      <td className="px-4 py-2 text-sm">
+                        {(() => {
+                          const attachments = unwrap(f?.attachments) || [];
+                          if (attachments.length === 0) return <span className="text-xs text-gray-400">—</span>;
+                          return (
+                            <button
+                              onClick={() => {
+                                if (onViewAttachments) {
+                                  onViewAttachments(attachments, f?.title || 'Finding Attachments');
+                                }
+                              }}
+                              className="flex items-center gap-1 hover:bg-gray-100 px-2 py-1 rounded transition-colors cursor-pointer"
+                              title={`Click to view ${attachments.length} attachment(s)`}
+                            >
+                              <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                              </svg>
+                              <span className="text-xs text-primary-600 font-medium">{attachments.length}</span>
+                            </button>
+                          );
+                        })()}
+                      </td>
                       <td className="px-4 py-2 text-sm whitespace-nowrap">
                         <button
                           onClick={() => onViewFinding(f)}
