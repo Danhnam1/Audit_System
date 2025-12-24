@@ -14,6 +14,7 @@ const AdminBackupRestore = lazy(() => import("../pages/Admin/BackupRestore"));
 const AdminCriteriaManagement = lazy(() => import("../pages/Admin/CriteriaManagement"));
 const AdminChecklistManagement = lazy(() => import("../pages/Admin/ChecklistManagement"));
 const AdminSensitiveAreaManagement = lazy(() => import("../pages/Admin/SensitiveAreaManagement"));
+const AdminPassThreshold = lazy(() => import("../pages/Admin/PassThreshold"));
 
 // Auditor pages
 const SQAStaffAuditPlanning = lazy(() => import("../pages/Auditor/AuditPlanning"));
@@ -194,6 +195,14 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["Admin"]}>
                         <AdminSensitiveAreaManagement />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/admin/pass-threshold"
+                element={
+                    <ProtectedRoute allowedRoles={["Admin"]}>
+                        <AdminPassThreshold />
                     </ProtectedRoute>
                 }
             />

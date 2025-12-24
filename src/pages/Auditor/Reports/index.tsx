@@ -1133,6 +1133,11 @@ const SQAStaffReports = () => {
       toast.error('This report has already been uploaded. It cannot be uploaded again.');
       return;
     }
+    // Check if currently uploading
+    if (uploadLoading[auditId]) {
+      toast.error('Upload is already in progress. Please wait.');
+      return;
+    }
     fileInputRefs.current[auditId]?.click();
   };
 

@@ -38,6 +38,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <ClipboardCheckIcon />, label: 'Checklist Management', path: '/admin/checklists' },
         { icon: <ShieldIcon />, label: 'Sensitive Area Management', path: '/admin/sensitive-areas' },
         { icon: <ArchiveIcon />, label: 'Archived History', path: '/admin/archived-history' },
+        { icon: <QualityIcon />, label: 'Pass Threshold', path: '/admin/pass-threshold' },
         // { icon: <AuditIcon />, label: 'Audit Logs', path: '/admin/audit-logs' },
         // { icon: <ReportsIcon />, label: 'Reports', path: '/admin/reports' },
         // { icon: <DatabaseIcon />, label: 'Database', path: '/admin/database' },

@@ -5,12 +5,53 @@ import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsAct
 import { getDepartments } from "../../../api/departments";
 import { getAuditTeam } from "../../../api/auditTeam";
 import { getAdminUsers } from "../../../api/adminUsers";
-import { submitFinalReport } from "../../../api/reportRequest";
+import { submitFinalReport, getReportRequestByAuditId } from "../../../api/reportRequest";
 import { getAuditCriteria } from "../../../api/auditCriteria";
 import { getChecklistTemplates } from "../../../api/checklists";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+
+const StageBar = ({ current }: { current: number }) => {
+  const steps = [
+    'Auditor submits final summary',
+    'Lead Auditor submits to Director',
+    'Director receives & calculates',
+  ];
+
+  return (
+    <div className="mb-4">
+      <div className="relative flex items-center justify-between">
+        <div className="absolute top-1/2 -translate-y-1/2 left-6 right-6 h-1.5 bg-primary-300 z-0 rounded-full" />
+        {steps.map((label, idx) => {
+          const step = idx + 1;
+          const isCompleted = step < current;
+          const isCurrent = step === current;
+          const circleClass = isCompleted
+            ? 'bg-primary-500 text-white border-2 border-primary-500 shadow-md'
+            : isCurrent
+              ? 'bg-white text-primary-700 border-2 border-primary-500 ring-2 ring-primary-200 shadow-lg'
+              : 'bg-gray-100 text-gray-700 border-2 border-gray-400';
+
+          return (
+            <div key={label} className="flex flex-col items-center flex-1">
+              <div
+                className={`w-12 h-12 rounded-full border flex items-center justify-center text-base font-extrabold z-10 transition-all ${circleClass}`}
+              >
+                {isCompleted ? (
+                  <span className="text-lg">✓</span>
+                ) : (
+                  <span className="text-lg">{step}</span>
+                )}
+              </div>
+              <p className="mt-2 text-[12px] text-center text-gray-700 leading-tight px-1 font-medium">{label}</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 type FullDetailResponse = {
   audit?: {
@@ -62,7 +103,7 @@ export default function AuditorFinalSummaryPage() {
   // State to track expanded images (Set of attachmentId/docId)
   const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
   
-  // Don't track reportRequest state - allow multiple submissions
+  const [reportRequest, setReportRequest] = useState<any>(null);
   const [loadingReportRequest, setLoadingReportRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
@@ -182,6 +223,7 @@ export default function AuditorFinalSummaryPage() {
       setDetail(null);
       setSummaryData(null);
       setFindingsActionsSummary(null);
+      setReportRequest(null);
       return;
     }
 
@@ -220,11 +262,28 @@ export default function AuditorFinalSummaryPage() {
       }
     };
 
-    // Don't load reportRequest - allow user to submit multiple times
-    // Each submit creates a new report request, so we don't need to track the state
-    setLoadingReportRequest(false);
-
     loadAllData();
+  }, [selectedAuditId]);
+
+  // Load report request to know if already submitted
+  useEffect(() => {
+    if (!selectedAuditId) {
+      setReportRequest(null);
+      return;
+    }
+    const loadRR = async () => {
+      setLoadingReportRequest(true);
+      try {
+        const rr = await getReportRequestByAuditId(selectedAuditId);
+        setReportRequest(rr || null);
+      } catch (err) {
+        console.error('Failed to load report request:', err);
+        setReportRequest(null);
+      } finally {
+        setLoadingReportRequest(false);
+      }
+    };
+    loadRR();
   }, [selectedAuditId]);
 
   const audit = detail?.audit ?? {};
@@ -600,11 +659,27 @@ export default function AuditorFinalSummaryPage() {
     }
   };
 
-  // Always allow submit - each submit creates a new report request
-  // User can submit multiple times to create new versions
+  const alreadySubmitted = Boolean(reportRequest?.status);
   const canSubmit = selectedAuditId && 
     !loadingReportRequest && 
-    !submitting;
+    !submitting &&
+    !alreadySubmitted;
+
+  // Calculate current step based on report request status
+  const getCurrentStep = useMemo(() => {
+    if (!selectedAuditId || !reportRequest?.status) {
+      return 1; // No report request yet, still at step 1
+    }
+    const status = String(reportRequest.status || '').trim();
+    if (status === 'PendingFirstApproval') {
+      return 2; // Submitted, waiting for Lead Auditor
+    }
+    if (status === 'PendingSecondApproval') {
+      return 3; // Lead Auditor approved, waiting for Director
+    }
+    // If status is something else (Approved, Rejected, etc.), show the last step
+    return 3;
+  }, [selectedAuditId, reportRequest?.status]);
 
   return (
     <MainLayout user={layoutUser}>
@@ -662,6 +737,8 @@ export default function AuditorFinalSummaryPage() {
             </div>
           }
         />
+
+        <StageBar current={getCurrentStep} />
 
         {/* Content */}
         <section className="pb-2">

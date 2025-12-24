@@ -3,10 +3,55 @@ import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
 import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsActionsSummary } from "../../../api/audits";
 import { getDepartments } from "../../../api/departments";
+import { getAuditTeam } from "../../../api/auditTeam";
+import { getAdminUsers } from "../../../api/adminUsers";
+import { getAuditCriteria } from "../../../api/auditCriteria";
+import { getChecklistTemplates } from "../../../api/checklists";
 import { approveFinalReport, getReportRequestByAuditId, getAllReportRequests } from "../../../api/reportRequest";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+
+const StageBar = ({ current }: { current: number }) => {
+  const steps = [
+    'Auditor submits final summary',
+    'Lead Auditor submits to Director',
+    'Director receives & calculates',
+  ];
+
+  return (
+    <div className="mb-4">
+      <div className="relative flex items-center justify-between">
+        <div className="absolute top-1/2 -translate-y-1/2 left-6 right-6 h-1.5 bg-primary-300 z-0 rounded-full" />
+        {steps.map((label, idx) => {
+          const step = idx + 1;
+          const isCompleted = step < current;
+          const isCurrent = step === current;
+          const circleClass = isCompleted
+            ? 'bg-primary-500 text-white border-2 border-primary-500 shadow-md'
+            : isCurrent
+              ? 'bg-white text-primary-700 border-2 border-primary-500 ring-2 ring-primary-200 shadow-lg'
+              : 'bg-gray-100 text-gray-700 border-2 border-gray-400';
+
+          return (
+            <div key={label} className="flex flex-col items-center flex-1">
+              <div
+                className={`w-12 h-12 rounded-full border flex items-center justify-center text-base font-extrabold z-10 transition-all ${circleClass}`}
+              >
+                {isCompleted ? (
+                  <span className="text-lg">✓</span>
+                ) : (
+                  <span className="text-lg">{step}</span>
+                )}
+              </div>
+              <p className="mt-2 text-[12px] text-center text-gray-700 leading-tight px-1 font-medium">{label}</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 type FullDetailResponse = {
   audit?: {
@@ -49,8 +94,12 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   const [fasTab, setFasTab] = useState<"overview" | "severity" | "actions">("overview");
   const [deptFilter, setDeptFilter] = useState<string>("");
   const [departments, setDepartments] = useState<Array<{ deptId: string | number; name: string }>>([]);
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [auditCriteria, setAuditCriteria] = useState<any[]>([]);
+  const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   
   const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
+  const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
   
   const [reportRequest, setReportRequest] = useState<{ status?: string; reportRequestId?: string; note?: string } | null>(null);
   const [loadingReportRequest, setLoadingReportRequest] = useState(false);
@@ -64,9 +113,13 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     const loadAudits = async () => {
       setLoadingAudits(true);
       try {
-        const [plansRes, deptsRes, reportRequestsRes] = await Promise.all([
+        const [plansRes, , usersRes, deptsRes, criteriaRes, templatesRes, reportRequestsRes] = await Promise.all([
           getAuditPlans(),
+          getAuditTeam().catch(() => []),
+          getAdminUsers().catch(() => []),
           getDepartments().catch(() => []),
+          getAuditCriteria().catch(() => []),
+          getChecklistTemplates().catch(() => []),
           getAllReportRequests().catch(() => []),
         ]);
 
@@ -79,22 +132,31 @@ export default function LeadAuditorFinalSummaryReviewPage() {
             }))
           : [];
         setDepartments(deptList);
+        const adminUsersArr = Array.isArray(usersRes) ? usersRes : [];
+        setAdminUsers(adminUsersArr);
+        const criteriaArr = Array.isArray(criteriaRes) ? criteriaRes : [];
+        setAuditCriteria(criteriaArr);
+        const templatesArr = Array.isArray(templatesRes) ? templatesRes : [];
+        setChecklistTemplates(templatesArr);
 
         // Filter report requests: Lead Auditor should see audits with:
         // - PendingFirstApproval (submitted by Auditor, waiting for Lead Auditor to send to Director)
+        // - PendingSecondApproval (already sent to Director, but Lead Auditor can still view)
         const relevantReportRequests = Array.isArray(reportRequestsRes)
           ? reportRequestsRes.filter((rr: any) => {
               const status = String(rr.status || '').trim();
-              return status === 'PendingFirstApproval';
+              return status === 'PendingFirstApproval' || status === 'PendingSecondApproval';
             })
           : [];
 
-        // Get unique audit IDs from relevant report requests
-        const relevantAuditIds = new Set<string>();
+        // Create a map of auditId -> status for easy lookup
+        const auditStatusMap = new Map<string, string>();
         relevantReportRequests.forEach((rr: any) => {
           const auditId = rr.auditId;
           if (auditId) {
-            relevantAuditIds.add(String(auditId).trim());
+            const auditIdStr = String(auditId).trim();
+            const status = String(rr.status || '').trim();
+            auditStatusMap.set(auditIdStr, status);
           }
         });
 
@@ -102,12 +164,19 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         const filteredAudits = (Array.isArray(plans) ? plans : [])
           .filter((a: any) => {
             const auditId = String(a.auditId || a.id || '').trim();
-            return auditId && relevantAuditIds.has(auditId);
+            return auditId && auditStatusMap.has(auditId);
           })
-          .map((a: any) => ({
-            auditId: a.auditId || a.id || "",
-            title: a.title || a.auditTitle || "Untitled audit",
-          }))
+          .map((a: any) => {
+            const auditId = String(a.auditId || a.id || '').trim();
+            const status = auditStatusMap.get(auditId) || '';
+            const title = a.title || a.auditTitle || "Untitled audit";
+            const statusLabel = status === 'PendingSecondApproval' ;
+            return {
+              auditId: auditId,
+              title: `${title}${statusLabel}`,
+              status: status,
+            };
+          })
           .filter((x: any) => x.auditId);
 
         setAudits(filteredAudits);
@@ -228,6 +297,45 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     [departments]
   );
 
+  const getUserName = useCallback(
+    (userId: string | number | null | undefined) => {
+      if (userId == null) return "N/A";
+      const match = adminUsers.find(
+        (u: any) =>
+          String(u.userId || u.$id || u.id) === String(userId) ||
+          String(u.userId || u.$id || u.id).toLowerCase() === String(userId).toLowerCase()
+      );
+      return match?.fullName || match?.email || String(userId);
+    },
+    [adminUsers]
+  );
+
+  const getCriteriaName = useCallback(
+    (criteriaId: string | null | undefined) => {
+      if (criteriaId == null) return "N/A";
+      const match = auditCriteria.find(
+        (c: any) =>
+          String(c.criteriaId || c.$id || c.id) === String(criteriaId) ||
+          String(c.criteriaId || c.$id || c.id).toLowerCase() === String(criteriaId).toLowerCase()
+      );
+      return match?.name || String(criteriaId);
+    },
+    [auditCriteria]
+  );
+
+  const getTemplateName = useCallback(
+    (templateId: string | null | undefined) => {
+      if (templateId == null) return "N/A";
+      const match = checklistTemplates.find(
+        (t: any) =>
+          String(t.templateId || t.$id || t.id) === String(templateId) ||
+          String(t.templateId || t.$id || t.id).toLowerCase() === String(templateId).toLowerCase()
+      );
+      return match?.name || String(templateId);
+    },
+    [checklistTemplates]
+  );
+
   const deptOptions = useMemo(() => {
     const opts = new Map<string, string>();
     findingsArr.forEach((f: any) => {
@@ -267,8 +375,29 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     });
   }, [deptFilter, actionsArr, findingsByIdMap]);
 
+  // Use counts from filtered lists
   const findingsCount = filteredFindingsArr.length;
+  const openFindingsFiltered = filteredFindingsArr.filter((f: any) => {
+    const st = String(f?.status || '').toLowerCase();
+    return !st.includes('closed') && !st.includes('complete');
+  }).length;
+  const closedFindingsFiltered = filteredFindingsArr.filter((f: any) => {
+    const st = String(f?.status || '').toLowerCase();
+    return st.includes('closed') || st.includes('complete');
+  }).length;
+
   const actionsCount = filteredActionsArr.length;
+  const completedActionsFiltered = filteredActionsArr.filter(isActionCompleted).length;
+  const overdueActionsFiltered = filteredActionsArr.filter((a: any) => {
+    if (isActionCompleted(a)) return false;
+    if (!a?.dueDate) return false;
+    const dl = new Date(a.dueDate);
+    if (isNaN(dl.getTime())) return false;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    dl.setHours(0,0,0,0);
+    return dl < today;
+  }).length;
 
   const actionsByFindingMap = useMemo(() => {
     const map = new Map<string, any[]>();
@@ -280,6 +409,39 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     });
     return map;
   }, [actionsArr]);
+
+  const isFindingResolved = (relatedActions: any[]) => {
+    if (!relatedActions || !relatedActions.length) return false;
+    return relatedActions.some(isActionCompleted);
+  };
+
+  const isFindingOverdue = (f: any, relatedActions: any[]) => {
+    const resolved = isFindingResolved(relatedActions);
+    if (resolved) return false;
+    if (!f?.deadline) return false;
+    const dl = new Date(f.deadline);
+    if (isNaN(dl.getTime())) return false;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    dl.setHours(0,0,0,0);
+    return dl < today;
+  };
+
+  const findingsDepartmentAgg = useMemo(() => {
+    const agg: Record<string, { deptId: string; total: number; resolved: number; overdue: number }> = {};
+    const source = filteredFindingsArr;
+    source.forEach((f: any) => {
+      const dept = f?.deptId != null ? String(f.deptId) : 'N/A';
+      if (!agg[dept]) agg[dept] = { deptId: dept, total: 0, resolved: 0, overdue: 0 };
+      const related = actionsByFindingMap.get(String(f.findingId || '')) || [];
+      const resolved = isFindingResolved(related);
+      const overdue = isFindingOverdue(f, related);
+      agg[dept].total += 1;
+      if (resolved) agg[dept].resolved += 1;
+      if (overdue) agg[dept].overdue += 1;
+    });
+    return Object.values(agg);
+  }, [filteredFindingsArr, actionsByFindingMap]);
 
   const period = useMemo(() => {
     const from = audit.startDate ? new Date(audit.startDate).toLocaleDateString() : "";
@@ -441,8 +603,8 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     setSubmitting(true);
     try {
       await approveFinalReport(reportRequest.reportRequestId, comments || '');
-      alert("Report sent to Director successfully!");
       
+      // Reload report request to get updated status
       setTimeout(async () => {
         try {
           const rr = await getReportRequestByAuditId(selectedAuditId);
@@ -453,14 +615,24 @@ export default function LeadAuditorFinalSummaryReviewPage() {
               note: rr.note,
             });
           }
-          // Refresh audits list to update dropdown (sent audits will disappear)
-          setRefreshTrigger(prev => prev + 1);
         } catch (error) {
           console.error("Failed to reload report request:", error);
         }
       }, 500);
       
+      // Show success message
+      alert("Report sent to Director successfully! The audit has been forwarded and will no longer appear in your pending list.");
+      
+      // Clear comments
       setComments("");
+      
+      // Delay refresh to allow user to see the success state
+      // Don't clear selectedAuditId immediately - let user see the result
+      setTimeout(() => {
+        setRefreshTrigger(prev => prev + 1);
+        // Optionally clear selection after a delay, or let user manually clear it
+        // setSelectedAuditId("");
+      }, 2000);
     } catch (error: any) {
       console.error("Failed to send report to Director:", error);
       const errorMessage = error?.response?.data?.message || error?.message || "Failed to send report to Director. Please try again.";
@@ -471,6 +643,22 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   };
 
   const isPendingApproval = reportRequest?.status === 'PendingFirstApproval';
+
+  // Calculate current step based on report request status
+  const getCurrentStep = useMemo(() => {
+    if (!selectedAuditId || !reportRequest?.status) {
+      return 1; // No report request yet
+    }
+    const status = String(reportRequest.status || '').trim();
+    if (status === 'PendingFirstApproval') {
+      return 2; // Waiting for Lead Auditor to send to Director
+    }
+    if (status === 'PendingSecondApproval') {
+      return 3; // Already sent to Director
+    }
+    // If status is something else, show step 2 (Lead Auditor's step)
+    return 2;
+  }, [selectedAuditId, reportRequest?.status]);
 
   return (
     <MainLayout user={layoutUser}>
@@ -494,10 +682,23 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                       {a.title}
                     </option>
                   ))}
+                  {/* Keep selected audit in dropdown even if it's no longer in filtered list (e.g., after submission) */}
+                  {selectedAuditId && !audits.find(a => a.auditId === selectedAuditId) && detail?.audit?.title && (
+                    <option value={selectedAuditId} disabled>
+                      {detail.audit.title} (Sent to Director)
+                    </option>
+                  )}
                 </select>
               </div>
               {selectedAuditId && (
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAuditDetailModal(true)}
+                    className="px-3 py-1.5 border border-primary-600 text-primary-700 text-xs font-semibold rounded-md hover:bg-primary-50 transition-colors"
+                  >
+                    View audit details
+                  </button>
                   {loadingReportRequest ? (
                     <div className="text-xs text-gray-500">Checking status...</div>
                   ) : isPendingApproval && (
@@ -521,6 +722,8 @@ export default function LeadAuditorFinalSummaryReviewPage() {
             </div>
           }
         />
+
+        <StageBar current={getCurrentStep} />
 
         {selectedAuditId && isPendingApproval && (
           <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -740,257 +943,482 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                   </div>
                 )}
 
-                {filteredFindingsArr.length > 0 && (
-                  <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-                    <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg flex items-center justify-between gap-4 flex-wrap">
-                      <h2 className="text-sm font-semibold text-white uppercase">Findings Details</h2>
-                      {deptOptions.length > 1 && (
-                        <select
-                          value={deptFilter}
-                          onChange={e => setDeptFilter(e.target.value)}
-                          className="px-3 py-1 text-xs bg-white rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500"
+                {/* Findings Section - Separate and Clear */}
+                {fasTab !== "actions" && (
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg flex items-center justify-between gap-3 flex-wrap">
+                    <h2 className="text-sm font-semibold text-white uppercase">Findings</h2>
+                    <div className="flex items-center gap-2 text-xs text-white">
+                      <span>Filter by Department:</span>
+                      <select
+                        value={deptFilter}
+                        onChange={(e) => setDeptFilter(e.target.value)}
+                        className="text-sm text-gray-800 rounded-md border border-white/30 bg-white/20 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-white/50"
+                      >
+                        <option value="">All</option>
+                        {deptOptions.map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                      {deptFilter && (
+                        <button
+                          onClick={() => setDeptFilter("")}
+                          className="underline text-white/90 hover:text-white text-xs transition-colors"
                         >
-                          <option value="">All Departments ({findingsArr.length})</option>
-                          {deptOptions.map(([deptId, name]) => {
-                            const count = findingsArr.filter((f: any) => String(f?.deptId || 'N/A') === deptId).length;
-                            return (
-                              <option key={deptId} value={deptId}>
-                                {name} ({count})
-                              </option>
-                            );
-                          })}
-                        </select>
+                          Clear
+                        </button>
                       )}
                     </div>
-                    <div className="p-4 space-y-3">
-                      {filteredFindingsArr.map((finding: any, idx: number) => {
-                        const findingActions = actionsByFindingMap.get(String(finding.findingId || '').trim()) || [];
-                        const findingAtts = finding.attachments ? unwrapArray<any>(finding.attachments) : [];
-                        return (
-                          <div
-                            key={finding.findingId || idx}
-                            className="rounded-lg border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm"
-                          >
-                            <div className="flex items-start justify-between gap-4 mb-3">
-                              <div>
-                                <p className="text-xs font-medium text-gray-500 uppercase">Finding</p>
-                                <p className="mt-1 text-sm font-semibold text-gray-900">{finding.finding || "—"}</p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {finding.severity && (
-                                  <span
-                                    className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                      finding.severity === "Major"
-                                        ? "bg-red-100 text-red-800"
-                                        : finding.severity === "Medium"
-                                        ? "bg-amber-100 text-amber-800"
-                                        : "bg-green-100 text-green-800"
-                                    }`}
-                                  >
-                                    {finding.severity}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-700">
-                              <div>
-                                <p className="font-medium text-gray-500 uppercase">Department</p>
-                                <p className="mt-0.5">{getDeptName(finding.deptId)}</p>
-                              </div>
-                              <div>
-                                <p className="font-medium text-gray-500 uppercase">Type</p>
-                                <p className="mt-0.5">{finding.type || "—"}</p>
-                              </div>
-                              <div>
-                                <p className="font-medium text-gray-500 uppercase">Risk Level</p>
-                                <p className="mt-0.5">{finding.riskLevel || "—"}</p>
-                              </div>
-                            </div>
-                            {finding.recommendation && (
-                              <div className="mt-3 text-xs">
-                                <p className="font-medium text-gray-500 uppercase">Recommendation</p>
-                                <p className="mt-1 text-gray-700 whitespace-pre-line">{finding.recommendation}</p>
-                              </div>
-                            )}
-                            {findingAtts.length > 0 && (
-                              <div className="mt-3">
-                                <p className="text-xs font-medium text-gray-500 uppercase mb-2">Attachments</p>
-                                <div className="space-y-2">
-                                  {findingAtts.map((att: any) => {
-                                    const isImg = isImage(att.contentType, att.fileName);
-                                    const attId = att.attachmentId || att.$id || `${idx}-${att.fileName}`;
-                                    const expanded = expandedImages.has(attId);
-                                    return (
-                                      <div key={attId} className="flex flex-col gap-2">
-                                        <button
-                                          onClick={() => handleFileAction({ ...att, attachmentId: attId })}
-                                          className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-left"
-                                        >
-                                          <span>{isImg ? "🖼️" : "📎"}</span>
-                                          <span className="font-medium text-gray-900">{att.fileName || "Attachment"}</span>
-                                          {isImg && <span className="ml-auto text-primary-600">{expanded ? "▲ Collapse" : "▼ Expand"}</span>}
-                                        </button>
-                                        {isImg && expanded && (att.blobPath || att.filePath) && (
-                                          <div className="border border-gray-300 rounded-md p-2 bg-gray-50">
-                                            <img
-                                              src={att.blobPath || att.filePath}
-                                              alt={att.fileName || "Preview"}
-                                              className="w-full h-auto max-h-96 object-contain rounded"
-                                            />
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                            {findingActions.length > 0 && (
-                              <div className="mt-3">
-                                <p className="text-xs font-medium text-gray-500 uppercase mb-2">Related Actions ({findingActions.length})</p>
-                                <div className="space-y-2">
-                                  {findingActions.map((action: any) => (
-                                    <div
-                                      key={action.actionId}
-                                      className="rounded border border-gray-200 bg-white p-2 text-xs"
-                                    >
-                                      <p className="font-medium text-gray-900">{action.description || "—"}</p>
-                                      <div className="mt-1 flex items-center gap-3 text-[11px] text-gray-600">
-                                        <span>Status: {action.status || "—"}</span>
-                                        <span>Due: {action.dueDate ? new Date(action.dueDate).toLocaleDateString() : "—"}</span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
                   </div>
-                )}
-
-                {filteredActionsArr.length > 0 && (
-                  <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-                    <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
-                      <h2 className="text-sm font-semibold text-white uppercase">Actions Details</h2>
+                  <div className="p-4 space-y-4 text-sm text-gray-700">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Total Findings</p>
+                        <p className="mt-1 text-2xl font-bold text-gray-900">{findingsCount}</p>
+                      </div>
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Open</p>
+                        <p className="mt-1 text-2xl font-bold text-amber-700">{openFindingsFiltered}</p>
+                      </div>
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Closed</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-700">{closedFindingsFiltered}</p>
+                      </div>
                     </div>
-                    <div className="p-4 space-y-3">
-                      {filteredActionsArr.map((action: any, idx: number) => {
-                        const actionAtts = action.attachments ? unwrapArray<any>(action.attachments) : [];
-                        const completed = isActionCompleted(action);
-                        return (
-                          <div
-                            key={action.actionId || idx}
-                            className="rounded-lg border border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm"
-                          >
-                            <div className="flex items-start justify-between gap-4 mb-3">
-                              <div className="flex-1">
-                                <p className="text-xs font-medium text-gray-500 uppercase">Action</p>
-                                <p className="mt-1 text-sm font-semibold text-gray-900">{action.description || "—"}</p>
-                              </div>
-                              <span
-                                className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                  completed
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-amber-100 text-amber-800"
-                                }`}
+
+                    {findingsDepartmentAgg.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase mb-2">Findings by Department</p>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-sm border border-gray-200 rounded-lg">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-3 py-2 text-left text-gray-700 font-semibold">Department</th>
+                                <th className="px-3 py-2 text-right text-gray-700 font-semibold">Total</th>
+                                <th className="px-3 py-2 text-right text-gray-700 font-semibold">Resolved</th>
+                                <th className="px-3 py-2 text-right text-gray-700 font-semibold">Overdue</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {findingsDepartmentAgg.map((row) => (
+                                <tr key={row.deptId}>
+                                <td className="px-3 py-2 text-gray-800">{getDeptName(row.deptId)}</td>
+                                  <td className="px-3 py-2 text-right text-gray-900 font-semibold">{row.total}</td>
+                                  <td className="px-3 py-2 text-right text-emerald-700 font-semibold">{row.resolved}</td>
+                                  <td className="px-3 py-2 text-right text-red-700 font-semibold">{row.overdue}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {filteredFindingsArr.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-[11px] font-semibold text-primary-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                          <span className="inline-block w-1 h-4 rounded-full bg-primary-500" />
+                          Sample findings (top {Math.min(filteredFindingsArr.length, 5)})
+                        </p>
+                        <ul className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                          {filteredFindingsArr.slice(0, 5).map((f: any) => {
+                            const attachments = unwrapArray<any>(f.attachments);
+                            return (
+                              <li
+                                key={f.findingId}
+                                className="border border-primary-200 rounded-lg p-2.5 bg-gradient-to-br from-primary-50 to-white shadow-sm hover:shadow-md hover:border-primary-300 transition-shadow transition-colors"
                               >
-                                {action.status || "Pending"}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-700">
-                              <div>
-                                <p className="font-medium text-gray-500 uppercase">Department</p>
-                                <p className="mt-0.5">{getDeptName(action.assignedDeptId)}</p>
-                              </div>
-                              <div>
-                                <p className="font-medium text-gray-500 uppercase">Due Date</p>
-                                <p className="mt-0.5">
-                                  {action.dueDate ? new Date(action.dueDate).toLocaleDateString() : "—"}
+                                <p className="text-xs font-semibold text-primary-900 flex items-center justify-between gap-2">
+                                  {f.title || "Untitled finding"}
+                                  <span className="inline-flex items-center rounded-full bg-primary-100 px-2 py-0.5 text-[10px] font-semibold text-primary-700">
+                                    FINDING
+                                  </span>
                                 </p>
-                              </div>
-                              <div>
-                                <p className="font-medium text-gray-500 uppercase">Progress</p>
-                                <p className="mt-0.5">{action.progressPercent ?? 0}%</p>
-                              </div>
-                            </div>
-                            {actionAtts.length > 0 && (
-                              <div className="mt-3">
-                                <p className="text-xs font-medium text-gray-500 uppercase mb-2">Attachments</p>
-                                <div className="space-y-2">
-                                  {actionAtts.map((att: any) => {
-                                    const isImg = isImage(att.contentType, att.fileName);
-                                    const attId = att.attachmentId || att.$id || `action-${idx}-${att.fileName}`;
-                                    const expanded = expandedImages.has(attId);
-                                    return (
-                                      <div key={attId} className="flex flex-col gap-2">
-                                        <button
-                                          onClick={() => handleFileAction({ ...att, attachmentId: attId })}
-                                          className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-left"
-                                        >
-                                          <span>{isImg ? "🖼️" : "📎"}</span>
-                                          <span className="font-medium text-gray-900">{att.fileName || "Attachment"}</span>
-                                          {isImg && <span className="ml-auto text-primary-600">{expanded ? "▲ Collapse" : "▼ Expand"}</span>}
-                                        </button>
-                                        {isImg && expanded && (att.blobPath || att.filePath) && (
-                                          <div className="border border-gray-300 rounded-md p-2 bg-gray-50">
-                                            <img
-                                              src={att.blobPath || att.filePath}
-                                              alt={att.fileName || "Preview"}
-                                              className="w-full h-auto max-h-96 object-contain rounded"
-                                            />
+                                <p className="mt-0.5 text-[11px] text-gray-600 flex flex-wrap gap-1 items-center">
+                                  <span className="inline-flex items-center rounded-full bg-red-100 border border-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-700 mr-1">
+                                    {f.severity || "N/A"}
+                                  </span>
+                                  <span className="text-[11px] text-primary-600">
+                                    Department: {getDeptName(f.deptId)}
+                                  </span>
+                                </p>
+                                {f.description && (
+                                  <p className="mt-1 text-[11px] text-gray-700 line-clamp-3">
+                                    {f.description}
+                                  </p>
+                                )}
+
+                                {attachments.length > 0 && (
+                                  <div className="mt-2 space-y-1.5">
+                                    <p className="text-[11px] font-semibold text-primary-700">
+                                      Attachments ({attachments.length})
+                                    </p>
+                                    <ul className="space-y-1">
+                                      {attachments.slice(0, 3).map((att: any) => {
+                                        const attId = att.attachmentId || "";
+                                        const isImg = isImage(att.contentType, att.fileName);
+                                        const isExpanded = expandedImages.has(attId);
+                                        const filePath = att.blobPath || att.filePath;
+                                        return (
+                                      <li key={attId} className="border border-primary-200 rounded-md p-1.5 bg-white">
+                                            <button
+                                              onClick={() => handleFileAction(att)}
+                                              className="w-full flex items-center justify-between gap-2 text-left text-[11px] text-gray-700 hover:text-primary-600 transition-colors"
+                                              title={isImg ? "Click to expand/collapse image" : "Click to open file"}
+                                            >
+                                              <div className="flex-1 min-w-0">
+                                                <span className="truncate block font-medium">
+                                                  {att.fileName || "Attachment"}
+                                                </span>
+                                                <span className="text-[10px] text-primary-500 mt-0.5 block">
+                                                  {att.contentType || ""} · {att.status || "Active"}
+                                                </span>
+                                              </div>
+                                              {isImg && (
+                                                <svg
+                                                  className={`w-3 h-3 text-primary-400 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                              )}
+                                              {!isImg && filePath && (
+                                                <svg
+                                                  className="w-3 h-3 text-primary-400 flex-shrink-0"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                </svg>
+                                              )}
+                                            </button>
+                                            {isImg && isExpanded && filePath && (
+                                              <div className="mt-2 border-t border-primary-200 pt-2">
+                                                <div className="relative w-full">
+                                                  <img
+                                                    src={filePath}
+                                                    alt={att.fileName || "Image"}
+                                                    className="w-full h-auto rounded border border-primary-200 max-h-64 object-contain bg-primary-50"
+                                                    onError={(e) => {
+                                                      (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not available%3C/text%3E%3C/svg%3E";
+                                                    }}
+                                                  />
+                                                  <button
+                                                    onClick={() => toggleImageExpand(attId)}
+                                                    className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-primary-300 rounded p-1.5 shadow-sm transition-colors"
+                                                    title="Collapse image"
+                                                  >
+                                                    <svg
+                                                      className="w-4 h-4 text-primary-700"
+                                                      fill="none"
+                                                      stroke="currentColor"
+                                                      viewBox="0 0 24 24"
+                                                    >
+                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                                    </svg>
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {/* Actions under this finding */}
+                                {(actionsByFindingMap.get(String(f.findingId || '')) || []).length > 0 && (
+                                  <div className="mt-2 border-t border-gray-200 pt-2">
+                                    <p className="text-[11px] font-semibold text-gray-700 mb-1">
+                                      Actions for this finding ({(actionsByFindingMap.get(String(f.findingId || '')) || []).length})
+                                    </p>
+                                    <div className="space-y-1.5">
+                                      {(actionsByFindingMap.get(String(f.findingId || '')) || []).slice(0,4).map((a: any) => (
+                                        <div key={a.actionId} className="text-[11px] border border-gray-200 rounded-md p-2 bg-white">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <span className="font-semibold text-gray-800 truncate">{a.title || "Action"}</span>
+                                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 border text-[10px] ${
+                                              isActionCompleted(a)
+                                                ? "border-emerald-200 text-emerald-700 bg-emerald-50"
+                                                : (String(a.status || "").toLowerCase().includes("overdue") ? "border-red-200 text-red-700 bg-red-50" : "border-amber-200 text-amber-700 bg-amber-50")
+                                            }`}>
+                                              {a.status || "N/A"}
+                                            </span>
                                           </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                                          <div className="mt-1 flex flex-wrap gap-3 text-gray-600">
+                                            <span>Due: {a.dueDate ? new Date(a.dueDate).toLocaleDateString() : "—"}</span>
+                                            {a.assignedDeptId != null && <span>Dept: {getDeptName(a.assignedDeptId)}</span>}
+                                            {typeof a.progressPercent === 'number' && <span>Progress: {a.progressPercent}%</span>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+
                   </div>
+                </div>
                 )}
 
-                {documentsArr.length > 0 && (
-                  <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-                    <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
-                      <h2 className="text-sm font-semibold text-white uppercase">Documents</h2>
-                    </div>
-                    <div className="p-4 space-y-2">
-                      {documentsArr.map((doc: any, idx: number) => {
-                        const isImg = isImage(doc.contentType, doc.fileName);
-                        const docId = doc.docId || doc.$id || `doc-${idx}`;
-                        const expanded = expandedImages.has(docId);
-                        return (
-                          <div key={docId} className="flex flex-col gap-2">
-                            <button
-                              onClick={() => handleFileAction({ ...doc, docId })}
-                              className="flex items-center gap-2 px-3 py-2 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors text-left"
-                            >
-                              <span>{isImg ? "🖼️" : "📄"}</span>
-                              <span className="font-medium text-gray-900">{doc.fileName || "Document"}</span>
-                              {isImg && <span className="ml-auto text-primary-600">{expanded ? "▲ Collapse" : "▼ Expand"}</span>}
-                            </button>
-                            {isImg && expanded && (doc.blobPath || doc.filePath) && (
-                              <div className="border border-gray-300 rounded-md p-2 bg-gray-50">
-                                <img
-                                  src={doc.blobPath || doc.filePath}
-                                  alt={doc.fileName || "Preview"}
-                                  className="w-full h-auto max-h-96 object-contain rounded"
-                                />
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                {/* Actions Section - Separate and Clear */}
+                {fasTab !== "severity" && (
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Actions</h2>
                   </div>
+                  <div className="p-4 space-y-4 text-sm text-gray-700">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Total Actions</p>
+                        <p className="mt-1 text-2xl font-bold text-gray-900">{actionsCount}</p>
+                      </div>
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Completed</p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-700">{completedActionsFiltered}</p>
+                      </div>
+                      <div className="rounded-lg bg-white border border-gray-200 py-3 shadow-sm">
+                        <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Overdue</p>
+                        <p className="mt-1 text-2xl font-bold text-red-700">{overdueActionsFiltered}</p>
+                      </div>
+                    </div>
+
+                    {filteredActionsArr.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                          <span className="inline-block w-1 h-4 rounded-full bg-emerald-500" />
+                          Actions List ({filteredActionsArr.length})
+                        </p>
+                        <ul className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                          {filteredActionsArr.map((a: any) => {
+                            const attachments = unwrapArray<any>(a.attachments);
+                            return (
+                              <li
+                                key={a.actionId}
+                                className="border border-gray-200 rounded-lg p-2.5 bg-white shadow-sm hover:shadow-md hover:border-gray-300 transition-shadow transition-colors"
+                              >
+                                <p className="text-xs font-semibold text-emerald-900 flex items-center justify-between gap-2">
+                                  {a.title || "Untitled action"}
+                                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                    ACTION
+                                  </span>
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-gray-600 flex flex-wrap gap-1 items-center">
+                                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                    a.status === 'Completed' || a.status === 'Approved' 
+                                      ? 'bg-green-100 text-green-700 border border-green-200' 
+                                      : a.status === 'Overdue' || a.status === 'Rejected'
+                                      ? 'bg-red-100 text-red-700 border border-red-200'
+                                      : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                  }`}>
+                                    {a.status || "N/A"}
+                                  </span>
+                                  {a.progressPercent !== undefined && (
+                                    <span className="text-[11px] text-emerald-600">
+                                      Progress: {a.progressPercent}%
+                                    </span>
+                                  )}
+                                  {a.dueDate && (
+                                    <span className="text-[11px] text-gray-500">
+                                      Due: {new Date(a.dueDate).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </p>
+                                {a.description && (
+                                  <p className="mt-1 text-[11px] text-gray-700 line-clamp-2">
+                                    {a.description}
+                                  </p>
+                                )}
+
+                                {attachments.length > 0 && (
+                                  <div className="mt-2 space-y-1.5">
+                                    <p className="text-[11px] font-semibold text-emerald-700">
+                                      Attachments ({attachments.length})
+                                    </p>
+                                    <ul className="space-y-1">
+                                      {attachments.slice(0, 3).map((att: any) => {
+                                    const attId = att.attachmentId || "";
+                                    const isImg = isImage(att.contentType, att.fileName);
+                                    const isExpanded = expandedImages.has(attId);
+                                    const filePath = att.blobPath || att.filePath;
+                                    return (
+                                          <li key={attId} className="border border-emerald-200 rounded-md p-1.5 bg-white">
+                                        <button
+                                          onClick={() => handleFileAction(att)}
+                                              className="w-full flex items-center justify-between gap-2 text-left text-[11px] text-gray-700 hover:text-emerald-600 transition-colors"
+                                          title={isImg ? "Click to expand/collapse image" : "Click to open file"}
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <span className="truncate block font-medium">
+                                              {att.fileName || "Attachment"}
+                                            </span>
+                                                <span className="text-[10px] text-emerald-500 mt-0.5 block">
+                                              {att.contentType || ""} · {att.status || "Active"}
+                                            </span>
+                                          </div>
+                                          {isImg && (
+                                            <svg
+                                                  className={`w-3 h-3 text-emerald-400 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                          )}
+                                          {!isImg && filePath && (
+                                            <svg
+                                                  className="w-3 h-3 text-emerald-400 flex-shrink-0"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                            </svg>
+                                          )}
+                                        </button>
+                                        {isImg && isExpanded && filePath && (
+                                              <div className="mt-2 border-t border-emerald-200 pt-2">
+                                            <div className="relative w-full">
+                                              <img
+                                                src={filePath}
+                                                alt={att.fileName || "Image"}
+                                                    className="w-full h-auto rounded border border-emerald-200 max-h-64 object-contain bg-emerald-50"
+                                                onError={(e) => {
+                                                  (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not available%3C/text%3E%3C/svg%3E";
+                                                }}
+                                              />
+                                              <button
+                                                onClick={() => toggleImageExpand(attId)}
+                                                    className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-emerald-300 rounded p-1.5 shadow-sm transition-colors"
+                                                title="Collapse image"
+                                              >
+                                                <svg
+                                                      className="w-4 h-4 text-emerald-700"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  viewBox="0 0 24 24"
+                                                >
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                                </svg>
+                                              </button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 )}
+
+                {/* Documents */}
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+                    <h2 className="text-sm font-semibold text-white uppercase">Documents</h2>
+                  </div>
+                  <div className="p-4 text-sm text-gray-700">
+                    {documentsArr.length === 0 ? (
+                      <p className="text-gray-500 text-xs">No documents recorded for this audit.</p>
+                    ) : (
+                      <ul className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {documentsArr.map((d: any) => {
+                          const docId = d.docId || "";
+                          const isImg = isImage(d.contentType, d.title || d.fileName);
+                          const isExpanded = expandedImages.has(docId);
+                          const filePath = d.blobPath;
+                          return (
+                            <li key={docId} className="border border-primary-200 rounded-md p-2 bg-white">
+                              <button
+                                onClick={() => handleFileAction(d)}
+                                className="w-full flex items-center justify-between gap-2 text-left"
+                                title={isImg ? "Click to expand/collapse image" : "Click to open file"}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-gray-800 hover:text-primary-600 transition-colors">
+                                    {d.title || d.documentType || "Document"}
+                                  </p>
+                                  <p className="text-[11px] text-gray-500 mt-0.5">
+                                    Type: {d.documentType || "N/A"} · Final: {String(d.isFinalVersion ?? false)}
+                                  </p>
+                                  {d.contentType && (
+                                    <p className="text-[10px] text-gray-400 mt-0.5">{d.contentType}</p>
+                                  )}
+                                </div>
+                                {isImg && (
+                                  <svg
+                                    className={`w-3 h-3 text-primary-400 flex-shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                )}
+                                {!isImg && filePath && (
+                                  <svg
+                                    className="w-3 h-3 text-primary-400 flex-shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                )}
+                              </button>
+                              {isImg && isExpanded && filePath && (
+                                <div className="mt-2 border-t border-primary-200 pt-2">
+                                  <div className="relative w-full">
+                                    <img
+                                      src={filePath}
+                                      alt={d.title || "Document image"}
+                                      className="w-full h-auto rounded border border-primary-200 max-h-64 object-contain bg-primary-50"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' fill='%23999'%3EImage not available%3C/text%3E%3C/svg%3E";
+                                      }}
+                                    />
+                                    <button
+                                      onClick={() => toggleImageExpand(docId)}
+                                      className="absolute top-1 right-1 bg-white/90 hover:bg-white border border-primary-300 rounded p-1.5 shadow-sm transition-colors"
+                                      title="Collapse image"
+                                    >
+                                      <svg
+                                        className="w-4 h-4 text-primary-700"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <aside className="space-y-4">
@@ -1033,6 +1461,249 @@ export default function LeadAuditorFinalSummaryReviewPage() {
             </div>
           )}
         </section>
+
+        {/* Audit detail modal */}
+        {showAuditDetailModal && detail && (
+          <div className="fixed inset-0 z-[12000] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowAuditDetailModal(false)} />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto border border-gray-200">
+              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Audit Details</h3>
+                  <p className="text-xs text-gray-500">Full snapshot from full-detail API</p>
+                </div>
+                <button
+                  onClick={() => setShowAuditDetailModal(false)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-5 space-y-4 text-sm text-gray-800">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase">Audit</p>
+                    <p className="text-base font-semibold text-gray-900 mt-1">{detail.audit?.title || "—"}</p>
+                    <p className="text-xs text-gray-600">Type: {detail.audit?.type || "—"}</p>
+                    <p className="text-xs text-gray-600">Status: {detail.audit?.status || "—"}</p>
+                    <p className="text-xs text-gray-600">Objective: {detail.audit?.objective || "—"}</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase">Period</p>
+                    <p className="mt-1 text-sm text-gray-900">
+                      {detail.audit?.startDate ? new Date(detail.audit.startDate).toLocaleDateString() : "—"} —{" "}
+                      {detail.audit?.endDate ? new Date(detail.audit.endDate).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Departments (scope)</p>
+                    <ul className="text-xs space-y-1">
+                      {scopeDepartmentsArr.length ? (
+                        scopeDepartmentsArr.map((d: any, idx: number) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary-500" />
+                            <span className="font-semibold text-gray-800">{getDeptName(d.deptId)}</span>
+                            <span className="text-gray-500">Status: {d.status || "—"}</span>
+                            {d.sensitiveFlag ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 border border-amber-200">
+                                Sensitive
+                              </span>
+                            ) : null}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-gray-500">No departments</li>
+                      )}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Teams</p>
+                    <ul className="text-xs space-y-1">
+                      {teamsArr.length ? (
+                        teamsArr.map((t: any, idx: number) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span className="font-semibold text-gray-800">{getUserName(t.userId)}</span>
+                            {t.roleInTeam && <span className="text-gray-500">Role: {t.roleInTeam}</span>}
+                            {t.isLead && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-primary-100 text-primary-700 border border-primary-200">
+                                Lead
+                              </span>
+                            )}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-gray-500">No team members</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Schedules / Milestones</p>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-xs border border-gray-200 rounded-lg">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-gray-700 font-semibold">Milestone</th>
+                          <th className="px-3 py-2 text-left text-gray-700 font-semibold">Due Date</th>
+                          <th className="px-3 py-2 text-left text-gray-700 font-semibold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {schedulesArr.length ? (
+                          schedulesArr.map((s: any, idx: number) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2 text-gray-800">{s.milestoneName || "—"}</td>
+                              <td className="px-3 py-2 text-gray-700">
+                                {s.dueDate ? new Date(s.dueDate).toLocaleDateString() : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-700">{s.status || "—"}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td className="px-3 py-2 text-gray-500" colSpan={3}>
+                              No schedules
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Audit Criteria Map</p>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs border border-gray-200 rounded-lg">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Dept</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Criteria Name</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {criteriaArr.length ? (
+                            criteriaArr.map((c: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="px-3 py-2 text-gray-800">{getDeptName(c.deptId)}</td>
+                                <td className="px-3 py-2 text-gray-700">{getCriteriaName(c.criteriaId)}</td>
+                                <td className="px-3 py-2 text-gray-700">{c.status || "—"}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="px-3 py-2 text-gray-500" colSpan={3}>
+                                No criteria mapped
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Checklist Templates</p>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-xs border border-gray-200 rounded-lg">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Template Name</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Assigned At</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Assigned By</th>
+                            <th className="px-3 py-2 text-left text-gray-700 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {checklistArr.length ? (
+                            checklistArr.map((t: any, idx: number) => (
+                              <tr key={idx}>
+                                <td className="px-3 py-2 text-gray-800">{getTemplateName(t.templateId)}</td>
+                                <td className="px-3 py-2 text-gray-700">
+                                  {t.assignedAt ? new Date(t.assignedAt).toLocaleString() : "—"}
+                                </td>
+                                <td className="px-3 py-2 text-gray-700">{getUserName(t.assignedBy)}</td>
+                                <td className="px-3 py-2 text-gray-700">{t.status || "—"}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="px-3 py-2 text-gray-500" colSpan={4}>
+                                No checklist templates assigned
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Findings (full-detail)</p>
+                    <p className="text-sm text-gray-800 font-semibold mb-2">Total: {findingsArr.length}</p>
+                    <ul className="text-xs space-y-1 max-h-48 overflow-y-auto pr-1">
+                      {findingsArr.length ? (
+                        findingsArr.slice(0, 10).map((f: any, idx: number) => (
+                          <li key={idx} className="border border-gray-200 rounded-md p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-gray-900">{f.title || "Finding"}</span>
+                              <span className="px-2 py-0.5 text-[10px] rounded-full border bg-gray-50 text-gray-700">
+                                {f.severity || "—"}
+                              </span>
+                            </div>
+                            <div className="text-gray-600 mt-1">
+                              Dept: {getDeptName(f.deptId)} • Status: {f.status || "—"} • Deadline:{" "}
+                              {f.deadline ? new Date(f.deadline).toLocaleDateString() : "—"}
+                            </div>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-gray-500">No findings</li>
+                      )}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <p className="text-[11px] font-semibold text-gray-600 uppercase mb-2">Actions (full-detail)</p>
+                    <p className="text-sm text-gray-800 font-semibold mb-2">Total: {actionsArr.length}</p>
+                    <ul className="text-xs space-y-1 max-h-48 overflow-y-auto pr-1">
+                      {actionsArr.length ? (
+                        actionsArr.slice(0, 10).map((a: any, idx: number) => (
+                          <li key={idx} className="border border-gray-200 rounded-md p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-gray-900">{a.title || "Action"}</span>
+                              <span className="px-2 py-0.5 text-[10px] rounded-full border bg-gray-50 text-gray-700">
+                                {a.status || "—"}
+                              </span>
+                            </div>
+                            <div className="text-gray-600 mt-1">
+                              Dept: {getDeptName(a.assignedDeptId)} • Due:{" "}
+                              {a.dueDate ? new Date(a.dueDate).toLocaleDateString() : "—"} • Progress:{" "}
+                              {typeof a.progressPercent === "number" ? `${a.progressPercent}%` : "—"}
+                            </div>
+                          </li>
+                        ))
+                      ) : (
+                        <li className="text-gray-500">No actions</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </MainLayout>
   );
