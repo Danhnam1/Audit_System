@@ -17,8 +17,11 @@ import { useUserId } from '../../../store/useAuthStore';
 import { createNotification } from '../../../api/notifications';
 import { getAuditPlans } from '../../../api/audits';
 import { StatCard } from '../../../components/StatCard';
+import { Pagination } from '../../../components/Pagination';
 
 type AssignmentViewMode = 'all' | 'assigned' | 'responses' | 'created';
+
+const ITEMS_PER_PAGE = 10;
 
 const SpecifyCreatePlan = () => {
   const { user } = useAuth();
@@ -41,8 +44,25 @@ const SpecifyCreatePlan = () => {
   const [approvedAssignments, setApprovedAssignments] = useState<AuditPlanAssignment[]>([]);
   const [rejectedAssignments, setRejectedAssignments] = useState<AuditPlanAssignment[]>([]);
   const [loadingResponses, setLoadingResponses] = useState(false);
-  // Date filter for Created tab
-  const [createdDate, setCreatedDate] = useState<string>('');
+  // Date filter for all tabs
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
+  
+  // Pagination states for each tab
+  const [availablePage, setAvailablePage] = useState(1);
+  const [assignedPage, setAssignedPage] = useState(1);
+  const [approvedPage, setApprovedPage] = useState(1);
+  const [rejectedPage, setRejectedPage] = useState(1);
+  const [createdPage, setCreatedPage] = useState(1);
+
+  // Reset pagination when filter changes
+  useEffect(() => {
+    setAvailablePage(1);
+    setAssignedPage(1);
+    setApprovedPage(1);
+    setRejectedPage(1);
+    setCreatedPage(1);
+  }, [filterStartDate, filterEndDate]);
 
 
 
@@ -124,12 +144,29 @@ const SpecifyCreatePlan = () => {
       setLoadingResponses(true);
       try {
         const allAssignments = await getAuditPlanAssignments();
-        const approved = allAssignments.filter((a: AuditPlanAssignment) => 
+        let approved = allAssignments.filter((a: AuditPlanAssignment) => 
           String(a.status || '').toLowerCase() === 'approved'
         );
-        const rejected = allAssignments.filter((a: AuditPlanAssignment) => 
+        let rejected = allAssignments.filter((a: AuditPlanAssignment) => 
           String(a.status || '').toLowerCase() === 'rejected'
         );
+        
+        // Apply date filter if provided
+        if (filterStartDate || filterEndDate) {
+          approved = approved.filter((a: AuditPlanAssignment) => {
+            const assignedDate = new Date(a.assignedDate || '');
+            if (filterStartDate && assignedDate < new Date(filterStartDate)) return false;
+            if (filterEndDate && assignedDate > new Date(filterEndDate + 'T23:59:59')) return false;
+            return true;
+          });
+          rejected = rejected.filter((a: AuditPlanAssignment) => {
+            const assignedDate = new Date(a.assignedDate || '');
+            if (filterStartDate && assignedDate < new Date(filterStartDate)) return false;
+            if (filterEndDate && assignedDate > new Date(filterEndDate + 'T23:59:59')) return false;
+            return true;
+          });
+        }
+        
         setApprovedAssignments(approved);
         setRejectedAssignments(rejected);
       } catch (error: any) {
@@ -141,20 +178,51 @@ const SpecifyCreatePlan = () => {
     };
 
     loadResponses();
-  }, [assignmentViewMode]);
+  }, [assignmentViewMode, filterStartDate, filterEndDate]);
 
   // Get assigned auditor IDs (convert to strings for comparison)
   const assignedAuditorIds = assignments.map((a) => String(a.auditorId));
 
-  // Get available auditors (not yet assigned)
-  const availableAuditors = auditors.filter(
-    (a) => !assignedAuditorIds.includes(String(a.userId || ''))
-  );
+  // Get available auditors (not yet assigned, and filter by date if provided)
+  const availableAuditors = (() => {
+    // If filter date is provided, we need to check if auditor was assigned within the date range
+    if (filterStartDate || filterEndDate) {
+      // Filter out auditors who were assigned within the date range
+      const filteredAssignedIds = assignments
+        .filter((a) => {
+          const assignedDate = new Date(a.assignedDate || '');
+          if (filterStartDate && assignedDate < new Date(filterStartDate)) return false;
+          if (filterEndDate && assignedDate > new Date(filterEndDate + 'T23:59:59')) return false;
+          return true;
+        })
+        .map((a) => String(a.auditorId));
+      
+      return auditors.filter(
+        (a) => !filteredAssignedIds.includes(String(a.userId || ''))
+      );
+    }
+    
+    // No filter: return all available auditors
+    return auditors.filter(
+      (a) => !assignedAuditorIds.includes(String(a.userId || ''))
+    );
+  })();
 
   // Get assigned auditors with their details and audit info (dedupe by auditorId, keep latest assignedDate)
   const assignedAuditors = (() => {
+    // Filter by date if provided
+    let filteredAssignments = assignments;
+    if (filterStartDate || filterEndDate) {
+      filteredAssignments = assignments.filter((a) => {
+        const assignedDate = new Date(a.assignedDate || '');
+        if (filterStartDate && assignedDate < new Date(filterStartDate)) return false;
+        if (filterEndDate && assignedDate > new Date(filterEndDate + 'T23:59:59')) return false;
+        return true;
+      });
+    }
+    
     // Sort by assignedDate desc then pick first per auditorId
-    const sorted = [...assignments].sort(
+    const sorted = [...filteredAssignments].sort(
       (a, b) => new Date(b.assignedDate || '').getTime() - new Date(a.assignedDate || '').getTime()
     );
     const latestByAuditor = new Map<string, AuditPlanAssignment>();
@@ -223,7 +291,7 @@ const SpecifyCreatePlan = () => {
 
     // Filter by creation date if provided
     let filteredAuditsByAuditor = auditsByAuditor;
-    if (createdDate) {
+    if (filterStartDate || filterEndDate) {
       filteredAuditsByAuditor = new Map<string, any[]>();
       auditsByAuditor.forEach((audits, auditorId) => {
         const filteredAudits = audits.filter((audit: any) => {
@@ -231,9 +299,9 @@ const SpecifyCreatePlan = () => {
           if (!auditCreatedDate) return false;
           
           const auditDate = new Date(auditCreatedDate);
-          const filterDate = new Date(createdDate);
-          // Filter: show audits created on or after the selected date
-          return auditDate >= filterDate;
+          if (filterStartDate && auditDate < new Date(filterStartDate)) return false;
+          if (filterEndDate && auditDate > new Date(filterEndDate + 'T23:59:59')) return false;
+          return true;
         });
         
         if (filteredAudits.length > 0) {
@@ -598,10 +666,15 @@ const SpecifyCreatePlan = () => {
               </div>
             </div>
 
-            {/* Tabs for switching views */}
-            <div className="flex gap-2 flex-wrap">
+            {/* Tabs and Date Filter - Same row */}
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Tabs for switching views */}
+              <div className="flex gap-2 flex-wrap flex-1">
               <button
-                onClick={() => setAssignmentViewMode('all')}
+                onClick={() => {
+                  setAssignmentViewMode('all');
+                  setAvailablePage(1);
+                }}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                   assignmentViewMode === 'all'
                     ? 'bg-white text-primary-700 shadow-md'
@@ -611,7 +684,10 @@ const SpecifyCreatePlan = () => {
                 Available ({availableAuditors.length})
               </button>
               <button
-                onClick={() => setAssignmentViewMode('assigned')}
+                onClick={() => {
+                  setAssignmentViewMode('assigned');
+                  setAssignedPage(1);
+                }}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                   assignmentViewMode === 'assigned'
                     ? 'bg-white text-primary-700 shadow-md'
@@ -621,7 +697,11 @@ const SpecifyCreatePlan = () => {
                 Assigned ({assignedAuditors.length})
               </button>
               <button
-                onClick={() => setAssignmentViewMode('responses')}
+                onClick={() => {
+                  setAssignmentViewMode('responses');
+                  setApprovedPage(1);
+                  setRejectedPage(1);
+                }}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                   assignmentViewMode === 'responses'
                     ? 'bg-white text-primary-700 shadow-md'
@@ -631,7 +711,10 @@ const SpecifyCreatePlan = () => {
                 Responses ({approvedAssignments.length + rejectedAssignments.length})
               </button>
               <button
-                onClick={() => setAssignmentViewMode('created')}
+                onClick={() => {
+                  setAssignmentViewMode('created');
+                  setCreatedPage(1);
+                }}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                   assignmentViewMode === 'created'
                     ? 'bg-white text-primary-700 shadow-md'
@@ -640,6 +723,43 @@ const SpecifyCreatePlan = () => {
               >
                 Created ({createdAuditors.length})
               </button>
+              </div>
+
+              {/* Date Filter - Simple inline */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-white whitespace-nowrap">
+                  Filter:
+                </label>
+                <input
+                  type="date"
+                  value={filterStartDate}
+                  onChange={(e) => setFilterStartDate(e.target.value)}
+                  placeholder="From"
+                  className="px-3 py-2 border border-white/30 rounded-lg bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 w-36"
+                />
+                <span className="text-white text-sm">-</span>
+                <input
+                  type="date"
+                  value={filterEndDate}
+                  onChange={(e) => setFilterEndDate(e.target.value)}
+                  placeholder="To"
+                  className="px-3 py-2 border border-white/30 rounded-lg bg-white text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-white/50 w-36"
+                />
+                {(filterStartDate || filterEndDate) && (
+                  <button
+                    onClick={() => {
+                      setFilterStartDate('');
+                      setFilterEndDate('');
+                    }}
+                    className="px-3 py-2 text-sm font-medium text-white hover:text-white/80 transition-colors"
+                    title="Clear filter"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -667,32 +787,60 @@ const SpecifyCreatePlan = () => {
               </div>
             ) : (
               <>
-                <AuditorSelectionTable
-                  auditors={availableAuditors}
-                  selectedAuditorId={selectedAuditorId}
-                  onSelectionChange={(id) => {
-                    setSelectedAuditorId(id);
-                  }}
-                  drlFiles={drlFiles}
-                  onDrlFileChange={(auditorId, files) => {
-                    setDrlFiles((prev) => {
-                      const newMap = new Map(prev);
-                      if (files && files.length > 0) {
-                        // Merge with existing files if any
-                        const existingFiles = newMap.get(auditorId) || [];
-                        const allFiles = [...existingFiles, ...files];
-                        // Remove duplicates based on file name and size
-                        const uniqueFiles = allFiles.filter((file, index, self) =>
-                          index === self.findIndex(f => f.name === file.name && f.size === file.size)
-                        );
-                        newMap.set(auditorId, uniqueFiles);
-                      } else {
-                        newMap.delete(auditorId);
-                      }
-                      return newMap;
-                    });
-                  }}
-                />
+                {/* Calculate pagination for Available tab */}
+                {(() => {
+                  const totalPages = Math.ceil(availableAuditors.length / ITEMS_PER_PAGE);
+                  const startIndex = (availablePage - 1) * ITEMS_PER_PAGE;
+                  const endIndex = startIndex + ITEMS_PER_PAGE;
+                  const paginatedAuditors = availableAuditors.slice(startIndex, endIndex);
+                  
+                  return (
+                    <>
+                      <AuditorSelectionTable
+                        auditors={paginatedAuditors}
+                        selectedAuditorId={selectedAuditorId}
+                        onSelectionChange={(id) => {
+                          console.log('[SpecifyCreatePlan] onSelectionChange called with:', id);
+                          setSelectedAuditorId(id);
+                        }}
+                        drlFiles={drlFiles}
+                        onDrlFileChange={(auditorId, files) => {
+                          setDrlFiles((prev) => {
+                            const newMap = new Map(prev);
+                            if (files && files.length > 0) {
+                              // Merge with existing files if any
+                              const existingFiles = newMap.get(auditorId) || [];
+                              const allFiles = [...existingFiles, ...files];
+                              // Remove duplicates based on file name and size
+                              const uniqueFiles = allFiles.filter((file, index, self) =>
+                                index === self.findIndex(f => f.name === file.name && f.size === file.size)
+                              );
+                              newMap.set(auditorId, uniqueFiles);
+                            } else {
+                              newMap.delete(auditorId);
+                            }
+                            return newMap;
+                          });
+                        }}
+                      />
+                      
+                      {/* Pagination for Available tab */}
+                      {totalPages > 1 && (
+                        <div className="mt-6">
+                          <Pagination
+                            currentPage={availablePage}
+                            totalPages={totalPages}
+                            onPageChange={(page) => {
+                              setAvailablePage(page);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                          />
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+
 
                 {/* Remarks Input */}
                     <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -783,10 +931,37 @@ const SpecifyCreatePlan = () => {
                     </p>
                   </div>
                 ) : (
-                  <AssignedAuditorsList
-                    assignedAuditors={assignedAuditors}
-                    onRemove={handleRemove}
-                  />
+                  <>
+                    {(() => {
+                      const totalPages = Math.ceil(assignedAuditors.length / ITEMS_PER_PAGE);
+                      const startIndex = (assignedPage - 1) * ITEMS_PER_PAGE;
+                      const endIndex = startIndex + ITEMS_PER_PAGE;
+                      const paginatedAssigned = assignedAuditors.slice(startIndex, endIndex);
+                      
+                      return (
+                        <>
+                          <AssignedAuditorsList
+                            assignedAuditors={paginatedAssigned}
+                            onRemove={handleRemove}
+                          />
+                          
+                          {/* Pagination for Assigned tab */}
+                          {totalPages > 1 && (
+                            <div className="mt-6">
+                              <Pagination
+                                currentPage={assignedPage}
+                                totalPages={totalPages}
+                                onPageChange={(page) => {
+                                  setAssignedPage(page);
+                                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                              />
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </>
                 )}
               </>
             )}
@@ -804,57 +979,99 @@ const SpecifyCreatePlan = () => {
                     {/* Approved Assignments */}
                     <div className="bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden">
                       <div className="bg-gradient-to-r from-green-50 to-green-100 px-6 py-4 border-b border-green-200">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
-                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="flex items-center gap-4">
+                          <div className="w-11 h-11 rounded-full bg-green-200 flex items-center justify-center">
+                            <svg className="w-6 h-6 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                           </div>
                           <div>
                             <h3 className="text-lg font-bold text-gray-900">Approved Assignments</h3>
-                            <p className="text-sm text-gray-600">{approvedAssignments.length} auditor(s) approved</p>
+                            <p className="text-sm text-gray-600 mt-0.5">{approvedAssignments.length} auditor(s) approved</p>
                           </div>
                         </div>
                       </div>
-                      <div className="p-6">
+                      <div className="p-6 bg-white">
                         {approvedAssignments.length === 0 ? (
-                          <div className="text-center py-8 text-gray-500">
-                            <p>No assignments have been approved yet.</p>
+                          <div className="text-center py-12 text-gray-500">
+                            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </div>
+                            <p className="text-gray-600 font-medium">No assignments have been approved yet.</p>
                           </div>
                         ) : (
-                          <div className="space-y-4">
-                            {approvedAssignments.map((assignment) => {
-                              const auditor = auditors.find((a) => String(a.userId || '') === String(assignment.auditorId));
+                          <>
+                            {(() => {
+                              const totalPages = Math.ceil(approvedAssignments.length / ITEMS_PER_PAGE);
+                              const startIndex = (approvedPage - 1) * ITEMS_PER_PAGE;
+                              const endIndex = startIndex + ITEMS_PER_PAGE;
+                              const paginatedApproved = approvedAssignments.slice(startIndex, endIndex);
+                              
                               return (
-                                <div key={assignment.assignmentId} className="border border-green-100 rounded-lg p-4 bg-green-50/50 hover:bg-green-50 transition-colors">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-3 mb-2">
-                                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-semibold">
-                                          {auditor?.fullName?.charAt(0) || 'A'}
+                                <>
+                                  <div className="space-y-3">
+                                    {paginatedApproved.map((assignment) => {
+                                      const auditor = auditors.find((a) => String(a.userId || '') === String(assignment.auditorId));
+                                      return (
+                                        <div 
+                                          key={assignment.assignmentId} 
+                                          className="bg-white border-l-4 border-green-300 rounded-lg p-5 shadow-sm hover:shadow-md transition-all duration-200 hover:border-green-400"
+                                        >
+                                          <div className="flex items-start justify-between gap-4">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-4 mb-3">
+                                                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-semibold text-base shadow-sm flex-shrink-0">
+                                                  {auditor?.fullName?.charAt(0) || 'A'}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                  <p className="font-semibold text-gray-900 text-base truncate">{auditor?.fullName || 'Unknown Auditor'}</p>
+                                                  <p className="text-sm text-gray-600 truncate mt-0.5">{auditor?.email || 'N/A'}</p>
+                                                </div>
+                                              </div>
+                                              {assignment.remarks && (
+                                                <div className="ml-16 mb-3 p-3 bg-green-50/50 border border-green-100 rounded-lg">
+                                                  <p className="text-sm text-gray-700 leading-relaxed">
+                                                    <span className="font-medium text-green-700">Remarks:</span>{' '}
+                                                    <span className="text-gray-600">{assignment.remarks}</span>
+                                                  </p>
+                                                </div>
+                                              )}
+                                              <div className="ml-16 flex items-center gap-2 text-xs text-gray-500">
+                                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                </svg>
+                                                <span className="font-medium">Assigned:</span>
+                                                <span>{new Date(assignment.assignedDate).toLocaleString('vi-VN')}</span>
+                                              </div>
+                                            </div>
+                                            <span className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full flex-shrink-0">
+                                              Approved
+                                            </span>
+                                          </div>
                                         </div>
-                                        <div>
-                                          <p className="font-semibold text-gray-900">{auditor?.fullName || 'Unknown Auditor'}</p>
-                                          <p className="text-sm text-gray-600">{auditor?.email || 'N/A'}</p>
-                                        </div>
-                                      </div>
-                                      {assignment.remarks && (
-                                        <p className="text-sm text-gray-700 mt-2 pl-13">
-                                          <span className="font-medium">Remarks:</span> {assignment.remarks}
-                                        </p>
-                                      )}
-                                      <p className="text-xs text-gray-500 mt-2 pl-13">
-                                        Assigned: {new Date(assignment.assignedDate).toLocaleString('vi-VN')}
-                                      </p>
-                                    </div>
-                                    <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">
-                                      Approved
-                                    </span>
+                                      );
+                                    })}
                                   </div>
-                                </div>
+                                  
+                                  {/* Pagination for Approved */}
+                                  {totalPages > 1 && (
+                                    <div className="mt-6 pt-6 border-t border-gray-200">
+                                      <Pagination
+                                        currentPage={approvedPage}
+                                        totalPages={totalPages}
+                                        onPageChange={(page) => {
+                                          setApprovedPage(page);
+                                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                                </>
                               );
-                            })}
-                          </div>
+                            })()}
+                          </>
                         )}
                       </div>
                     </div>
@@ -862,71 +1079,121 @@ const SpecifyCreatePlan = () => {
                     {/* Rejected Assignments */}
                     <div className="bg-white rounded-xl border border-red-200 shadow-sm overflow-hidden">
                       <div className="bg-gradient-to-r from-red-50 to-red-100 px-6 py-4 border-b border-red-200">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center">
-                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="flex items-center gap-4">
+                          <div className="w-11 h-11 rounded-full bg-red-200 flex items-center justify-center">
+                            <svg className="w-6 h-6 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                           </div>
                           <div>
                             <h3 className="text-lg font-bold text-gray-900">Rejected Assignments</h3>
-                            <p className="text-sm text-gray-600">{rejectedAssignments.length} auditor(s) rejected</p>
+                            <p className="text-sm text-gray-600 mt-0.5">{rejectedAssignments.length} auditor(s) rejected</p>
                           </div>
                         </div>
                       </div>
-                      <div className="p-6">
+                      <div className="p-6 bg-white">
                         {rejectedAssignments.length === 0 ? (
-                          <div className="text-center py-8 text-gray-500">
-                            <p>No assignments have been rejected yet.</p>
+                          <div className="text-center py-12 text-gray-500">
+                            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+                              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </div>
+                            <p className="text-gray-600 font-medium">No assignments have been rejected yet.</p>
                           </div>
                         ) : (
-                          <div className="space-y-4">
-                            {rejectedAssignments.map((assignment) => {
-                              const auditor = auditors.find((a) => String(a.userId || '') === String(assignment.auditorId));
-                              const rejectionInfo = allRejections.find((r: any) => {
-                                const rejections = toArray(r.rejections);
-                                return rejections.some((rej: any) => rej.assignmentId === assignment.assignmentId);
-                              });
-                              const latestRejection = rejectionInfo ? toArray(rejectionInfo.rejections)[0] : null;
+                          <>
+                            {(() => {
+                              const totalPages = Math.ceil(rejectedAssignments.length / ITEMS_PER_PAGE);
+                              const startIndex = (rejectedPage - 1) * ITEMS_PER_PAGE;
+                              const endIndex = startIndex + ITEMS_PER_PAGE;
+                              const paginatedRejected = rejectedAssignments.slice(startIndex, endIndex);
+                              
                               return (
-                                <div key={assignment.assignmentId} className="border border-red-100 rounded-lg p-4 bg-red-50/50 hover:bg-red-50 transition-colors">
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-3 mb-2">
-                                        <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-700 font-semibold">
-                                          {auditor?.fullName?.charAt(0) || 'A'}
+                                <>
+                                  <div className="space-y-3">
+                                    {paginatedRejected.map((assignment) => {
+                                      const auditor = auditors.find((a) => String(a.userId || '') === String(assignment.auditorId));
+                                      const rejectionInfo = allRejections.find((r: any) => {
+                                        const rejections = toArray(r.rejections);
+                                        return rejections.some((rej: any) => rej.assignmentId === assignment.assignmentId);
+                                      });
+                                      const latestRejection = rejectionInfo ? toArray(rejectionInfo.rejections)[0] : null;
+                                      return (
+                                        <div 
+                                          key={assignment.assignmentId} 
+                                          className="bg-white border-l-4 border-red-300 rounded-lg p-5 shadow-sm hover:shadow-md transition-all duration-200 hover:border-red-400"
+                                        >
+                                          <div className="flex items-start justify-between gap-4">
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-4 mb-3">
+                                                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-700 font-semibold text-base shadow-sm flex-shrink-0">
+                                                  {auditor?.fullName?.charAt(0) || 'A'}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                  <p className="font-semibold text-gray-900 text-base truncate">{auditor?.fullName || 'Unknown Auditor'}</p>
+                                                  <p className="text-sm text-gray-600 truncate mt-0.5">{auditor?.email || 'N/A'}</p>
+                                                </div>
+                                              </div>
+                                              {latestRejection?.rejectionReason && (
+                                                <div className="ml-16 mb-3 p-3 bg-red-50/50 border border-red-100 rounded-lg">
+                                                  <p className="text-sm font-medium text-red-700 mb-1.5">Rejection reason:</p>
+                                                  <p className="text-sm text-gray-700 leading-relaxed">{latestRejection.rejectionReason}</p>
+                                                </div>
+                                              )}
+                                              {assignment.remarks && (
+                                                <div className="ml-16 mb-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                                  <p className="text-sm text-gray-700 leading-relaxed">
+                                                    <span className="font-medium text-gray-800">Original Remarks:</span>{' '}
+                                                    <span className="text-gray-600">{assignment.remarks}</span>
+                                                  </p>
+                                                </div>
+                                              )}
+                                              <div className="ml-16 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                                                <div className="flex items-center gap-1.5">
+                                                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                  </svg>
+                                                  <span className="font-medium">Assigned:</span>
+                                                  <span>{new Date(assignment.assignedDate).toLocaleString('vi-VN')}</span>
+                                                </div>
+                                                {latestRejection?.rejectedAt && (
+                                                  <div className="flex items-center gap-1.5">
+                                                    <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                    <span className="font-medium text-red-600">Rejected:</span>
+                                                    <span>{new Date(latestRejection.rejectedAt).toLocaleString('vi-VN')}</span>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <span className="px-3 py-1.5 bg-red-100 text-red-700 text-xs font-semibold rounded-full flex-shrink-0">
+                                              Rejected
+                                            </span>
+                                          </div>
                                         </div>
-                                        <div>
-                                          <p className="font-semibold text-gray-900">{auditor?.fullName || 'Unknown Auditor'}</p>
-                                          <p className="text-sm text-gray-600">{auditor?.email || 'N/A'}</p>
-                                        </div>
-                                      </div>
-                                      {latestRejection?.rejectionReason && (
-                                        <div className="mt-3 pl-13 p-3 bg-white rounded border border-red-200">
-                                          <p className="text-sm font-medium text-gray-900 mb-1">Rejection reason:</p>
-                                          <p className="text-sm text-gray-700">{latestRejection.rejectionReason}</p>
-                                        </div>
-                                      )}
-                                      {assignment.remarks && (
-                                        <p className="text-sm text-gray-600 mt-2 pl-13">
-                                          <span className="font-medium">Original Remarks:</span> {assignment.remarks}
-                                        </p>
-                                      )}
-                                      <p className="text-xs text-gray-500 mt-2 pl-13">
-                                        Assigned: {new Date(assignment.assignedDate).toLocaleString('vi-VN')}
-                                        {latestRejection?.rejectedAt && (
-                                          <> • Rejected: {new Date(latestRejection.rejectedAt).toLocaleString('vi-VN')}</>
-                                        )}
-                                      </p>
-                                    </div>
-                                    <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded-full">
-                                      Rejected
-                                    </span>
+                                      );
+                                    })}
                                   </div>
-                                </div>
+                                  
+                                  {/* Pagination for Rejected */}
+                                  {totalPages > 1 && (
+                                    <div className="mt-6 pt-6 border-t border-gray-200">
+                                      <Pagination
+                                        currentPage={rejectedPage}
+                                        totalPages={totalPages}
+                                        onPageChange={(page) => {
+                                          setRejectedPage(page);
+                                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                                </>
                               );
-                            })}
-                          </div>
+                            })()}
+                          </>
                         )}
                       </div>
                     </div>
@@ -938,32 +1205,6 @@ const SpecifyCreatePlan = () => {
             {/* Created View - Auditors who have created plans */}
             {assignmentViewMode === 'created' && (
               <div className="space-y-6">
-                {/* Date Filter Section */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Filter by Creation Date</h3>
-                  <div className="max-w-md">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Creation Date
-                    </label>
-                    <input
-                      type="date"
-                      value={createdDate}
-                      onChange={(e) => setCreatedDate(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    />
-                  </div>
-                  {createdDate && (
-                    <button
-                      onClick={() => {
-                        setCreatedDate('');
-                      }}
-                      className="mt-4 px-4 py-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
-                    >
-                      Clear Filter
-                    </button>
-                  )}
-                </div>
-
                 {/* Created Auditors List */}
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                   <div className="bg-gradient-to-r from-primary-50 to-primary-100 px-6 py-4 border-b border-primary-200">
@@ -988,70 +1229,97 @@ const SpecifyCreatePlan = () => {
                           </svg>
                         </div>
                         <p className="text-gray-700 font-medium text-lg mb-2">
-                          {createdDate ? 'No plans found for selected creation date' : 'No plans created yet'}
+                          {(filterStartDate || filterEndDate) ? 'No plans found for selected date range' : 'No plans created yet'}
                         </p>
                         <p className="text-gray-500 text-sm">
-                          {createdDate 
-                            ? 'Try adjusting your creation date filter or clear it to see all created plans.'
+                          {(filterStartDate || filterEndDate)
+                            ? 'Try adjusting your date filter or clear it to see all created plans.'
                             : 'Auditors will appear here once they create their first audit plan.'}
                         </p>
                       </div>
                     ) : (
-                      <div className="space-y-4">
-                        {createdAuditors.map((item) => (
-                          <div key={item.auditorId} className="border border-primary-100 rounded-lg p-4 bg-primary-50/50 hover:bg-primary-50 transition-colors">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-semibold">
-                                    {item.auditor?.fullName?.charAt(0) || 'A'}
-                                  </div>
-                                  <div>
-                                    <p className="font-semibold text-gray-900">{item.auditor?.fullName || 'Unknown Auditor'}</p>
-                                    <p className="text-sm text-gray-600">{item.auditor?.email || 'N/A'}</p>
-                                  </div>
-                                </div>
-                                {item.auditInfo && (
-                                  <div className="mt-3 pl-13 space-y-2">
-                                    <div className="flex items-center gap-2 text-sm text-gray-700">
-                                      <span className="font-medium">Latest Plan:</span>
-                                      <span>{item.auditInfo.title}</span>
+                      <>
+                        {(() => {
+                          const totalPages = Math.ceil(createdAuditors.length / ITEMS_PER_PAGE);
+                          const startIndex = (createdPage - 1) * ITEMS_PER_PAGE;
+                          const endIndex = startIndex + ITEMS_PER_PAGE;
+                          const paginatedCreated = createdAuditors.slice(startIndex, endIndex);
+                          
+                          return (
+                            <>
+                              <div className="space-y-4">
+                                {paginatedCreated.map((item) => (
+                                  <div key={item.auditorId} className="border border-primary-100 rounded-lg p-4 bg-primary-50/50 hover:bg-primary-50 transition-colors">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-3 mb-2">
+                                          <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-semibold">
+                                            {item.auditor?.fullName?.charAt(0) || 'A'}
+                                          </div>
+                                          <div>
+                                            <p className="font-semibold text-gray-900">{item.auditor?.fullName || 'Unknown Auditor'}</p>
+                                            <p className="text-sm text-gray-600">{item.auditor?.email || 'N/A'}</p>
+                                          </div>
+                                        </div>
+                                        {item.auditInfo && (
+                                          <div className="mt-3 pl-13 space-y-2">
+                                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                                              <span className="font-medium">Latest Plan:</span>
+                                              <span>{item.auditInfo.title}</span>
+                                            </div>
+                                            {item.auditInfo.createdDate && (
+                                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                <span className="font-medium">Created:</span>
+                                                <span>{new Date(item.auditInfo.createdDate).toLocaleString('en-US')}</span>
+                                              </div>
+                                            )}
+                                            {(item.auditInfo.startDate || item.auditInfo.endDate) && (
+                                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                <span className="font-medium">Period:</span>
+                                                <span>
+                                                  {item.auditInfo.startDate 
+                                                    ? new Date(item.auditInfo.startDate).toLocaleDateString('en-US')
+                                                    : 'N/A'}
+                                                  {' - '}
+                                                  {item.auditInfo.endDate 
+                                                    ? new Date(item.auditInfo.endDate).toLocaleDateString('en-US')
+                                                    : 'N/A'}
+                                                </span>
+                                              </div>
+                                            )}
+                                            {item.auditInfo.planCount > 1 && (
+                                              <div className="flex items-center gap-2 text-xs text-primary-600 font-medium">
+                                                <span>Total Plans Created: {item.auditInfo.planCount}</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <span className="px-3 py-1 bg-primary-100 text-primary-800 text-xs font-semibold rounded-full">
+                                        Created
+                                      </span>
                                     </div>
-                                    {item.auditInfo.createdDate && (
-                                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                                        <span className="font-medium">Created:</span>
-                                        <span>{new Date(item.auditInfo.createdDate).toLocaleString('en-US')}</span>
-                                      </div>
-                                    )}
-                                    {(item.auditInfo.startDate || item.auditInfo.endDate) && (
-                                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                                        <span className="font-medium">Period:</span>
-                                        <span>
-                                          {item.auditInfo.startDate 
-                                            ? new Date(item.auditInfo.startDate).toLocaleDateString('en-US')
-                                            : 'N/A'}
-                                          {' - '}
-                                          {item.auditInfo.endDate 
-                                            ? new Date(item.auditInfo.endDate).toLocaleDateString('en-US')
-                                            : 'N/A'}
-                                        </span>
-                                      </div>
-                                    )}
-                                    {item.auditInfo.planCount > 1 && (
-                                      <div className="flex items-center gap-2 text-xs text-primary-600 font-medium">
-                                        <span>Total Plans Created: {item.auditInfo.planCount}</span>
-                                      </div>
-                                    )}
                                   </div>
-                                )}
+                                ))}
                               </div>
-                              <span className="px-3 py-1 bg-primary-100 text-primary-800 text-xs font-semibold rounded-full">
-                                Created
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                              
+                              {/* Pagination for Created tab */}
+                              {totalPages > 1 && (
+                                <div className="mt-6">
+                                  <Pagination
+                                    currentPage={createdPage}
+                                    totalPages={totalPages}
+                                    onPageChange={(page) => {
+                                      setCreatedPage(page);
+                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </>
                     )}
                   </div>
                 </div>
