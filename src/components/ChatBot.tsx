@@ -23,7 +23,7 @@ export const ChatBot = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: 'Xin chào! Tôi là chatbot hỗ trợ hệ thống Audit. Bạn có câu hỏi gì không?',
+      text: 'Hello!  am the chatbot supporting the Audit system. Do you have any questions?',
       isUser: false,
       timestamp: new Date(),
     },
@@ -184,8 +184,8 @@ export const ChatBot = () => {
                 </svg>
               </div>
               <div>
-                <h3 className="font-semibold text-sm">Chatbot Hỗ Trợ</h3>
-                <p className="text-xs text-primary-100">Sẵn sàng hỗ trợ</p>
+                <h3 className="font-semibold text-sm">Chatbot Support</h3>
+                <p className="text-xs text-primary-100">Ready to assist</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -292,7 +292,7 @@ export const ChatBot = () => {
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Nhập câu hỏi của bạn..."
+                placeholder="Enter your question..."
                 disabled={isLoading}
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               />
@@ -321,7 +321,7 @@ export const ChatBot = () => {
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              Nhấn Enter để gửi, Shift+Enter để xuống dòng
+              Press Enter to submit, Shift+Enter to go to the next line.
             </p>
           </div>
         </div>

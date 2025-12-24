@@ -27,15 +27,15 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   const [reportRequests, setReportRequests] = useState<ReportRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string>("");
-  const [selectedAuditId, setSelectedAuditId] = useState<string>("");
+  const [_selectedAuditId, setSelectedAuditId] = useState<string>("");
   const [auditDetail, setAuditDetail] = useState<any>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   
   // Additional data states (same as Auditor FinalSummary)
-  const [summaryData, setSummaryData] = useState<any>(null);
-  const [loadingSummary, setLoadingSummary] = useState(false);
-  const [findingsActionsSummary, setFindingsActionsSummary] = useState<any>(null);
-  const [loadingFindingsActionsSummary, setLoadingFindingsActionsSummary] = useState(false);
+  const [_summaryData, setSummaryData] = useState<any>(null);
+  const [_loadingSummary, setLoadingSummary] = useState(false);
+  const [_findingsActionsSummary, setFindingsActionsSummary] = useState<any>(null);
+  const [_loadingFindingsActionsSummary, setLoadingFindingsActionsSummary] = useState(false);
 
   const [decision, setDecision] = useState<"approve" | "reject" | null>(null);
   const [comments, setComments] = useState("");
