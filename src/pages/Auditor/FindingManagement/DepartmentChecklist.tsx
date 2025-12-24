@@ -1464,8 +1464,11 @@ const DepartmentChecklist = () => {
                             </p>
                           </div>
                           <div className="flex items-center justify-end sm:justify-start gap-2 sm:gap-3 flex-shrink-0">
-                            {/* Edit and Delete buttons for External audit type */}
-                            {auditType?.toLowerCase() === 'external' && (
+                            {/* Edit and Delete buttons for External audit type - Only show if no finding and not compliant */}
+                            {auditType?.toLowerCase() === 'external' && 
+                             !findingsMap[item.auditItemId] && 
+                             !isCompliant(item.status) && 
+                             !compliantIdMap[item.auditItemId] && (
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={(e) => {
