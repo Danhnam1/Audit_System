@@ -2,9 +2,10 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getAuditAssignmentsByAudit } from '../../../api/auditAssignments';
+import { getMyAssignments } from '../../../api/auditAssignments';
 import { getDepartmentById } from '../../../api/departments';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
+import { useUserId } from '../../../store/useAuthStore';
 import { unwrap } from '../../../utils/normalize';
 
 interface DepartmentCard {
@@ -24,6 +25,7 @@ const AuditDepartments = () => {
   const { auditId } = useParams<{ auditId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const userIdFromToken = useUserId(); // Get userId from JWT token
   const [departments, setDepartments] = useState<DepartmentCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,22 +66,47 @@ const AuditDepartments = () => {
       setError(null);
 
       try {
-        // Load assignments for this audit
-        const assignmentsResponse: any = await getAuditAssignmentsByAudit(auditId);
+        // Load my assignments (assignments assigned to current user)
+        const assignmentsResponse: any = await getMyAssignments();
 
-        let assignments: any[] = [];
+        let allAssignments: any[] = [];
         if (Array.isArray(assignmentsResponse)) {
-          assignments = assignmentsResponse;
+          allAssignments = assignmentsResponse;
         } else if (assignmentsResponse?.$values && Array.isArray(assignmentsResponse.$values)) {
-          assignments = assignmentsResponse.$values;
+          allAssignments = assignmentsResponse.$values;
         } else if (assignmentsResponse?.values && Array.isArray(assignmentsResponse.values)) {
-          assignments = assignmentsResponse.values;
+          allAssignments = assignmentsResponse.values;
         } else if (assignmentsResponse?.data && Array.isArray(assignmentsResponse.data)) {
-          assignments = assignmentsResponse.data;
+          allAssignments = assignmentsResponse.data;
         } else {
-          assignments = unwrap(assignmentsResponse);
+          allAssignments = unwrap(assignmentsResponse);
         }
 
+        if (!allAssignments || allAssignments.length === 0) {
+          setDepartments([]);
+          setLoading(false);
+          return;
+        }
+
+        // Filter assignments by auditId and auditorId matching userId
+        const currentUserId = userIdFromToken ? String(userIdFromToken).toLowerCase() : '';
+        
+        let assignments = allAssignments.filter((a: any) => {
+          // Filter by auditId
+          const assignmentAuditId = String(a.auditId || '').toLowerCase().trim();
+          const targetAuditId = String(auditId || '').toLowerCase().trim();
+          if (assignmentAuditId !== targetAuditId) {
+            return false;
+          }
+          
+          // Filter by auditorId matching userId
+          const assignmentAuditorId = String(a.auditorId || '').toLowerCase().trim();
+          if (currentUserId && assignmentAuditorId !== currentUserId) {
+            return false;
+          }
+          
+          return true;
+        });
 
         if (!assignments || assignments.length === 0) {
           setDepartments([]);
@@ -87,7 +114,7 @@ const AuditDepartments = () => {
           return;
         }
 
-        // Filter active assignments
+        // Filter active assignments (exclude archived)
         const activeAssignments = assignments.filter((a: any) => {
           const status = (a.status || '').toLowerCase().trim();
           return status !== 'archived';
