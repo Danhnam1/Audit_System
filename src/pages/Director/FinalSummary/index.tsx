@@ -1533,14 +1533,7 @@ useEffect(() => {
                               : "—"}
                           </p>
                         </div>
-                        <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5">
-                          <p className="text-[11px] font-medium text-primary-700 uppercase">Compliance Rate</p>
-                          <p className="mt-0.5 text-lg font-bold text-primary-900">
-                            {complianceValue != null 
-                              ? `${complianceValue.toFixed(1)}%` 
-                              : "—"}
-                          </p>
-                        </div>
+                       
                         
                         {/* Display saved Result and Comment */}
                         {(resultLabel || auditResult?.comment) && (
@@ -1566,7 +1559,7 @@ useEffect(() => {
                       </div>
                     )}
                     <div className="grid grid-cols-1 gap-3 border-t border-gray-200 pt-3">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="flex flex-col">
                           <label className="text-[11px] font-semibold text-gray-700 uppercase">Result</label>
                           <select
@@ -1574,10 +1567,10 @@ useEffect(() => {
                             onChange={(e) => setEditResult(e.target.value)}
                             className="mt-1 px-3 py-2 border border-gray-300 rounded-md text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-gray-900"
                           >
-                            <option value="">(Select)</option>
+                           
                             <option value="pass">Pass</option>
                             <option value="fail">Fail</option>
-                            <option value="pending">Pending</option>
+                            
                           </select>
                         </div>
                         <div className="flex flex-col">
@@ -1590,16 +1583,16 @@ useEffect(() => {
                             placeholder="e.g., 80"
                           />
                         </div>
-                        <div className="flex flex-col">
-                          <label className="text-[11px] font-semibold text-gray-700 uppercase">Comment</label>
-                          <input
-                            type="text"
-                            value={editComment}
-                            onChange={(e) => setEditComment(e.target.value)}
-                            className="mt-1 px-3 py-2 border border-gray-300 rounded-md text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-gray-900"
-                            placeholder="Comment"
-                          />
-                        </div>
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-[11px] font-semibold text-gray-700 uppercase">Comment</label>
+                        <input
+                          type="text"
+                          value={editComment}
+                          onChange={(e) => setEditComment(e.target.value)}
+                          className="mt-1 px-3 py-4 border border-gray-300 rounded-md text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-gray-900 w-full"
+                          placeholder="Type your comment here..."
+                        />
                       </div>
 
                       <div className="flex flex-col gap-2">
