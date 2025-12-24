@@ -145,9 +145,6 @@ const AuditorSchedule = () => {
         return;
       }
       
-      const reqDate1 = formatDateForSet(new Date(req.actualAuditDate));
-      const reqDate2 = req.actualAuditDate.split('T')[0];
-      
       // Check if this request matches any assignment
       // Block the assignment's actualAuditDate if there's ANY pending request for this assignment
       // (same auditId, deptId, user) - regardless of the request's date
@@ -268,8 +265,8 @@ const AuditorSchedule = () => {
         }
       }
 
-      // Add actual audit date (orange) - BUT exclude if request is rejected
-      if (assignment.actualAuditDate && !assignmentsWithRejectedRequests.has(assignment.assignmentId)) {
+      // Add actual audit date (orange)
+      if (assignment.actualAuditDate) {
         // Parse date from API - use UTC components to avoid timezone conversion issues
         const dateFromAPI = new Date(assignment.actualAuditDate);
         // Extract date part only (YYYY-MM-DD) from ISO string if available, otherwise use UTC components
