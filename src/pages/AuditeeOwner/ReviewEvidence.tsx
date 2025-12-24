@@ -77,7 +77,6 @@ const ReviewEvidence = () => {
           try {
             // Get actions for this finding
             const actions = await getActionsByFinding(finding.findingId);
-            console.log(`[ReviewEvidence] Finding ${finding.findingId} has ${actions.length} actions:`, actions);
             
             // Fetch user names for actions
             const actionsWithUserNames = await Promise.all(
@@ -85,11 +84,8 @@ const ReviewEvidence = () => {
                 let assignedUserName = action.assignedTo;
                 if (action.assignedTo && action.assignedTo.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
                   try {
-                    console.log('[ReviewEvidence] Fetching user for:', action.assignedTo);
                     const user = await getUserById(action.assignedTo);
-                    console.log('[ReviewEvidence] User data:', user);
                     assignedUserName = user.fullName || user.email || action.assignedTo;
-                    console.log('[ReviewEvidence] User name:', assignedUserName);
                   } catch (err) {
                     console.warn(`Failed to fetch user info for ${action.assignedTo}`, err);
                   }
@@ -146,8 +142,6 @@ const ReviewEvidence = () => {
             console.warn('[ReviewEvidence] Failed to load audit summaries', err);
           });
       }
-      console.log('[ReviewEvidence] Total findings loaded:', findingsWithDetails.length);
-      console.log('[ReviewEvidence] Findings with actions:', findingsWithDetails.filter(f => f.actions.length > 0).length);
     } catch (err: any) {
       console.error('Failed to fetch findings', err);
       toast.error('Unable to load findings');
@@ -164,7 +158,6 @@ const ReviewEvidence = () => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && deptId) {
-        console.log('[ReviewEvidence] Page became visible, refreshing...');
         fetchFindings();
       }
     };

@@ -25,8 +25,11 @@ export default function ScanQR() {
   const [verifyCodeInput, setVerifyCodeInput] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [scanningError, setScanningError] = useState<string | null>(null);
+  const [scanMode, setScanMode] = useState<'camera' | 'file'>('camera');
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const scannerContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileScanContainerRef = useRef<HTMLDivElement>(null);
 
   // Load scanner user ID
   useEffect(() => {
@@ -115,6 +118,79 @@ export default function ScanQR() {
     setScanningError(null);
   };
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    let fileScanHtml5QrCode: Html5Qrcode | null = null;
+
+    try {
+      setScanningError(null);
+      setScanResult(null);
+      setQrToken('');
+      setVerifyCodeInput('');
+      setScanning(true);
+
+      // Use the ref element that's always in the DOM
+      if (!fileScanContainerRef.current) {
+        throw new Error('File scan container not found');
+      }
+
+      const fileScanElementId = fileScanContainerRef.current.id;
+      
+      // Verify element exists
+      const fileScanElement = document.getElementById(fileScanElementId);
+      if (!fileScanElement) {
+        throw new Error(`Element with id=${fileScanElementId} not found`);
+      }
+
+      // Create a new instance for file scanning (don't reuse camera instance)
+      fileScanHtml5QrCode = new Html5Qrcode(fileScanElementId);
+
+      // Scan QR code from file
+      const decodedText = await fileScanHtml5QrCode.scanFile(file, true);
+      await handleQrScanned(decodedText);
+    } catch (err: any) {
+      console.error('Failed to scan QR from file:', err);
+      setScanning(false);
+      
+      // Check if it's a "No QR code found" error
+      if (err?.message?.includes('No QR code found') || 
+          err?.message?.includes('QR code parse error') ||
+          err?.message?.includes('NotFoundException')) {
+        setScanningError('No QR code found in the image. Please try another image.');
+        toast.error('No QR code found in the image. Please try another image.');
+      } else if (err?.message?.includes('not found') || err?.message?.includes('Element with id')) {
+        setScanningError('Scanning service error. Please refresh the page and try again.');
+        toast.error('Scanning service error. Please refresh the page and try again.');
+        console.error('Element error details:', err);
+      } else {
+        setScanningError('Failed to scan QR code from image. Please try another image.');
+        toast.error('Failed to scan QR code from image. Please try another image.');
+      }
+    } finally {
+      // Clean up file scan instance
+      if (fileScanHtml5QrCode) {
+        try {
+          await fileScanHtml5QrCode.clear();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const handleQrScanned = async (scannedToken: string) => {
     // Stop scanning
     await stopScanning();
@@ -158,7 +234,6 @@ export default function ScanQR() {
                              audit?.audit?.name ||
                              'N/A';
                 setAuditTitle(title);
-                console.log('[ScanQR] Loaded audit title:', title, 'from audit data:', audit);
               })
               .catch((e) => {
                 console.warn('Failed to load audit info', e);
@@ -352,6 +427,20 @@ export default function ScanQR() {
 
   return (
     <MainLayout user={layoutUser}>
+      {/* Hidden element for file scanning - always in DOM */}
+      <div
+        id="qr-reader-file-scan"
+        ref={fileScanContainerRef}
+        style={{
+          display: 'none',
+          position: 'fixed',
+          top: '-9999px',
+          left: '-9999px',
+          width: '1px',
+          height: '1px',
+          visibility: 'hidden'
+        }}
+      />
       <div className="space-y-6">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 shadow-sm">
@@ -367,8 +456,47 @@ export default function ScanQR() {
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
             <div className="p-6">
+              {/* Scan Mode Toggle */}
+              <div className="flex justify-center mb-4">
+                <div className="inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1">
+                  <button
+                    onClick={() => {
+                      setScanMode('camera');
+                      if (scanning) stopScanning();
+                    }}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      scanMode === 'camera'
+                        ? 'bg-white text-primary-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Camera
+                  </button>
+                  <button
+                    onClick={() => {
+                      setScanMode('file');
+                      if (scanning) stopScanning();
+                    }}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      scanMode === 'file'
+                        ? 'bg-white text-primary-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <svg className="w-5 h-5 inline-block mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Upload Image
+                  </button>
+                </div>
+              </div>
+
               {/* Camera Scan Mode */}
-              <div className="space-y-4">
+              {scanMode === 'camera' && (
+                <div className="space-y-4">
                   <div className="flex justify-center">
                     <div
                       id="qr-reader"
@@ -409,6 +537,60 @@ export default function ScanQR() {
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* File Upload Mode */}
+              {scanMode === 'file' && (
+                <div className="space-y-4">
+                  <div className="flex justify-center">
+                    <div className="w-full max-w-md border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        id="qr-file-input"
+                        disabled={scanning}
+                      />
+                      <label
+                        htmlFor="qr-file-input"
+                        className={`cursor-pointer flex flex-col items-center ${
+                          scanning ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <svg className="w-12 h-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="text-sm font-medium text-gray-700">
+                          {scanning ? 'Scanning...' : 'Click to upload QR code image'}
+                        </span>
+                        <span className="text-xs text-gray-500 mt-1">
+                          PNG, JPG, JPEG up to 10MB
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {scanningError && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                      <p className="text-sm text-red-800">{scanningError}</p>
+                    </div>
+                  )}
+
+                  {scanning && (
+                    <div className="flex justify-center">
+                      <div className="flex items-center gap-2 text-primary-600">
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span className="text-sm font-medium">Processing image...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Scan Result */}
               {scanResult && (

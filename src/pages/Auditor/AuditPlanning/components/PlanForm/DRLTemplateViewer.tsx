@@ -35,7 +35,6 @@ export const DRLTemplateViewer: React.FC<DRLTemplateViewerProps> = ({ drlFiles }
       window.open(file.fileUrl, '_blank');
     } else if (file.fileId) {
       // TODO: Implement download API call if needed
-      console.log('Download file:', file.fileId);
     }
   };
 

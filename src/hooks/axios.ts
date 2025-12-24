@@ -36,22 +36,18 @@ const getBaseURL = () => {
   if (url.startsWith('/')) {
     // Force absolute URL for production
     url = 'https://moca.mom/api';
-    console.warn('[axios] Detected relative URL, converted to absolute:', url);
   }
   
   // Remove port 80 from HTTPS URLs (HTTPS uses port 443 by default, not 80)
   if (url.startsWith('https://') && url.includes(':80')) {
     url = url.replace(':80', '');
-    console.warn('[axios] Removed :80 from baseURL, normalized to:', url);
   }
   
   // Ensure URL is absolute (starts with http:// or https://)
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
     url = 'https://moca.mom/api';
-    console.warn('[axios] URL is not absolute, using default:', url);
   }
   
-  console.log('[axios] Base URL:', url);
   return url;
 };
 
@@ -92,7 +88,6 @@ function setupInterceptors(apiClient: AxiosInstance) {
       if (request.baseURL) {
         if (request.baseURL.startsWith('https://') && request.baseURL.includes(':80')) {
           request.baseURL = request.baseURL.replace(':80', '');
-          console.log('[axios] Removed :80 from baseURL:', request.baseURL);
         }
       }
       
@@ -100,19 +95,13 @@ function setupInterceptors(apiClient: AxiosInstance) {
       if (request.url && (request.url.startsWith('http://') || request.url.startsWith('https://'))) {
         if (request.url.startsWith('https://') && request.url.includes(':80')) {
           request.url = request.url.replace(':80', '');
-          console.log('[axios] Removed :80 from url:', request.url);
         }
       }
       
       // Log final URL for debugging
       if (request.baseURL && request.url) {
         const fullUrl = request.url.startsWith('http') ? request.url : request.baseURL + request.url;
-        console.log('[axios] Request URL:', {
-          baseURL: request.baseURL,
-          url: request.url,
-          fullUrl: fullUrl,
-          method: request.method
-        });
+       
         if (fullUrl.includes(':80')) {
           console.warn('[axios] WARNING: Full URL still contains :80:', fullUrl);
         }
@@ -179,23 +168,12 @@ function setupInterceptors(apiClient: AxiosInstance) {
         // 404 responses should not automatically log the user out.
         // Log details for debugging and allow callers to handle the error.
         try {
-          console.warn('API 404 Not Found:', {
-            url: originalRequest?.url || originalRequest?.baseURL,
-            method: originalRequest?.method,
-            status: error.response?.status,
-            data: error.response?.data,
-          });
+        
         } catch (logErr) {
           // ignore logging errors
         }
       } else if (error.response?.status === RequestStatus.UNAUTHORIZED) {
-        // Clear auth state when server returns 401 Unauthorized.
-        console.warn('API 401 Unauthorized - clearing auth state', {
-          url: originalRequest?.url,
-          method: originalRequest?.method,
-          status: error.response?.status,
-          data: error.response?.data,
-        });
+      
         useAuthStore.getState().setToken(null)
         useAuthStore.getState().setLoading(false)
         useAuthStore.getState().setIsGlobalLoading(false)

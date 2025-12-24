@@ -34,9 +34,7 @@ const CompliantDetailsViewer = ({
         setError('Compliant ID is required');
         return;
       }
-      console.log('Fetching compliant details for compliantId:', compliantId);
       const data = await getChecklistItemCompliantDetails(compliantId);
-      console.log('✅ Compliant details fetched:', data);
       setCompliantData(data);
 
       // Fetch witness name if witnessId exists
@@ -54,7 +52,6 @@ const CompliantDetailsViewer = ({
       if (data?.auditChecklistItemId) {
         try {
           const attachmentsData = await getAttachments('compliant', data.auditChecklistItemId);
-          console.log('✅ Attachments fetched:', attachmentsData);
           setAttachments(attachmentsData);
         } catch (err) {
           console.error('Failed to fetch attachments:', err);
@@ -62,7 +59,6 @@ const CompliantDetailsViewer = ({
         }
       }
     } catch (err: any) {
-      console.error('❌ Error fetching compliant details:', err);
       setError(err?.response?.data?.message || err.message || 'Failed to load compliant details');
     } finally {
       setLoading(false);

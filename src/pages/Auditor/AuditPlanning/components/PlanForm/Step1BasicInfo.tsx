@@ -41,25 +41,20 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
       }
 
       try {
-        console.log('[Step1BasicInfo] Checking time conflict for period:', periodFrom, 'to', periodTo);
         const auditsInPeriod = await getAuditsByPeriod(periodFrom, periodTo);
-        console.log('[Step1BasicInfo] Raw audits response:', auditsInPeriod);
         
         // Unwrap response to handle different formats ($values, values, data, or direct array)
         const auditsArray = unwrap(auditsInPeriod);
-        console.log('[Step1BasicInfo] Processed audits array:', auditsArray.length, 'audits');
         
         // Filter out inactive and deleted audits
         const activeAudits = auditsArray.filter((a: any) => {
           const status = String(a.status || '').toLowerCase().replace(/\s+/g, '');
           const isActive = status !== 'inactive' && status !== 'deleted';
           if (!isActive) {
-            console.log('[Step1BasicInfo] Filtered out inactive/deleted audit:', a.auditId || a.id, 'status:', status);
           }
           return isActive;
         });
         
-        console.log('[Step1BasicInfo] Active audits after filtering:', activeAudits.length);
         
         // Filter out current audit if editing
         const otherAudits = editingAuditId
@@ -67,7 +62,6 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
               const auditId = String(a.auditId || a.id);
               const isNotCurrent = auditId !== String(editingAuditId);
               if (!isNotCurrent) {
-                console.log('[Step1BasicInfo] Filtered out current audit being edited:', auditId);
               }
               return isNotCurrent;
             })
@@ -91,22 +85,12 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
           return overlaps;
         });
 
-        console.log('[Step1BasicInfo] Other audits (excluding current):', otherAudits.length);
-        console.log('[Step1BasicInfo] Overlapping audits:', overlappingAudits.length);
-        console.log('[Step1BasicInfo] Overlapping audits details:', overlappingAudits.map((a: any) => ({
-          id: a.auditId || a.id,
-          title: a.title,
-          status: a.status,
-          startDate: a.startDate || a.periodFrom,
-          endDate: a.endDate || a.periodTo
-        })));
+       
 
         if (overlappingAudits.length > 0) {
-          console.log('[Step1BasicInfo] Time conflict detected! Setting warning...');
           setHasTimeConflict(true);
           setConflictingAuditsCount(overlappingAudits.length);
         } else {
-          console.log('[Step1BasicInfo] No time conflict');
           setHasTimeConflict(false);
           setConflictingAuditsCount(0);
         }

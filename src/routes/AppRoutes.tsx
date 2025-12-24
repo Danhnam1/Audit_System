@@ -112,10 +112,8 @@ export function AppRoutes() {
         };
 
         // Debug log to inspect user role
-        console.log('Current user:', user);
         const rawRole = (user?.role || user?.roleName || '');
         const normalized = String(rawRole).toLowerCase().replace(/\s+/g, '');
-        console.log('Original role:', rawRole, '\nNormalized role:', normalized);
 
         return roleRouteMap[normalized] || ROUTES.LOGIN;
     };

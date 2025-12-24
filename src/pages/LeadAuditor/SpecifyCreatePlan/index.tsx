@@ -44,10 +44,7 @@ const SpecifyCreatePlan = () => {
   // Date filter for Created tab
   const [createdDate, setCreatedDate] = useState<string>('');
 
-  // Debug: Log when selectedAuditorId changes
-  useEffect(() => {
-    console.log('[SpecifyCreatePlan] selectedAuditorId changed:', selectedAuditorId);
-  }, [selectedAuditorId]);
+
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
   const normalizedRole = (user?.roleName || '').toLowerCase().replace(/\s+/g, '');
@@ -88,12 +85,7 @@ const SpecifyCreatePlan = () => {
         const auditsArray = Array.isArray(auditsList) ? auditsList : [];
         setAllAudits(auditsArray);
         
-        // Debug: Log assignment data to see format
-        console.log('[SpecifyCreatePlan] Loaded assignments:', assignmentsData);
-        console.log('[SpecifyCreatePlan] Loaded all audits:', auditsArray.length);
         if (assignmentsData && assignmentsData.length > 0) {
-          console.log('[SpecifyCreatePlan] Sample assignment:', assignmentsData[0]);
-          console.log('[SpecifyCreatePlan] Sample assignment auditorId type:', typeof assignmentsData[0]?.auditorId);
         }
       } catch (error: any) {
         console.error('Failed to load data', error);
@@ -312,7 +304,6 @@ const SpecifyCreatePlan = () => {
 
   // Handle assign auditor
   const handleAssign = async () => {
-    console.log('[SpecifyCreatePlan] handleAssign called:', { selectedAuditorId, user, userIdFromToken });
     
     if (!selectedAuditorId) {
       toast.warning('Please select an auditor');
@@ -396,15 +387,7 @@ const SpecifyCreatePlan = () => {
         return;
       }
 
-      console.log('[SpecifyCreatePlan] Calling API with:', {
-        selectedAuditorId,
-        selectedAuditor,
-        auditorIdForApi,
-        auditorIdForApiType: typeof auditorIdForApi,
-        assignByForApi,
-        assignByForApiType: typeof assignByForApi,
-        assignedDate,
-      });
+   
 
       // Ensure remarks is not empty (already validated above, but double-check)
       const remarksValue = remarks.trim();
@@ -429,12 +412,10 @@ const SpecifyCreatePlan = () => {
       // Add files if DRL files are provided
       if (drlFilesList.length > 0) {
         (assignmentPayload as any).files = drlFilesList;
-        console.log('[SpecifyCreatePlan] Creating assignment with DRL files:', drlFilesList.map(f => f.name));
       }
 
       const result = await createAuditPlanAssignment(assignmentPayload);
 
-      console.log('[SpecifyCreatePlan] API response:', result);
 
       // Reload assignments and auditors to get fresh data
       try {
@@ -453,8 +434,6 @@ const SpecifyCreatePlan = () => {
         setAllUsers(updatedUsers || []);
         setAssignments(updatedAssignments || []);
         
-        console.log('[SpecifyCreatePlan] Reloaded assignments:', updatedAssignments);
-        console.log('[SpecifyCreatePlan] Reloaded auditors:', auditorList);
       } catch (reloadError) {
         console.error('[SpecifyCreatePlan] Failed to reload data:', reloadError);
         // Still try to reload assignments even if users fail
@@ -481,7 +460,6 @@ const SpecifyCreatePlan = () => {
           entityId: result?.assignmentId || '',
           category: 'AuditTeam',
         });
-        console.log('[SpecifyCreatePlan] Notification sent to auditor', drlFilesList.length > 0 ? `with ${drlFilesList.length} DRL file(s)` : '');
       } catch (notifError) {
         // Don't fail the whole operation if notification fails
         console.error('[SpecifyCreatePlan] Failed to send notification:', notifError);
@@ -693,7 +671,6 @@ const SpecifyCreatePlan = () => {
                   auditors={availableAuditors}
                   selectedAuditorId={selectedAuditorId}
                   onSelectionChange={(id) => {
-                    console.log('[SpecifyCreatePlan] onSelectionChange called with:', id);
                     setSelectedAuditorId(id);
                   }}
                   drlFiles={drlFiles}

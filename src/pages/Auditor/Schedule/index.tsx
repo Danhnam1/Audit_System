@@ -24,7 +24,6 @@ interface Assignment {
 }
 
 const AuditorSchedule = () => {
-  console.log('AuditorSchedule component rendering');
   const userIdFromToken = useUserId();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,7 +54,6 @@ const AuditorSchedule = () => {
       setLoading(true);
       try {
         const response = await getMyAssignments();
-        console.log('Schedule API response:', response);
         
         // Handle $values structure
         let assignmentsData: Assignment[] = [];
@@ -69,7 +67,6 @@ const AuditorSchedule = () => {
           assignmentsData = Array.isArray(unwrapped) ? unwrapped : [];
         }
         
-        console.log('Parsed assignments:', assignmentsData);
         setAssignments(assignmentsData);
       } catch (error) {
         console.error('Failed to load assignments:', error);
@@ -86,7 +83,6 @@ const AuditorSchedule = () => {
   const loadAllRequests = async () => {
     try {
       const response = await getAllAuditAssignmentRequests();
-      console.log('📥 API Response:', response);
       let requests: any[] = [];
       
       if (response?.$values && Array.isArray(response.$values)) {
@@ -102,8 +98,6 @@ const AuditorSchedule = () => {
         }
       }
       
-      console.log('📋 Parsed requests:', requests);
-      console.log('📋 Pending requests:', requests.filter((r: any) => r.status === 'Pending'));
       setAllRequests(requests);
     } catch (error) {
       console.error('Failed to load requests:', error);
@@ -119,58 +113,40 @@ const AuditorSchedule = () => {
   const datesWithPendingRequests = useMemo(() => {
     const blockedDates = new Set<string>();
     
-    console.log('🔍 Calculating blocked dates...', {
-      userIdFromToken,
-      allRequestsCount: allRequests.length,
-      assignmentsCount: assignments.length
-    });
+
     
     if (!userIdFromToken) {
-      console.log('❌ No userIdFromToken');
       return blockedDates;
     }
     
     if (allRequests.length === 0) {
-      console.log('❌ No requests loaded');
       return blockedDates;
     }
     
     const currentUserId = String(userIdFromToken || '').toLowerCase();
-    console.log('👤 Current user ID:', currentUserId);
     
     // For each pending request, get the date and check if it matches any assignment's actualAuditDate
     allRequests.forEach((req: any) => {
-      console.log('🔎 Checking request:', {
-        requestId: req.requestId,
-        status: req.status,
-        auditId: req.auditId,
-        deptId: req.deptId,
-        createdBy: req.createdBy,
-        actualAuditDate: req.actualAuditDate
-      });
+  
       
       // Only check Pending requests
       if (req.status !== 'Pending') {
-        console.log('  ⏭️  Status is not Pending:', req.status);
         return;
       }
       
       // Must match current user
       const reqCreatedBy = String(req.createdBy || '').toLowerCase();
       if (reqCreatedBy !== currentUserId) {
-        console.log('  ⏭️  User mismatch:', reqCreatedBy, 'vs', currentUserId);
         return;
       }
       
       // Get the date from request
       if (!req.actualAuditDate) {
-        console.log('  ⏭️  No actualAuditDate');
         return;
       }
       
       const reqDate1 = formatDateForSet(new Date(req.actualAuditDate));
       const reqDate2 = req.actualAuditDate.split('T')[0];
-      console.log('  📅 Request dates:', reqDate1, reqDate2);
       
       // Check if this request matches any assignment
       // Block the assignment's actualAuditDate if there's ANY pending request for this assignment
@@ -201,31 +177,18 @@ const AuditorSchedule = () => {
         const assignmentDate1 = formatDateForSet(new Date(assignment.actualAuditDate));
         const assignmentDate2 = assignment.actualAuditDate.split('T')[0];
         
-        console.log('  🔗 Checking assignment:', {
-          assignmentId: assignment.assignmentId,
-          auditId: assignment.auditId,
-          deptId: assignment.deptId,
-          actualAuditDate: assignment.actualAuditDate,
-          assignmentDate1,
-          assignmentDate2,
-          requestAssignmentId: req.auditAssignmentId,
-          requestDate1: reqDate1,
-          requestDate2: reqDate2,
-          assignmentIdMatch: reqAssignmentId === assignAssignmentId
-        });
+    
         
         // If request is for this assignment (same auditAssignmentId), block the assignment's date
         // OR if request matches by auditId + deptId + user, also block
         if (reqAssignmentId === assignAssignmentId || 
             (reqAuditId === assignAuditId && Number(req.deptId) === Number(assignment.deptId))) {
-          console.log('  ✅ MATCH FOUND - Blocking assignment date:', assignmentDate1, assignmentDate2);
           blockedDates.add(assignmentDate1);
           blockedDates.add(assignmentDate2);
         }
       });
     });
     
-    console.log('🚫 Blocked dates with pending requests:', Array.from(blockedDates));
     return blockedDates;
   }, [allRequests, assignments, userIdFromToken]);
 
@@ -332,11 +295,7 @@ const AuditorSchedule = () => {
       }
     });
 
-    console.log('Highlighted dates:', { 
-      plannedDates: Array.from(plannedDates), 
-      actualDates: Array.from(actualDates) 
-    });
-
+   
     return { plannedDates, actualDates, dateToAssignmentsMap, actualDateToAssignmentsMap };
   }, [assignments, assignmentsWithRejectedRequests]);
 
@@ -629,7 +588,6 @@ const AuditorSchedule = () => {
     
     // CRITICAL: Must have userIdFromToken to check
     if (!userIdFromToken) {
-      console.error('❌ userIdFromToken is missing');
       toast.error('Unable to verify existing requests. Please refresh the page.', { autoClose: 3000 });
       return; // BLOCK if no userId
     }
@@ -637,7 +595,6 @@ const AuditorSchedule = () => {
     // CRITICAL CHECK: Check if this date is blocked by datesWithPendingRequests
     // This is the simplest and most reliable check
     if (datesWithPendingRequests.has(dateStr)) {
-      console.log('🚫 BLOCKED: Date has pending request', dateStr);
       toast.error('You have already submitted a pending request for this date. Please wait for approval.', { autoClose: 4000 });
       return; // EXIT IMMEDIATELY - DO NOT CONTINUE
     }
@@ -655,10 +612,7 @@ const AuditorSchedule = () => {
         const assignAssignmentId = String(assignment.assignmentId || '').toLowerCase();
         if (reqAssignmentId === assignAssignmentId) {
           // Found pending request for this assignment - BLOCK
-          console.log('🚫 BLOCKED: Found pending request for assignment', {
-            requestId: req.requestId,
-            assignmentId: assignment.assignmentId
-          });
+       
           toast.error('You have already submitted a pending request for this date. Please wait for approval.', { autoClose: 4000 });
           return; // EXIT IMMEDIATELY
         }
@@ -673,11 +627,7 @@ const AuditorSchedule = () => {
         
         if (auditId1 === auditId2 && deptId1 === deptId2 && createdBy1 === createdBy2) {
           // Found pending request for this assignment - BLOCK
-          console.log('🚫 BLOCKED: Found pending request by auditId+deptId+user', {
-            requestId: req.requestId,
-            auditId: req.auditId,
-            deptId: req.deptId
-          });
+      
           toast.error('You have already submitted a pending request for this date. Please wait for approval.', { autoClose: 4000 });
           return; // EXIT IMMEDIATELY
         }
@@ -685,7 +635,6 @@ const AuditorSchedule = () => {
     }
     
     // NO MATCH FOUND - Allow modal to show
-    console.log('✅ No pending request found - allowing modal');
     
     setSelectedDate(normalizedDate);
     
@@ -794,11 +743,9 @@ const AuditorSchedule = () => {
     }
   };
 
-  console.log('AuditorSchedule render - assignments:', assignments.length, 'loading:', loading);
   
   // Early return for debugging - remove after fixing
   if (typeof window !== 'undefined') {
-    console.log('Component is rendering in browser');
   }
   
   return (

@@ -25,9 +25,7 @@ const CAPAOwnerDashboard: React.FC = () => {
       try {
         setLoading(true);
         const actionsData = await getMyAssignedActions();
-        console.log('CAPA Owner Dashboard - Actions data:', actionsData);
         const actionsArray = Array.isArray(actionsData) ? actionsData : [];
-        console.log('CAPA Owner Dashboard - Actions array:', actionsArray);
         setActions(actionsArray);
 
         // Get unique audit IDs from actions
@@ -46,7 +44,6 @@ const CAPAOwnerDashboard: React.FC = () => {
 
         const findings = await Promise.all(findingPromises);
         const validFindings = findings.filter(f => f !== null);
-        console.log('CAPA Owner Dashboard - Valid findings:', validFindings);
 
         // Group actions by audit
         const auditMap = new Map<string, AuditInfo>();
@@ -99,7 +96,6 @@ const CAPAOwnerDashboard: React.FC = () => {
         });
 
         const auditsArray = Array.from(auditMap.values());
-        console.log('CAPA Owner Dashboard - Audits:', auditsArray);
         setAudits(auditsArray);
       } catch (error) {
         console.error('Failed to load dashboard data:', error);

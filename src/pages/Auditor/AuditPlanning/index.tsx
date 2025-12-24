@@ -381,11 +381,7 @@ const SQAStaffAuditPlanning = () => {
 
       setTemplatesForSelectedPlan([]);
     } catch (err) {
-      console.warn(
-        "Failed to load checklist template maps for audit",
-        auditId,
-        err
-      );
+     
     }
 
     formState.setSelectedTemplateIds(normalizedFallback);
@@ -813,7 +809,6 @@ const SQAStaffAuditPlanning = () => {
       setDepartments(list);
       return list;
     } catch (err) {
-      console.error("ensureDepartmentsLoaded: failed to load departments", err);
       return departments;
     }
   };
@@ -962,7 +957,6 @@ const SQAStaffAuditPlanning = () => {
         await new Promise((resolve) => setTimeout(resolve, 300));
         // Re-check allUsers after waiting
         if (!allUsers || allUsers.length === 0) {
-          console.log("[loadAvailableAuditors] allUsers still empty after wait");
           return; // Don't proceed if still empty
         }
       }
@@ -1014,10 +1008,7 @@ const SQAStaffAuditPlanning = () => {
           setAuditorOptions(mergedAuditors);
           return;
         } catch (err) {
-          console.error(
-            "[AuditPlanning] Failed to load available auditors in edit mode",
-            err
-          );
+         
           // Fallback: show original selected + all auditors
           const originalSelectedIds = new Set(
             originalSelectedAuditorIds.map((id) => String(id).toLowerCase().trim())
@@ -1100,239 +1091,6 @@ const SQAStaffAuditPlanning = () => {
     loadDepartmentsForFilter();
   }, []);
 
-  // Removed: Load used departments logic - no longer filtering departments
-  // Load used departments in period (Business Rule: Filter departments already used)
-  // useEffect(() => {
-  //   // Disabled: No longer filtering departments
-  //   // Original logic commented out - no longer filtering departments
-  /* Original logic commented out:
-    console.log('[AuditPlanning] 🎯🎯🎯 useEffect triggered for loadUsedDepartments', {
-      periodFrom: formState.periodFrom,
-      periodTo: formState.periodTo,
-      isEditMode: formState.isEditMode,
-      editingAuditId: formState.editingAuditId,
-      userIdFromToken: userIdFromToken,
-      allUsersLength: allUsers.length,
-      userEmail: user?.email
-    });
-
-    // Early return if no period dates
-    if (!formState.periodFrom || !formState.periodTo) {
-      console.log('[AuditPlanning] ⚠️ No period dates, clearing used departments');
-      setUsedDepartmentIds(new Set());
-      return;
-    }
-
-    const loadUsedDepartments = async () => {
-      console.log('[AuditPlanning] 🔍🔍🔍 START Loading used departments for period:', formState.periodFrom, 'to', formState.periodTo);
-
-      try {
-        // Get all audits (including Draft status) and filter by period on frontend
-        // This ensures we catch all audits regardless of status
-        console.log('[AuditPlanning] 📡 Calling getAuditPlans API to get all audits...');
-        const allAuditsResponse = await getAuditPlans();
-        console.log('[AuditPlanning] 📡 All audits response (raw):', allAuditsResponse);
-        
-        const allAuditsList = unwrap(allAuditsResponse);
-        console.log('[AuditPlanning] 📡 All audits response (unwrapped):', allAuditsList);
-        
-        const allAuditsArray = Array.isArray(allAuditsList) ? allAuditsList : [];
-        console.log('[AuditPlanning] 📋 Total audits in system:', allAuditsArray.length);
-        
-        // Get current auditor's userId to exclude their own audits
-        let currentAuditorId: string | null = null;
-        if (userIdFromToken) {
-          currentAuditorId = String(userIdFromToken);
-          console.log('[AuditPlanning] 👤 Got auditor ID from token:', currentAuditorId);
-        } else if (allUsers.length > 0 && user?.email) {
-          console.log('[AuditPlanning] 👤 Looking up auditor ID from allUsers, total users:', allUsers.length);
-          const currentUserInList = allUsers.find((u: any) => {
-            const uEmail = String(u?.email || '').toLowerCase().trim();
-            const userEmail = String(user.email || '').toLowerCase().trim();
-            return uEmail && userEmail && uEmail === userEmail;
-          });
-          if (currentUserInList?.userId) {
-            currentAuditorId = String(currentUserInList.userId);
-            console.log('[AuditPlanning] 👤 Found auditor ID from allUsers:', currentAuditorId);
-          } else {
-            console.log('[AuditPlanning] ⚠️ Could not find current user in allUsers list');
-          }
-        } else {
-          console.log('[AuditPlanning] ⚠️ No userIdFromToken and allUsers not loaded yet');
-        }
-        
-        console.log('[AuditPlanning] 👤 Final current auditor ID:', currentAuditorId);
-        
-        // Filter audits by period (check if period overlaps) AND exclude current auditor's audits
-        const periodFromDate = new Date(formState.periodFrom);
-        const periodToDate = new Date(formState.periodTo);
-        
-        console.log('[AuditPlanning] 🔍 Filtering audits by period overlap and excluding current auditor...');
-        console.log('[AuditPlanning] 🔍 Period to check:', {
-          from: periodFromDate.toISOString(),
-          to: periodToDate.toISOString()
-        });
-        
-        const auditsInPeriod = allAuditsArray.filter((audit: any) => {
-          // Log full audit object to see structure
-          console.log(`[AuditPlanning] 🔍 Checking audit: "${audit.title || audit.auditId}"`, {
-            fullAudit: audit,
-            periodFrom: audit.periodFrom,
-            periodTo: audit.periodTo,
-            PeriodFrom: audit.PeriodFrom,
-            PeriodTo: audit.PeriodTo,
-            startDate: audit.startDate,
-            endDate: audit.endDate,
-            auditPlan: audit.auditPlan,
-            createdBy: audit.createdBy || audit.createdByUserId || audit.auditorId || audit.userId
-          });
-          
-          // Try multiple field names for period dates
-          const auditPeriodFrom = audit.periodFrom || audit.PeriodFrom || audit.startDate || 
-                                  (audit.auditPlan && audit.auditPlan.periodFrom) ||
-                                  (audit.auditPlan && audit.auditPlan.PeriodFrom);
-          const auditPeriodTo = audit.periodTo || audit.PeriodTo || audit.endDate ||
-                                (audit.auditPlan && audit.auditPlan.periodTo) ||
-                                (audit.auditPlan && audit.auditPlan.PeriodTo);
-          
-          const auditPeriodFromDate = auditPeriodFrom ? new Date(auditPeriodFrom) : null;
-          const auditPeriodToDate = auditPeriodTo ? new Date(auditPeriodTo) : null;
-          
-          console.log(`[AuditPlanning] 🔍 Parsed period dates:`, {
-            auditPeriodFrom,
-            auditPeriodTo,
-            auditPeriodFromDate,
-            auditPeriodToDate,
-            isValidFrom: auditPeriodFromDate && !isNaN(auditPeriodFromDate.getTime()),
-            isValidTo: auditPeriodToDate && !isNaN(auditPeriodToDate.getTime())
-          });
-          
-          if (!auditPeriodFromDate || !auditPeriodToDate || 
-              isNaN(auditPeriodFromDate.getTime()) || isNaN(auditPeriodToDate.getTime())) {
-            console.log(`[AuditPlanning] ⏭️ Skipping audit "${audit.title || audit.auditId}" - missing or invalid period dates`);
-            return false;
-          }
-          
-          // Check if periods overlap: 
-          // Periods overlap if: periodFrom <= auditPeriodTo && periodTo >= auditPeriodFrom
-          const overlaps = periodFromDate <= auditPeriodToDate && periodToDate >= auditPeriodFromDate;
-          
-          if (!overlaps) {
-            console.log(`[AuditPlanning] ⏭️ Skipping audit "${audit.title || audit.auditId}" - period does not overlap`);
-            return false;
-          }
-          
-          console.log(`[AuditPlanning] ✅ Audit "${audit.title || audit.auditId}" PASSED FILTER - overlaps with period:`, {
-            auditPeriod: `${auditPeriodFromDate.toISOString()} to ${auditPeriodToDate.toISOString()}`,
-            searchPeriod: `${periodFromDate.toISOString()} to ${periodToDate.toISOString()}`
-          });
-          
-          return true;
-        });
-        
-        console.log('[AuditPlanning] 📋 Found', auditsInPeriod.length, 'audits with overlapping period created by OTHER auditors');
-        console.log('[AuditPlanning] 📋 Audits in period details:', auditsInPeriod);
-        
-        if (auditsInPeriod.length === 0) {
-          console.log('[AuditPlanning] ✅ No audits with overlapping period from other auditors, all departments available');
-          setUsedDepartmentIds(new Set());
-          return;
-        }
-        
-        console.log('[AuditPlanning] 📋 Found', auditsInPeriod.length, 'audits in period');
-
-        // Get all audit scope departments in ONE API call
-        const usedDeptIds = new Set<number>();
-        
-        try {
-          console.log('[AuditPlanning] 📡 Calling getAuditScopeDepartments() once to get all audit-department mappings...');
-          const allScopeDepts = await getAuditScopeDepartments();
-          console.log('[AuditPlanning] 📡 All scope departments response (raw):', allScopeDepts);
-          
-          const scopeDeptList = unwrap(allScopeDepts);
-          console.log('[AuditPlanning] 📡 All scope departments (unwrapped):', scopeDeptList);
-          
-          const scopeDeptArray = Array.isArray(scopeDeptList) ? scopeDeptList : [];
-          console.log('[AuditPlanning] 📦 Total audit-department mappings in system:', scopeDeptArray.length);
-          
-          if (scopeDeptArray.length === 0) {
-            console.log('[AuditPlanning] ⚠️ No audit-department mappings found in system. All departments are available.');
-            setUsedDepartmentIds(new Set());
-            return;
-          }
-          
-          // Filter scope departments that belong to audits in period
-          const auditIdsInPeriod = new Set(
-            auditsInPeriod.map((audit: any) => String(audit.auditId || audit.id || audit.$id))
-          );
-          
-          console.log('[AuditPlanning] 🔍 Audit IDs in period:', Array.from(auditIdsInPeriod));
-          
-          scopeDeptArray.forEach((scopeDept: any) => {
-            console.log('[AuditPlanning] 🔍 Processing scope department:', scopeDept);
-            
-            const scopeAuditId = String(scopeDept.auditId || scopeDept.audit?.auditId || '');
-            
-            // Check if this scope department belongs to an audit in the period
-            if (!scopeAuditId) {
-              console.warn('[AuditPlanning] ⚠️ Scope department missing auditId:', scopeDept);
-              return;
-            }
-            
-            if (!auditIdsInPeriod.has(scopeAuditId)) {
-              console.log(`[AuditPlanning] ⏭️ Skipping scope dept - audit ${scopeAuditId} not in period`);
-              return; // Skip - not in period
-            }
-            
-            // Skip if this is the audit being edited
-            if (formState.isEditMode && formState.editingAuditId === scopeAuditId) {
-              console.log('[AuditPlanning] ⏭️ Skipping department from current audit being edited:', scopeAuditId);
-              return;
-            }
-            
-            // Extract deptId
-            const deptId = scopeDept.deptId ?? scopeDept.dept?.deptId ?? scopeDept.departmentId;
-            if (deptId) {
-              const deptIdNum = Number(deptId);
-              if (!isNaN(deptIdNum) && deptIdNum > 0) {
-                usedDeptIds.add(deptIdNum);
-                const deptName = scopeDept.dept?.name || scopeDept.deptName || 'unknown';
-                console.log(`[AuditPlanning] ✅ Found used department: ${deptName} (ID: ${deptIdNum}) from audit ${scopeAuditId}`);
-              } else {
-                console.warn(`[AuditPlanning] ⚠️ Invalid deptId format:`, deptId, 'from scopeDept:', scopeDept);
-              }
-            } else {
-              console.warn(`[AuditPlanning] ⚠️ Scope department missing deptId:`, scopeDept);
-            }
-          });
-          
-          setUsedDepartmentIds(usedDeptIds);
-          console.log('[AuditPlanning] ✅✅✅ Final used departments SET:', Array.from(usedDeptIds), 'Total:', usedDeptIds.size);
-        } catch (err: any) {
-          console.error('[AuditPlanning] ❌ Failed to load audit scope departments:', err);
-          console.error('[AuditPlanning] ❌ Error details:', err?.response?.data || err?.message);
-          // On error, assume no departments are used (safer to show all than block user)
-          setUsedDepartmentIds(new Set());
-        }
-      } catch (error: any) {
-        console.error('[AuditPlanning] ❌❌❌ Failed to load used departments:', error);
-        console.error('[AuditPlanning] Error type:', typeof error);
-        console.error('[AuditPlanning] Error response:', error?.response);
-        console.error('[AuditPlanning] Error data:', error?.response?.data);
-        console.error('[AuditPlanning] Error message:', error?.message);
-        console.error('[AuditPlanning] Error stack:', error?.stack);
-        setUsedDepartmentIds(new Set());
-      }
-    };
-
-    // Call immediately, no debounce to ensure it runs
-    console.log('[AuditPlanning] ⏰ Calling loadUsedDepartments immediately...');
-    loadUsedDepartments().catch((error) => {
-      console.error('[AuditPlanning] ❌❌❌ Error in loadUsedDepartments:', error);
-    });
-    */
-  // }, [formState.periodFrom, formState.periodTo, formState.isEditMode, formState.editingAuditId, userIdFromToken, allUsers, user?.email]);
-
   // Show all departments (no filtering - removed filter logic)
   const availableDepartments = useMemo(() => {
     // Return all departments without filtering
@@ -1375,22 +1133,15 @@ const SQAStaffAuditPlanning = () => {
       }
       
       if (!currentUserId) {
-        console.warn(
-          "[AuditPlanning] Cannot find userId for permission check"
-        );
+       
         setHasPlanPermission(false);
         setIsCheckingPermission(false);
         return;
       }
-      
-      console.log(
-        "[AuditPlanning] Checking permission for userId:",
-        currentUserId
-      );
+  
       
       // Get all assignments for this auditor
       const assignments = await getAuditPlanAssignmentsByAuditor(currentUserId);
-      console.log("[AuditPlanning] Found assignments:", assignments);
       
       // Check if there's any approved assignment that can create a plan
       let canCreatePlan = false;
@@ -1401,7 +1152,6 @@ const SQAStaffAuditPlanning = () => {
         (a) => (a.status || "").toLowerCase() === "approved"
       );
       
-      console.log("[AuditPlanning] Approved assignments:", approvedAssignments);
       
       // Check each approved assignment to see if it can create a plan
       let lastStatusMessage: string | null = null;
@@ -1410,9 +1160,6 @@ const SQAStaffAuditPlanning = () => {
         
         try {
           const status = await getAuditPlanCreationStatus(assignment.assignmentId);
-          console.log(`[AuditPlanning] Assignment ${assignment.assignmentId} status:`, status);
-          console.log(`[AuditPlanning] Assignment auditorId: ${assignment.auditorId}, Current userId: ${currentUserId}`);
-          console.log(`[AuditPlanning] Status canCreate: ${status.canCreate}, hasActiveAuditPlan: ${status.hasActiveAuditPlan}`);
           
           if (status.canCreate) {
             canCreatePlan = true;
@@ -1422,7 +1169,6 @@ const SQAStaffAuditPlanning = () => {
           } else {
             // Store the reason why cannot create
             lastStatusMessage = status.message || "You have already created an audit plan from this assignment.";
-            console.log(`[AuditPlanning] Cannot create plan. Reason: ${lastStatusMessage}`);
           }
         } catch (error) {
           console.error(
@@ -1450,7 +1196,6 @@ const SQAStaffAuditPlanning = () => {
         }
       }
       
-      console.log("[AuditPlanning] Can create plan:", canCreatePlan);
       setHasPlanPermission(canCreatePlan);
       
       // If has permission, load DRL template files from assignment
@@ -1583,14 +1328,10 @@ const SQAStaffAuditPlanning = () => {
           return;
         }
         
-        console.log(
-          "[AuditPlanning] Checking permission for userId:",
-          currentUserId
-        );
+    
         
         // Get all assignments for this auditor
         const assignments = await getAuditPlanAssignmentsByAuditor(currentUserId);
-        console.log("[AuditPlanning] Found assignments:", assignments);
         
         // Check if there's any approved assignment that can create a plan
         let canCreatePlan = false;
@@ -1601,7 +1342,6 @@ const SQAStaffAuditPlanning = () => {
           (a) => (a.status || "").toLowerCase() === "approved"
         );
         
-        console.log("[AuditPlanning] Approved assignments:", approvedAssignments);
         
         // Check each approved assignment to see if it can create a plan
         let lastStatusMessage: string | null = null;
@@ -1610,7 +1350,6 @@ const SQAStaffAuditPlanning = () => {
           
           try {
             const status = await getAuditPlanCreationStatus(assignment.assignmentId);
-            console.log(`[AuditPlanning] Assignment ${assignment.assignmentId} status:`, status);
             
             if (status.canCreate) {
               canCreatePlan = true;
@@ -1647,7 +1386,6 @@ const SQAStaffAuditPlanning = () => {
           }
         }
         
-        console.log("[AuditPlanning] Can create plan:", canCreatePlan);
         setHasPlanPermission(canCreatePlan);
         
         // If has permission, load DRL template files from assignment
@@ -1750,7 +1488,6 @@ const SQAStaffAuditPlanning = () => {
         const merged = await getPlansWithDepartments();
         setExistingPlans(merged);
       } catch (error) {
-        console.error("❌ Failed to load audit plans", error);
         setExistingPlans([]);
       } finally {
         setLoadingPlans(false);
@@ -2536,16 +2273,6 @@ const SQAStaffAuditPlanning = () => {
         return;
       }
 
-      console.log("[handleEditPlan] Starting edit plan for auditId:", auditId);
-      console.log(
-        "[handleEditPlan] Current auditorOptions length:",
-        auditorOptions.length
-      );
-      console.log(
-        "[handleEditPlan] Current ownerOptions length:",
-        ownerOptions.length
-      );
-      console.log("[handleEditPlan] Current allUsers length:", allUsers.length);
 
       // Always ensure auditorOptions and ownerOptions are loaded before editing
       // This is critical for edit mode to show auditors correctly
@@ -2570,16 +2297,7 @@ const SQAStaffAuditPlanning = () => {
         setAuditorOptions(auditors);
         setOwnerOptions(owners);
 
-        console.log(
-          "[handleEditPlan] Loaded from API - auditors:",
-          auditors.length,
-          "owners:",
-          owners.length
-        );
-        console.log(
-          "[handleEditPlan] Auditor IDs:",
-          auditors.map((a: any) => a.userId || a.id)
-        );
+      
       } catch (loadErr) {
         console.error("[handleEditPlan] Failed to load options:", loadErr);
         // Continue anyway, might already be loaded
@@ -2712,12 +2430,7 @@ const SQAStaffAuditPlanning = () => {
         (u: any) => norm(u.roleName || u.role) === "auditor"
       );
 
-      console.log("[handleEditPlan] allAuditors count:", allAuditors.length);
-      console.log("[handleEditPlan] originalAuditorIds:", originalAuditorIds);
-      console.log(
-        "[handleEditPlan] allAuditors userIds:",
-        allAuditors.map((u: any) => String(u.userId || u.id || u.$id || ""))
-      );
+   
 
       if (formState.periodFrom && formState.periodTo) {
         try {
@@ -2741,14 +2454,7 @@ const SQAStaffAuditPlanning = () => {
             return originalSelectedIds.has(userId);
           });
 
-          console.log(
-            "[handleEditPlan] Found original selected auditors:",
-            originalSelectedAuditors.length,
-            originalSelectedAuditors.map((u: any) => ({
-              userId: u.userId || u.id || u.$id,
-              name: u.fullName || u.name,
-            }))
-          );
+         
 
           // Merge: original selected + available + all other auditors (to ensure all auditors are shown)
           // This ensures auditors that were previously selected but removed are still visible in dropdown
@@ -2789,16 +2495,7 @@ const SQAStaffAuditPlanning = () => {
             ...additionalAvailable,
             ...otherAuditors,
           ];
-          console.log(
-            "[handleEditPlan] Manually merged auditors - original:",
-            originalSelectedAuditors.length,
-            "available:",
-            availableAuditors.length,
-            "other:",
-            otherAuditors.length,
-            "merged:",
-            mergedAuditors.length
-          );
+        
           setAuditorOptions(mergedAuditors);
         } catch (err) {
           console.error(
@@ -2825,10 +2522,7 @@ const SQAStaffAuditPlanning = () => {
             ...originalSelectedAuditors,
             ...remainingAuditors,
           ];
-          console.log(
-            "[handleEditPlan] Fallback - setting auditors:",
-            fallbackAuditors.length
-          );
+        
           setAuditorOptions(fallbackAuditors);
         }
       } else {
@@ -2852,10 +2546,7 @@ const SQAStaffAuditPlanning = () => {
           ...originalSelectedAuditors,
           ...remainingAuditors,
         ];
-        console.log(
-          "[handleEditPlan] No period - setting auditors:",
-          noPeriodAuditors.length
-        );
+     
         setAuditorOptions(noPeriodAuditors);
       }
 
@@ -3067,9 +2758,7 @@ const SQAStaffAuditPlanning = () => {
         });
 
         try {
-          console.log('📤 Complete-update payload:', JSON.stringify(completeUpdatePayload, null, 2));
           const updateResult = await completeUpdateAuditPlan(auditId, completeUpdatePayload);
-          console.log('📥 Complete-update response:', updateResult);
         } catch (apiError) {
           console.error("Complete-update API failed:", apiError);
           throw apiError; // Re-throw to be caught by outer try-catch
@@ -3540,7 +3229,6 @@ const SQAStaffAuditPlanning = () => {
       if (!wasEditMode) {
         // Only refresh if creating new plan (not editing)
         // Immediately block permission since a plan was just created
-        console.log("[AuditPlanning] Plan created successfully, blocking further plan creation");
         setHasPlanPermission(false);
         setPermissionDeniedReason("You have already created an audit plan from your assignment. Only one plan can be created per assignment.");
         
@@ -3592,8 +3280,6 @@ const SQAStaffAuditPlanning = () => {
               if (!assignment.assignmentId) continue;
               try {
                 const status = await getAuditPlanCreationStatus(assignment.assignmentId);
-                console.log(`[AuditPlanning] Post-create verification: Assignment ${assignment.assignmentId} status:`, status);
-                console.log(`[AuditPlanning] Verification - canCreate: ${status.canCreate}, hasActiveAuditPlan: ${status.hasActiveAuditPlan}`);
                 if (status.canCreate) {
                   backendCanCreate = true;
                   break;
@@ -3608,7 +3294,6 @@ const SQAStaffAuditPlanning = () => {
             // Only update state if backend confirms we cannot create
             // If backend says canCreate=true, keep the blocked state (to prevent double creation due to timing)
             if (!backendCanCreate) {
-              console.log("[AuditPlanning] Backend verification confirms: cannot create plan");
               setHasPlanPermission(false);
               if (backendMessage) {
                 setPermissionDeniedReason(backendMessage);

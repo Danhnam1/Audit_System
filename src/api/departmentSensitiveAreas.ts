@@ -40,31 +40,24 @@ export interface DepartmentSensitiveAreasGrouped {
 export const getDepartmentSensitiveAreas = async (): Promise<DepartmentSensitiveAreaDto[]> => {
   try {
     const res: any = await apiClient.get('/DepartmentSensitiveArea');
-    console.log('[getDepartmentSensitiveAreas] Raw response:', res);
     
     // Handle $values structure
     let dataArray: any[] = [];
     if (res?.$values && Array.isArray(res.$values)) {
-      console.log('[getDepartmentSensitiveAreas] Using $values, count:', res.$values.length);
       dataArray = res.$values;
     } else if (Array.isArray(res)) {
-      console.log('[getDepartmentSensitiveAreas] Direct array, count:', res.length);
       dataArray = res;
     } else if (res?.data) {
       const data = res.data;
       if (data?.$values && Array.isArray(data.$values)) {
-        console.log('[getDepartmentSensitiveAreas] Using data.$values, count:', data.$values.length);
         dataArray = data.$values;
       } else if (Array.isArray(data)) {
-        console.log('[getDepartmentSensitiveAreas] Using data array, count:', data.length);
         dataArray = data;
       }
     }
     
     // Normalize response to match interface
     return dataArray.map((item: any) => {
-      console.log('[getDepartmentSensitiveAreas] Processing item (raw):', JSON.stringify(item, null, 2));
-      console.log('[getDepartmentSensitiveAreas] All keys in item:', Object.keys(item));
       
       // Backend DTO has 'SensitiveArea' (singular), Entity has 'SensitiveAreas' (plural)
       // AutoMapper maps SensitiveAreas -> SensitiveArea in ViewDepartmentSensitiveArea
@@ -80,12 +73,7 @@ export const getDepartmentSensitiveAreas = async (): Promise<DepartmentSensitive
         item.Name ||
         '';
       
-      console.log('[getDepartmentSensitiveAreas] Field values check:');
-      console.log('  - item.sensitiveArea:', item.sensitiveArea);
-      console.log('  - item.SensitiveArea:', item.SensitiveArea);
-      console.log('  - item.sensitiveAreas:', item.sensitiveAreas);
-      console.log('  - item.SensitiveAreas:', item.SensitiveAreas);
-      console.log('  - Final sensitiveAreaValue:', sensitiveAreaValue);
+  
       
       const normalized = {
         id: item.id || item.Id,
@@ -100,7 +88,6 @@ export const getDepartmentSensitiveAreas = async (): Promise<DepartmentSensitive
         levelName: item.levelName || item.LevelName,
         createdByName: item.createdByName || item.CreatedByName,
       };
-      console.log('[getDepartmentSensitiveAreas] Normalized item:', normalized);
       return normalized;
     });
   } catch (error: any) {
@@ -117,7 +104,6 @@ export const getDepartmentSensitiveAreas = async (): Promise<DepartmentSensitive
 export const getDepartmentSensitiveAreaByDeptId = async (deptId: number | string): Promise<DepartmentSensitiveAreaDto[]> => {
   try {
     const res: any = await apiClient.get(`/DepartmentSensitiveArea/department/${deptId}`);
-    console.log('[getDepartmentSensitiveAreaByDeptId] Raw response:', res);
     
     let dataArray: any[] = [];
     // Handle $values structure if needed
@@ -143,8 +129,6 @@ export const getDepartmentSensitiveAreaByDeptId = async (deptId: number | string
     
     // Normalize response to match interface
     return dataArray.map((item: any) => {
-      console.log('[getDepartmentSensitiveAreaByDeptId] Processing item (raw):', JSON.stringify(item, null, 2));
-      console.log('[getDepartmentSensitiveAreaByDeptId] All keys in item:', Object.keys(item));
       
       // Backend DTO has 'SensitiveArea' (singular), Entity has 'SensitiveAreas' (plural)
       // AutoMapper maps SensitiveAreas -> SensitiveArea in ViewDepartmentSensitiveArea
@@ -160,12 +144,6 @@ export const getDepartmentSensitiveAreaByDeptId = async (deptId: number | string
         item.Name ||
         '';
       
-      console.log('[getDepartmentSensitiveAreaByDeptId] Field values check:');
-      console.log('  - item.sensitiveArea:', item.sensitiveArea);
-      console.log('  - item.SensitiveArea:', item.SensitiveArea);
-      console.log('  - item.sensitiveAreas:', item.sensitiveAreas);
-      console.log('  - item.SensitiveAreas:', item.SensitiveAreas);
-      console.log('  - Final sensitiveAreaValue:', sensitiveAreaValue);
       
       const normalized = {
         id: item.id || item.Id,
@@ -180,7 +158,6 @@ export const getDepartmentSensitiveAreaByDeptId = async (deptId: number | string
         levelName: item.levelName || item.LevelName,
         createdByName: item.createdByName || item.CreatedByName,
       };
-      console.log('[getDepartmentSensitiveAreaByDeptId] Normalized item:', normalized);
       return normalized;
     });
   } catch (error: any) {
@@ -188,7 +165,6 @@ export const getDepartmentSensitiveAreaByDeptId = async (deptId: number | string
     if (error?.response?.status === 404) {
       return []; // No configuration for this department yet
     }
-    console.error(`[getDepartmentSensitiveAreaByDeptId] Error for deptId ${deptId}:`, error);
     return [];
   }
 };
@@ -199,19 +175,13 @@ export const getDepartmentSensitiveAreaByDeptId = async (deptId: number | string
  * Creates a single area record (one area per call)
  */
 export const createDepartmentSensitiveArea = async (dto: DepartmentSensitiveAreaDto): Promise<DepartmentSensitiveAreaDto> => {
-  console.log('[createDepartmentSensitiveArea] Request payload:', {
-    deptId: Number(dto.deptId),
-    sensitiveArea: dto.sensitiveArea,
-    level: dto.level || '',
-    defaultNotes: dto.defaultNotes || '',
-  });
+  
   const res: any = await apiClient.post('/DepartmentSensitiveArea', {
     deptId: Number(dto.deptId),
     sensitiveArea: dto.sensitiveArea,
     level: dto.level || '',
     defaultNotes: dto.defaultNotes || '',
   });
-  console.log('[createDepartmentSensitiveArea] Response:', res);
   return res?.data || res;
 };
 
@@ -223,19 +193,13 @@ export const updateDepartmentSensitiveArea = async (
   id: number | string,
   dto: DepartmentSensitiveAreaDto
 ): Promise<DepartmentSensitiveAreaDto> => {
-  console.log('[updateDepartmentSensitiveArea] Request id:', id, 'payload:', {
-    deptId: Number(dto.deptId),
-    sensitiveArea: dto.sensitiveArea,
-    level: dto.level || '',
-    defaultNotes: dto.defaultNotes || '',
-  });
+
   const res: any = await apiClient.put(`/DepartmentSensitiveArea/${id}`, {
     deptId: Number(dto.deptId),
     sensitiveArea: dto.sensitiveArea,
     level: dto.level || '',
     defaultNotes: dto.defaultNotes || '',
   });
-  console.log('[updateDepartmentSensitiveArea] Response:', res);
   return res?.data || res;
 };
 

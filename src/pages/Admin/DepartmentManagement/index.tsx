@@ -91,7 +91,6 @@ const AdminDepartmentManagement = () => {
       toast.success('Department created successfully!')
       await fetchDepartmentsAndOwners()
     } catch (err) {
-      console.error('Failed to create department', err)
       toast.error('Failed to create department. Please try again.')
     } finally {
       setCreating(false)
@@ -116,7 +115,6 @@ const AdminDepartmentManagement = () => {
       toast.success('Department updated successfully!')
       await fetchDepartmentsAndOwners()
     } catch (err) {
-      console.error('Failed to update department', err)
       toast.error('Failed to update department. Please try again.')
     } finally {
       setUpdating(false)
@@ -145,7 +143,6 @@ const AdminDepartmentManagement = () => {
       closeDeleteModal();
       toast.success('You have successfully deleted the department.');
     } catch (err) {
-      console.error('Failed to delete department', err);
       toast.error('Failed to delete department. Please try again.');
     } finally {
       setDeletingId(null);

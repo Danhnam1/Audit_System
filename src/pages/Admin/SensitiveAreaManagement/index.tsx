@@ -54,9 +54,7 @@ const SensitiveAreaManagement = () => {
 
       // Load sensitive areas master data
       try {
-        console.log('[SensitiveAreaManagement] Loading sensitive areas...');
         const sensitiveData = await getDepartmentSensitiveAreas();
-        console.log('[SensitiveAreaManagement] Received sensitive areas data:', sensitiveData);
         
         // Group records by deptId (each area is a separate record)
         const dataMap = new Map<string, {
@@ -67,13 +65,9 @@ const SensitiveAreaManagement = () => {
         
         if (Array.isArray(sensitiveData) && sensitiveData.length > 0) {
           sensitiveData.forEach((item: DepartmentSensitiveAreaDto) => {
-            console.log('[SensitiveAreaManagement] Processing item:', item);
-            console.log('[SensitiveAreaManagement] Item sensitiveArea:', item.sensitiveArea);
-            console.log('[SensitiveAreaManagement] Item full object:', JSON.stringify(item, null, 2));
             
             // Skip items with empty sensitiveArea (they might be invalid records)
             if (!item.sensitiveArea || item.sensitiveArea.trim() === '') {
-              console.warn('[SensitiveAreaManagement] Skipping item with empty sensitiveArea:', item);
               return; // Skip this item
             }
             
@@ -91,7 +85,6 @@ const SensitiveAreaManagement = () => {
                 defaultNotes: item.defaultNotes || '',
               };
               
-              console.log('[SensitiveAreaManagement] Area data to add:', areaData);
               
               if (existing) {
                 // Add area to existing department
@@ -109,13 +102,10 @@ const SensitiveAreaManagement = () => {
             }
           });
         }
-        console.log('[SensitiveAreaManagement] Final dataMap:', Array.from(dataMap.entries()));
         setDepartmentSensitiveAreas(dataMap);
       } catch (sensitiveErr: any) {
-        console.error('[SensitiveAreaManagement] Failed to load sensitive areas:', sensitiveErr);
         // If API returns 404, it means no data yet (not an error)
         if (sensitiveErr?.response?.status === 404) {
-          console.log('[SensitiveAreaManagement] 404 - No data yet, initializing empty map');
           setDepartmentSensitiveAreas(new Map()); // Initialize empty map - no data yet
         } else {
           console.error('[SensitiveAreaManagement] Error loading sensitive areas:', sensitiveErr);
@@ -197,19 +187,16 @@ const SensitiveAreaManagement = () => {
   const handleSave = async (deptId: string) => {
     const data = departmentSensitiveAreas.get(deptId);
     if (!data || data.areas.length === 0) {
-      console.warn('[SensitiveAreaManagement] No data to save for deptId:', deptId);
       return;
     }
 
     try {
       setLoading(true);
-      console.log('[SensitiveAreaManagement] Saving data for deptId:', deptId, 'areas:', data.areas);
       
       // Save each area as a separate record
       const savePromises = data.areas.map(async (area) => {
         if (area.id) {
           // Update existing record
-          console.log('[SensitiveAreaManagement] Updating area with id:', area.id);
           return await updateDepartmentSensitiveArea(area.id, {
             deptId: data.deptId,
             sensitiveArea: area.sensitiveArea,
@@ -218,7 +205,6 @@ const SensitiveAreaManagement = () => {
           });
         } else {
           // Create new record
-          console.log('[SensitiveAreaManagement] Creating new area:', area.sensitiveArea);
           return await createDepartmentSensitiveArea({
             deptId: data.deptId,
             sensitiveArea: area.sensitiveArea,
@@ -232,11 +218,9 @@ const SensitiveAreaManagement = () => {
       toast.success(`Sensitive areas saved for ${data.deptName || deptId}`);
       
       // Reload data to get latest from server
-      console.log('[SensitiveAreaManagement] Reloading data after save...');
       await loadData();
       setShowEditModal(false);
       setEditingData(null);
-      console.log('[SensitiveAreaManagement] Save completed successfully');
     } catch (error: any) {
       console.error('[SensitiveAreaManagement] Failed to save sensitive areas:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to save sensitive areas';

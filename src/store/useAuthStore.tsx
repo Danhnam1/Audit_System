@@ -27,7 +27,6 @@ const getUserIdFromToken = (token: string | null): string | null => {
   if (!token) return null;
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
-    console.log('[getUserIdFromToken] JWT payload:', payload);
     // Try different possible claim names (the actual claim is the full URL)
     const userId = payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'] 
       || payload['nameidentifier']
@@ -36,7 +35,6 @@ const getUserIdFromToken = (token: string | null): string | null => {
       || payload['UserId'] 
       || payload['nameid'] 
       || null;
-    console.log('[getUserIdFromToken] Extracted userId:', userId);
     return userId;
   } catch (err) {
     console.error('Failed to decode token for userId', err);
@@ -90,17 +88,14 @@ const useAuthStore = create<AuthState>()(
       loading: true,
       setLoading: value => set({ loading: value }),
       setUser: user => {
-        console.log('[AuthStore] Setting user:', user);
         set({ user });
       },
       setToken: token => {
-        console.log('[AuthStore] Setting token:', token ? 'exists' : 'null');
         set({ token });
       },
       setRememberMe: rememberMe => set({ rememberMe }),
       role: undefined,
       setRole: role => {
-        console.log('[AuthStore] Setting role:', role);
         set({ role });
       },
       isLoggingIn: false,
@@ -111,7 +106,6 @@ const useAuthStore = create<AuthState>()(
       logout: async () => {
         useAuthStore.getState().setIsLoggingOut(true)
         await authService.logout().catch(reason => {
-          console.log('Error on Logout:', reason)
         })
         set({
           user: null,
@@ -182,12 +176,7 @@ const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       version: 1, // Add version to clear old cache
       partialize: state => {
-        console.log('[AuthStore] Saving to localStorage:', {
-          hasToken: !!state.token,
-          hasUser: !!state.user,
-          hasRole: !!state.role,
-          user: state.user
-        });
+      
         return {
           token: state.token, 
           user: state.user, 
@@ -196,18 +185,11 @@ const useAuthStore = create<AuthState>()(
         };
       },
       onRehydrateStorage: () => {
-        console.log('[AuthStore] Starting hydration from localStorage...');
         return (state, error) => {
           if (error) {
             console.error('[AuthStore] Hydration error:', error);
           } else {
-            console.log('[AuthStore] Hydration complete:', {
-              hasToken: !!state?.token,
-              hasUser: !!state?.user,
-              hasRole: !!state?.role,
-              user: state?.user,
-              token: state?.token ? 'exists' : 'null'
-            });
+           
             
             // Set loading to false after hydration
             if (state) {

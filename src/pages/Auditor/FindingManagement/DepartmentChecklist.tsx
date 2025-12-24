@@ -371,7 +371,6 @@ const DepartmentChecklist = () => {
           }
         });
         setFindingsMap(map);
-        console.log('Findings map created:', map);
       } catch (err: any) {
         console.error('Error loading findings:', err);
         toast.warning('Failed to load findings');
@@ -583,13 +582,8 @@ const DepartmentChecklist = () => {
   // Confirm and actually mark item as compliant (called from CompliantModal)
   // CompliantModal handles the API call, we need to refetch data to sync with server
   const handleConfirmMarkCompliant = async (compliantData?: any) => {
-    console.log('🟡 [handleConfirmMarkCompliant] CALLED');
-    console.log('🟡 [handleConfirmMarkCompliant] compliantData:', compliantData);
-    console.log('🟡 [handleConfirmMarkCompliant] compliantData.id:', compliantData?.id);
-    console.log('🟡 [handleConfirmMarkCompliant] itemToMarkCompliant.auditItemId:', itemToMarkCompliant?.auditItemId);
 
     if (!itemToMarkCompliant || updatingItemId) {
-      console.warn('🔴 [handleConfirmMarkCompliant] Guard check failed');
       return;
     }
 
@@ -601,32 +595,25 @@ const DepartmentChecklist = () => {
       const newCompliantId = compliantData?.id;
       
       if (newCompliantId) {
-        console.log('🟢 [handleConfirmMarkCompliant] Saving compliant ID to map:');
-        console.log('  - auditItemId:', compliantItemId);
-        console.log('  - compliant id:', newCompliantId);
 
         setCompliantIdMap(prev => {
           const newMap = {
             ...prev,
             [compliantItemId]: newCompliantId
           };
-          console.log('🟢 [handleConfirmMarkCompliant] Updated compliantIdMap:', newMap);
           return newMap;
         });
       } else {
-        console.warn('⚠️ [handleConfirmMarkCompliant] No id field in compliantData');
       }
 
       // Refetch checklist items from API to get updated status from server
       if (!deptId) {
-        console.warn('⚠️ [handleConfirmMarkCompliant] No deptId, cannot refetch data');
         toast.success('Item marked as compliant successfully');
         return;
       }
 
       const deptIdNum = parseInt(deptId, 10);
       const allItems = await getChecklistItemsByDepartment(deptIdNum);
-      console.log('🟢 [handleConfirmMarkCompliant] Refetched checklist items from API:', allItems.length);
       
       // Filter by auditId if available
       let itemsByAudit = allItems;
@@ -655,7 +642,6 @@ const DepartmentChecklist = () => {
       try {
         const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
         const allCompliantRecords = unwrapArray(compliantRes.data);
-        console.log(`📋 [handleConfirmMarkCompliant] Loaded ${allCompliantRecords.length} compliant records`);
         
         // Build compliantIdMap: auditChecklistItemId -> compliant record id
         const compliantMap: Record<string, string | number> = {};
@@ -667,19 +653,16 @@ const DepartmentChecklist = () => {
         
         // Update compliantIdMap state with all compliant records
         setCompliantIdMap(compliantMap);
-        console.log('✅ [handleConfirmMarkCompliant] Updated compliantIdMap:', compliantMap);
         
         // Update status to "Compliant" for ALL items that have compliant records
         // Since backend doesn't automatically update checklist item status, we need to set it manually
         const updatedItems = sortedItems.map((item: ChecklistItem) => {
           if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
-            console.log(`🟢 [handleConfirmMarkCompliant] Updating status to Compliant for item: ${item.auditItemId}`);
             return { ...item, status: 'Compliant' };
           }
           return item;
         });
         
-        console.log('🟢 [handleConfirmMarkCompliant] Updated checklist items count:', updatedItems.length);
         
         // Update state with fresh data from API (with compliant status applied to all items)
         setChecklistItems(updatedItems);
@@ -688,7 +671,6 @@ const DepartmentChecklist = () => {
         // Fallback: at least update the item we just marked
         const updatedItems = sortedItems.map((item: ChecklistItem) => {
           if (item.auditItemId === compliantItemId && newCompliantId) {
-            console.log(`🟢 [handleConfirmMarkCompliant] Updating status to Compliant for item (fallback): ${item.auditItemId}`);
             return { ...item, status: 'Compliant' };
           }
           return item;
@@ -724,9 +706,7 @@ const DepartmentChecklist = () => {
         setDepartmentName(deptData.name || 'Department');
 
         // Load checklist items
-        console.log(`📋 Loading checklist items for department ${deptIdNum}${auditId ? ` and audit ${auditId}` : ''}`);
         const allItems = await getChecklistItemsByDepartment(deptIdNum);
-        console.log(`📦 Received ${allItems.length} total checklist items from API`);
         
         // Filter by auditId if available (from location state)
         let itemsByAudit: ChecklistItem[] = allItems;
@@ -743,24 +723,14 @@ const DepartmentChecklist = () => {
             // Compare auditIds (handle both string and number)
             const matches = String(itemAuditId) === String(auditId);
             
-            if (!matches && itemAuditId) {
-              console.debug(`⚠️ Item ${item.auditItemId} has auditId ${itemAuditId}, expected ${auditId}`);
-            }
-            
+         
             return matches;
           });
-          
-          console.log(`🔍 Filtered checklist items by auditId ${auditId}:`, {
-            total: allItems.length,
-            filtered: itemsByAudit.length,
-            removed: allItems.length - itemsByAudit.length
-          });
-          
+      
           if (itemsByAudit.length === 0 && allItems.length > 0) {
-            console.warn(`⚠️ No items found for auditId ${auditId}. Sample item structure:`, allItems[0]);
           }
         } else {
-          console.warn('⚠️ No auditId provided, showing all checklist items for this department');
+          console.warn(' No auditId provided, showing all checklist items for this department');
         }
         
         // Filter out items with status "Archived"
@@ -776,7 +746,6 @@ const DepartmentChecklist = () => {
         try {
           const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
           const allCompliantRecords = unwrapArray(compliantRes.data);
-          console.log(`📋 Loaded ${allCompliantRecords.length} compliant records`);
           
           // Build compliantIdMap: auditChecklistItemId -> compliant record id
           const compliantMap: Record<string, string | number> = {};
@@ -788,23 +757,19 @@ const DepartmentChecklist = () => {
           
           // Update compliantIdMap state
           setCompliantIdMap(compliantMap);
-          console.log('✅ Updated compliantIdMap:', compliantMap);
           
           // Update checklist items status: if item has compliant record, set status to "Compliant"
           const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
             if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
-              console.log(`🟢 Setting status to Compliant for item: ${item.auditItemId}`);
               return { ...item, status: 'Compliant' };
             }
             return item;
           });
           
-          console.log(`✅ Final checklist items to display: ${itemsWithCompliantStatus.length}`);
           setChecklistItems(itemsWithCompliantStatus);
         } catch (compliantErr: any) {
           console.error('Error loading compliant records:', compliantErr);
           // Continue without compliant status update if fetch fails
-          console.log(`✅ Final checklist items to display: ${sortedItems.length}`);
           setChecklistItems(sortedItems);
         }
       } catch (err: any) {
@@ -832,25 +797,20 @@ const DepartmentChecklist = () => {
     const handleRootCauseUpdated = async (event: Event) => {
       const customEvent = event as CustomEvent;
       const findingId = customEvent.detail?.findingId;
-      console.log('🔄 [DepartmentChecklist] Root cause updated event received for finding:', findingId);
       
       // Small delay to ensure backend has updated
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // Reload root cause status if we have findings
       if (myFindings.length > 0) {
-        console.log('🔄 [DepartmentChecklist] Reloading root cause status for', myFindings.length, 'findings');
         await loadRootCauseStatus();
-        console.log('✅ [DepartmentChecklist] Root cause status reloaded, badge should update now');
       }
     };
 
     window.addEventListener('rootCauseUpdated', handleRootCauseUpdated);
-    console.log('👂 [DepartmentChecklist] Event listener for rootCauseUpdated registered');
 
     return () => {
       window.removeEventListener('rootCauseUpdated', handleRootCauseUpdated);
-      console.log('👋 [DepartmentChecklist] Event listener for rootCauseUpdated removed');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myFindings]);
@@ -859,8 +819,6 @@ const DepartmentChecklist = () => {
     setLoadingFindings(true);
     try {
       const allFindings = await getMyFindings();
-      console.log('📋 All my findings from API:', allFindings);
-      console.log('🔍 Filtering by auditId:', auditId, 'and deptId:', deptId);
 
       // Filter findings by current audit and department
       const filteredFindings = allFindings.filter((finding) => {
@@ -874,21 +832,11 @@ const DepartmentChecklist = () => {
         
         const matches = auditMatch && deptMatch;
         
-        if (!matches) {
-          console.log(`❌ Filtered out finding ${finding.findingId}:`, {
-            findingAuditId,
-            expectedAuditId: auditId,
-            auditMatch,
-            findingDeptId,
-            expectedDeptId: deptId,
-            deptMatch
-          });
-        }
+      
         
         return matches;
       });
 
-      console.log('✅ Filtered findings:', filteredFindings);
       setMyFindings(filteredFindings);
 
       // Load actions for each finding and count verified actions
@@ -1376,35 +1324,23 @@ const DepartmentChecklist = () => {
                                   onClick={async (e) => {
                                     e.stopPropagation();
 
-                                    console.log('=== STEP 1: VIEW BUTTON CLICKED ===');
-                                    console.log('auditItemId:', item.auditItemId);
-                                    console.log('compliantIdMap:', compliantIdMap);
 
                                     // First try to get compliant ID from sessionStorage map
                                     const cachedCompliantId = compliantIdMap[item.auditItemId];
-                                    console.log('=== STEP 2: CHECK sessionStorage ===');
-                                    console.log('cachedCompliantId from map:', cachedCompliantId);
 
                                     if (cachedCompliantId) {
-                                      console.log('✅ STEP 3a: Found in sessionStorage, using cached ID:', cachedCompliantId);
                                       setSelectedCompliantId(cachedCompliantId);
                                       setShowCompliantDetailsViewer(true);
                                       return;
                                     }
 
                                     // If not in cache, fetch from API
-                                    console.log('❌ STEP 3b: Not in cache, calling API getCompliantIdByAuditItemId...');
                                     setLoadingCompliantId(true);
                                     try {
-                                      console.log('=== STEP 4: CALLING API ===');
-                                      console.log('Passing auditItemId (GUID) to getCompliantIdByAuditItemId:', item.auditItemId);
 
                                       const compliantId = await getCompliantIdByAuditItemId(item.auditItemId);
-                                      console.log('=== STEP 5: API RESPONSE ===');
-                                      console.log('compliantId returned from API:', compliantId);
 
                                       if (compliantId) {
-                                        console.log('✅ STEP 6: Valid ID, saving to map and showing viewer');
                                         // Save to sessionStorage map for future use
                                         setCompliantIdMap(prev => ({
                                           ...prev,
@@ -1414,13 +1350,9 @@ const DepartmentChecklist = () => {
                                         setSelectedCompliantId(compliantId);
                                         setShowCompliantDetailsViewer(true);
                                       } else {
-                                        console.warn('❌ STEP 6: API returned null or empty ID');
                                         toast.warning('Compliant record not found');
                                       }
                                     } catch (err: any) {
-                                      console.error('❌ STEP 5: API ERROR:', err?.message);
-                                      console.error('Full error:', err);
-                                      console.error('Error response:', err?.response?.data);
                                       toast.error('Failed to load compliant details');
                                     } finally {
                                       setLoadingCompliantId(false);
@@ -1841,7 +1773,6 @@ const DepartmentChecklist = () => {
                 try {
                   const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
                   const allCompliantRecords = unwrapArray(compliantRes.data);
-                  console.log(`📋 [reloadChecklistItems] Loaded ${allCompliantRecords.length} compliant records`);
                   
                   // Build compliantIdMap: auditChecklistItemId -> compliant record id
                   const compliantMap: Record<string, string | number> = {};
@@ -1853,12 +1784,10 @@ const DepartmentChecklist = () => {
                   
                   // Update compliantIdMap state
                   setCompliantIdMap(compliantMap);
-                  console.log('✅ [reloadChecklistItems] Updated compliantIdMap:', compliantMap);
                   
                   // Update checklist items status: if item has compliant record, set status to "Compliant"
                   const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
                     if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
-                      console.log(`🟢 [reloadChecklistItems] Setting status to Compliant for item: ${item.auditItemId}`);
                       return { ...item, status: 'Compliant' };
                     }
                     return item;

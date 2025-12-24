@@ -257,7 +257,6 @@ export default function AuditAssignment() {
               setQrValidityTo(null);
             }
           } catch (scheduleErr) {
-            console.error('[AuditAssignment] Failed to load audit schedule for QR validity:', scheduleErr);
             setQrValidityFrom(null);
             setQrValidityTo(null);
           }
@@ -272,7 +271,6 @@ export default function AuditAssignment() {
           }
         }
       } catch (err: any) {
-        console.error('[AuditAssignment] Load failed:', err);
         setError(err?.message || 'Failed to load departments');
       } finally {
         setLoading(false);
@@ -303,7 +301,6 @@ export default function AuditAssignment() {
       const auditorsData = await getAuditorsByAuditId(auditId);
       setAuditors(auditorsData || []);
     } catch (err: any) {
-      console.error('Failed to load auditors:', err);
       setAuditors([]);
     } finally {
       setLoadingAuditors(false);
@@ -415,12 +412,7 @@ export default function AuditAssignment() {
             // ttlMinutes is optional, so we don't include it if undefined
           };
           
-          console.log('[AuditAssignment] Issuing QR grant for auditor:', auditorId, {
-            requestPayload,
-            validFrom,
-            validTo,
-          });
-          
+        
           const qrGrant = await issueAccessGrant(requestPayload);
 
           results.push({
@@ -430,7 +422,6 @@ export default function AuditAssignment() {
             qrUrl: qrGrant.qrUrl,
           });
         } catch (qrError: any) {
-          console.error(`Failed to issue QR for auditor ${auditorId}:`, qrError);
           results.push({
             auditorId,
             auditorName,
@@ -452,7 +443,6 @@ export default function AuditAssignment() {
         toast.warning(`${failCount} QR code(s) failed to issue. Check details below.`);
       }
     } catch (error: any) {
-      console.error('Failed to issue QR grants:', error);
       toast.error('Failed to issue QR grants. Please try again.');
     } finally {
       setIssuingQr(false);
@@ -548,19 +538,12 @@ export default function AuditAssignment() {
       if (isSensitiveDept) {
         // Add checklist items from template to this audit and department
         try {
-          console.log(
-            '📝 Adding checklist items from template - AuditId:',
-            selectedAuditId,
-            'DeptId:',
-            selectedDepartment.deptId
-          );
+       
           await createAuditChecklistItemsFromTemplate(
             selectedAuditId,
             selectedDepartment.deptId
           );
-          console.log('✅ Checklist items added successfully');
         } catch (checklistError: any) {
-          console.error('Failed to add checklist items:', checklistError);
           // Do not block assignment if checklist creation fails
         }
 
@@ -586,7 +569,6 @@ export default function AuditAssignment() {
         setDepartments(deptList);
       }
     } catch (error: any) {
-      console.error('Failed to assign auditors:', error);
       toast.error(error?.response?.data?.message || error?.message || 'Failed to assign auditors. Please try again.');
     } finally {
       setSubmitting(false);
@@ -650,7 +632,6 @@ export default function AuditAssignment() {
         const deptDetail = await getDepartmentById(dept.deptId);
         setDepartmentDetail(deptDetail);
       } catch (err: any) {
-        console.error('Failed to load department details:', err);
         setDepartmentDetail(null);
       } finally {
         setLoadingDepartmentDetail(false);
@@ -692,7 +673,6 @@ export default function AuditAssignment() {
           setAuditorNamesForDetail({});
         }
       } catch (err: any) {
-        console.error('Failed to load QR grants:', err);
         setQrGrantsForDetail([]);
       } finally {
         setLoadingQrGrants(false);

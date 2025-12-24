@@ -337,8 +337,6 @@ const FindingsProgress = () => {
       // Filter findings by auditId if provided
       let filteredFindings = allFindings;
       if (auditIdFromState) {
-        console.log(`🔍 Filtering findings by auditId: ${auditIdFromState}`);
-        console.log(`📦 All findings from API:`, allFindings);
 
         filteredFindings = allFindings.filter((finding: Finding) => {
           // Try multiple possible locations for auditId
@@ -347,10 +345,8 @@ const FindingsProgress = () => {
             (finding as any).auditPlanId ||
             (finding as any).audit?.auditId;
 
-          console.log(`  - Finding ${finding.findingId}: auditId = ${findingAuditId}`);
           return String(findingAuditId) === String(auditIdFromState);
         });
-        console.log(`✅ Filtered findings: ${filteredFindings.length} out of ${allFindings.length} for audit ${auditIdFromState}`);
       }
 
       setFindings(filteredFindings);
@@ -375,7 +371,6 @@ const FindingsProgress = () => {
   useEffect(() => {
     const handleActionUpdated = async (event: Event) => {
       const customEvent = event as CustomEvent;
-      console.log('🔄 Action updated event received:', customEvent.detail);
       // Small delay to ensure backend has updated
       await new Promise(resolve => setTimeout(resolve, 500));
       // Reload findings to reflect updated action status
@@ -395,29 +390,23 @@ const FindingsProgress = () => {
     const handleRootCauseUpdated = async (event: Event) => {
       const customEvent = event as CustomEvent;
       const findingId = customEvent.detail?.findingId;
-      console.log('🔄 Root cause updated event received for finding:', findingId);
 
       // Small delay to ensure backend has updated
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Reload root cause status for all findings
       if (findings.length > 0) {
-        console.log('🔄 Reloading root cause status for', findings.length, 'findings');
         await loadRootCauseStatus(findings);
-        console.log('✅ Root cause status reloaded, badge should update now');
       } else {
         // If no findings, reload all findings first
-        console.log('⚠️ No findings in state, reloading all findings...');
         await reloadFindings();
       }
     };
 
     window.addEventListener('rootCauseUpdated', handleRootCauseUpdated);
-    console.log('👂 Event listener for rootCauseUpdated registered');
 
     return () => {
       window.removeEventListener('rootCauseUpdated', handleRootCauseUpdated);
-      console.log('👋 Event listener for rootCauseUpdated removed');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [findings]);
@@ -492,10 +481,6 @@ const FindingsProgress = () => {
           // Get all root cause IDs that have valid (non-rejected) actions and fetch user info
           const actionsWithRootCause = validActions.filter((action: Action) => action.rootCauseId);
 
-          console.log(`📋 [loadFindingRootCauses] Finding ${findingId}:`);
-          console.log(`   Total actions: ${actions.length}`);
-          console.log(`   Valid (non-rejected) actions: ${validActions.length}`);
-          console.log(`   Actions with root cause: ${actionsWithRootCause.length}`);
 
           // Fetch user info for all assigned actions
           await Promise.all(
@@ -543,7 +528,6 @@ const FindingsProgress = () => {
       );
 
       setFindingRootCauses(approvedRootCauses);
-      console.log('📝 Loaded root causes:', approvedRootCauses.length, 'Assigned:', assignedRootCauseIds.size);
     } catch (err) {
       console.error('Error loading root causes:', err);
       setFindingRootCauses([]);
@@ -578,20 +562,15 @@ const FindingsProgress = () => {
 
   // Assign single root cause immediately
   const handleAssignSingleRootCause = async () => {
-    console.log('🎯 handleAssignSingleRootCause called');
-    console.log('Finding:', selectedFindingForAssign);
-    console.log('Root Cause:', selectedRootCause);
-    console.log('Staff ID:', individualStaffId);
-    console.log('Due Date:', individualDueDate);
-
+ 
     if (!selectedFindingForAssign || !selectedRootCause) {
-      console.error('❌ Missing selectedFindingForAssign or selectedRootCause');
+      console.error(' Missing selectedFindingForAssign or selectedRootCause');
       toast.error('Please select a finding and root cause');
       return;
     }
 
     if (!individualStaffId || !individualDueDate) {
-      console.error('❌ Missing individualStaffId or individualDueDate');
+      console.error(' Missing individualStaffId or individualDueDate');
       toast.error('Please select CAPA owner and due date');
       return;
     }
@@ -1084,7 +1063,6 @@ const FindingsProgress = () => {
                                             setSelectedActionId(firstAction.actionId);
                                             setSelectedActionFindingId(finding.findingId);
                                             setShowActionDetailModal(true);
-                                            console.log('Opening action modal - ActionId:', firstAction.actionId, 'FindingId:', finding.findingId);
                                           } else {
                                             toast.info('No actions found for this finding');
                                           }
@@ -1546,7 +1524,6 @@ const FindingsProgress = () => {
               // Reload findings
               const deptId = getUserDeptId();
               if (deptId) {
-                console.log('🔄 Reloading findings...');
                 const allFindings = await getFindingsByDepartment(deptId);
 
                 // Filter by auditId if needed (same as initial load)
@@ -1564,15 +1541,12 @@ const FindingsProgress = () => {
                 setFindings(filteredData);
                 await loadAssignedUsers(filteredData);
                 await loadRootCauseStatus(filteredData);
-                console.log('✅ Findings reloaded');
               }
 
               // Reload actions sidebar if open
               if (selectedFindingId && showActionsModal) {
-                console.log('🔄 Reloading actions for finding:', selectedFindingId);
                 const actions = await getActionsByFinding(selectedFindingId);
                 setSelectedFindingActions(Array.isArray(actions) ? actions : []);
-                console.log('✅ Actions reloaded');
               }
             }}
           />
@@ -1785,7 +1759,6 @@ const FindingsProgress = () => {
                                       setSelectedActionFindingId(action.findingId);
                                       setShowActionDetailModal(true);
                                       setShowActionsModal(false);
-                                      console.log('Opening action modal for review - ActionId:', action.actionId, 'FindingId:', action.findingId);
                                     }}
                                     className="px-6 py-3 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors flex items-center gap-2"
                                   >

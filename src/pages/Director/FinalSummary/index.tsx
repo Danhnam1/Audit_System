@@ -1090,37 +1090,37 @@ export default function DirectorFinalSummaryPage() {
                   </div>
                 </div>
 
-                <div className="bg-white border border-purple-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-purple-300 bg-gradient-to-r from-purple-600 to-purple-500 rounded-t-lg">
+                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
                     <h2 className="text-sm font-semibold text-white uppercase">Evaluate Audit Effectiveness</h2>
                   </div>
                   <div className="p-4 space-y-3">
                     {loadingEffectiveness ? (
                       <div className="flex items-center justify-center py-4 text-xs text-gray-500">
-                        <div className="h-4 w-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mr-2" />
+                        <div className="h-4 w-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mr-2" />
                         Loading...
                       </div>
                     ) : auditResult ? (
                       <div className="space-y-3 text-xs text-gray-700">
-                        <div className="rounded-md bg-gradient-to-br from-purple-50 to-white border border-purple-200 px-3 py-2.5">
-                          <p className="text-[11px] font-medium text-purple-700 uppercase">Effectiveness Score</p>
-                          <p className="mt-0.5 text-2xl font-bold text-purple-900">
+                        <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5">
+                          <p className="text-[11px] font-medium text-primary-700 uppercase">Effectiveness Score</p>
+                          <p className="mt-0.5 text-2xl font-bold text-primary-900">
                             {auditResult.effectivenessScore != null 
                               ? `${Number(auditResult.effectivenessScore).toFixed(1)}%` 
                               : "—"}
                           </p>
                         </div>
-                        <div className="rounded-md bg-gradient-to-br from-blue-50 to-white border border-blue-200 px-3 py-2.5">
-                          <p className="text-[11px] font-medium text-blue-700 uppercase">Compliance Rate</p>
-                          <p className="mt-0.5 text-lg font-bold text-blue-900">
+                        <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5">
+                          <p className="text-[11px] font-medium text-primary-700 uppercase">Compliance Rate</p>
+                          <p className="mt-0.5 text-lg font-bold text-primary-900">
                             {auditResult.complianceRate != null 
                               ? `${Number(auditResult.complianceRate).toFixed(1)}%` 
                               : "—"}
                           </p>
                         </div>
-                        <div className="rounded-md bg-gradient-to-br from-green-50 to-white border border-green-200 px-3 py-2.5">
-                          <p className="text-[11px] font-medium text-green-700 uppercase">Timeliness</p>
-                          <p className="mt-0.5 text-lg font-bold text-green-900">
+                        <div className="rounded-md bg-gradient-to-br from-emerald-50 to-white border border-emerald-200 px-3 py-2.5">
+                          <p className="text-[11px] font-medium text-emerald-700 uppercase">Timeliness</p>
+                          <p className="mt-0.5 text-lg font-bold text-emerald-900">
                             {auditResult.timeliness != null 
                               ? `${Number(auditResult.timeliness).toFixed(1)}%` 
                               : "—"}
@@ -1143,7 +1143,7 @@ export default function DirectorFinalSummaryPage() {
                     <button
                       onClick={handleCalculateEffectiveness}
                       disabled={calculatingEffectiveness || !selectedAuditId}
-                      className="w-full px-3 py-2 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                      className="w-full px-3 py-2 bg-primary-600 text-white text-xs font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                     >
                       {calculatingEffectiveness ? "Calculating..." : "Calculate Effectiveness"}
                     </button>

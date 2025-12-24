@@ -101,12 +101,9 @@ export const getChecklistTemplates = async (): Promise<ChecklistTemplateDto[]> =
 
 export const getChecklistTemplateById = async (id: string): Promise<ChecklistTemplateDto> => {
   const res: any = await apiClient.get(`/ChecklistTemplates/${id}`);
-  console.log('[getChecklistTemplateById] Raw API response:', res);
   // Handle response - could be direct data or wrapped
   // apiClient interceptor returns response.data, but check if it's further wrapped
   const data = res?.data || res;
-  console.log('[getChecklistTemplateById] Processed data:', data);
-  console.log('[getChecklistTemplateById] Data keys:', data ? Object.keys(data) : 'null');
   return data;
 };
 
@@ -158,16 +155,13 @@ export const deleteChecklistItem = async (id: string): Promise<void> => {
 
 export const getAuditChecklistItems = async (auditId: string) => {
   const res = await apiClient.get(`/AuditChecklistItems/audit/${auditId}`);
-  console.log('getAuditChecklistItems raw response:', res.data); // Debug log
   const unwrapped = unwrapArray(res.data);
-  console.log('getAuditChecklistItems unwrapped:', unwrapped); // Debug log
   return unwrapped;
 };
 
 // Get checklist items by department ID
 export const getChecklistItemsByDepartment = async (deptId: number) => {
   const res: any = await apiClient.get(`/AuditChecklistItems/by-department/${deptId}`);
-  console.log('getChecklistItemsByDepartment raw response:', res);
   // Handle response - could be direct data or wrapped
   let data = res;
   if (res?.data && res?.status) {
@@ -175,7 +169,6 @@ export const getChecklistItemsByDepartment = async (deptId: number) => {
     data = res.data;
   }
   const unwrapped = unwrapArray(data);
-  console.log('getChecklistItemsByDepartment unwrapped:', unwrapped);
   return unwrapped;
 };
 
@@ -233,21 +226,12 @@ export const markChecklistItemCompliant1 = async (
     createdBy: data.createdBy || '', // Keep as GUID string or int from caller
   };
   
-  console.log('1. Payload (camelCase):', JSON.stringify(payload, null, 2));
   
   // Send to POST /api/ChecklistItemNoFinding with camelCase payload
   const res = await apiClient.post(`/ChecklistItemNoFinding`, payload);
   
-  console.log('=== API RESPONSE FROM /ChecklistItemNoFinding ===');
-  console.log('Full response object:', res);
-  console.log('res.data:', res.data);
-  console.log('res.data type:', typeof res.data);
   if (res.data) {
-    console.log('res.data keys:', Object.keys(res.data));
-    console.log('res.data.id:', res.data.id);
-    console.log('res.data.auditChecklistItemId:', res.data.auditChecklistItemId);
   }
-  console.log('=== END API RESPONSE ===');
   
   return res.data;
 };
@@ -262,10 +246,6 @@ export const markChecklistItemNonCompliant = async (auditItemId: string) => {
 
 // Create audit checklist items from template
 export const createAuditChecklistItemsFromTemplate = async (auditId: string, deptId: number) => {
-  console.log('=== createAuditChecklistItemsFromTemplate called ===');
-  console.log('auditId parameter:', auditId);
-  console.log('deptId parameter:', deptId);
-  console.log('deptId type:', typeof deptId);
   
   // Try POST with query params in URL first (as per user's original request)
   const params = new URLSearchParams({
@@ -274,14 +254,11 @@ export const createAuditChecklistItemsFromTemplate = async (auditId: string, dep
   });
   
   const urlWithParams = `/AuditChecklistItems/from-template?${params.toString()}`;
-  console.log('Trying POST with query params in URL:', urlWithParams);
   
   try {
     const res = await apiClient.post(urlWithParams, {});
-    console.log('API Response (POST with query params):', res);
     return res.data || res;
   } catch (error: any) {
-    console.log('POST with query params failed, trying POST with body...', error);
     
     // Fallback: POST with body (PascalCase for .NET)
     const url = `/AuditChecklistItems/from-template`;
@@ -290,9 +267,7 @@ export const createAuditChecklistItemsFromTemplate = async (auditId: string, dep
       DeptId: deptId,
     };
     
-    console.log('Trying POST with body:', url, payload);
     const res = await apiClient.post(url, payload);
-    console.log('API Response (POST with body):', res);
     return res.data || res;
   }
 };
@@ -322,43 +297,31 @@ export const getChecklistItemCompliantDetails = async (compliantItemId: string |
 // Returns the numeric 'id' field of the compliant record
 export const getCompliantIdByAuditItemId = async (auditItemId: string): Promise<number | null> => {
   try {
-    console.log('🔵 [API] getCompliantIdByAuditItemId called');
-    console.log('🔵 [API] Input auditItemId (GUID):', auditItemId);
     
     // GET /ChecklistItemNoFinding returns ALL compliant records
     // We need to filter by auditChecklistItemId on the client side
-    console.log('🔵 [API] Making GET request to: /ChecklistItemNoFinding (fetching all records)');
     
     const res = await apiClient.get(`/ChecklistItemNoFinding`);
     
-    console.log('🟢 [API] Response received, status:', res.status);
-    console.log('🟢 [API] Response data:', res.data);
     
     // Response is wrapped with $values array
     const allRecords = unwrapArray(res.data);
-    console.log('🟢 [API] Unwrapped records array, length:', allRecords.length);
     
     // Find the record that matches our auditChecklistItemId
     const compliantRecord = allRecords.find((record: any) => 
       record.auditChecklistItemId === auditItemId
     );
-    console.log('🟢 [API] Found matching compliantRecord:', compliantRecord);
     
     const compliantId = compliantRecord?.id;
-    console.log('🟢 [API] Extracted compliant id:', compliantId);
     
     if (!compliantId) {
-      console.warn('⚠️ [API] No compliant record found for auditChecklistItemId:', auditItemId);
       return null;
     }
     
-    console.log('🟢 [API] Returning compliant id:', compliantId);
     return compliantId;
   } catch (err: any) {
-    console.error('🔴 [API] ERROR in getCompliantIdByAuditItemId:', err?.message);
-    console.error('🔴 [API] Error status:', err?.response?.status);
-    console.error('🔴 [API] Error response data:', err?.response?.data);
-    console.error('🔴 [API] Full error:', err);
+    console.error(' [API] ERROR in getCompliantIdByAuditItemId:', err?.message);
+
     return null;
   }
 };

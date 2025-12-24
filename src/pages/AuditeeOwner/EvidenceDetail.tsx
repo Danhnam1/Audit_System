@@ -58,11 +58,8 @@ const EvidenceDetail = () => {
             // Fetch user name if assignedTo is a valid GUID
             if (action.assignedTo && action.assignedTo.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
               try {
-                console.log('[EvidenceDetail] Fetching user info for:', action.assignedTo);
                 const user = await getUserById(action.assignedTo);
-                console.log('[EvidenceDetail] User data received:', user);
                 assignedUserName = user.fullName || user.email || action.assignedTo;
-                console.log('[EvidenceDetail] Assigned user name:', assignedUserName);
               } catch (err) {
                 console.warn(`Failed to fetch user info for ${action.assignedTo}`, err);
               }

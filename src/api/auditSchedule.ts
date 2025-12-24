@@ -22,30 +22,14 @@ export const addAuditSchedule = async (payload: CreateAuditScheduleDto): Promise
 };
 
 export const updateAuditSchedule = async (scheduleId: string | number, payload: UpdateAuditScheduleDto): Promise<any> => {
-  console.log('📤 API: updateAuditSchedule called', {
-    scheduleId,
-    url: `/AuditSchedule/${scheduleId}`,
-    payload,
-    payloadKeys: Object.keys(payload),
-    payloadValues: Object.values(payload)
-  });
+  
   
   try {
     const response = await apiClient.put(`/AuditSchedule/${scheduleId}`, payload) as any;
-    console.log('✅ API: updateAuditSchedule SUCCESS', {
-      scheduleId,
-      response: response?.data || response,
-      status: response?.status
-    });
+    
     return response;
   } catch (error: any) {
-    console.error('❌ API: updateAuditSchedule FAILED', {
-      scheduleId,
-      payload,
-      error: error?.response?.data || error?.message || error,
-      status: error?.response?.status,
-      statusText: error?.response?.statusText
-    });
+   
     throw error;
   }
 };

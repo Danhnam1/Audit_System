@@ -3,7 +3,7 @@ import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
 import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsActionsSummary } from "../../../api/audits";
 import { getDepartments } from "../../../api/departments";
-import { approveFinalReport, rejectFinalReport, getReportRequestByAuditId } from "../../../api/reportRequest";
+import { approveFinalReport, getReportRequestByAuditId, getAllReportRequests } from "../../../api/reportRequest";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
@@ -57,15 +57,17 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   const [submitting, setSubmitting] = useState(false);
   
   const [comments, setComments] = useState("");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Load list of audits for dropdown - show ALL audits
+  // Load list of audits for dropdown - only show audits with submitted report requests
   useEffect(() => {
     const loadAudits = async () => {
       setLoadingAudits(true);
       try {
-        const [plansRes, deptsRes] = await Promise.all([
+        const [plansRes, deptsRes, reportRequestsRes] = await Promise.all([
           getAuditPlans(),
           getDepartments().catch(() => []),
+          getAllReportRequests().catch(() => []),
         ]);
 
         const plans = unwrap(plansRes);
@@ -78,15 +80,37 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           : [];
         setDepartments(deptList);
 
-        // Load ALL audits (Lead Auditor can review any audit with submitted report)
-        const allAudits = (Array.isArray(plans) ? plans : [])
+        // Filter report requests: Lead Auditor should see audits with:
+        // - PendingFirstApproval (submitted by Auditor, waiting for Lead Auditor to send to Director)
+        const relevantReportRequests = Array.isArray(reportRequestsRes)
+          ? reportRequestsRes.filter((rr: any) => {
+              const status = String(rr.status || '').trim();
+              return status === 'PendingFirstApproval';
+            })
+          : [];
+
+        // Get unique audit IDs from relevant report requests
+        const relevantAuditIds = new Set<string>();
+        relevantReportRequests.forEach((rr: any) => {
+          const auditId = rr.auditId;
+          if (auditId) {
+            relevantAuditIds.add(String(auditId).trim());
+          }
+        });
+
+        // Filter audits to only include those with relevant report requests
+        const filteredAudits = (Array.isArray(plans) ? plans : [])
+          .filter((a: any) => {
+            const auditId = String(a.auditId || a.id || '').trim();
+            return auditId && relevantAuditIds.has(auditId);
+          })
           .map((a: any) => ({
             auditId: a.auditId || a.id || "",
             title: a.title || a.auditTitle || "Untitled audit",
           }))
           .filter((x: any) => x.auditId);
 
-        setAudits(allAudits);
+        setAudits(filteredAudits);
       } catch (error) {
         console.error('[LeadAuditor] Failed to load audits:', error);
       } finally {
@@ -94,7 +118,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       }
     };
     loadAudits();
-  }, []);
+  }, [refreshTrigger]);
 
   // Load all 3 APIs when user selects an audit
   useEffect(() => {
@@ -344,13 +368,15 @@ export default function LeadAuditorFinalSummaryReviewPage() {
 
   const headerSubtitle = useMemo(() => {
     if (!selectedAuditId) {
-      return "Select an audit below to review the final summary report submitted by Auditor.";
+      return audits.length === 0 
+        ? "No audit reports submitted for review yet. Auditors need to submit their final summary reports first."
+        : "Select an audit below to review the final summary report submitted by Auditor.";
     }
     if (loadingDetail) {
       return "Loading audit information...";
     }
     return "Review and approve/reject the final audit summary report.";
-  }, [selectedAuditId, loadingDetail]);
+  }, [selectedAuditId, loadingDetail, audits.length]);
 
   const isImage = (contentType?: string, fileName?: string): boolean => {
     if (contentType) {
@@ -402,20 +428,20 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     }
   };
 
-  const handleApprove = async () => {
+  const handleSendToDirector = async () => {
     if (!reportRequest?.reportRequestId) {
       alert("No report request found.");
       return;
     }
 
-    if (!window.confirm("Are you sure you want to approve this report and forward it to Director?")) {
+    if (!window.confirm("Are you sure you want to send this report to Director for final approval?")) {
       return;
     }
 
     setSubmitting(true);
     try {
-      await approveFinalReport(reportRequest.reportRequestId, comments);
-      alert("Report approved successfully! Forwarded to Director.");
+      await approveFinalReport(reportRequest.reportRequestId, comments || '');
+      alert("Report sent to Director successfully!");
       
       setTimeout(async () => {
         try {
@@ -427,6 +453,8 @@ export default function LeadAuditorFinalSummaryReviewPage() {
               note: rr.note,
             });
           }
+          // Refresh audits list to update dropdown (sent audits will disappear)
+          setRefreshTrigger(prev => prev + 1);
         } catch (error) {
           console.error("Failed to reload report request:", error);
         }
@@ -434,53 +462,8 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       
       setComments("");
     } catch (error: any) {
-      console.error("Failed to approve report:", error);
-      const errorMessage = error?.response?.data?.message || error?.message || "Failed to approve report. Please try again.";
-      alert(errorMessage);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleReject = async () => {
-    if (!reportRequest?.reportRequestId) {
-      alert("No report request found.");
-      return;
-    }
-
-    if (!comments.trim()) {
-      alert("Please provide rejection comments.");
-      return;
-    }
-
-    if (!window.confirm("Are you sure you want to reject this report? It will be sent back to the Auditor for revision.")) {
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await rejectFinalReport(reportRequest.reportRequestId, comments);
-      alert("Report rejected. Auditor will be notified to revise the report.");
-      
-      setTimeout(async () => {
-        try {
-          const rr = await getReportRequestByAuditId(selectedAuditId);
-          if (rr) {
-            setReportRequest({
-              status: rr.status,
-              reportRequestId: rr.reportRequestId,
-              note: rr.note,
-            });
-          }
-        } catch (error) {
-          console.error("Failed to reload report request:", error);
-        }
-      }, 500);
-      
-      setComments("");
-    } catch (error: any) {
-      console.error("Failed to reject report:", error);
-      const errorMessage = error?.response?.data?.message || error?.message || "Failed to reject report. Please try again.";
+      console.error("Failed to send report to Director:", error);
+      const errorMessage = error?.response?.data?.message || error?.message || "Failed to send report to Director. Please try again.";
       alert(errorMessage);
     } finally {
       setSubmitting(false);
@@ -518,22 +501,20 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                   {loadingReportRequest ? (
                     <div className="text-xs text-gray-500">Checking status...</div>
                   ) : isPendingApproval && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleApprove}
-                        disabled={submitting}
-                        className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {submitting ? "Processing..." : "Approve"}
-                      </button>
-                      <button
-                        onClick={handleReject}
-                        disabled={submitting}
-                        className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {submitting ? "Processing..." : "Reject"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={handleSendToDirector}
+                      disabled={submitting}
+                      className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                    >
+                      {submitting ? (
+                        <>
+                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        "Send to Director"
+                      )}
+                    </button>
                   )}
                 </div>
               )}
@@ -544,14 +525,14 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         {selectedAuditId && isPendingApproval && (
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Lead Auditor Comments
+              Comments (Optional)
             </label>
             <textarea
               rows={3}
               value={comments}
               onChange={(e) => setComments(e.target.value)}
               className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-              placeholder="Add your comments here... (required for rejection)"
+              placeholder="Add any comments before sending to Director (optional)..."
             />
           </div>
         )}

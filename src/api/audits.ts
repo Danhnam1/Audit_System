@@ -45,9 +45,7 @@ export const setSensitiveFlag = async (
 ): Promise<SensitiveScopeDepartment> => {
   // Convert to string (GUID format expected by backend)
   const scopeDeptIdStr = String(scopeDeptId);
-  console.log('🔍 [setSensitiveFlag] Calling API with scopeDeptId:', scopeDeptIdStr, 'dto:', dto);
   const res: any = await apiClient.post(`/AuditScopeDepartment/${scopeDeptIdStr}/sensitive`, dto);
-  console.log('✅ [setSensitiveFlag] API response:', res?.data || res);
   return res?.data || res;
 };
 
@@ -96,7 +94,6 @@ export const getAuditPlanById = async (auditId: string): Promise<any> => {
     return await apiClient.get(`/AuditPlan/${auditId}`) as any;
   } catch (error) {
     // Fallback: Get from list and filter
-    console.warn('AuditPlan endpoint failed, falling back to list filtering');
     const allPlans = await apiClient.get('/Audits') as any;
     // reuse unwrap helper to normalize $values/values wrappers
     const { unwrap } = await import('../utils/normalize');
@@ -126,7 +123,6 @@ export const updateAuditPlanFull = async (auditId: string, payload: any): Promis
 
 // Complete update audit plan with all relationships (uses /Audits/{id}/complete-update endpoint)
 export const completeUpdateAuditPlan = async (auditId: string, payload: any): Promise<any> => {
-  console.log(`🌐 PUT /Audits/${auditId}/complete-update`);
   return apiClient.put(`/Audits/${auditId}/complete-update`, payload) as any;
 };
 
@@ -255,39 +251,25 @@ export const rejectAuditReport = async (
 
 export const getAuditReportNote = async (auditId: string): Promise<string> => {
   if (!auditId) {
-    console.warn('[API] getAuditReportNote: auditId is empty');
     return '';
   }
   
   const url = `/AuditReports/Note/${encodeURIComponent(auditId)}`;
   
-  if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-    console.log(`[API] 📡 Calling GET ${url} for audit ${auditId}`);
-  }
   
   try {
   const res = await apiClient.get(url) as any;
     
-    if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-      console.log(`[API] 📥 Response from ${url}:`, {
-        status: res?.status,
-        data: res?.data,
-        fullResponse: res
-      });
-    }
+    
     
   const data = res?.data ?? res;
     if (data == null) {
-      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.warn(`[API] ⚠️ No data in response from ${url}`);
-      }
+      
       return '';
     }
     
     if (typeof data === 'string') {
-      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.log(`[API] ✅ Got string note (length: ${data.length})`);
-      }
+      
       return data;
     }
     
@@ -305,31 +287,14 @@ export const getAuditReportNote = async (auditId: string): Promise<string> => {
         ''
       );
       
-      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.log(`[API] ✅ Parsed note from object:`, {
-          hasReason: !!data.Reason,
-          hasreason: !!data.reason,
-          hasNote: !!data.Note,
-          hasnote: !!data.note,
-          noteLength: note.length,
-          notePreview: note.substring(0, 50),
-          allKeys: Object.keys(data)
-        });
-      }
+      
       
       return note;
     }
     
     return String(data);
   } catch (error: any) {
-    console.error(`[API] ❌ Error calling ${url}:`, {
-      auditId,
-      error: error?.message || error,
-      status: error?.response?.status,
-      statusText: error?.response?.statusText,
-      data: error?.response?.data,
-      url: error?.config?.url || url
-    });
+    
     throw error;
   }
 };

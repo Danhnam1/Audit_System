@@ -93,7 +93,6 @@ const AuditDetail = () => {
 
           try {
             const deptCriteria = await getCriteriaForAuditByDepartment(auditId, deptId);
-            console.log(`[AuditDetail] Criteria for dept ${deptId}:`, deptCriteria);
             
             // API already unwraps, so deptCriteria is already the unwrapped value
             let criteriaArray: any[] = [];
@@ -105,7 +104,6 @@ const AuditDetail = () => {
               if (Array.isArray(unwrapped)) {
                 criteriaArray = unwrapped;
               } else {
-                console.warn(`[AuditDetail] Criteria for department ${deptId} is not an array:`, deptCriteria);
                 criteriaArray = [];
               }
             }
@@ -126,7 +124,6 @@ const AuditDetail = () => {
                       status: item.status || detail.status || 'Active',
                     };
                   } catch (err: any) {
-                    console.error(`[AuditDetail] Failed to load criterion detail:`, err);
                     return {
                       criteriaId: item.criteriaId || item.id || item,
                       name: item.name || 'N/A',
@@ -140,14 +137,11 @@ const AuditDetail = () => {
               const validCriteria = criteriaDetails
                 .filter((result) => result.status === 'fulfilled')
                 .map((result) => (result as PromiseFulfilledResult<any>).value);
-              console.log(`[AuditDetail] Valid criteria for dept ${deptId}:`, validCriteria.length);
               criteriaMap.set(deptId, validCriteria);
             } else {
-              console.log(`[AuditDetail] No criteria found for department ${deptId}`);
               criteriaMap.set(deptId, []);
             }
           } catch (error) {
-            console.error(`[AuditDetail] Failed to load criteria for department ${deptId}:`, error);
             criteriaMap.set(deptId, []);
           }
         })
@@ -195,13 +189,9 @@ const AuditDetail = () => {
   const loadAuditDetails = async () => {
     if (!auditId) return;
     
-    console.log('[loadAuditDetails] Starting to load audit details for auditId:', auditId);
     setLoadingDetails(true);
     try {
       const data = await getAuditPlanById(auditId);
-      console.log('[loadAuditDetails] Audit data:', data);
-      console.log('[loadAuditDetails] TemplateId:', data?.templateId);
-      console.log('[loadAuditDetails] Data keys:', data ? Object.keys(data) : 'null');
       
       // Fetch schedules separately if not included in main response (same as Auditor)
       let schedulesData = (data as any)?.schedules;
@@ -210,25 +200,18 @@ const AuditDetail = () => {
         (!schedulesData.values && !schedulesData.$values && !Array.isArray(schedulesData))
       ) {
         try {
-          console.log('[loadAuditDetails] Fetching schedules from API for auditId:', auditId);
           const schedulesResponse = await getAuditSchedules(auditId);
-          console.log('[loadAuditDetails] Schedules API response:', schedulesResponse);
           const schedulesArray = unwrap(schedulesResponse);
-          console.log('[loadAuditDetails] Unwrapped schedules array:', schedulesArray);
           schedulesData = { values: Array.isArray(schedulesArray) ? schedulesArray : [] };
-          console.log('[loadAuditDetails] Final schedulesData:', schedulesData);
         } catch (scheduleErr: any) {
           // Handle 404 gracefully - schedules might not exist yet
           if (scheduleErr?.response?.status === 404) {
-            console.log('[loadAuditDetails] No schedules found (404) for auditId:', auditId);
             schedulesData = { values: [] };
           } else {
-            console.error('[loadAuditDetails] Failed to load schedules separately:', scheduleErr);
             schedulesData = { values: [] };
           }
         }
       } else {
-        console.log('[loadAuditDetails] Schedules found in main response:', schedulesData);
       }
       
       // Merge schedules into data
@@ -247,15 +230,9 @@ const AuditDetail = () => {
         : Array.isArray(schedulesData)
         ? schedulesData
         : [];
-      console.log('[loadAuditDetails] Setting schedules state with', schedulesList.length, 'items');
       setSchedules(schedulesList);
       
-      // Template will be loaded by useEffect when auditDetails is set
-      if (data?.templateId) {
-        console.log('[loadAuditDetails] TemplateId found:', data.templateId);
-      } else {
-        console.log('[loadAuditDetails] No templateId in audit data');
-      }
+   
       
       // Load createdBy user info to get fullName
       if (data?.createdBy) {
@@ -387,12 +364,10 @@ const AuditDetail = () => {
         criteriaList.map(async (item: any) => {
           try {
             const response = await getAuditCriterionById(item.criteriaId);
-            console.log('Criterion detail response for', item.criteriaId, ':', response);
             
             // hooks/axios interceptor already returns response.data, so response is the actual data
             const detail = response || {};
             
-            console.log('Processed criterion detail:', detail);
             
             return {
               criteriaId: detail.criteriaId || item.criteriaId,
@@ -433,7 +408,6 @@ const AuditDetail = () => {
   const loadTemplatesForAudit = async () => {
     if (!auditId) return;
 
-    console.log('[loadTemplatesForAudit] Starting for auditId:', auditId);
     setLoadingTemplate(true);
     try {
       // 1) Get mappings audit -> templateIds
@@ -454,13 +428,11 @@ const AuditDetail = () => {
         )
       );
 
-      console.log('[loadTemplatesForAudit] TemplateIds from maps:', templateIds);
 
       // 2) If no mappings, fall back to the single templateId on audit
       if (!templateIds.length) {
         const fallbackId = auditDetails?.audit?.templateId || auditDetails?.templateId;
         if (!fallbackId) {
-          console.log('[loadTemplatesForAudit] No template mappings and no fallback templateId');
           setTemplates([]);
           setTemplate(null);
           return;
@@ -486,7 +458,6 @@ const AuditDetail = () => {
         .map((r) => r.value)
         .filter((tpl): tpl is ChecklistTemplateDto => !!tpl);
 
-      console.log('[loadTemplatesForAudit] Loaded templates:', loadedTemplates);
 
       setTemplates(loadedTemplates);
 

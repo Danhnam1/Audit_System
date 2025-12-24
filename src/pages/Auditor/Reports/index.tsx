@@ -345,13 +345,7 @@ const SQAStaffReports = () => {
       
       // Debug logging (only in development mode)
       if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.log('[Reports] Filtering audits:', {
-          currentUserId: normalizedCurrentUserId,
-          userAuditIds: Array.from(userAuditIds),
-          creatorAuditIds: Array.from(creatorAuditIds),
-          totalTeams: teams.length,
-          totalAudits: Array.isArray(res) ? res.length : 0
-        });
+       
       }
       {/*Sửa Status để fill*/}
       const arr = unwrap(res);
@@ -438,7 +432,6 @@ const SQAStaffReports = () => {
                       status: recentUpdate.status
                     } as ViewReportRequest;
                     if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-                      console.log(`[Reports] Preserving recently updated status for audit ${auditId}:`, recentUpdate.status);
                     }
                   } else {
                     reportRequestsMap[auditId] = reportRequest;
@@ -587,17 +580,6 @@ const SQAStaffReports = () => {
   useEffect(() => {
     const arr = Array.isArray(audits) ? audits : [];
     
-    // Debug logging
-    if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-      console.log('[Reports] Checking for reject notes:', {
-        auditsCount: arr.length,
-        reportRequestsCount: Object.keys(reportRequests).length,
-        reportRequests: Object.keys(reportRequests).map(id => ({
-          auditId: id,
-          status: reportRequests[id]?.status
-        }))
-      });
-    }
     
     // Check both audit status and ReportRequest status
     const returnedIds = arr
@@ -617,11 +599,7 @@ const SQAStaffReports = () => {
         // If ReportRequest exists and status is Returned, definitely need to load note
         if (isReportRejected) {
           if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-            console.log(`[Reports] Found Returned ReportRequest for audit ${auditId}:`, {
-              auditId,
-              reportStatus,
-              hasNote: !!(rejectNotes[auditId])
-            });
+        
           }
           return true;
         }
@@ -639,7 +617,6 @@ const SQAStaffReports = () => {
         if (!returnedIds.includes(auditId)) {
           returnedIds.push(auditId);
           if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-            console.log(`[Reports] Added audit ${auditId} from reportRequests (status: ${reportRequest.status})`);
           }
         }
       }
@@ -648,16 +625,11 @@ const SQAStaffReports = () => {
     const missing = returnedIds.filter((id) => !(id in rejectNotes) || !rejectNotes[id] || rejectNotes[id].trim().length === 0);
     
     if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-      console.log('[Reports] Reject notes check result:', {
-        returnedIds,
-        missing,
-        existingNotes: Object.keys(rejectNotes)
-      });
+    
     }
     
     if (!missing.length) {
       if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.log('[Reports] No missing reject notes to load');
       }
       return;
     }
@@ -665,19 +637,16 @@ const SQAStaffReports = () => {
     let cancelled = false;
     const loadNotes = async () => {
       if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.log(`[Reports] 🚀 Starting to load reject notes for ${missing.length} audit(s):`, missing);
       }
       
       const results = await Promise.allSettled(missing.map((id) => {
         if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-          console.log(`[Reports] 📞 Calling getAuditReportNote for audit ${id}`);
         }
         return getAuditReportNote(id);
       }));
       
       if (cancelled) {
         if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-          console.log('[Reports] ⏸️ Cancelled loading reject notes');
         }
         return;
       }
@@ -689,35 +658,20 @@ const SQAStaffReports = () => {
           patch[missing[idx]] = note;
           // Log để debug
           if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-            console.log(`[Reports] ✅ Loaded reject note for audit ${missing[idx]}:`, {
-              auditId: missing[idx],
-              hasNote: !!note,
-              noteLength: note.length,
-              notePreview: note.substring(0, 50),
-              fullNote: note
-            });
+           
           }
         } else {
           const error = res.reason as any;
-          console.error(`[Reports] ❌ Failed to load reject note for audit ${missing[idx]}:`, {
-            auditId: missing[idx],
-            error: error?.message || error,
-            status: error?.response?.status,
-            statusText: error?.response?.statusText,
-            data: error?.response?.data,
-            url: error?.config?.url || `/AuditReports/Note/${missing[idx]}`
-          });
+        
         }
       });
       
       if (Object.keys(patch).length) {
         if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-          console.log(`[Reports] 💾 Saving ${Object.keys(patch).length} reject note(s) to state:`, patch);
         }
         setRejectNotes((prev) => ({ ...prev, ...patch }));
       } else {
         if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-          console.warn('[Reports] ⚠️ No reject notes were loaded successfully');
         }
       }
     };
@@ -1033,11 +987,7 @@ const SQAStaffReports = () => {
       });
       
       if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        console.log('[Reports] ✅ Submit successful, updated ReportRequest and audits immediately:', {
-          auditId: selectedAuditId,
-          status: newStatus,
-          timestamp: Date.now()
-        });
+  
       }
       
       toast.success(`Submit successfully. Status: ${newStatus}`);
@@ -1052,7 +1002,6 @@ const SQAStaffReports = () => {
         });
         window.dispatchEvent(event);
         document.dispatchEvent(event);
-        console.log('[Reports] Dispatched reportSubmitted event for audit:', selectedAuditId);
       } catch (err) {
         console.warn('[Reports] Failed to dispatch reportSubmitted event:', err);
       }

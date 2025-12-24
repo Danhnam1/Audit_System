@@ -30,7 +30,6 @@ export const sendChatMessage = async (
     }) as ChatBotResponse;
     return response;
   } catch (error: any) {
-    console.error('[ChatBot] Failed to send message:', error);
     throw error;
   }
 };
@@ -67,7 +66,6 @@ export const analyzeFinding = async (
     const response = await apiClient.post(`/ChatBot/analyze-finding/${findingId}`, {}) as AnalyzeFindingResponse;
     return response;
   } catch (error: any) {
-    console.error('[ChatBot] Failed to analyze finding:', error);
     throw error;
   }
 };

@@ -96,7 +96,6 @@ export const ChatBot = () => {
         setMessages((prev) => [...prev, botMessage]);
       }
     } catch (error: any) {
-      console.error('[ChatBot] Error sending message:', error);
       toast.error('Không thể kết nối đến chatbot. Vui lòng thử lại sau.');
       setMessages((prev) => [
         ...prev,

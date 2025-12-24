@@ -49,14 +49,11 @@ const AuditScheduleCalendar = () => {
   useEffect(() => {
     const loadDepartment = async () => {
       try {
-        console.log('👤 User object:', user);
-        console.log('📋 deptId from hook:', deptId);
+    
         
         // Try to get department from deptId hook first
         if (deptId) {
-          console.log('📋 Loading department with deptId:', deptId);
           const dept = await getDepartmentById(deptId);
-          console.log('✅ Department loaded:', dept);
           setDepartment({
             deptId: dept.deptId || deptId,
             name: dept.name || 'Department',
@@ -66,9 +63,7 @@ const AuditScheduleCalendar = () => {
         
         // Fallback: try to get department from user object
         if (user?.deptId) {
-          console.log('📋 Loading department with user.deptId:', user.deptId);
           const dept = await getDepartmentById(user.deptId);
-          console.log('✅ Department loaded:', dept);
           setDepartment({
             deptId: dept.deptId || user.deptId,
             name: dept.name || 'Department',
@@ -77,7 +72,6 @@ const AuditScheduleCalendar = () => {
         }
 
         // If no deptId found
-        console.warn('⚠️ No deptId found in hook or user object');
         toast.warning('Department information not found. Please contact administrator.');
       } catch (error) {
         console.error('Failed to load department:', error);
@@ -97,47 +91,33 @@ const AuditScheduleCalendar = () => {
       try {
         // Get assignments for this department using POST method
         const assignmentsResponse: any = await getAuditAssignmentsByDepartmentPost(department.deptId);
-        console.log('📦 Raw API response:', assignmentsResponse);
         
         let assignmentsData: AuditAssignment[] = [];
         
         if (assignmentsResponse?.$values && Array.isArray(assignmentsResponse.$values)) {
           assignmentsData = assignmentsResponse.$values;
-          console.log('✅ Found $values array:', assignmentsData.length, 'items');
         } else if (Array.isArray(assignmentsResponse)) {
           assignmentsData = assignmentsResponse;
-          console.log('✅ Response is direct array:', assignmentsData.length, 'items');
         } else if (assignmentsResponse?.data) {
           const data = assignmentsResponse.data;
           if (data?.$values && Array.isArray(data.$values)) {
             assignmentsData = data.$values;
-            console.log('✅ Found data.$values:', assignmentsData.length, 'items');
           } else if (Array.isArray(data)) {
             assignmentsData = data;
-            console.log('✅ Found data array:', assignmentsData.length, 'items');
           }
         } else {
           const unwrapped = unwrap<AuditAssignment>(assignmentsResponse);
           assignmentsData = Array.isArray(unwrapped) ? unwrapped : [];
-          console.log('✅ Used unwrap fallback:', assignmentsData.length, 'items');
         }
 
-        console.log('📋 Parsed assignments:', assignmentsData);
         
         // Filter only assignments with status "Assigned"
         const assignedOnly = assignmentsData.filter(a => {
           const status = (a.status || '').trim();
-          console.log('Checking assignment status:', status, '=== "Assigned"?', status === 'Assigned');
           return status === 'Assigned';
         });
         
-        console.log('✅ Filtered Assigned assignments:', assignedOnly.length, 'items');
-        console.log('📅 Assignments with dates:', assignedOnly.map(a => ({
-          auditTitle: a.auditTitle,
-          plannedStartDate: a.plannedStartDate,
-          plannedEndDate: a.plannedEndDate,
-          status: a.status
-        })));
+        
         
         setAssignments(assignedOnly);
       } catch (error) {
@@ -181,24 +161,18 @@ const AuditScheduleCalendar = () => {
       type: 'planned' | 'actual';
     }>>();
 
-    console.log('🗓️ Processing assignments for calendar:', assignments.length);
     
     assignments.forEach((assignment) => {
       // Only process assignments with status "Assigned"
       const status = (assignment.status || '').trim();
       if (status !== 'Assigned') {
-        console.log('⏭️ Skipping assignment with status:', status);
         return;
       }
       
       const auditTitle = assignment.auditTitle || 'Audit';
       const auditorName = assignment.auditorName || 'Unknown Auditor';
       
-      console.log('📅 Processing assignment:', {
-        auditTitle,
-        actualAuditDate: assignment.actualAuditDate
-      });
-      
+     
       // Chỉ tô màu xanh cho ngày có actualAuditDate
       if (assignment.actualAuditDate) {
         let actualDate: Date;
@@ -228,17 +202,11 @@ const AuditScheduleCalendar = () => {
           date: dateStr,
           type: 'planned', // Dùng type 'planned' để tô màu xanh
         });
-        console.log('✅ Added actual audit date:', dateStr, 'for', auditTitle);
       } else {
-        console.log('⚠️ Assignment missing actualAuditDate');
       }
     });
 
-    console.log('🗓️ Date to audits map:', Array.from(dateToAuditsMap.entries()).map(([date, audits]) => ({
-      date,
-      count: audits.length,
-      audits: audits.map(a => ({ title: a.auditTitle, auditor: a.auditorName }))
-    })));
+ 
 
     // Previous month days
     const prevMonthLastDay = new Date(year, month, 0).getDate();
@@ -413,15 +381,7 @@ const AuditScheduleCalendar = () => {
                     const dateStr = formatDateForSet(day.date);
                     const hasPlanned = day.audits.some(a => a.type === 'planned');
                     
-                    // Debug for current month days with audits
-                    if (day.isCurrentMonth && day.hasAudit) {
-                      console.log(`📅 Day ${day.date.getDate()}/${day.date.getMonth() + 1}/${day.date.getFullYear()}:`, {
-                        dateStr,
-                        hasPlanned,
-                        auditsCount: day.audits.length,
-                        audits: day.audits.map(a => ({ title: a.auditTitle, auditor: a.auditorName, type: a.type }))
-                      });
-                    }
+                  
                     
                     let bgColor = '';
                     let textColor = 'text-gray-700';
