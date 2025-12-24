@@ -116,6 +116,12 @@ const lastCalculatedAuditRef = useRef<string>("");
   const [editComment, setEditComment] = useState<string>('');
   const [savingResult, setSavingResult] = useState(false);
   const [archivingAudit, setArchivingAudit] = useState(false);
+  
+  // Modal states
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [modalMessage, setModalMessage] = useState("");
+  const [modalType, setModalType] = useState<"success" | "error" | "confirm">("success");
 
   // Load list of audits for dropdown - only those sent from Lead Auditor to Director
   useEffect(() => {
@@ -674,7 +680,9 @@ useEffect(() => {
 
   const handleSaveResult = async () => {
     if (!selectedAuditId) {
-      alert("No audit selected.");
+      setModalMessage("No audit selected.");
+      setModalType("error");
+      setShowSaveModal(true);
       return;
     }
     setSavingResult(true);
@@ -686,39 +694,53 @@ useEffect(() => {
       };
       const updated = await updateAuditResultManager(selectedAuditId, payload);
       setAuditResult(updated);
-      alert("Saved effectiveness result.");
+      setModalMessage("Saved effectiveness result successfully.");
+      setModalType("success");
+      setShowSaveModal(true);
     } catch (error: any) {
       console.error("Failed to save audit result:", error);
       const msg = error?.response?.data?.message || error?.message || "Failed to save.";
-      alert(msg);
+      setModalMessage(msg);
+      setModalType("error");
+      setShowSaveModal(true);
     } finally {
       setSavingResult(false);
     }
   };
 
-  const handleCloseAudit = async () => {
+  const handleCloseAudit = () => {
     if (!selectedAuditId) {
-      alert("No audit selected.");
+      setModalMessage("No audit selected.");
+      setModalType("error");
+      setShowCloseModal(true);
       return;
     }
     
-    const confirmClose = window.confirm("Are you sure you want to close this audit? This action cannot be undone.");
-    if (!confirmClose) {
-      return;
-    }
+    setModalMessage("Are you sure you want to close this audit? This action cannot be undone.");
+    setModalType("confirm");
+    setShowCloseModal(true);
+  };
 
+  const confirmCloseAudit = async () => {
+    setShowCloseModal(false);
     setArchivingAudit(true);
     try {
       await archiveAudit(selectedAuditId);
-      alert("Audit closed successfully.");
+      setModalMessage("Audit closed successfully.");
+      setModalType("success");
+      setShowCloseModal(true);
       // Clear selection - the useEffect will reload the audit list automatically
       setSelectedAuditId("");
-      // Reload page to refresh audit list
-      window.location.reload();
+      // Reload page to refresh audit list after a short delay
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     } catch (error: any) {
       console.error("Failed to close audit:", error);
       const msg = error?.response?.data?.message || error?.message || "Failed to close audit.";
-      alert(msg);
+      setModalMessage(msg);
+      setModalType("error");
+      setShowCloseModal(true);
     } finally {
       setArchivingAudit(false);
     }
@@ -1448,7 +1470,7 @@ useEffect(() => {
               </div>
 
               <aside className="space-y-4">
-                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
+                {/* <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
                   <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
                     <h2 className="text-sm font-semibold text-white uppercase">Audit data snapshot</h2>
                   </div>
@@ -1482,7 +1504,7 @@ useEffect(() => {
                       <p className="mt-0.5 text-lg font-bold text-emerald-900">{actionsCount}</p>
                     </div>
                   </div>
-                </div>
+                </div> */}
 
                 <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
                   <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
@@ -1603,6 +1625,108 @@ useEffect(() => {
             </div>
           )}
         </section>
+
+        {/* Save Result Modal */}
+        {showSaveModal && (
+          <div className="fixed inset-0 z-[13000] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => setShowSaveModal(false)} />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md border border-gray-200 overflow-hidden">
+              <div className={`px-6 py-4 border-b rounded-t-xl ${modalType === "success" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                <div className="flex items-center justify-between">
+                  <h3 className={`text-lg font-semibold ${modalType === "success" ? "text-emerald-900" : "text-red-900"}`}>
+                    {modalType === "success" ? "Success" : "Error"}
+                  </h3>
+                  <button
+                    onClick={() => setShowSaveModal(false)}
+                    className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/50 text-gray-500 hover:text-gray-700"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-gray-700 mb-4">{modalMessage}</p>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowSaveModal(false)}
+                    className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
+                      modalType === "success"
+                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                        : "bg-red-600 text-white hover:bg-red-700"
+                    }`}
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Close Audit Modal */}
+        {showCloseModal && (
+          <div className="fixed inset-0 z-[13000] flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => modalType !== "confirm" && setShowCloseModal(false)} />
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md border border-gray-200 overflow-hidden">
+              <div className={`px-6 py-4 border-b rounded-t-xl ${modalType === "success" ? "bg-emerald-50 border-emerald-200" : modalType === "error" ? "bg-red-50 border-red-200" : "bg-yellow-50 border-yellow-200"}`}>
+                <div className="flex items-center justify-between">
+                  <h3 className={`text-lg font-semibold ${
+                    modalType === "success" ? "text-emerald-900" : 
+                    modalType === "error" ? "text-red-900" : 
+                    "text-yellow-900"
+                  }`}>
+                    {modalType === "success" ? "Success" : modalType === "error" ? "Error" : "Confirm"}
+                  </h3>
+                  {modalType !== "confirm" && (
+                    <button
+                      onClick={() => setShowCloseModal(false)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/50 text-gray-500 hover:text-gray-700"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-gray-700 mb-4">{modalMessage}</p>
+                <div className="flex justify-end gap-2">
+                  {modalType === "confirm" ? (
+                    <>
+                      <button
+                        onClick={() => setShowCloseModal(false)}
+                        className="px-4 py-2 rounded-md text-sm font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={confirmCloseAudit}
+                        disabled={archivingAudit}
+                        className="px-4 py-2 rounded-md text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {archivingAudit ? "Closing..." : "Yes, Close Audit"}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setShowCloseModal(false)}
+                      className={`px-4 py-2 rounded-md text-sm font-semibold transition-colors ${
+                        modalType === "success"
+                          ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                          : "bg-red-600 text-white hover:bg-red-700"
+                      }`}
+                    >
+                      OK
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Audit detail modal */}
         {showAuditDetailModal && detail && (

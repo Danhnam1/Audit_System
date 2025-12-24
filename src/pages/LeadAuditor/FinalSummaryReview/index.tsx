@@ -756,8 +756,8 @@ export default function LeadAuditorFinalSummaryReviewPage() {
               Unable to load audit detail for the selected audit. Please try again or contact system support.
             </div>
           ) : (
-            <div className="grid gap-6 lg:grid-cols-3">
-              <div className="space-y-6 lg:col-span-2">
+            <div className="space-y-6">
+              <div className="space-y-6">
                 <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
                   <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
                     <h2 className="text-sm font-semibold text-white uppercase">General information</h2>
@@ -990,8 +990,8 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                     {findingsDepartmentAgg.length > 0 && (
                       <div className="mt-4">
                         <p className="text-[11px] font-semibold text-gray-700 uppercase mb-2">Findings by Department</p>
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full text-sm border border-gray-200 rounded-lg">
+                        <div className="overflow-x-auto w-full">
+                          <table className="w-full text-sm border border-gray-200 rounded-lg">
                             <thead className="bg-gray-50">
                               <tr>
                                 <th className="px-3 py-2 text-left text-gray-700 font-semibold">Department</th>
@@ -1422,35 +1422,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                 </div>
               </div>
 
-              <aside className="space-y-4">
-                <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
-                    <h2 className="text-sm font-semibold text-white uppercase">Audit data snapshot</h2>
-                  </div>
-                  <div className="p-4 grid grid-cols-2 gap-3 text-xs text-gray-700">
-                    <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5 shadow-sm">
-                      <p className="text-[11px] font-medium text-primary-700">Schedules</p>
-                      <p className="mt-0.5 text-lg font-bold text-primary-900">{schedulesArr.length}</p>
-                    </div>
-                    <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5 shadow-sm">
-                      <p className="text-[11px] font-medium text-primary-700">Scope departments</p>
-                      <p className="mt-0.5 text-lg font-bold text-primary-900">{scopeDepartmentsArr.length}</p>
-                    </div>
-                    <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5 shadow-sm">
-                      <p className="text-[11px] font-medium text-primary-700">Criteria mapped</p>
-                      <p className="mt-0.5 text-lg font-bold text-primary-900">{criteriaArr.length}</p>
-                    </div>
-                    <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5 shadow-sm">
-                      <p className="text-[11px] font-medium text-primary-700">Checklist templates</p>
-                      <p className="mt-0.5 text-lg font-bold text-primary-900">{checklistArr.length}</p>
-                    </div>
-                    <div className="rounded-md bg-gradient-to-br from-primary-100 to-primary-50 border border-primary-300 px-3 py-2.5 shadow-sm col-span-2">
-                      <p className="text-[11px] font-medium text-primary-800">Team members</p>
-                      <p className="mt-0.5 text-lg font-bold text-primary-900">{teamsArr.length}</p>
-                    </div>
-                  </div>
-                </div>
-              </aside>
             </div>
           )}
         </section>
