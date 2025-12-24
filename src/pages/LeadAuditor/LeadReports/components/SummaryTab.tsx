@@ -15,22 +15,10 @@ const SummaryTab: React.FC<Props> = ({ summary, severityEntries, severityTotal }
         <span className="text-xs text-gray-500">Overview for the selected audit.</span>
         </div>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 gap-3">
         <div className="rounded-lg border border-gray-100 p-3">
           <div className="text-xs text-gray-500">Total</div>
           <div className="text-xl font-semibold text-primary-700">{summary?.totalFindings ?? 0}</div>
-        </div>
-        <div className="rounded-lg border border-gray-100 p-3">
-          <div className="text-xs text-gray-500">Open</div>
-          <div className="text-xl font-semibold text-amber-600">{summary?.openFindings ?? 0}</div>
-        </div>
-        <div className="rounded-lg border border-gray-100 p-3">
-          <div className="text-xs text-gray-500">Closed</div>
-          <div className="text-xl font-semibold text-green-600">{summary?.closedFindings ?? 0}</div>
-        </div>
-        <div className="rounded-lg border border-gray-100 p-3">
-          <div className="text-xs text-gray-500">Overdue</div>
-          <div className="text-xl font-semibold text-red-600">{summary?.overdueFindings ?? 0}</div>
         </div>
       </div>
       <div className="mt-6 rounded-lg border border-gray-100 p-4">

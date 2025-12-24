@@ -15,6 +15,7 @@ import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getAllReportRequests, type ViewReportRequest } from '../../../api/reportRequest';
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
+import { getAuditChecklistItems } from '../../../api/checklists';
 import { 
   createAuditPlanRevisionRequest, 
   getAuditPlanRevisionRequestsByAuditId,
@@ -37,7 +38,11 @@ const AuditorLeadReports = () => {
   const [selectedAuditId, setSelectedAuditId] = useState<string>('');
   const [summary, setSummary] = useState<any | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'departments' | 'summary'>('departments');
+  const [activeTab, setActiveTab] = useState<'departments' | 'summary' | 'checklist'>('departments');
+  const [auditChecklistItems, setAuditChecklistItems] = useState<any[] | null>(null);
+  const [overdueDeptFilter, setOverdueDeptFilter] = useState<string>('all');
+  const [compliantStatusFilter, setCompliantStatusFilter] = useState<'all' | 'compliant' | 'noncompliant'>('all');
+  const [compliantDeptFilter, setCompliantDeptFilter] = useState<string>('all');
   const [selectedDeptKey, setSelectedDeptKey] = useState<string>('');
   const lastAuditIdRef = useRef<string>('');
   const [selectedFindingId, setSelectedFindingId] = useState<string>('');
@@ -75,6 +80,11 @@ const AuditorLeadReports = () => {
   const [showReturnFindingModal, setShowReturnFindingModal] = useState(false);
   const [returnFindingNote, setReturnFindingNote] = useState('');
   const [returningFindingId, setReturningFindingId] = useState<string | null>(null);
+  
+  // Attachments modal state
+  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
+  const [selectedAttachments, setSelectedAttachments] = useState<any[]>([]);
+  const [selectedFindingTitle, setSelectedFindingTitle] = useState<string>('');
 
 
   // Force reloading summary data even if selectedAuditId doesn't change (e.g. after Director approves)
@@ -268,18 +278,10 @@ const AuditorLeadReports = () => {
           return; // Skip this report
         }
         
-        // Kiểm tra thêm: Không hiển thị report đã được approve (status = "Approved")
-        // Chỉ hiển thị report khi audit status là "InProgress" VÀ report chưa được approve
+        // Lấy status của report request để hiển thị (bao gồm cả Approved)
         const reportRequestStatus = String(rr.status || '').trim();
-        const normalizedReportStatus = reportRequestStatus.toLowerCase().replace(/\s+/g, '');
-        const isApproved = normalizedReportStatus === 'approved';
         
-        if (isApproved) {
-          
-          return; 
-        }
         
-       
         
         // Backend returns "Returned" (capital R) when reject, normalize to lowercase for comparison
         const finalStatus = rr.status || 'Pending';
@@ -454,12 +456,14 @@ const AuditorLeadReports = () => {
     const loadSummary = async () => {
       if (!selectedAuditId) return;
       try {
-        const [sum, requests] = await Promise.all([
+        const [sum, requests, checklistItems] = await Promise.all([
           getAuditSummary(selectedAuditId),
-          getAuditPlanRevisionRequestsByAuditId(selectedAuditId).catch(() => [])
+          getAuditPlanRevisionRequestsByAuditId(selectedAuditId).catch(() => []),
+          getAuditChecklistItems(selectedAuditId).catch(() => [])
         ]);
         setSummary(sum);
         setRevisionRequests(requests);
+        setAuditChecklistItems(Array.isArray(checklistItems) ? checklistItems : []);
         setActiveTab('departments');
         if (lastAuditIdRef.current !== selectedAuditId) {
           setSelectedDeptKey('');
@@ -1426,6 +1430,150 @@ const AuditorLeadReports = () => {
     return matched;
   }, [allFindings, selectedDeptKey, departmentEntries]);
 
+  // Checklist overview (overdue + compliant) for selected audit
+  const checklistOverview = useMemo(() => {
+    if (!auditChecklistItems || auditChecklistItems.length === 0) {
+      return {
+        totalOverdue: 0,
+        totalCompliant: 0,
+        overdueByDept: [] as Array<{ deptId: string; deptName: string; overdue: number; compliant: number }>,
+        overdueItems: [] as any[],
+        compliantItems: [] as any[],
+      };
+    }
+
+    const byDeptMap = new Map<string, { deptId: string; overdue: number; compliant: number }>();
+    const overdueItems: any[] = [];
+    const compliantItems: any[] = [];
+    let totalOverdue = 0;
+    let totalCompliant = 0;
+
+    auditChecklistItems.forEach((item: any) => {
+      const rawStatus = String(item.status || '').toLowerCase();
+      const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
+      const isCompliant = rawStatus === 'compliant' || rawStatus.includes('compliant');
+
+      // Use section (e.g. "Flight Operations") as logical department key/label
+      const sectionRaw =
+        item.section ||
+        item.departmentName ||
+        item.deptName ||
+        item.department ||
+        '';
+      const key = String(sectionRaw || '—').trim();
+
+      if (!byDeptMap.has(key)) {
+        byDeptMap.set(key, { deptId: key, overdue: 0, compliant: 0 });
+      }
+      const agg = byDeptMap.get(key)!;
+
+      if (isOverdue) {
+        agg.overdue += 1;
+        totalOverdue += 1;
+        overdueItems.push(item);
+      }
+      if (isCompliant) {
+        agg.compliant += 1;
+        totalCompliant += 1;
+        compliantItems.push(item);
+      }
+    });
+
+    const overdueByDept = Array.from(byDeptMap.values()).map((row) => ({
+      deptId: row.deptId,
+      deptName: row.deptId || '—', // section label
+      overdue: row.overdue,
+      compliant: row.compliant,
+    }));
+
+    return {
+      totalOverdue,
+      totalCompliant,
+      overdueByDept,
+      overdueItems,
+      compliantItems,
+    };
+  }, [auditChecklistItems]);
+
+  // Get unique departments from checklist items
+  const checklistDepartments = useMemo(() => {
+    const deptSet = new Set<string>();
+    if (auditChecklistItems) {
+      auditChecklistItems.forEach((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        if (deptName) deptSet.add(String(deptName).trim());
+      });
+    }
+    return Array.from(deptSet).sort();
+  }, [auditChecklistItems]);
+
+  // Filtered overdue items
+  const filteredOverdueItems = useMemo(() => {
+    if (!checklistOverview.overdueItems) return [];
+    let filtered = [...checklistOverview.overdueItems];
+    if (overdueDeptFilter !== 'all') {
+      filtered = filtered.filter((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        return String(deptName).trim() === overdueDeptFilter;
+      });
+    }
+    return filtered;
+  }, [checklistOverview.overdueItems, overdueDeptFilter]);
+
+  // Filtered compliant items (includes both compliant and non-compliant)
+  const filteredCompliantItems = useMemo(() => {
+    if (!auditChecklistItems) return [];
+    let filtered: any[] = [];
+    
+    // Get all items that are either compliant or non-compliant (not overdue)
+    auditChecklistItems.forEach((item: any) => {
+      const rawStatus = String(item.status || '').toLowerCase();
+      const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
+      
+      // Check noncompliant first (because "noncompliant" contains "compliant")
+      const isNonCompliant = rawStatus === 'noncompliant' || rawStatus === 'non-compliant' || rawStatus.includes('noncompliant') || rawStatus.includes('non-compliant');
+      // Then check compliant (exact match or contains, but not if it's noncompliant)
+      const isCompliant = !isNonCompliant && (rawStatus === 'compliant' || rawStatus.includes('compliant'));
+      
+      if (!isOverdue) {
+        // Include both compliant and non-compliant (but not overdue)
+        // Also include Return status items when filter is 'all'
+        if (compliantStatusFilter === 'all') {
+          filtered.push(item); // Includes Return and all other non-overdue statuses
+        } else if (compliantStatusFilter === 'compliant' && isCompliant) {
+          filtered.push(item);
+        } else if (compliantStatusFilter === 'noncompliant' && isNonCompliant) {
+          filtered.push(item);
+        }
+        // Note: Return items are included when filter is 'all'
+      }
+    });
+
+    // Filter by department
+    if (compliantDeptFilter !== 'all') {
+      filtered = filtered.filter((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        return String(deptName).trim() === compliantDeptFilter;
+      });
+    }
+    return filtered;
+  }, [auditChecklistItems, compliantStatusFilter, compliantDeptFilter]);
+
   useEffect(() => {
     if (!showViewModal) return;
     if (activeTab !== 'departments') return;
@@ -1503,6 +1651,10 @@ const AuditorLeadReports = () => {
                       onClick={() => setActiveTab('summary')}
                       className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'summary' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                     >Summary</button>
+                    <button
+                      onClick={() => setActiveTab('checklist')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'checklist' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >Checklist</button>
                   </div>
                   {/* Request Extension Button - Only show if report is submitted and not rejected */}
                   {(() => {
@@ -1544,14 +1696,214 @@ const AuditorLeadReports = () => {
                     setFindingsSearch={setFindingsSearch}
                     findingsSeverity={findingsSeverity}
                     setFindingsSeverity={setFindingsSeverity}
+                    onViewAttachments={(attachments, findingTitle) => {
+                      setSelectedAttachments(attachments);
+                      setSelectedFindingTitle(findingTitle);
+                      setShowAttachmentsModal(true);
+                    }}
                   />
-                ) : (
+                ) : activeTab === 'summary' ? (
                   <SummaryTab
                     summary={summary}
                     severityEntries={severityEntries}
                     severityTotal={severityTotal}
                   />
-                )}
+                ) : activeTab === 'checklist' ? (
+                  <>
+                    {/* Checklist KPI */}
+                    <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="text-xs text-gray-600 mb-1">Total Checklist Items</div>
+                        <div className="text-2xl font-bold text-gray-800">{checklistOverview.totalOverdue + checklistOverview.totalCompliant}</div>
+                      </div>
+                      <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="text-xs text-gray-600 mb-1">Checklist Overdue</div>
+                        <div className="text-2xl font-bold text-red-600">{checklistOverview.totalOverdue}</div>
+                      </div>
+                      {/* <div className="bg-white rounded-lg border border-gray-200 p-4">
+                        <div className="text-xs text-gray-600 mb-1">Total checklist complaint/non-compliant</div>
+                        <div className="text-2xl font-bold text-emerald-600">{checklistOverview.totalCompliant}</div>
+                      </div> */}
+                    </div>
+
+                    {/* Overdue checklist items table */}
+                    <div className="mt-8 pt-4 border-t border-gray-100">
+                      <div className="rounded-lg border border-gray-100 p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="text-sm font-semibold text-gray-700">
+                            Overdue Checklist Items Details
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={overdueDeptFilter}
+                              onChange={(e) => setOverdueDeptFilter(e.target.value)}
+                              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="all">All Departments</option>
+                              {checklistDepartments.map((dept) => (
+                                <option key={dept} value={dept}>
+                                  {dept}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto max-h-72">
+                          <table className="min-w-full text-xs">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-3 py-2 text-left text-gray-700">#</th>
+                                <th className="px-3 py-2 text-left text-gray-700">Department</th>
+                                <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                                <th className="px-3 py-2 text-left text-gray-700">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {filteredOverdueItems.length > 0 ? (
+                                filteredOverdueItems.map((item: any, idx: number) => {
+                                  const deptName =
+                                    item.section ||
+                                    item.departmentName ||
+                                    item.deptName ||
+                                    item.department ||
+                                    '—';
+                                  const question =
+                                    item.questionTextSnapshot ||
+                                    item.questionText ||
+                                    item.title ||
+                                    '—';
+                                  const status = item.status || '—';
+
+                                  return (
+                                    <tr
+                                      key={item.auditChecklistItemId || item.itemId || idx}
+                                      className="hover:bg-gray-50"
+                                    >
+                                      <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
+                                      <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
+                                      <td className="px-3 py-2">
+                                        <span className="line-clamp-2">{question}</span>
+                                      </td>
+                                      <td className="px-3 py-2 whitespace-nowrap">
+                                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 border border-red-200">
+                                          {status}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              ) : (
+                                <tr>
+                                  <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                                    No overdue checklist items.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Compliant checklist items table */}
+                    <div className="mt-8 pt-4 border-t border-gray-100">
+                      <div className="rounded-lg border border-gray-100 p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="text-sm font-semibold text-gray-700">
+                            Compliant Checklist Items Details
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={compliantStatusFilter}
+                              onChange={(e) => setCompliantStatusFilter(e.target.value as 'all' | 'compliant' | 'noncompliant')}
+                              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="all">All Status</option>
+                              <option value="compliant">Compliant</option>
+                              <option value="noncompliant">Non-Compliant</option>
+                            </select>
+                            <select
+                              value={compliantDeptFilter}
+                              onChange={(e) => setCompliantDeptFilter(e.target.value)}
+                              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                              <option value="all">All Departments</option>
+                              {checklistDepartments.map((dept) => (
+                                <option key={dept} value={dept}>
+                                  {dept}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto max-h-72">
+                          <table className="min-w-full text-xs">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-3 py-2 text-left text-gray-700">#</th>
+                                <th className="px-3 py-2 text-left text-gray-700">Department</th>
+                                <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                                <th className="px-3 py-2 text-left text-gray-700">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {filteredCompliantItems.length > 0 ? (
+                                filteredCompliantItems.map((item: any, idx: number) => {
+                                  const deptName =
+                                    item.section ||
+                                    item.departmentName ||
+                                    item.deptName ||
+                                    item.department ||
+                                    '—';
+                                  const question =
+                                    item.questionTextSnapshot ||
+                                    item.questionText ||
+                                    item.title ||
+                                    '—';
+                                  const status = item.status || '—';
+
+                                  // Determine status color
+                                  const statusLower = String(status).toLowerCase();
+                                  const isCompliantStatus = statusLower === 'compliant' || statusLower.includes('compliant');
+                                  const isNonCompliantStatus = statusLower === 'noncompliant' || statusLower.includes('noncompliant') || statusLower === 'non-compliant' || statusLower.includes('non-compliant');
+                                  const statusColorClass = isCompliantStatus 
+                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                    : isNonCompliantStatus
+                                    ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                    : 'bg-gray-100 text-gray-700 border-gray-200';
+
+                                  return (
+                                    <tr
+                                      key={item.auditChecklistItemId || item.itemId || idx}
+                                      className="hover:bg-gray-50"
+                                    >
+                                      <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
+                                      <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
+                                      <td className="px-3 py-2">
+                                        <span className="line-clamp-2">{question}</span>
+                                      </td>
+                                      <td className="px-3 py-2 whitespace-nowrap">
+                                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
+                                          {status}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              ) : (
+                                <tr>
+                                  <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                                    No compliant checklist items.
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
               </div>
 
               {/* Footer */}
@@ -2137,6 +2489,111 @@ const AuditorLeadReports = () => {
             periodFrom={auditPeriodDates.periodFrom}
             periodTo={auditPeriodDates.periodTo}
           />
+        )}
+
+        {/* Attachments Modal */}
+        {showAttachmentsModal && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => setShowAttachmentsModal(false)}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 flex-shrink-0">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Attachments</h2>
+                  <p className="text-sm text-gray-500 mt-1">{selectedFindingTitle}</p>
+                </div>
+                <button
+                  onClick={() => setShowAttachmentsModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {selectedAttachments.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-gray-500 font-medium">No attachments</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedAttachments.map((att: any, idx: number) => {
+                      const name = att?.fileName || att?.documentName || att?.name || att?.originalName || `Attachment ${idx + 1}`;
+                      const url = att?.blobPath || att?.url || att?.link || att?.path;
+                      const size = att?.fileSize || att?.size;
+                      const sizeDisplay = size ? (size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(2)} KB` : `${(size / (1024 * 1024)).toFixed(2)} MB`) : '';
+                      const uploadedAt = att?.uploadedAt || att?.createdAt || att?.uploadDate;
+                      
+                      return (
+                        <div key={idx} className="flex items-center gap-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-4 py-3 transition-colors">
+                          <div className="flex-shrink-0 w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{name}</div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                              {sizeDisplay && <span>{sizeDisplay}</span>}
+                              {uploadedAt && (
+                                <span>
+                                  {new Date(uploadedAt).toLocaleDateString('en-US', { 
+                                    year: 'numeric', 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {url ? (
+                            <a 
+                              href={url} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="flex-shrink-0 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              Open
+                            </a>
+                          ) : (
+                            <span className="flex-shrink-0 px-3 py-2 text-xs text-gray-500 bg-gray-200 rounded-lg">No link</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 flex-shrink-0">
+                <button
+                  onClick={() => setShowAttachmentsModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
         )}
       </div>
     </MainLayout>

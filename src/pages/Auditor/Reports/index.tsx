@@ -58,8 +58,15 @@ const SQAStaffReports = () => {
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [auditChecklistItems, setAuditChecklistItems] = useState<any[] | null>(null);
   const [summaryTab, setSummaryTab] = useState<'findings' | 'checklist'>('findings');
+  const [overdueDeptFilter, setOverdueDeptFilter] = useState<string>('all');
+  const [compliantStatusFilter, setCompliantStatusFilter] = useState<'all' | 'compliant' | 'noncompliant'>('all');
+  const [compliantDeptFilter, setCompliantDeptFilter] = useState<string>('all');
   // Track recently updated audit statuses to prevent overwriting during reload
   const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
+  // Attachments modal state
+  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
+  const [selectedAttachments, setSelectedAttachments] = useState<any[]>([]);
+  const [selectedFindingTitle, setSelectedFindingTitle] = useState<string>('');
 
   // Derived datasets for summary rendering
   const severityEntries = useMemo(() => {
@@ -87,12 +94,8 @@ const SQAStaffReports = () => {
           ? String(m?.month || m?.label || `Month ${idx + 1}`)
           : new Date(2000, mNum - 1, 1).toLocaleString('vi-VN', { month: 'long' });
       
-      // Filter out findings with status "Closed" from items
+      // Hiển thị TẤT CẢ findings (bao gồm cả Closed) để tổng số và chi tiết luôn khớp
       const allFindings = unwrap(m?.findings) || [];
-      const filteredFindings = allFindings.filter((f: any) => {
-        const status = String(f?.status || '').toLowerCase().trim();
-        return status !== 'closed';
-      });
       
       return {
         key: `${mNum || idx}`,
@@ -101,7 +104,7 @@ const SQAStaffReports = () => {
         total: Number(m?.total ?? 0),
         open: Number(m?.open ?? 0),
         overdue: Number(m?.overdue ?? 0),
-        items: filteredFindings, // Only include non-Closed findings
+        items: allFindings,
       };
     });
   }, [summary]);
@@ -120,6 +123,7 @@ const SQAStaffReports = () => {
 
     const byDeptMap = new Map<string, { deptId: string; overdue: number; compliant: number }>();
     const overdueItems: any[] = [];
+    const compliantItems: any[] = [];
     let totalOverdue = 0;
     let totalCompliant = 0;
 
@@ -150,6 +154,7 @@ const SQAStaffReports = () => {
       if (isCompliant) {
         agg.compliant += 1;
         totalCompliant += 1;
+        compliantItems.push(item);
       }
     });
 
@@ -165,8 +170,88 @@ const SQAStaffReports = () => {
       totalCompliant,
       overdueByDept,
       overdueItems,
+      compliantItems,
     };
   }, [auditChecklistItems]);
+
+  // Get unique departments from checklist items
+  const checklistDepartments = useMemo(() => {
+    const deptSet = new Set<string>();
+    if (auditChecklistItems) {
+      auditChecklistItems.forEach((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        if (deptName) deptSet.add(String(deptName).trim());
+      });
+    }
+    return Array.from(deptSet).sort();
+  }, [auditChecklistItems]);
+
+  // Filtered overdue items
+  const filteredOverdueItems = useMemo(() => {
+    if (!checklistOverview.overdueItems) return [];
+    let filtered = [...checklistOverview.overdueItems];
+    if (overdueDeptFilter !== 'all') {
+      filtered = filtered.filter((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        return String(deptName).trim() === overdueDeptFilter;
+      });
+    }
+    return filtered;
+  }, [checklistOverview.overdueItems, overdueDeptFilter]);
+
+  // Filtered compliant items (includes both compliant and non-compliant)
+  const filteredCompliantItems = useMemo(() => {
+    if (!auditChecklistItems) return [];
+    let filtered: any[] = [];
+    
+    // Get all items that are either compliant or non-compliant (not overdue)
+    auditChecklistItems.forEach((item: any) => {
+      const rawStatus = String(item.status || '').toLowerCase();
+      const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
+      
+      // Check noncompliant first (because "noncompliant" contains "compliant")
+      const isNonCompliant = rawStatus === 'noncompliant' || rawStatus === 'non-compliant' || rawStatus.includes('noncompliant') || rawStatus.includes('non-compliant');
+      // Then check compliant (exact match or contains, but not if it's noncompliant)
+      const isCompliant = !isNonCompliant && (rawStatus === 'compliant' || rawStatus.includes('compliant'));
+      
+      if (!isOverdue) {
+        // Include both compliant and non-compliant (but not overdue)
+        // Also include Return status items when filter is 'all'
+        if (compliantStatusFilter === 'all') {
+          filtered.push(item); // Includes Return and all other non-overdue statuses
+        } else if (compliantStatusFilter === 'compliant' && isCompliant) {
+          filtered.push(item);
+        } else if (compliantStatusFilter === 'noncompliant' && isNonCompliant) {
+          filtered.push(item);
+        }
+        // Note: Return items are included when filter is 'all'
+      }
+    });
+
+    // Filter by department
+    if (compliantDeptFilter !== 'all') {
+      filtered = filtered.filter((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        return String(deptName).trim() === compliantDeptFilter;
+      });
+    }
+    return filtered;
+  }, [auditChecklistItems, compliantStatusFilter, compliantDeptFilter]);
 
   // Chuẩn hóa id (tránh lệch hoa/thường, khoảng trắng)
   const normalizeId = (id: string | number | null | undefined) =>
@@ -541,12 +626,24 @@ const SQAStaffReports = () => {
         }
         return a;
       }));
-      
-      const firstId = filtered?.[0]?.auditId || filtered?.[0]?.id || filtered?.[0]?.$id || '';
-      if (firstId) setSelectedAuditId(String(firstId));
-      else {
-        setSelectedAuditId('');
-        setShowSummary(false);
+      // Preserve selectedAuditId if it still exists in the filtered list
+      const currentSelectedId = String(selectedAuditId || '').trim();
+      const currentSelectedExists = currentSelectedId && filtered.some((a: any) => {
+        const auditId = String(a.auditId || a.id || a.$id || '').trim();
+        return auditId === currentSelectedId;
+      });
+      if (currentSelectedExists) {
+        // Keep the current selected audit
+        // Don't change selectedAuditId or close summary
+      } else {
+        // Current selected audit no longer exists, select first one or clear
+        const firstId = filtered?.[0]?.auditId || filtered?.[0]?.id || filtered?.[0]?.$id || '';
+        if (firstId) {
+          setSelectedAuditId(String(firstId));
+        } else {
+          setSelectedAuditId('');
+          setShowSummary(false);
+        }
       }
     } catch (err) {
       console.error('Failed to load audits for Reports', err);
@@ -732,31 +829,38 @@ const SQAStaffReports = () => {
   useEffect(() => {
     const loadSummary = async () => {
       if (!selectedAuditId) return;
+      const currentAuditId = selectedAuditId; // Capture current auditId to check for changes
       setSummaryTab('findings');
       try {
         const [sum, requests] = await Promise.all([
-          getAuditSummary(selectedAuditId),
-          getAuditPlanRevisionRequestsByAuditId(selectedAuditId).catch(() => [])
+          getAuditSummary(currentAuditId),
+          getAuditPlanRevisionRequestsByAuditId(currentAuditId).catch(() => [])
         ]);
-        setSummary(sum);
-        setExtensionRequests(prev => ({ ...prev, [selectedAuditId]: requests }));
-        const total = Number((sum as any)?.totalFindings ?? 0);
-        if (!isNaN(total)) {
-          setFindingsMap((prev) => ({ ...prev, [String(selectedAuditId)]: total }));
-        }
+        // Only update summary if selectedAuditId hasn't changed during the async call
+        // This prevents race conditions where reloadReports() might change selectedAuditId
+        if (String(selectedAuditId) === String(currentAuditId)) {
+          setSummary(sum);
+          setExtensionRequests(prev => ({ ...prev, [currentAuditId]: requests }));
+          const total = Number((sum as any)?.totalFindings ?? 0);
+          if (!isNaN(total)) {
+            setFindingsMap((prev) => ({ ...prev, [String(currentAuditId)]: total }));
+          }
 
-        // Load checklist items for this audit (used for overdue/compliant overview)
-        try {
-          const items = await getAuditChecklistItems(selectedAuditId);
-          setAuditChecklistItems(Array.isArray(items) ? items : unwrap(items));
-        } catch (checkErr) {
-          console.error('Failed to load audit checklist items for overview', checkErr);
-          setAuditChecklistItems(null);
+          // Load checklist items for this audit (used for overdue/compliant overview)
+          try {
+            const items = await getAuditChecklistItems(currentAuditId);
+            if (String(selectedAuditId) === String(currentAuditId)) {
+              setAuditChecklistItems(Array.isArray(items) ? items : unwrap(items));
+            }
+          } catch (checkErr) {
+            console.error('Failed to load audit checklist items for overview', checkErr);
+            // Don't clear checklist items on error - keep existing data
+          }
         }
       } catch (err) {
         console.error('Failed to load summary', err);
-        setSummary(null);
-        setAuditChecklistItems(null);
+        // Don't clear summary on error - keep existing data to prevent UI flicker
+        // This ensures findings details don't disappear when there's a temporary API error
       }
     };
     loadSummary();
@@ -1428,9 +1532,7 @@ const SQAStaffReports = () => {
                 <div className="flex items-center justify-between gap-4">
                   <div className="space-y-1">
                     <h2 className="text-xl font-semibold text-gray-900">Audit Report Summary</h2>
-                    <p className="text-sm text-gray-500">
-                      Overview, checklist status and findings for the selected audit.
-                    </p>
+                    
                   </div>
                   <div className="flex items-center gap-3">
                     {(() => {
@@ -1634,18 +1736,8 @@ const SQAStaffReports = () => {
             {summaryTab === 'findings' && (
               <>
                 {/* KPI cards – high level overview */}
-                <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="mt-3 grid grid-cols-1 gap-3">
                   <SummaryCard title="Total Findings" value={summary?.totalFindings ?? 0} />
-                  <SummaryCard
-                    title="Open"
-                    value={summary?.openFindings ?? 0}
-                    valueClassName="text-amber-600"
-                  />
-                  <SummaryCard
-                    title="Overdue"
-                    value={summary?.overdueFindings ?? 0}
-                    valueClassName="text-red-600"
-                  />
                 </div>
 
                 {/* Severity + Findings by Department */}
@@ -1747,7 +1839,6 @@ const SQAStaffReports = () => {
                         singleMode
                         definitions={[
                           { id: 'dept', label: 'Department', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.deptId != null ? resolveDeptName(String(f.deptId), departments) : '')))).filter(Boolean).sort().map(d => ({ value: d, label: d })) },
-                          { id: 'status', label: 'Status', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.status)))).filter(Boolean).sort().map(s => ({ value: String(s).toLowerCase(), label: String(s) })) },
                           { id: 'severity', label: 'Severity', type: 'select', getOptions: () => Array.from(new Set(monthsFindings.flatMap(m => m.items.map((f: any) => f.severity)))).filter(Boolean).sort().map(s => ({ value: String(s).toLowerCase(), label: String(s) })) },
                           { id: 'deadline', label: 'Deadline', type: 'dateRange' }
                         ]}
@@ -1765,19 +1856,12 @@ const SQAStaffReports = () => {
                   {(filteredMonths.length ? filteredMonths : monthsFindings).map((m) => (
                     <div key={m.key} className="mb-6 last:mb-0">
                       <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-semibold text-gray-700">
-                          Month {isNaN(m.monthNum) || m.monthNum < 1 ? m.label : m.monthNum}
-                        </div>
+                        
                         <div className="flex items-center gap-2 text-xs">
                           <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
                             Total: {m.total}
                           </span>
-                          <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                            Open: {m.open}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-700">
-                            Overdue: {m.overdue}
-                          </span>
+                          
                         </div>
                       </div>
 
@@ -1789,9 +1873,8 @@ const SQAStaffReports = () => {
                               <th className="text-left px-3 py-2 text-gray-700">Title</th>
                               <th className="text-left px-3 py-2 text-gray-700">Dept</th>
                               <th className="text-left px-3 py-2 text-gray-700">Severity</th>
-                              <th className="text-left px-3 py-2 text-gray-700">Status</th>
                               <th className="text-left px-3 py-2 text-gray-700">Deadline</th>
-                              <th className="text-left px-3 py-2 text-gray-700">Progress</th>
+                              <th className="text-left px-3 py-2 text-gray-700">Attachments</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
@@ -1815,38 +1898,37 @@ const SQAStaffReports = () => {
                                     {f.severity || '—'}
                                   </span>
                                 </td>
-                                <td className="px-3 py-2">{f.status || '—'}</td>
                                 <td className="px-3 py-2">
                                   {f.deadline ? new Date(f.deadline).toLocaleDateString() : '—'}
                                 </td>
-                                <td className="px-3 py-2 w-32">
-                                  {typeof f?.progressPercent === 'number' ? (
-                                    <div className="flex items-center gap-2">
-                                      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                        <div
-                                          className="h-1.5 rounded-full bg-primary-500"
-                                          style={{
-                                            width: `${Math.min(
-                                              Math.max(f.progressPercent, 0),
-                                              100
-                                            )}%`,
-                                          }}
-                                        />
-                                      </div>
-                                      <span className="text-xs text-gray-600 min-w-[2.5rem] text-right">
-                                        {Math.round(f.progressPercent)}%
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-gray-400">—</span>
-                                  )}
+                                <td className="px-3 py-2">
+                                  {(() => {
+                                    const attachments = unwrap(f?.attachments) || [];
+                                    if (attachments.length === 0) return <span className="text-xs text-gray-400">—</span>;
+                                    return (
+                                      <button
+                                        onClick={() => {
+                                          setSelectedAttachments(attachments);
+                                          setSelectedFindingTitle(f?.title || 'Finding Attachments');
+                                          setShowAttachmentsModal(true);
+                                        }}
+                                        className="flex items-center gap-1 hover:bg-gray-100 px-2 py-1 rounded transition-colors cursor-pointer"
+                                        title={`Click to view ${attachments.length} attachment(s)`}
+                                      >
+                                        <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                        </svg>
+                                        <span className="text-xs text-primary-600 font-medium">{attachments.length}</span>
+                                      </button>
+                                    );
+                                  })()}
                                 </td>
                               </tr>
                             ))}
                             {m.items.length === 0 && (
                               <tr>
                                 <td
-                                  colSpan={7}
+                                  colSpan={6}
                                   className="px-3 py-4 text-center text-gray-500"
                                 >
                                   No data available.
@@ -1877,104 +1959,62 @@ const SQAStaffReports = () => {
                     valueClassName="text-red-600"
                   />
                   <SummaryCard
-                    title="Checklist Compliant"
+                    title="Total checklist complaint/non-compliant"
                     value={checklistOverview.totalCompliant}
                     valueClassName="text-emerald-600"
                   />
                 </div>
 
-                {/* Checklist overview by department */}
-                {checklistOverview.overdueByDept.length > 0 && (
-                  <div className="mt-6">
-                    <div className="rounded-lg border border-gray-100 p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-semibold text-gray-700">
-                          Checklist Status by Department
-                        </div>
-                        <span className="text-xs text-gray-500">
-                          Showing only overdue and compliant counts.
-                        </span>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="text-left px-3 py-2 text-gray-700">Department</th>
-                              <th className="text-right px-3 py-2 text-gray-700">Overdue Items</th>
-                              <th className="text-right px-3 py-2 text-gray-700">Compliant Items</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {checklistOverview.overdueByDept.map((row) => (
-                              <tr key={row.deptId || row.deptName}>
-                                <td className="px-3 py-2">{row.deptName}</td>
-                                <td className="px-3 py-2 text-right text-red-600 font-semibold">
-                                  {row.overdue}
-                                </td>
-                                <td className="px-3 py-2 text-right text-emerald-600 font-semibold">
-                                  {row.compliant}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Overdue checklist items table */}
-                {checklistOverview.overdueItems.length > 0 && (
-                  <div className="mt-8 pt-4 border-t border-gray-100">
-                    <div className="rounded-lg border border-gray-100 p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-semibold text-gray-700">
-                          Overdue Checklist Items
-                        </div>
-                        <span className="text-xs text-gray-500">
-                          Only items with status <span className="font-semibold">Overdue</span>.
-                        </span>
+                <div className="mt-8 pt-4 border-t border-gray-100">
+                  <div className="rounded-lg border border-gray-100 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="text-sm font-semibold text-gray-700">
+                        Overdue Checklist Items Details
                       </div>
-                      <div className="overflow-x-auto max-h-72">
-                        <table className="min-w-full text-xs">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-3 py-2 text-left text-gray-700">#</th>
-                              <th className="px-3 py-2 text-left text-gray-700">Department</th>
-                              <th className="px-3 py-2 text-left text-gray-700">Template / Section</th>
-                              <th className="px-3 py-2 text-left text-gray-700">Question</th>
-                              <th className="px-3 py-2 text-left text-gray-700">Due date</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {checklistOverview.overdueItems.map((item: any, idx: number) => {
-                              // Use section as functional department name for checklist context
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={overdueDeptFilter}
+                          onChange={(e) => setOverdueDeptFilter(e.target.value)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All Departments</option>
+                          {checklistDepartments.map((dept) => (
+                            <option key={dept} value={dept}>
+                              {dept}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto max-h-72">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-700">#</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Department</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Status</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Due date</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filteredOverdueItems.length > 0 ? (
+                            filteredOverdueItems.map((item: any, idx: number) => {
                               const deptName =
                                 item.section ||
                                 item.departmentName ||
                                 item.deptName ||
                                 item.department ||
                                 '—';
-                              const section =
-                                item.templateName ||
-                                item.templateTitle ||
-                                item.template ||
-                                item.section ||
-                                '—';
                               const question =
                                 item.questionTextSnapshot ||
                                 item.questionText ||
                                 item.title ||
                                 '—';
-                              const due =
-                                item.dueDate ||
-                                item.deadline ||
-                                item.due ||
-                                item.targetDate ||
-                                null;
-                              const dueDisplay = due
-                                ? new Date(due).toLocaleDateString()
-                                : '—';
+                              const status = item.status || '—';
 
                               return (
                                 <tr
@@ -1983,22 +2023,127 @@ const SQAStaffReports = () => {
                                 >
                                   <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
                                   <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
-                                  <td className="px-3 py-2 whitespace-nowrap">{section}</td>
                                   <td className="px-3 py-2">
                                     <span className="line-clamp-2">{question}</span>
                                   </td>
-                                  <td className="px-3 py-2 whitespace-nowrap text-red-600 font-medium">
-                                    {dueDisplay}
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 border border-red-200">
+                                      {status}
+                                    </span>
                                   </td>
                                 </tr>
                               );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                                No overdue checklist items.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                )}
+                </div>
+
+                {/* Compliant checklist items table */}
+                <div className="mt-8 pt-4 border-t border-gray-100">
+                  <div className="rounded-lg border border-gray-100 p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="text-sm font-semibold text-gray-700">
+                        Compliant Checklist Items Details
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={compliantStatusFilter}
+                          onChange={(e) => setCompliantStatusFilter(e.target.value as 'all' | 'compliant' | 'noncompliant')}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All Status</option>
+                          <option value="compliant">Compliant</option>
+                          <option value="noncompliant">Non-Compliant</option>
+                        </select>
+                        <select
+                          value={compliantDeptFilter}
+                          onChange={(e) => setCompliantDeptFilter(e.target.value)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All Departments</option>
+                          {checklistDepartments.map((dept) => (
+                            <option key={dept} value={dept}>
+                              {dept}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto max-h-72">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-gray-700">#</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Department</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                            <th className="px-3 py-2 text-left text-gray-700">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filteredCompliantItems.length > 0 ? (
+                            filteredCompliantItems.map((item: any, idx: number) => {
+                              const deptName =
+                                item.section ||
+                                item.departmentName ||
+                                item.deptName ||
+                                item.department ||
+                                '—';
+                              const question =
+                                item.questionTextSnapshot ||
+                                item.questionText ||
+                                item.title ||
+                                '—';
+                              const status = item.status || '—';
+
+                              // Determine status color
+                              const statusLower = String(status).toLowerCase();
+                              const isCompliantStatus = statusLower === 'compliant' || statusLower.includes('compliant');
+                              const isNonCompliantStatus = statusLower === 'noncompliant' || statusLower.includes('noncompliant') || statusLower === 'non-compliant' || statusLower.includes('non-compliant');
+                              const statusColorClass = isCompliantStatus 
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                : isNonCompliantStatus
+                                ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                : 'bg-gray-100 text-gray-700 border-gray-200';
+
+                              return (
+                                <tr
+                                  key={item.auditChecklistItemId || item.itemId || idx}
+                                  className="hover:bg-gray-50"
+                                >
+                                  <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
+                                  <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
+                                  <td className="px-3 py-2">
+                                    <span className="line-clamp-2">{question}</span>
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
+                                      {status}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                                No compliant checklist items.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
               </>
             )}
               </div>
@@ -2116,6 +2261,111 @@ const SQAStaffReports = () => {
                     Close
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Attachments Modal */}
+        {showAttachmentsModal && createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => setShowAttachmentsModal(false)}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 flex-shrink-0">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Attachments</h2>
+                  <p className="text-sm text-gray-500 mt-1">{selectedFindingTitle}</p>
+                </div>
+                <button
+                  onClick={() => setShowAttachmentsModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {selectedAttachments.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <p className="text-gray-500 font-medium">No attachments</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedAttachments.map((att: any, idx: number) => {
+                      const name = att?.fileName || att?.documentName || att?.name || att?.originalName || `Attachment ${idx + 1}`;
+                      const url = att?.blobPath || att?.url || att?.link || att?.path;
+                      const size = att?.fileSize || att?.size;
+                      const sizeDisplay = size ? (size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(2)} KB` : `${(size / (1024 * 1024)).toFixed(2)} MB`) : '';
+                      const uploadedAt = att?.uploadedAt || att?.createdAt || att?.uploadDate;
+                      
+                      return (
+                        <div key={idx} className="flex items-center gap-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-4 py-3 transition-colors">
+                          <div className="flex-shrink-0 w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{name}</div>
+                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                              {sizeDisplay && <span>{sizeDisplay}</span>}
+                              {uploadedAt && (
+                                <span>
+                                  {new Date(uploadedAt).toLocaleDateString('en-US', { 
+                                    year: 'numeric', 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          {url ? (
+                            <a 
+                              href={url} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="flex-shrink-0 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                              Open
+                            </a>
+                          ) : (
+                            <span className="flex-shrink-0 px-3 py-2 text-xs text-gray-500 bg-gray-200 rounded-lg">No link</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 flex-shrink-0">
+                <button
+                  onClick={() => setShowAttachmentsModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>,

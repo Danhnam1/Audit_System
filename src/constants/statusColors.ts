@@ -7,23 +7,16 @@
 // Status color mapping using primary colors
 export const STATUS_COLORS = {
   // Completed/Success States - Green (Positive outcomes)
-  'Approve': 'bg-green-100 text-green-800',
   'Approved': 'bg-green-100 text-green-800',
   'Completed': 'bg-green-100 text-green-800',
   'Closed': 'bg-green-600 text-white',
-  
-  // Verified/Distributed/Published - Teal/Blue tones
   'Verified': 'bg-teal-100 text-teal-800',
-  'Distributed': 'bg-teal-500 text-white',
   'Published': 'bg-blue-100 text-blue-800',
-  
-  // Validated/Confirmed States - Strong primary/sky tone
-  'Validated': 'bg-sky-500 text-white',
-  'Registered': 'bg-sky-400 text-white',
   
   // In Progress/Active States - Medium primary/sky tone
   'In Progress': 'bg-sky-500 text-white',
   'InProgress': 'bg-sky-500 text-white',
+  'Assigned': 'bg-sky-400 text-white',
   
   // Under Review States - Light primary/sky tone
   'Under Review': 'bg-sky-200 text-sky-800',
@@ -47,6 +40,7 @@ export const STATUS_COLORS = {
   // Rejected/Negative States - Red/Orange (Clear warning)
   'Rejected': 'bg-red-100 text-red-800',
   'Returned': 'bg-orange-100 text-orange-800',
+  'Return': 'bg-orange-100 text-orange-800',
   'Cancelled': 'bg-red-200 text-red-800',
   
   // Special States
@@ -54,13 +48,27 @@ export const STATUS_COLORS = {
   'Overdue': 'bg-red-500 text-white',
   'Archived': 'bg-orange-500 text-white',
   
+  // Checklist Status States
+  'Compliant': 'bg-green-500 text-white',
+  'NonCompliant': 'bg-green-100 text-green-800',
+  'Non-Compliant': 'bg-green-100 text-green-800',
+  
   // User/System States
   'Active': 'bg-teal-500 text-white',
   'Inactive': 'bg-gray-400 text-white',
   'Suspended': 'bg-gray-500 text-white',
+  'Expired': 'bg-gray-400 text-white',
+  'Revoked': 'bg-red-300 text-red-900',
   
-  // Backup States  
-  'Failed': 'bg-gray-600 text-white',
+  // Schedule/Planning States
+  'Planned': 'bg-blue-100 text-blue-800',
+  
+  // Notification States
+  'Sent': 'bg-blue-100 text-blue-700',
+  
+  // Action/Review States
+  'Reviewed': 'bg-teal-100 text-teal-800',
+  'Resolved': 'bg-green-100 text-green-800',
 } as const;
 
 // Priority color mapping using primary/sky colors
@@ -122,11 +130,12 @@ export type BadgeVariantType = keyof typeof BADGE_VARIANTS;
 
 // Workflow Stage Groups (for filtering and logic)
 export const STATUS_GROUPS = {
-  INITIAL: ['Draft', 'Pending', 'Registered', 'Submitted', 'Open'],
-  PROCESSING: ['Under Review', 'UnderReview', 'Pending Review', 'PendingReview', 'In Progress', 'InProgress', 'Validated', 'PendingDirectorApproval', 'Pending Director Approval', 'PendingLeadApproval', 'Pending Lead Approval'],
-  SUCCESS: ['Approve', 'Approved', 'Verified', 'Resolved', 'Distributed', 'Closed'],
-  NEGATIVE: ['Rejected', 'Returned', 'Cancelled'],
+  INITIAL: ['Draft', 'Pending', 'Submitted', 'Open', 'Assigned'],
+  PROCESSING: ['Under Review', 'UnderReview', 'Pending Review', 'PendingReview', 'In Progress', 'InProgress', 'PendingDirectorApproval', 'Pending Director Approval', 'PendingLeadApproval', 'Pending Lead Approval'],
+  SUCCESS: ['Approved', 'Completed', 'Resolved', 'Closed', 'Reviewed'],
+  NEGATIVE: ['Rejected', 'Returned', 'Return', 'Cancelled'],
   SPECIAL: ['Reopened', 'Overdue'],
+  CHECKLIST: ['Compliant', 'NonCompliant', 'Non-Compliant', 'Overdue'],
 } as const;
 
 // Helper to check if status is in a group
