@@ -158,7 +158,6 @@ export default function ScanQR() {
                              audit?.audit?.name ||
                              'N/A';
                 setAuditTitle(title);
-                console.log('[ScanQR] Loaded audit title:', title, 'from audit data:', audit);
               })
               .catch((e) => {
                 console.warn('Failed to load audit info', e);
