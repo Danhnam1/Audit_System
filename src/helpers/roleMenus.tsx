@@ -39,6 +39,9 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         { icon: <ShieldIcon />, label: 'Sensitive Area Management', path: '/admin/sensitive-areas' },
         { icon: <ArchiveIcon />, label: 'Archived History', path: '/admin/archived-history' },
         { icon: <QualityIcon />, label: 'Pass Threshold', path: '/admin/pass-threshold' },
+
+        { icon: <ClockIcon />, label: 'Setting Demo', path: '/admin/setting-demo' },
+
         // { icon: <AuditIcon />, label: 'Audit Logs', path: '/admin/audit-logs' },
         // { icon: <ReportsIcon />, label: 'Reports', path: '/admin/reports' },
         // { icon: <DatabaseIcon />, label: 'Database', path: '/admin/database' },
@@ -92,7 +95,6 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
     case 'capaowner':
       return [
         { icon: <DashboardIcon />, label: 'Tasks', path: `${ROUTES.CAPA_OWNER}/tasks` },
-        { icon: <DocumentIcon />, label: 'My Witnessed', path: `${ROUTES.CAPA_OWNER}/my-witnessed` },
         // { icon: <DashboardIcon />, label: 'Progress', path: `${ROUTES.CAPA_OWNER}/progress` },
       ];
 

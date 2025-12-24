@@ -29,6 +29,11 @@ const AuditPlans = () => {
 	const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
 	const [currentPage, setCurrentPage] = useState(1);
 	const itemsPerPage = 7;
+	
+	// Search and filter states
+	const [searchTerm, setSearchTerm] = useState<string>('');
+	const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+	const [dateTo, setDateTo] = useState<string>('');
 
 	const myDeptId = storeUser?.deptId ?? (storeUser as any)?.departmentId ?? (storeUser as any)?.deptCode;
 
@@ -131,11 +136,49 @@ const AuditPlans = () => {
 			return [...normIds, ...scopeIds, ...planLevelIds].some((id) => id === myIdStr);
 		};
 		const isPublished = (p: any) => p?.isPublished === true;
-		return (plans || []).filter(matchesDept).filter(isPublished);
-	}, [plans, effectiveDeptId]);
+		let result = (plans || []).filter(matchesDept).filter(isPublished);
+		
+		// Apply search filter
+		if (searchTerm) {
+			const searchLower = searchTerm.toLowerCase();
+			result = result.filter((plan: any) => {
+				const title = (plan.title || '').toLowerCase();
+				return title.includes(searchLower);
+			});
+		}
+		
+		// Apply date filter
+		if (dateFrom) {
+			result = result.filter((plan: any) => {
+				if (!plan.startDate) return false;
+				const planDate = new Date(plan.startDate);
+				const fromDate = new Date(dateFrom);
+				fromDate.setHours(0, 0, 0, 0);
+				planDate.setHours(0, 0, 0, 0);
+				return planDate >= fromDate;
+			});
+		}
+		
+		if (dateTo) {
+			result = result.filter((plan: any) => {
+				if (!plan.startDate) return false;
+				const planDate = new Date(plan.startDate);
+				const toDate = new Date(dateTo);
+				toDate.setHours(23, 59, 59, 999);
+				return planDate <= toDate;
+			});
+		}
+		
+		return result;
+	}, [plans, effectiveDeptId, searchTerm, dateFrom, dateTo]);
 
 	const totalPages = Math.ceil(filteredPlans.length / itemsPerPage);
 
+	// Reset to page 1 when filters change
+	useEffect(() => {
+		setCurrentPage(1);
+	}, [searchTerm, dateFrom, dateTo]);
+	
 	// Reset to page 1 if current page is out of bounds
 	useEffect(() => {
 		if (currentPage > totalPages && totalPages > 0) {
@@ -193,6 +236,71 @@ const AuditPlans = () => {
 					<div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
 						<h2 className="text-lg font-semibold text-white">List of plans</h2>
 					</div>
+					
+					{/* Search and Filter Bar */}
+					<div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+						<div className="space-y-4">
+							<div className="flex flex-col sm:flex-row gap-3">
+								{/* Search Input */}
+								<div className="flex-1">
+									<div className="relative">
+										<input
+											type="text"
+											value={searchTerm}
+											onChange={(e) => setSearchTerm(e.target.value)}
+											placeholder="Search by title..."
+											className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+										/>
+										<svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+										</svg>
+									</div>
+								</div>
+								
+								{/* Date From */}
+								<div className="w-full sm:w-48">
+									<input
+										type="date"
+										value={dateFrom}
+										onChange={(e) => setDateFrom(e.target.value)}
+										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+										placeholder="From Date"
+									/>
+								</div>
+								
+								{/* Date To */}
+								<div className="w-full sm:w-48">
+									<input
+										type="date"
+										value={dateTo}
+										onChange={(e) => setDateTo(e.target.value)}
+										className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+										placeholder="To Date"
+									/>
+								</div>
+								
+								{/* Clear Filters */}
+								{(searchTerm || dateFrom || dateTo) && (
+									<button
+										onClick={() => {
+											setSearchTerm('');
+											setDateFrom(new Date().toISOString().split('T')[0]);
+											setDateTo('');
+										}}
+										className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+									>
+										Clear
+									</button>
+								)}
+							</div>
+							
+							{/* Results Count */}
+							<div className="text-sm text-gray-600">
+								Showing {paginatedPlans.length} of {filteredPlans.length} plans
+							</div>
+						</div>
+					</div>
+					
 					<div className="overflow-x-auto">
 						<table className="w-full">
 							<thead className="bg-gray-50 border-b border-gray-200">

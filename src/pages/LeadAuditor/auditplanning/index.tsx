@@ -1,20 +1,28 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { AuditPlan } from '../../../types/auditPlan';
+import type { AuditPlan, AuditPlanDetails } from '../../../types/auditPlan';
 import { getChecklistTemplates } from '../../../api/checklists';
-import { createAudit, addAuditScopeDepartment } from '../../../api/audits';
+import { 
+  createAudit, 
+  addAuditScopeDepartment,
+  getAuditPlanById,
+  getAuditApprovals,
+  approveForwardDirector,
+  declinedPlanContent,
+} from '../../../api/audits';
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { addCriterionToAudit } from '../../../api/auditCriteriaMap';
 import { getAdminUsers } from '../../../api/adminUsers';
-import { addTeamMember } from '../../../api/auditTeam';
+import { addTeamMember, getAuditTeam } from '../../../api/auditTeam';
 import { getDepartments } from '../../../api/departments';
-import { addAuditSchedule } from '../../../api/auditSchedule';
+import { addAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule';
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from '../../../constants/audit';
 import { updateAuditPlan } from '../../../api/audits';
 import { getPlansWithDepartments } from '../../../services/auditPlanning.service';
-import { syncAuditChecklistTemplateMaps } from '../../../api/auditChecklistTemplateMaps';
+import { syncAuditChecklistTemplateMaps, getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
+import { unwrap, normalizePlanDetails } from '../../../utils/normalize';
+import { useUserId } from '../../../store/useAuthStore';
 
 // Import custom hooks
 import { useAuditPlanForm } from '../../../hooks/useAuditPlanForm';
@@ -22,10 +30,12 @@ import { useAuditPlanFilters } from '../../../hooks/useAuditPlanFilters';
 
 // Import helper functions
 import { getStatusColor, getBadgeVariant } from '../../../constants';
+import { getCriterionName, getDepartmentName } from '../../../helpers/auditPlanHelpers';
 
 // Import components
 import { FilterBar } from './components/FilterBar';
 import { PlanTable } from './components/PlanTable';
+import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
 import { toast } from 'react-toastify';
 import { Step1BasicInfo } from './components/PlanForm/Step1BasicInfo';
 import { Step2Scope } from './components/PlanForm/Step2Scope';
@@ -39,19 +49,21 @@ import { PermissionPreviewPanel } from './components/PlanForm/PermissionPreviewP
 // - PendingReview            : waiting Lead review
 // - PendingDirectorApproval  : already forwarded to Director
 // - InProgress               : audit is being executed
+// - Approved                 : approved by Director
 // - Declined                 : rejected by Lead Auditor
 // - Rejected                 : rejected by Director
 const LEAD_AUDITOR_VISIBLE_STATUSES = [
   'pendingreview',
   'pendingdirectorapproval',
   'inprogress',
+  'approved',
   'declined',
   'rejected',
 ];
 
 const LeadAuditorAuditPlanning = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
+  const currentUserId = useUserId();
 
   // Use custom hooks for form state management
   const formState = useAuditPlanForm();
@@ -68,7 +80,13 @@ const LeadAuditorAuditPlanning = () => {
   const [loadingPlans, setLoadingPlans] = useState(false);
   // UI: tabs for plans when more than pageSize
   const [activePlansTab, setActivePlansTab] = useState<number>(1);
-  const pageSize = 7;
+  const pageSize = 10;
+
+  // Details modal state
+  const [selectedPlanDetails, setSelectedPlanDetails] = useState<AuditPlanDetails | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [templatesForSelectedPlan, setTemplatesForSelectedPlan] = useState<any[]>([]);
+  const [auditTeams, setAuditTeams] = useState<any[]>([]);
 
   const visiblePlans = useMemo(() => {
     return existingPlans.filter((plan) => {
@@ -314,23 +332,285 @@ const LeadAuditorAuditPlanning = () => {
   }, []);
 
   // Load audit plans
+  const fetchPlans = async () => {
+    setLoadingPlans(true);
+    try {
+      const merged = await getPlansWithDepartments();
+      setExistingPlans(merged);
+    } catch (error) {
+      setExistingPlans([]);
+    } finally {
+      setLoadingPlans(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchPlans = async () => {
-      setLoadingPlans(true);
-      try {
-        const merged = await getPlansWithDepartments();
-        setExistingPlans(merged);
-      } catch (error) {
-        setExistingPlans([]);
-      } finally {
-        setLoadingPlans(false);
-      }
-    };
     fetchPlans();
   }, []);
 
-  const handleViewDetails = (auditId: string) => {
-    navigate(`/lead-auditor/auditplanning/${auditId}`);
+  // Load audit teams for all plans
+  useEffect(() => {
+    const loadAuditTeams = async () => {
+      try {
+        const teams = await getAuditTeam();
+        const teamsArray = unwrap(teams) || [];
+        setAuditTeams(Array.isArray(teamsArray) ? teamsArray : []);
+      } catch (err) {
+        console.error('Failed to load audit teams', err);
+        setAuditTeams([]);
+      }
+    };
+    loadAuditTeams();
+  }, []);
+
+  const hydrateTemplateSelection = async (
+    auditId: string,
+    fallbackTemplateId?: string | number | null
+  ) => {
+    const normalizedFallback =
+      fallbackTemplateId != null ? [String(fallbackTemplateId)] : [];
+    if (!auditId) {
+      setTemplatesForSelectedPlan([]);
+      return;
+    }
+
+    try {
+      const maps = await getAuditChecklistTemplateMapsByAudit(String(auditId));
+      const normalizedRecords = (maps || [])
+        .map((map: any) => ({
+          raw: map,
+          templateId:
+            map.templateId ??
+            map.checklistTemplateId ??
+            map.template?.templateId ??
+            map.template?.id,
+        }))
+        .filter((x: any) => x.templateId != null);
+
+      if (normalizedRecords.length > 0) {
+        const templateCards = normalizedRecords.map((x: any) => {
+          const tplFromList = checklistTemplates.find(
+            (tpl: any) =>
+              String(tpl.templateId || tpl.id || tpl.$id) === String(x.templateId)
+          );
+          return {
+            templateId: x.templateId,
+            id: x.templateId,
+            $id: x.templateId,
+            name: tplFromList?.title || tplFromList?.name || `Template ${x.templateId}`,
+            title: tplFromList?.title || tplFromList?.name || `Template ${x.templateId}`,
+            version: tplFromList?.version,
+            description: tplFromList?.description,
+            deptId: tplFromList?.deptId,
+          };
+        });
+        setTemplatesForSelectedPlan(templateCards);
+      } else if (normalizedFallback.length > 0) {
+        const fallbackTpl = checklistTemplates.find(
+          (tpl: any) =>
+            String(tpl.templateId || tpl.id || tpl.$id) === normalizedFallback[0]
+        );
+        if (fallbackTpl) {
+          setTemplatesForSelectedPlan([{
+            templateId: normalizedFallback[0],
+            id: normalizedFallback[0],
+            $id: normalizedFallback[0],
+            name: fallbackTpl.title || fallbackTpl.name || `Template ${normalizedFallback[0]}`,
+            title: fallbackTpl.title || fallbackTpl.name || `Template ${normalizedFallback[0]}`,
+            version: fallbackTpl.version,
+            description: fallbackTpl.description,
+            deptId: fallbackTpl.deptId,
+          }]);
+        } else {
+          setTemplatesForSelectedPlan([]);
+        }
+      } else {
+        setTemplatesForSelectedPlan([]);
+      }
+    } catch (err) {
+      console.error('Failed to load template maps', err);
+      setTemplatesForSelectedPlan([]);
+    }
+  };
+
+  // Only show Approve/Reject when any status field (on plan or nested audit) is PendingReview
+  const canReviewPlan = (plan: any) => {
+    if (!plan) return false;
+
+    const normalize = (s: any) =>
+      String(s || '')
+        .toLowerCase()
+        .replace(/\s+/g, '');
+
+    const nested = plan.audit || {};
+
+    const candidates = [
+      plan.status,
+      plan.state,
+      plan.approvalStatus,
+      plan.statusName,
+      nested.status,
+      nested.state,
+      nested.approvalStatus,
+      nested.statusName,
+    ];
+
+    // Match any value that contains "pendingreview"
+    return candidates.some((s) => normalize(s).includes('pendingreview'));
+  };
+
+  const handleViewDetails = async (auditId: string) => {
+    try {
+      const deptList = await ensureDepartmentsLoaded();
+
+      try {
+        const rawDetails = await getAuditPlanById(auditId);
+
+        // Fetch schedules separately if not included in main response
+        let schedulesData = rawDetails?.schedules;
+        if (
+          !schedulesData ||
+          (!schedulesData.values &&
+            !schedulesData.$values &&
+            !Array.isArray(schedulesData))
+        ) {
+          try {
+            const schedulesResponse = await getAuditSchedules(auditId);
+            const schedulesArray = unwrap(schedulesResponse);
+            schedulesData = { values: schedulesArray };
+          } catch (scheduleErr) {
+            schedulesData = { values: [] };
+          }
+        }
+
+        // Merge schedules into rawDetails
+        const detailsWithSchedules = {
+          ...rawDetails,
+          schedules: schedulesData,
+        };
+
+        // Load approvals history only if plan is rejected
+        let latestRejectionComment: string | null = null;
+        const planStatus = String(
+          detailsWithSchedules.status ||
+            detailsWithSchedules.audit?.status ||
+            ""
+        ).toLowerCase();
+        const isRejected = planStatus.includes("rejected");
+        
+        if (isRejected) {
+          latestRejectionComment =
+            detailsWithSchedules.comment ||
+            detailsWithSchedules.note || 
+            detailsWithSchedules.audit?.comment ||
+            detailsWithSchedules.audit?.note ||
+            null;
+          
+          if (!latestRejectionComment) {
+            try {
+              const approvalsResponse = await getAuditApprovals();
+              const approvals = unwrap(approvalsResponse) || [];
+              const currentAuditId = String(
+                detailsWithSchedules.auditId ||
+                  detailsWithSchedules.id ||
+                  auditId
+              )
+                .trim()
+                .toLowerCase();
+              
+              const related = approvals.filter((a: any) => {
+                const approvalAuditId = String(
+                  a.auditId || a.audit?.auditId || a.audit?.id || ""
+                )
+                  .trim()
+                  .toLowerCase();
+                return (
+                  approvalAuditId === currentAuditId && approvalAuditId !== ""
+                );
+              });
+              
+              if (related.length > 0) {
+                const rejected = related
+                  .filter((a: any) => {
+                    const approvalStatus = String(a.status || "").toLowerCase();
+                    return (
+                      approvalStatus.includes("rejected") ||
+                      approvalStatus === "rejected"
+                    );
+                  })
+                  .sort((a: any, b: any) => {
+                    const aTime = new Date(
+                      a.approvedAt || a.createdAt || 0
+                    ).getTime();
+                    const bTime = new Date(
+                      b.approvedAt || b.createdAt || 0
+                    ).getTime();
+                    return bTime - aTime;
+                  });
+                
+                if (rejected.length > 0) {
+                  latestRejectionComment =
+                    rejected[0].comment ||
+                    rejected[0].rejectionComment || 
+                    rejected[0].note || 
+                    rejected[0].reason || 
+                    null;
+                }
+              }
+            } catch (approvalErr) {
+              console.warn('Failed to load approval history', approvalErr);
+            }
+          }
+        }
+
+        // Normalize plan details
+        const allUsers = [...(auditorOptions || []), ...(ownerOptions || [])];
+        const detailsWithRejection = normalizePlanDetails(
+          {
+            ...detailsWithSchedules,
+            latestRejectionComment,
+          },
+          {
+            departments: deptList,
+            criteriaList: criteria,
+            users: allUsers,
+          }
+        );
+
+        setSelectedPlanDetails(detailsWithRejection);
+        await hydrateTemplateSelection(
+          auditId,
+          detailsWithRejection.templateId
+        );
+        setShowDetailsModal(true);
+        return;
+      } catch (apiError) {
+        const planFromTable = existingPlans.find(
+          (p) => p.auditId === auditId || p.id === auditId
+        );
+
+        if (!planFromTable) {
+          toast.error('Plan not found');
+          return;
+        }
+
+        // Fallback: use basic plan data from table
+        const basicDetails: AuditPlanDetails = {
+          ...planFromTable,
+          schedules: { values: [] },
+          auditTeams: { values: [] },
+          scopeDepartments: planFromTable.scopeDepartments || { values: [] },
+        };
+
+        setSelectedPlanDetails(basicDetails);
+        await hydrateTemplateSelection(auditId, basicDetails.templateId);
+        setShowDetailsModal(true);
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to fetch plan details", error);
+      toast.error("Failed to load plan details: " + ((error as any)?.message || "Unknown error"));
+    }
   };
 
 
@@ -880,7 +1160,77 @@ const LeadAuditorAuditPlanning = () => {
           })()}
         </div>
 
-        {/* Findings Modal */}
+        {/* Details Modal */}
+        {showDetailsModal && selectedPlanDetails && (() => {
+          const canReview = canReviewPlan(selectedPlanDetails);
+          return (
+            <PlanDetailsModal
+              showModal={showDetailsModal}
+              selectedPlanDetails={selectedPlanDetails}
+              templatesForPlan={templatesForSelectedPlan}
+              onClose={() => {
+                setShowDetailsModal(false);
+                setSelectedPlanDetails(null);
+                setTemplatesForSelectedPlan([]);
+              }}
+              onRejectPlan={canReview ? async (auditId: string, comment?: string) => {
+                try {
+                  await declinedPlanContent(auditId, { comment: comment || '' });
+                  await fetchPlans();
+                  toast.success('Plan rejected successfully.');
+                  setShowDetailsModal(false);
+                  setSelectedPlanDetails(null);
+                } catch (err: any) {
+                  console.error('Failed to reject plan', err);
+                  toast.error('Failed to reject plan: ' + (err?.response?.data?.message || err?.message || String(err)));
+                }
+              } : undefined}
+              onApprove={canReview ? async (auditId: string, comment?: string) => {
+                try {
+                  await approveForwardDirector(auditId, { comment });
+                  await fetchPlans();
+                  toast.success('Plan approved and forwarded to Director successfully.');
+                  setShowDetailsModal(false);
+                  setSelectedPlanDetails(null);
+                } catch (err: any) {
+                  console.error('Failed to approve plan', err);
+                  toast.error('Failed to approve plan: ' + (err?.response?.data?.message || err?.message || String(err)));
+                }
+              } : undefined}
+              approveButtonText={canReview ? 'Approve & Forward' : undefined}
+            currentUserId={currentUserId}
+            auditTeamsForPlan={(() => {
+              if (!selectedPlanDetails?.auditId && !selectedPlanDetails?.id)
+                return [];
+              const currentAuditId = String(
+                selectedPlanDetails.auditId || selectedPlanDetails.id
+              ).trim();
+              return auditTeams.filter((m: any) => {
+                const teamAuditId = String(m?.auditId || "").trim();
+                return (
+                  teamAuditId === currentAuditId ||
+                  teamAuditId.toLowerCase() === currentAuditId.toLowerCase()
+                );
+              });
+            })()}
+            getCriterionName={(id: string) => getCriterionName(id, criteria)}
+            getDepartmentName={(id: string | number) => {
+              return getDepartmentName(id, departments);
+            }}
+            getStatusColor={getStatusColor}
+            getBadgeVariant={getBadgeVariant}
+            ownerOptions={ownerOptions}
+            auditorOptions={auditorOptions}
+            getTemplateName={(tid) => {
+              const t = checklistTemplates.find(
+                (tpl: any) =>
+                  String(tpl.templateId || tpl.id || tpl.$id) === String(tid)
+              );
+              return t?.title || t?.name || `Template ${String(tid ?? "")}`;
+            }}
+          />
+          );
+        })()}
       </div>
     </MainLayout>
   );

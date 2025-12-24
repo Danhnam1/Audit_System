@@ -55,6 +55,9 @@ export interface Finding {
     type: string;
     scope?: string;
     status?: string;
+    startDate?: string;
+    endDate?: string;
+    [key: string]: any; // Allow additional properties from API
   };
   attachments?: any;
 }

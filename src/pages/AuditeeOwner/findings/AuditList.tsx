@@ -6,6 +6,7 @@ import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getAuditPlanById } from '../../../api/audits';
 import { DataTable } from '../../../components/DataTable';
 import type { TableColumn } from '../../../components/DataTable';
+import { Pagination } from '../../../components';
 
 interface AuditCard {
   auditId: string;
@@ -59,6 +60,15 @@ const AuditeeOwnerAuditList = () => {
   const [audits, setAudits] = useState<AuditCard[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Search and filter states
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState<string>('');
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -282,6 +292,49 @@ const AuditeeOwnerAuditList = () => {
     loadAudits();
   }, []);
 
+  // Apply search and date filters
+  const filteredAudits = audits.filter(audit => {
+    // Search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = 
+        audit.auditTitle?.toLowerCase().includes(searchLower) ||
+        audit.auditType?.toLowerCase().includes(searchLower) ||
+        audit.status?.toLowerCase().includes(searchLower) ||
+        audit.scope?.toLowerCase().includes(searchLower);
+      if (!matchesSearch) return false;
+    }
+    
+    // Date range filter (filter by startDate) - only apply if dates are provided
+    if (dateFrom && audit.startDate) {
+      const auditDate = new Date(audit.startDate);
+      const fromDate = new Date(dateFrom);
+      fromDate.setHours(0, 0, 0, 0);
+      auditDate.setHours(0, 0, 0, 0);
+      if (auditDate < fromDate) return false;
+    }
+    
+    if (dateTo && audit.startDate) {
+      const auditDate = new Date(audit.startDate);
+      const toDate = new Date(dateTo);
+      toDate.setHours(23, 59, 59, 999);
+      if (auditDate > toDate) return false;
+    }
+    
+    return true;
+  });
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredAudits.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedAudits = filteredAudits.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, dateFrom, dateTo]);
+
   const handleAuditClick = (audit: AuditCard) => {
     navigate(`/auditee-owner/findings/audit/${audit.auditId}`, {
       state: { auditId: audit.auditId, auditTitle: audit.auditTitle }
@@ -334,6 +387,70 @@ const AuditeeOwnerAuditList = () => {
         {/* Available Audits - Table View */}
         {!loading && !error && (
           <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+            {/* Search and Filter Bar */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Search Input */}
+                  <div className="flex-1">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Search by title, type, status, or scope..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                      <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  {/* Date From */}
+                  <div className="w-full sm:w-48">
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="From Date"
+                    />
+                  </div>
+                  
+                  {/* Date To */}
+                  <div className="w-full sm:w-48">
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="To Date"
+                    />
+                  </div>
+                  
+                  {/* Clear Filters */}
+                  {(searchTerm || dateFrom || dateTo) && (
+                    <button
+                      onClick={() => {
+                        setSearchTerm('');
+                        setDateFrom(new Date().toISOString().split('T')[0]);
+                        setDateTo('');
+                      }}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                
+                {/* Results Count */}
+                <div className="text-sm text-gray-600">
+                  Showing {paginatedAudits.length} of {filteredAudits.length} audits
+                </div>
+              </div>
+            </div>
+            
             <DataTable
               columns={[
                 {
@@ -457,11 +574,22 @@ const AuditeeOwnerAuditList = () => {
                   ),
                 },
               ] as TableColumn<AuditCard>[]}
-              data={audits}
+              data={paginatedAudits}
               loading={false}
               emptyState="No audits available. Audits will appear here when findings are assigned to your department."
               rowKey={(audit) => audit.auditId}
             />
+            
+            {/* Pagination */}
+            {filteredAudits.length > 0 && totalPages > 1 && (
+              <div className="px-6 py-4 border-t border-gray-200">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

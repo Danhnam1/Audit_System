@@ -83,7 +83,7 @@ export const PRIORITY_COLORS = {
 export const SEVERITY_COLORS = {
   'Critical': 'bg-red-100 text-red-800',
   'Major': 'bg-orange-100 text-orange-800',
-  'Minor': 'bg-yellow-100 text-yellow-800',
+  'Minor': 'bg-green-100 text-green-800',
   'Observation': 'bg-blue-100 text-blue-800',
   'Low': 'bg-green-100 text-green-800',
   'Medium': 'bg-yellow-100 text-yellow-800',

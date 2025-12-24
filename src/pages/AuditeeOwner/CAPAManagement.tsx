@@ -11,6 +11,10 @@ const CAPAManagement = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  
+  // Search and filter states
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [roleFilter, setRoleFilter] = useState<string>('');
 
   // Get user's department ID from token
   const getUserDeptId = (): number | null => {
@@ -60,16 +64,39 @@ const CAPAManagement = () => {
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
+  // Apply filters
+  const filteredUsers = users.filter(userItem => {
+    // Search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = 
+        userItem.fullName?.toLowerCase().includes(searchLower) ||
+        userItem.email?.toLowerCase().includes(searchLower) ||
+        userItem.roleName?.toLowerCase().includes(searchLower);
+      if (!matchesSearch) return false;
+    }
+    
+    // Role filter
+    if (roleFilter && userItem.roleName !== roleFilter) {
+      return false;
+    }
+    
+    return true;
+  });
+
+  // Get unique roles for filter dropdown
+  const uniqueRoles = Array.from(new Set(users.map(u => u.roleName).filter(Boolean)));
+
   // Pagination calculations
-  const totalPages = Math.ceil(users.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedUsers = users.slice(startIndex, endIndex);
+  const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
 
-  // Reset to page 1 when users change
+  // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [users.length]);
+  }, [searchTerm, roleFilter]);
 
   return (
     <MainLayout user={layoutUser}>
@@ -103,6 +130,63 @@ const CAPAManagement = () => {
           </div>
         ) : (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            {/* Search and Filter Bar */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Search Input */}
+                  <div className="flex-1">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="Search by name, email, or role..."
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                      <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  {/* Role Filter */}
+                  <div className="w-full sm:w-48">
+                    <select
+                      value={roleFilter}
+                      onChange={(e) => setRoleFilter(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    >
+                      <option value="">All Roles</option>
+                      {uniqueRoles.map((role) => (
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* Clear Filters */}
+                  {(searchTerm || roleFilter) && (
+                    <button
+                      onClick={() => {
+                        setSearchTerm('');
+                        setRoleFilter('');
+                      }}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                
+                {/* Results Count */}
+                <div className="text-sm text-gray-600">
+                  Showing {paginatedUsers.length} of {filteredUsers.length} users
+                </div>
+              </div>
+            </div>
+            
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">

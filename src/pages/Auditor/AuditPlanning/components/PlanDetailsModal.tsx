@@ -33,6 +33,8 @@ interface PlanDetailsModalProps {
   onRequestRevision?: (auditId: string, comment?: string) => Promise<void>;
   // Optional callback for Director approval
   onApprove?: (auditId: string, comment?: string) => Promise<void>;
+  // Optional custom text for approve button
+  approveButtonText?: string;
   // kept for interface backward-compatibility (no longer used)
   getCriterionName: (criterionId: string) => string;
   getDepartmentName: (deptId: string | number) => string;
@@ -60,6 +62,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   onRejectPlan,
   onRequestRevision,
   onApprove,
+  approveButtonText = 'Approve',
   getCriterionName: _getCriterionName,
   getDepartmentName,
   getStatusColor,
@@ -501,7 +504,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         <div className="sticky top-0 bg-gradient-to-r from-primary-600 via-primary-700 to-primary-800 px-8 py-6  shadow-lg">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              
               <div>
                 <h3 className="text-2xl font-bold text-white">Audit Plan Details</h3>
                 
@@ -1052,7 +1054,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 }}
                 className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
               >
-                Approve
+                {approveButtonText}
               </button>
             )}
 

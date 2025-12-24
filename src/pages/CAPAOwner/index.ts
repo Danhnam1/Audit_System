@@ -6,4 +6,3 @@ export { default as DepartmentStaffUploadEvidence } from './UploadEvidence';
 export { default as DepartmentStaffTodoList } from './TodoList';
 export { default as DepartmentStaffFindingsProgress } from './FindingsProgress';
 export { default as DepartmentStaffCheckDeadlines } from './CheckDeadlines';
-export { default as CAPAOwnerMyWitnessed } from './MyWitnessed';

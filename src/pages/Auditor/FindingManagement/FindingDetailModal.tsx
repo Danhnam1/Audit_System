@@ -30,8 +30,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const [rootCauses, setRootCauses] = useState<any[]>([]);
   const [rootCauseName, setRootCauseName] = useState<string>('');
   const [rootCauseDescription, setRootCauseDescription] = useState<string>('');
-  const [rootCauseCategory, setRootCauseCategory] = useState<string>('Finding');
-  const [customCategory, setCustomCategory] = useState<string>('');
+  // Category removed - no longer needed
   const [isEditingRootCause, setIsEditingRootCause] = useState(false);
   const [isSavingRootCause, setIsSavingRootCause] = useState(false);
   const [editingRootCauseId, setEditingRootCauseId] = useState<number | null>(null);
@@ -224,20 +223,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       return;
     }
 
-    // Validate category
-    if (!rootCauseCategory.trim()) {
-      showToast('Please select a category', 'error');
-      return;
-    }
-    
-    // If "Other" is selected, validate custom category
-    if (rootCauseCategory === 'Other' && !customCategory.trim()) {
-      showToast('Please enter a custom category name', 'error');
-      return;
-    }
-    
-    // Determine final category value
-    const finalCategory = rootCauseCategory === 'Other' ? customCategory.trim() : rootCauseCategory.trim();
+    // Category removed - use default value
+    const finalCategory = 'Finding';
 
     // Check for duplicate root cause name (case-insensitive)
     const trimmedName = rootCauseName.trim();
@@ -292,8 +279,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       
       setRootCauseName('');
       setRootCauseDescription('');
-      setRootCauseCategory('Finding');
-      setCustomCategory('');
       setEditingReasonReject('');
       setIsEditingRootCause(false);
       
@@ -400,18 +385,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     setRootCauseDescription(rc.description || '');
     
     // Check if category is in the predefined list
-    const predefinedCategories = ['Finding', 'Process', 'Human Error', 'Training', 'Documentation'];
-    const category = rc.category || 'Finding';
-    
-    if (predefinedCategories.includes(category)) {
-      setRootCauseCategory(category);
-      setCustomCategory('');
-    } else {
-      // Custom category - set to "Other" and populate custom field
-      setRootCauseCategory('Other');
-      setCustomCategory(category);
-    }
-    
     setEditingReasonReject(rc.reasonReject || '');
     setIsEditingRootCause(true);
   };
@@ -878,39 +851,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                           />
                         </div>
 
-                        {/* Root Cause Category Input */}
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">Category *</label>
-                          <select
-                            value={rootCauseCategory}
-                            onChange={(e) => {
-                              setRootCauseCategory(e.target.value);
-                              if (e.target.value !== 'Other') {
-                                setCustomCategory('');
-                              }
-                            }}
-                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
-                          >
-                            <option value="Finding">Finding</option>
-                            <option value="Process">Process</option>
-                            <option value="Human Error">Human Error</option>
-                            <option value="Training">Training</option>
-                            <option value="Documentation">Documentation</option>     
-                            <option value="Other">Other</option>     
-                          </select>
-                          {rootCauseCategory === 'Other' && (
-                            <div className="mt-3">
-                             
-                              <input
-                                type="text"
-                                value={customCategory}
-                                onChange={(e) => setCustomCategory(e.target.value)}
-                                placeholder="Enter category "
-                                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
-                              />
-                            </div>
-                          )}
-                        </div>
 
                         {/* Root Cause Description Input */}
                         <div>
@@ -1037,11 +977,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                             </svg>
                                             Approved
                                           </span>
-                                          {rc.reviewBy && (
-                                            <span className="text-[10px] text-green-600 font-medium">
-                                              by {rc.reviewBy}
-                                            </span>
-                                          )}
+                                         
                                         </div>
                                       )}
                                     </div>
@@ -1171,14 +1107,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   );
                                 })()}
                                 
-                                <div className="flex items-center justify-between gap-4 mt-3 pl-10">
-                                  <span className="flex items-center gap-1 text-xs text-gray-500">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                                    </svg>
-                                    {rc.category}
-                                  </span>
-                                  
+                                <div className="flex items-center justify-end gap-4 mt-3 pl-10">
                                   {/* Action Buttons */}
                                   <div className="flex items-center gap-2">
                                     {/* Draft Actions - Edit and Delete */}

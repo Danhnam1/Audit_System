@@ -1525,9 +1525,7 @@ const DepartmentChecklist = () => {
                                 return null;
                               })()}
                             </div>
-                            <p className="text-xs sm:text-sm text-gray-500 line-clamp-2">
-                              {finding.description || 'No description'}
-                            </p>
+                          
 
                             <div className="flex items-center gap-6 mt-2">
                               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
@@ -1650,7 +1648,6 @@ const DepartmentChecklist = () => {
                             {action.status || 'N/A'}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 mb-3 line-clamp-2">{action.description || 'No description provided'}</p>
                         <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
                           <div className="flex items-center gap-1">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
