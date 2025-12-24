@@ -11,7 +11,7 @@ import apiClient from '../../../api/client';
 import { Pagination } from '../../../components';
 import AuditeeActionReviewModal from './AuditeeActionReviewModal';
 import { toast } from 'react-toastify';
-import { getStatusColor } from '../../../constants';
+import { getStatusColor, getSeverityColor } from '../../../constants';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
@@ -40,6 +40,9 @@ const FindingsProgress = () => {
   const [loadingFindingActions, setLoadingFindingActions] = useState(false);
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
   const itemsPerPage = 10;
   const [assignedUsersMap, setAssignedUsersMap] = useState<Record<string, string>>({}); // findingId -> assignedUserName
   const [returnedActionsMap, setReturnedActionsMap] = useState<Record<string, Action>>({}); // findingId -> returned action
@@ -434,6 +437,33 @@ const FindingsProgress = () => {
       );
     }
 
+    // Apply status filter
+    if (statusFilter) {
+      filtered = filtered.filter(finding => finding.status === statusFilter);
+    }
+
+    // Apply date filter (filter by deadline)
+    if (dateFrom && dateFrom.trim()) {
+      filtered = filtered.filter(finding => {
+        if (!finding.deadline) return false;
+        const findingDate = new Date(finding.deadline);
+        const fromDate = new Date(dateFrom);
+        fromDate.setHours(0, 0, 0, 0);
+        findingDate.setHours(0, 0, 0, 0);
+        return findingDate >= fromDate;
+      });
+    }
+
+    if (dateTo && dateTo.trim()) {
+      filtered = filtered.filter(finding => {
+        if (!finding.deadline) return false;
+        const findingDate = new Date(finding.deadline);
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        return findingDate <= toDate;
+      });
+    }
+
     return filtered;
   };
 
@@ -686,7 +716,7 @@ const FindingsProgress = () => {
   // Reset to page 1 when findings or search query change
   useEffect(() => {
     setCurrentPage(1);
-  }, [findings.length, searchQuery]);
+  }, [findings.length, searchQuery, dateFrom, dateTo, statusFilter]);
 
   return (
     <MainLayout user={layoutUser}>
@@ -738,45 +768,110 @@ const FindingsProgress = () => {
           <>
             {/* Findings Table */}
             <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-              {/* Header with Search */}
+              {/* Header with Search and Filters */}
               <div className="border-b border-gray-200 bg-gray-50">
-                <div className="px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
-                  <h2 className="text-lg font-semibold text-gray-900">
-                    Findings List ({filteredFindings.length})
-                  </h2>
-                  <div className="flex-1 max-w-md">
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-primary-500 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="Search findings..."
-                        value={searchQuery}
-                        onChange={(e) => {
-                          setSearchQuery(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        className="block w-full pl-10 pr-10 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 text-sm shadow-sm hover:border-gray-400"
-                      />
-                      {searchQuery && (
-                        <button
-                          onClick={() => {
-                            setSearchQuery('');
+                <div className="px-4 sm:px-6 py-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      Findings List ({filteredFindings.length})
+                    </h2>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    {/* Search Input */}
+                    <div className="flex-1">
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <svg className="h-5 w-5 text-primary-500 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Search findings..."
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
                             setCurrentPage(1);
                           }}
-                          className="absolute inset-y-0 right-0 pr-3 flex items-center group"
-                        >
-                          <div className="p-1 rounded-full bg-gray-100 group-hover:bg-red-100 transition-colors duration-200">
-                            <svg className="h-4 w-4 text-gray-500 group-hover:text-red-600 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </div>
-                        </button>
-                      )}
+                          className="block w-full pl-10 pr-10 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 text-sm shadow-sm hover:border-gray-400"
+                        />
+                        {searchQuery && (
+                          <button
+                            onClick={() => {
+                              setSearchQuery('');
+                              setCurrentPage(1);
+                            }}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center group"
+                          >
+                            <div className="p-1 rounded-full bg-gray-100 group-hover:bg-red-100 transition-colors duration-200">
+                              <svg className="h-4 w-4 text-gray-500 group-hover:text-red-600 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </div>
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    
+                    {/* Status Filter */}
+                    <div className="w-full sm:w-40">
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => {
+                          setStatusFilter(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="block w-full px-3 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                      >
+                        <option value="">All Status</option>
+                        <option value="Open">Open</option>
+                        <option value="Received">Received</option>
+                        <option value="Closed">Closed</option>
+                        <option value="Return">Return</option>
+                      </select>
+                    </div>
+                    
+                    {/* Date From */}
+                    <div className="w-full sm:w-48">
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => {
+                          setDateFrom(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="block w-full px-3 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                      />
+                    </div>
+                    
+                    {/* Date To */}
+                    <div className="w-full sm:w-48">
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => {
+                          setDateTo(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="block w-full px-3 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                      />
+                    </div>
+                    
+                    {/* Clear Filters */}
+                    {(searchQuery || dateFrom || dateTo || statusFilter) && (
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setDateFrom(new Date().toISOString().split('T')[0]);
+                          setDateTo('');
+                          setStatusFilter('');
+                          setCurrentPage(1);
+                        }}
+                        className="px-4 py-2 text-gray-600 hover:text-gray-800 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap text-sm"
+                      >
+                        Clear
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -900,7 +995,7 @@ const FindingsProgress = () => {
                             </div>
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(finding.severity)}`}>
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(finding.severity || '')}`}>
                               {finding.severity || 'N/A'}
                             </span>
                           </td>
@@ -1264,8 +1359,7 @@ const FindingsProgress = () => {
                                         onClick={() => {
                                           setSelectedDescription({
                                             name: rootCause.name,
-                                            description: rootCause.description || 'No description available',
-                                            category: rootCause.category
+                                            description: rootCause.description || 'No description available'
                                           });
                                           setShowDescriptionModal(true);
                                         }}
@@ -1346,16 +1440,12 @@ const FindingsProgress = () => {
                 {/* Body */}
                 <div className="p-6 space-y-4">
                   {/* Root Cause Info */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-gray-700 uppercase mb-1">Category</p>
-                    <p className="text-sm text-gray-900">{selectedRootCause.category}</p>
-                    {selectedRootCause.description && (
-                      <>
-                        <p className="text-xs font-semibold text-gray-700 uppercase mt-2 mb-1">Description</p>
-                        <p className="text-sm text-gray-900">{selectedRootCause.description}</p>
-                      </>
-                    )}
-                  </div>
+                  {selectedRootCause.description && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-gray-700 uppercase mb-1">Description</p>
+                      <p className="text-sm text-gray-900">{selectedRootCause.description}</p>
+                    </div>
+                  )}
 
                   {/* CAPA Owner Selection */}
 
@@ -1829,15 +1919,6 @@ const FindingsProgress = () => {
 
                 {/* Body */}
                 <div className="p-6 space-y-4">
-                  {/* Category Badge */}
-                  {selectedDescription.category && (
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Category</label>
-                      <span className="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-100 text-purple-700 border border-purple-200">
-                        {selectedDescription.category}
-                      </span>
-                    </div>
-                  )}
 
                   {/* Description */}
                   <div>

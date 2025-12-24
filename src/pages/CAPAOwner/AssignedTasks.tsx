@@ -6,6 +6,7 @@ import { getFindingById } from '../../api/findings';
 import FindingDetailModal from '../Auditor/FindingManagement/FindingDetailModal';
 import CAPAOwnerActionDetailModal from './CAPAOwnerActionDetailModal';
 import StartActionModal from './StartActionModal';
+import { Pagination } from '../../components/Pagination';
 
 interface Task {
   actionId: string;
@@ -42,14 +43,14 @@ const AssignedTasks = () => {
   const [selectedReviewFeedback, setSelectedReviewFeedback] = useState<string | null>(null);
   const [expandedFindings, setExpandedFindings] = useState<Set<string>>(new Set());
   
-  // Search and filter states
-  const tomorrow = new Date();
-tomorrow.setDate(tomorrow.getDate() + 1);
-const defaultDate = tomorrow.toISOString().split('T')[0];
-
+  // Search and filter states - default dateFrom to today
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [dateTo, setDateTo] = useState<string>(defaultDate);
+  const [dateTo, setDateTo] = useState<string>('');
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -235,7 +236,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
       if (!matchesSearch) return false;
     }
     
-    // Date range filter (filter by dueDate)
+    // Date range filter (filter by dueDate) - only apply if dates are provided
     if (dateFrom && task.dueDate) {
       const taskDate = new Date(task.dueDate);
       const fromDate = new Date(dateFrom);
@@ -269,6 +270,16 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
     return priorityA - priorityB;
   });
 
+  // Calculate pagination
+  const totalPages = Math.ceil(sortedTasks.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedTasks = sortedTasks.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, dateFrom, dateTo, activeTab]);
 
   const getProgressColor = (percent: number) => {
     if (percent === 0) return 'bg-gray-300';
@@ -490,7 +501,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                         type="text"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Search by title, description, or ID..."
+                        placeholder="Search by title"
                         className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       />
                       <svg className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -538,7 +549,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                 
                 {/* Results Count */}
                 <div className="text-sm text-gray-600">
-                  Showing {sortedTasks.length} of {filteredTasksByTab.length} tasks
+                  Showing {paginatedTasks.length} of {sortedTasks.length} tasks (Total: {filteredTasksByTab.length})
                 </div>
               </div>
 
@@ -560,14 +571,14 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
               {/* Tasks Grouped by Finding */}
               {!loading && !error && (
                 <div className="space-y-4">
-                  {sortedTasks.length === 0 ? (
+                  {paginatedTasks.length === 0 ? (
                     <div className="p-6 sm:p-8 text-center">
                       <p className="text-gray-500 text-sm sm:text-base">No tasks found</p>
                     </div>
                   ) : (() => {
-                    // Group tasks by findingId
+                    // Group paginated tasks by findingId
                     const findingGroups = new Map<string, Task[]>();
-                    sortedTasks.forEach(task => {
+                    paginatedTasks.forEach(task => {
                       if (!findingGroups.has(task.findingId)) {
                         findingGroups.set(task.findingId, []);
                       }
@@ -579,6 +590,10 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                       const firstTask = tasks[0];
                       // Extract finding title from task title (remove user-specific suffix after ' - ')
                       const findingTitle = firstTask.title.split(' - ')[0];
+                      
+                      // Count completed tasks
+                      const completedCount = tasks.filter(task => task.progressPercent === 100).length;
+                      const totalCount = tasks.length;
                       
                       return (
                         <div key={findingId} className="border border-gray-200 rounded-lg overflow-hidden">
@@ -598,9 +613,17 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                 </svg>
                                 <div className="flex-1">
-                                  <h3 className="text-sm font-semibold text-gray-900">{findingTitle}</h3>
+                                  <div className="flex items-center gap-2">
+                                    <h3 className="text-sm font-semibold text-gray-900">{findingTitle}</h3>
+                                    {completedCount > 0 && (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        {completedCount}/{totalCount} Completed
+                                      </span>
+                                    )}
+                                  </div>
                                   <p className="text-xs text-gray-500 mt-0.5">
-                                    {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} assigned                        </p>
+                                    {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} assigned
+                                  </p>
                                 </div>
                               </div>
                             </div>
@@ -720,6 +743,17 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                       );
                     });
                   })()}
+                </div>
+              )}
+
+              {/* Pagination */}
+              {sortedTasks.length > 0 && totalPages > 1 && (
+                <div className="mt-6 pt-4 border-t border-gray-200">
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                  />
                 </div>
               )}
             </div>

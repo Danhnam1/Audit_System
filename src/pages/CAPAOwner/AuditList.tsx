@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { getMyAssignedActions } from '../../api/actions';
 import { getFindingById } from '../../api/findings';
 import { getAuditPlanById } from '../../api/audits';
+import { Pagination } from '../../components/Pagination';
 
 interface AuditCard {
   auditId: string;
@@ -51,13 +52,14 @@ const CAPAOwnerAuditList = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // Search and filter states
-  const tomorrow = new Date();
-tomorrow.setDate(tomorrow.getDate() + 1);
-const defaultDate = tomorrow.toISOString().split('T')[0];
+  // Search and filter states - default dateFrom to today
   const [searchTerm, setSearchTerm] = useState<string>('');
- const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [dateTo, setDateTo] = useState<string>(defaultDate);
+  const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState<string>('');
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   useEffect(() => {
     const loadAudits = async () => {
@@ -243,7 +245,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
       if (!matchesSearch) return false;
     }
     
-    // Date range filter (filter by startDate)
+    // Date range filter (filter by startDate) - only apply if dates are provided
     if (dateFrom && audit.startDate) {
       const auditDate = new Date(audit.startDate);
       const fromDate = new Date(dateFrom);
@@ -261,6 +263,17 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
     
     return true;
   });
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredAudits.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedAudits = filteredAudits.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, dateFrom, dateTo]);
 
   const handleAuditClick = (audit: AuditCard) => {
     navigate(`/capa-owner/tasks/audit/${audit.auditId}`, {
@@ -426,7 +439,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredAudits.map((audit) => (
+                    {paginatedAudits.map((audit) => (
                       <tr key={audit.auditId} className="hover:bg-gray-50 transition-colors">
                         {/* Audit Title */}
                         <td className="px-6 py-4">
@@ -483,6 +496,17 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                 </table>
               )}
             </div>
+
+            {/* Pagination */}
+            {filteredAudits.length > 0 && totalPages > 1 && (
+              <div className="px-6 py-4 border-t border-gray-200">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -20,6 +20,7 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
   const [witnessName, setWitnessName] = useState<string>('');
   const [departmentName, setDepartmentName] = useState<string>('');
   const [createdByName, setCreatedByName] = useState<string>('');
+  const [descriptionHeight, setDescriptionHeight] = useState<number>(120);
 
   useEffect(() => {
     if (isOpen && findingId) {
@@ -27,6 +28,22 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
       loadAttachments();
     }
   }, [isOpen, findingId]);
+
+  // Auto-adjust textarea height based on content
+  useEffect(() => {
+    if (finding?.description) {
+      const textarea = document.getElementById('finding-description-textarea');
+      if (textarea) {
+        // Reset height to calculate scrollHeight
+        textarea.style.height = 'auto';
+        const scrollHeight = textarea.scrollHeight;
+        // Set height with min and max constraints
+        const newHeight = Math.min(Math.max(scrollHeight, 120), 300);
+        setDescriptionHeight(newHeight);
+        textarea.style.height = `${newHeight}px`;
+      }
+    }
+  }, [finding?.description]);
 
   const loadFinding = async () => {
     setLoading(true);
@@ -98,9 +115,9 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black bg-opacity-50">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -117,8 +134,8 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
           </button>
         </div>
 
-        {/* Body */}
-        <div className="overflow-y-auto max-h-[calc(90vh-80px)] p-6">
+        {/* Body - scrollable */}
+        <div className="overflow-y-auto flex-1 p-6">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -147,7 +164,26 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
                       </span>
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 mb-2">{finding.title}</h3>
-                    <p className="text-gray-700 whitespace-pre-wrap">{finding.description}</p>
+                    <div className="mt-3">
+                      <label className="text-sm font-medium text-gray-500 mb-2 block">Description</label>
+                      <div className="border border-gray-300 rounded-lg bg-gray-50 overflow-hidden">
+                        <textarea
+                          id="finding-description-textarea"
+                          readOnly
+                          value={finding.description || ''}
+                          className="w-full p-3 bg-transparent text-gray-700 resize-none focus:outline-none border-0"
+                          style={{ 
+                            minHeight: '120px', 
+                            maxHeight: '300px', 
+                            overflowY: 'auto',
+                            overflowX: 'hidden',
+                            display: 'block',
+                            width: '100%',
+                            height: `${descriptionHeight}px`
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -243,8 +279,8 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
           ) : null}
         </div>
 
-        {/* Footer */}
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end">
+        {/* Footer - always visible */}
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end flex-shrink-0">
           <button
             onClick={onClose}
             className="px-6 py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"

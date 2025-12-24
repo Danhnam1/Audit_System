@@ -43,7 +43,7 @@ const AuditExecutionDetail = () => {
     name: '',
     description: '',
     status: 'Active',
-    category: 'Root Cause',
+    category: 'Finding',
   });
   const [loadingRootCauses, setLoadingRootCauses] = useState(false);
 
@@ -738,33 +738,18 @@ const AuditExecutionDetail = () => {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Category <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={newRootCauseForm.category}
-                      onChange={(e) => setNewRootCauseForm(prev => ({ ...prev, category: e.target.value }))}
-                      className="w-full border-2 border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="Root Cause"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                      Status <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={newRootCauseForm.status}
-                      onChange={(e) => setNewRootCauseForm(prev => ({ ...prev, status: e.target.value }))}
-                      className="w-full border-2 border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Status <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={newRootCauseForm.status}
+                    onChange={(e) => setNewRootCauseForm(prev => ({ ...prev, status: e.target.value }))}
+                    className="w-full border-2 border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
                 </div>
 
                 <div className="flex gap-3 pt-2">
