@@ -34,6 +34,8 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Enable sending cookies with requests (required for HttpOnly cookies)
+  withCredentials: true,
 });
 
 // Request interceptor

@@ -266,7 +266,8 @@ const AuditorSchedule = () => {
       }
 
       // Add actual audit date (orange)
-      if (assignment.actualAuditDate) {
+      // Only add if assignment has actualAuditDate AND status is NOT Rejected
+      if (assignment.actualAuditDate && assignment.status?.toLowerCase() !== 'rejected') {
         // Parse date from API - use UTC components to avoid timezone conversion issues
         const dateFromAPI = new Date(assignment.actualAuditDate);
         // Extract date part only (YYYY-MM-DD) from ISO string if available, otherwise use UTC components
