@@ -39,7 +39,9 @@ const HistoryUploadPage = () => {
   const [loadingAudits, setLoadingAudits] = useState(false);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [documentsMap, setDocumentsMap] = useState<Record<string, AuditDocRow[]>>({});
-  const [expandedAudit, setExpandedAudit] = useState<string>('');
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedAuditId, setSelectedAuditId] = useState<string>('');
+  const [selectedAuditTitle, setSelectedAuditTitle] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [userMap, setUserMap] = useState<Record<string, string>>({});
   const [docsLoaded, setDocsLoaded] = useState(false);
@@ -412,16 +414,18 @@ const HistoryUploadPage = () => {
     return auditRows.filter((row) => (documentsMap[row.auditId]?.length || 0) > 0);
   }, [auditRows, documentsMap, docsLoaded]);
 
-  const toggleExpand = (auditId: string) => {
-    setExpandedAudit(prev => prev === auditId ? '' : auditId);
+  const handleViewDetails = (auditId: string, auditTitle: string) => {
+    setSelectedAuditId(auditId);
+    setSelectedAuditTitle(auditTitle);
+    setShowDetailModal(true);
   };
 
-  useEffect(() => {
-    if (!docsLoaded || !expandedAudit) return;
-    if ((documentsMap[expandedAudit]?.length || 0) === 0) {
-      setExpandedAudit('');
-    }
-  }, [docsLoaded, documentsMap, expandedAudit]);
+  const handleCloseModal = () => {
+    setShowDetailModal(false);
+    setSelectedAuditId('');
+    setSelectedAuditTitle('');
+  };
+
 
   const handleDownload = async (doc: AuditDocRow) => {
     if (!doc || !doc.id) return;
@@ -466,7 +470,7 @@ const HistoryUploadPage = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Uploads</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Number of files</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -486,9 +490,9 @@ const HistoryUploadPage = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <button
-                          onClick={() => toggleExpand(r.auditId)}
+                          onClick={() => handleViewDetails(r.auditId, r.title)}
                           className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-                        >{expandedAudit === r.auditId ? 'Hide' : 'View'} Details</button>
+                        >View Details</button>
                       </td>
                     </tr>
                   );
@@ -506,63 +510,108 @@ const HistoryUploadPage = () => {
             </table>
           </div>
 
-          {expandedAudit && (
-            <div className="border-t border-primary-100">
-              <div className="px-6 py-3 flex items-center justify-between bg-gray-50">
-            
-                {loadingDocs && <span className="text-xs text-gray-500">Loading history...</span>}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-gray-700">Document Type</th>
-                      <th className="px-4 py-2 text-left text-gray-700">Content Type</th>
-                      <th className="px-4 py-2 text-left text-gray-700">Uploaded By</th>
-                      <th className="px-4 py-2 text-left text-gray-700">Uploaded At</th>
-                      <th className="px-4 py-2 text-left text-gray-700">Size</th>
-                      <th className="px-4 py-2 text-left text-gray-700">Link</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {(documentsMap[expandedAudit] || []).map(doc => {
-                      const dateStr = doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleString() : '—';
-                      const sizeKB = doc.sizeBytes ? Math.round(doc.sizeBytes / 1024) : 0;
-                      return (
-                        <tr key={doc.id} className="hover:bg-white">
-                          <td className="px-4 py-2">{doc.documentType}</td>
-                          <td className="px-4 py-2">{doc.contentType}</td>
-                          <td className="px-4 py-2">{doc.uploadedBy}</td>
-                          <td className="px-4 py-2">{dateStr}</td>
-                          <td className="px-4 py-2">{sizeKB ? `${sizeKB} KB` : '—'}</td>
-                          <td className="px-4 py-2">
-                            {doc.url ? (
-                              <a
-                                href={doc.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary-600 hover:text-primary-700"
-                              >View</a>
-                            ) : (
-                              <button
-                                onClick={() => handleDownload(doc)}
-                                className="text-primary-600 hover:text-primary-700"
-                              >View</button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {(!documentsMap[expandedAudit] || documentsMap[expandedAudit].length === 0) && !loadingDocs && (
-                      <tr><td colSpan={6} className="px-4 py-3 text-center text-gray-500">No documents have been uploaded yet.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </div>
       </div>
+
+      {/* Detail Modal */}
+      {showDetailModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+          <div className="flex items-center justify-center min-h-screen px-4 py-8">
+            {/* Background overlay */}
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={handleCloseModal}></div>
+
+            {/* Modal panel */}
+            <div className="relative bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-5xl max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="bg-primary-600 px-6 py-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white" id="modal-title">
+                  Upload History - {selectedAuditTitle}
+                </h3>
+                <button
+                  onClick={handleCloseModal}
+                  className="text-white hover:text-gray-200 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="bg-white px-6 py-4 overflow-y-auto flex-1">
+                {loadingDocs && (
+                  <div className="text-center py-8">
+                    <span className="text-sm text-gray-500">Loading history...</span>
+                  </div>
+                )}
+                {!loadingDocs && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-100">
+                        <tr>
+                          <th className="px-4 py-2 text-left text-gray-700 font-semibold">Document Type</th>
+                          <th className="px-4 py-2 text-left text-gray-700 font-semibold">Content Type</th>
+                          <th className="px-4 py-2 text-left text-gray-700 font-semibold">Uploaded By</th>
+                          <th className="px-4 py-2 text-left text-gray-700 font-semibold">Uploaded At</th>
+                          <th className="px-4 py-2 text-left text-gray-700 font-semibold">Size</th>
+                          <th className="px-4 py-2 text-left text-gray-700 font-semibold">Link</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {(documentsMap[selectedAuditId] || []).map(doc => {
+                          const dateStr = doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleString() : '—';
+                          const sizeKB = doc.sizeBytes ? Math.round(doc.sizeBytes / 1024) : 0;
+                          return (
+                            <tr key={doc.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-2">{doc.documentType}</td>
+                              <td className="px-4 py-2">{doc.contentType}</td>
+                              <td className="px-4 py-2">{doc.uploadedBy}</td>
+                              <td className="px-4 py-2">{dateStr}</td>
+                              <td className="px-4 py-2">{sizeKB ? `${sizeKB} KB` : '—'}</td>
+                              <td className="px-4 py-2">
+                                {doc.url ? (
+                                  <a
+                                    href={doc.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary-600 hover:text-primary-700 font-medium"
+                                  >View</a>
+                                ) : (
+                                  <button
+                                    onClick={() => handleDownload(doc)}
+                                    className="text-primary-600 hover:text-primary-700 font-medium"
+                                  >View</button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {(!documentsMap[selectedAuditId] || documentsMap[selectedAuditId].length === 0) && !loadingDocs && (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                              No documents have been uploaded yet.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-50 px-6 py-4 flex justify-end">
+                <button
+                  onClick={handleCloseModal}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 };

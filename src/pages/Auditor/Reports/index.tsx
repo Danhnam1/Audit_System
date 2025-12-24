@@ -94,12 +94,8 @@ const SQAStaffReports = () => {
           ? String(m?.month || m?.label || `Month ${idx + 1}`)
           : new Date(2000, mNum - 1, 1).toLocaleString('vi-VN', { month: 'long' });
       
-      // Filter out findings with status "Closed" from items
+      // Hiển thị TẤT CẢ findings (bao gồm cả Closed) để tổng số và chi tiết luôn khớp
       const allFindings = unwrap(m?.findings) || [];
-      const filteredFindings = allFindings.filter((f: any) => {
-        const status = String(f?.status || '').toLowerCase().trim();
-        return status !== 'closed';
-      });
       
       return {
         key: `${mNum || idx}`,
@@ -108,7 +104,7 @@ const SQAStaffReports = () => {
         total: Number(m?.total ?? 0),
         open: Number(m?.open ?? 0),
         overdue: Number(m?.overdue ?? 0),
-        items: filteredFindings, // Only include non-Closed findings
+        items: allFindings,
       };
     });
   }, [summary]);
