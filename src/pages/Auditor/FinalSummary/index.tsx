@@ -5,12 +5,11 @@ import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsAct
 import { getDepartments } from "../../../api/departments";
 import { getAuditTeam } from "../../../api/auditTeam";
 import { getAdminUsers } from "../../../api/adminUsers";
-import { submitFinalReport, getReportRequestByAuditId } from "../../../api/reportRequest";
+import { submitFinalReport } from "../../../api/reportRequest";
 import { getAuditCriteria } from "../../../api/auditCriteria";
 import { getChecklistTemplates } from "../../../api/checklists";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
-import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 
 type FullDetailResponse = {
@@ -38,7 +37,6 @@ type FullDetailResponse = {
 export default function AuditorFinalSummaryPage() {
   const { user } = useAuth();
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
-  const navigate = useNavigate();
 
   const [audits, setAudits] = useState<Array<{ auditId: string; title: string }>>([]);
   const [selectedAuditId, setSelectedAuditId] = useState<string>("");
@@ -64,8 +62,7 @@ export default function AuditorFinalSummaryPage() {
   // State to track expanded images (Set of attachmentId/docId)
   const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
   
-  // State for report request
-  const [reportRequest, setReportRequest] = useState<{ status?: string; reportRequestId?: string; note?: string } | null>(null);
+  // Don't track reportRequest state - allow multiple submissions
   const [loadingReportRequest, setLoadingReportRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
@@ -185,7 +182,6 @@ export default function AuditorFinalSummaryPage() {
       setDetail(null);
       setSummaryData(null);
       setFindingsActionsSummary(null);
-      setReportRequest(null);
       return;
     }
 
@@ -224,29 +220,11 @@ export default function AuditorFinalSummaryPage() {
       }
     };
 
-    const loadReportRequest = async () => {
-      setLoadingReportRequest(true);
-      try {
-        const rr = await getReportRequestByAuditId(selectedAuditId);
-        if (rr) {
-          setReportRequest({
-            status: rr.status,
-            reportRequestId: rr.reportRequestId,
-            note: rr.note,
-          });
-        } else {
-          setReportRequest(null);
-        }
-      } catch (error) {
-        console.error('Failed to load report request:', error);
-        setReportRequest(null);
-      } finally {
-        setLoadingReportRequest(false);
-      }
-    };
+    // Don't load reportRequest - allow user to submit multiple times
+    // Each submit creates a new report request, so we don't need to track the state
+    setLoadingReportRequest(false);
 
     loadAllData();
-    loadReportRequest();
   }, [selectedAuditId]);
 
   const audit = detail?.audit ?? {};
@@ -606,23 +584,13 @@ export default function AuditorFinalSummaryPage() {
 
     setSubmitting(true);
     try {
-      await submitFinalReport(selectedAuditId);
-      // Reload report request to get latest status
-      setTimeout(async () => {
-        try {
-          const rr = await getReportRequestByAuditId(selectedAuditId);
-          if (rr) {
-            setReportRequest({
-              status: rr.status,
-              reportRequestId: rr.reportRequestId,
-              note: rr.note,
-            });
-          }
-        } catch (error) {
-          console.error("Failed to reload report request:", error);
-        }
-      }, 500);
-      alert("Report submitted successfully! Waiting for Lead Auditor approval.");
+      const result = await submitFinalReport(selectedAuditId);
+      console.log('[Auditor] Submit result:', result);
+      
+      // Don't update reportRequest state - allow user to submit again if needed
+      // Each submit creates a new report request, so we don't need to track the state
+      
+      alert("Report submitted successfully! Lead Auditor will be notified.");
     } catch (error: any) {
       console.error("Failed to submit report:", error);
       const errorMessage = error?.response?.data?.message || error?.message || "Failed to submit report. Please try again.";
@@ -632,17 +600,11 @@ export default function AuditorFinalSummaryPage() {
     }
   };
 
-  // Check if report can be submitted
-  const canSubmit = selectedAuditId && !reportRequest && !loadingReportRequest;
-  const isSubmitted = reportRequest?.status && 
-    ["PendingFirstApproval", "PendingSecondApproval", "Approved", "RejectedFirstLevel", "RejectedSecondLevel"].includes(reportRequest.status);
-  const isRejected =
-    reportRequest?.status === "RejectedFirstLevel" || reportRequest?.status === "RejectedSecondLevel";
-
-  const rejectionSourceLabel =
-    reportRequest?.status === "RejectedSecondLevel"
-      ? "Director"
-      : "Lead Auditor";
+  // Always allow submit - each submit creates a new report request
+  // User can submit multiple times to create new versions
+  const canSubmit = selectedAuditId && 
+    !loadingReportRequest && 
+    !submitting;
 
   return (
     <MainLayout user={layoutUser}>
@@ -679,15 +641,7 @@ export default function AuditorFinalSummaryPage() {
                   </button>
                   {loadingReportRequest ? (
                     <div className="text-xs text-gray-500">Checking status...</div>
-                  ) : isRejected ? (
-                    <button
-                      onClick={handleSubmitReport}
-                      disabled={submitting}
-                      className="px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {submitting ? "Submitting..." : "Resubmit"}
-                    </button>
-                  ) : !isSubmitted && (
+                  ) : (
                     <button
                       onClick={handleSubmitReport}
                       disabled={!canSubmit || submitting}
@@ -711,54 +665,6 @@ export default function AuditorFinalSummaryPage() {
 
         {/* Content */}
         <section className="pb-2">
-          {selectedAuditId && isRejected && (
-            <div className="mb-4 bg-red-50 border border-red-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10">
-                    <span className="h-2 w-2 rounded-full bg-white" />
-                  </span>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide">
-                      Report rejected by {rejectionSourceLabel}
-                    </p>
-                    <p className="text-[11px] text-white/80">
-                      Please review the comments below and update findings, actions or documents before resubmitting.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(`/auditor/findings/audit/${encodeURIComponent(selectedAuditId)}`)
-                    }
-                    className="px-3 py-1.5 rounded-md bg-white/95 text-red-700 font-medium shadow-sm hover:bg-white transition-colors"
-                  >
-                    Go to Findings / Actions
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/auditor/history-upload")}
-                    className="px-3 py-1.5 rounded-md border border-white/70 text-white font-medium hover:bg-white/10 transition-colors"
-                  >
-                    Go to Documents
-                  </button>
-                </div>
-              </div>
-              {reportRequest?.note && (
-                <div className="px-4 py-3 text-xs text-red-900 bg-red-50/70 border-t border-red-100">
-                  <p className="font-semibold mb-1">
-                    Rejection comments from {rejectionSourceLabel}
-                  </p>
-                  <p className="whitespace-pre-line">
-                    {reportRequest.note}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
           {!selectedAuditId ? (
             <div className="bg-white border border-dashed border-gray-300 rounded-lg p-8 text-center text-sm text-gray-500">
               Choose an audit from the dropdown above to load its full-detail information.
@@ -969,14 +875,14 @@ export default function AuditorFinalSummaryPage() {
                 {/* Findings Section - Separate and Clear */}
                 {fasTab !== "actions" && (
                 <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-to-r from-red-500 to-red-600 rounded-t-lg flex items-center justify-between gap-3 flex-wrap">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg flex items-center justify-between gap-3 flex-wrap">
                     <h2 className="text-sm font-semibold text-white uppercase">Findings</h2>
                     <div className="flex items-center gap-2 text-xs text-white">
                       <span>Filter by Department:</span>
                       <select
                         value={deptFilter}
                         onChange={(e) => setDeptFilter(e.target.value)}
-                        className="text-sm text-gray-800 rounded-md border border-gray-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        className="text-sm text-gray-800 rounded-md border border-white/30 bg-white/20 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-white/50"
                       >
                         <option value="">All</option>
                         {deptOptions.map(([value, label]) => (
@@ -986,7 +892,7 @@ export default function AuditorFinalSummaryPage() {
                       {deptFilter && (
                         <button
                           onClick={() => setDeptFilter("")}
-                          className="underline text-white/90 hover:text-white text-xs"
+                          className="underline text-white/90 hover:text-white text-xs transition-colors"
                         >
                           Clear
                         </button>
@@ -1196,7 +1102,7 @@ export default function AuditorFinalSummaryPage() {
                 {/* Actions Section - Separate and Clear */}
                 {fasTab !== "severity" && (
                 <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-t-lg">
+                  <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
                     <h2 className="text-sm font-semibold text-white uppercase">Actions</h2>
                   </div>
                   <div className="p-4 space-y-4 text-sm text-gray-700">
@@ -1550,7 +1456,7 @@ export default function AuditorFinalSummaryPage() {
                             <span className="font-semibold text-gray-800">{getUserName(t.userId)}</span>
                             {t.roleInTeam && <span className="text-gray-500">Role: {t.roleInTeam}</span>}
                             {t.isLead && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 text-blue-700 border border-blue-200">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-primary-100 text-primary-700 border border-primary-200">
                                 Lead
                               </span>
                             )}
