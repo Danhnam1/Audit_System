@@ -57,22 +57,10 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
         setLoading(true);
         setError(null);
         const allActions = await getMyAssignedActions();
-        console.log('📦 Raw Actions from API (check rootCauseId field):', JSON.stringify(allActions, null, 2));
-        console.log('📊 Total actions received:', allActions.length);
         
         // Log each action with its details, especially status
         allActions.forEach((a: any, index: number) => {
-          console.log(`Action ${index + 1}:`, {
-            actionId: a.actionId,
-            findingId: a.findingId,
-            rootCauseId: a.rootCauseId,
-            title: a.title,
-            status: a.status,
-            statusLower: a.status?.toLowerCase(),
-            isRejected: a.status?.toLowerCase() === 'rejected',
-            hasRootCauseId: 'rootCauseId' in a,
-            rootCauseValue: a.rootCauseId
-          });
+       
         });
         
         // Count actions by status
@@ -81,18 +69,13 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
           const status = (a.status || 'unknown').toLowerCase();
           statusCounts[status] = (statusCounts[status] || 0) + 1;
         });
-        console.log('📊 Actions by status:', statusCounts);
-        console.log('🔍 Rejected actions count:', (statusCounts['rejected'] || 0) + (statusCounts['rejected'] || 0));
-        console.log('🔍 LeadRejected actions count:', statusCounts['leadrejected'] || 0);
         
         // Filter actions by auditId if provided
         let actions = allActions;
         if (auditIdFromState) {
-          console.log(`🔍 Filtering actions by auditId: ${auditIdFromState}`);
           
           // Get unique findingIds from actions
           const uniqueFindingIds = Array.from(new Set(allActions.map((a: any) => a.findingId).filter(Boolean)));
-          console.log('📋 Unique findingIds found:', uniqueFindingIds);
           
           // Fetch findings to get auditIds
           const findingPromises = uniqueFindingIds.map(async (findingId: string) => {
@@ -100,7 +83,6 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
               const finding = await getFindingById(findingId);
               return finding;
             } catch (err) {
-              console.error(`❌ Error loading finding ${findingId}:`, err);
               return null;
             }
           });
@@ -108,7 +90,6 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
           const findings = await Promise.all(findingPromises);
           const validFindings = findings.filter((f): f is any => f !== null);
           
-          console.log('📋 Valid findings loaded:', validFindings.length);
           
           // Filter actions: only include those whose finding has matching auditId
           const findingIdsForAudit = validFindings
@@ -120,58 +101,40 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                                     f.audit?.auditId ||
                                     f.audit?.AuditId;
               
-              console.log(`🔍 Finding ${f.findingId} -> Audit ID: ${findingAuditId}, Looking for: ${auditIdFromState}`);
               
               return String(findingAuditId) === String(auditIdFromState);
             })
             .map((f: any) => f.findingId);
           
-          console.log(`📌 Finding IDs for audit ${auditIdFromState}:`, findingIdsForAudit);
           
           // Filter actions before removing duplicates
           const filteredBeforeDedupe = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
-          console.log(`✅ Actions after audit filter: ${filteredBeforeDedupe.length}`);
           
           // Log all actions before deduplication
           filteredBeforeDedupe.forEach((a: any, index: number) => {
-            console.log(`  Action ${index + 1} before dedupe:`, {
-              actionId: a.actionId,
-              findingId: a.findingId,
-              rootCauseId: a.rootCauseId,
-              title: a.title
-            });
+          
           });
           
           // Remove duplicate actions by actionId (keeping unique actions)
           const uniqueActionIds = new Set<string>();
           actions = filteredBeforeDedupe.filter((a: any) => {
             if (uniqueActionIds.has(a.actionId)) {
-              console.log(`🚫 Removing duplicate actionId: ${a.actionId} (rootCauseId: ${a.rootCauseId})`);
               return false;
             }
             uniqueActionIds.add(a.actionId);
             return true;
           });
           
-          console.log(`✅ After removing duplicates: ${actions.length} unique actions`);
           
           // Log final actions
           actions.forEach((a: any, index: number) => {
-            console.log(`  Final Action ${index + 1}:`, {
-              actionId: a.actionId,
-              findingId: a.findingId,
-              rootCauseId: a.rootCauseId,
-              title: a.title,
-              status: a.status
-            });
+         
           });
         } else {
-          console.log('⚠️ No auditId provided, showing all actions');
         }
         
         // Map API actions to Task interface
         const mappedTasks: Task[] = actions.map((action) => {
-          console.log('Mapping action:', action.actionId, 'reviewFeedback:', action.reviewFeedback);
           // Determine UI status based on API status and due date
           let uiStatus: 'Pending' | 'In Progress' | 'Completed' | 'Overdue' = 'Pending';
           
@@ -232,12 +195,7 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
         // Filter actions with status "Rejected" or "LeadRejected" (case-insensitive)
         const isRejected = statusLower === 'rejected' ;
         if (isRejected) {
-          console.log('✅ Found rejected task:', {
-            actionId: task.actionId,
-            title: task.title,
-            originalStatus: task.originalStatus,
-            statusLower
-          });
+       
         }
         return isRejected;
       })
@@ -260,14 +218,8 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
   
   // Debug logging for filtered tasks
   useEffect(() => {
-    console.log(`🔍 [AssignedTasks] Tab: ${activeTab}, Total tasks: ${tasks.length}, Filtered: ${filteredTasksByTab.length}`);
     if (activeTab === 'reject') {
-      console.log('🔍 [Reject Tab] Tasks:', filteredTasksByTab.map(t => ({
-        actionId: t.actionId,
-        title: t.title,
-        originalStatus: t.originalStatus,
-        statusLower: t.originalStatus?.toLowerCase()
-      })));
+      
     }
   }, [activeTab, tasks, filteredTasksByTab]);
 
@@ -347,7 +299,6 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
   const handleViewAction = (actionId: string) => {
     setSelectedActionId(actionId);
     setShowActionDetailModal(true);
-    console.log('Opening action modal from AssignedTasks - ActionId:', actionId);
   };
 
   const handleStart = (actionId: string) => {

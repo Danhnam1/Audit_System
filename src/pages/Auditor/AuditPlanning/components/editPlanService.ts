@@ -42,7 +42,6 @@ export const loadPlanDetailsForEdit = async (
     const planFromTableAny = planFromTable as any;
 
     if (!planFromTable) {
-      console.error('❌ Plan not found in table and detailed API failed:', apiError);
       alert('⚠️ Cannot Edit\n\nBackend API /AuditPlan/{id} is returning 500 error and the plan was not found in the list.');
       throw new Error('Backend API /AuditPlan/{id} failed and plan not found in table.');
     }
@@ -64,8 +63,6 @@ export const loadPlanDetailsForEdit = async (
     id: details.id || details.auditId || auditId,
   };
 
-  console.log('📝 Loading plan for edit - auditId:', auditId);
-  console.log('📝 Details with ID:', detailsWithId);
 
   return detailsWithId;
 };

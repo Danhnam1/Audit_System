@@ -87,15 +87,7 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
           return assignByStr && userIdStr && assignByStr === userIdStr;
         });
 
-        // Debug: Log assignment data to check for files
-        console.log('[AuditorAssignmentsView] Assignment data:', {
-          assignmentId: assignment.assignmentId,
-          files: assignment.files,
-          attachments: assignment.attachments,
-          filePaths: assignment.filePaths,
-          filePathsType: typeof assignment.filePaths,
-        });
-
+       
         return {
           ...assignment,
           leadAuditorName: leadAuditor?.fullName || 'Unknown',
@@ -194,22 +186,16 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
     
     // Check files array
     if (assignment.files && Array.isArray(assignment.files)) {
-      console.log('[AuditorAssignmentsView] Found files array:', assignment.files);
       files.push(...assignment.files);
     }
     
     // Check attachments array
     if (assignment.attachments && Array.isArray(assignment.attachments)) {
-      console.log('[AuditorAssignmentsView] Found attachments array:', assignment.attachments);
       files.push(...assignment.attachments);
     }
     
     // Parse filePaths if it exists (JSON string from backend)
     if (assignment.filePaths) {
-      console.log('[AuditorAssignmentsView] Processing filePaths:', {
-        filePaths: assignment.filePaths,
-        type: typeof assignment.filePaths,
-      });
       
       // If filePaths is already an array
       if (Array.isArray(assignment.filePaths)) {
@@ -227,7 +213,6 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
         try {
           const filePathsArray = JSON.parse(assignment.filePaths);
           if (Array.isArray(filePathsArray)) {
-            console.log('[AuditorAssignmentsView] Parsed filePaths array:', filePathsArray);
             filePathsArray.forEach((filePath: string, index: number) => {
               // Extract filename from URL or path
               const fileName = filePath.split('/').pop() || `File ${index + 1}`;
@@ -253,11 +238,6 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
       }
     }
     
-    console.log('[AuditorAssignmentsView] getAllFiles result:', {
-      assignmentId: assignment.assignmentId,
-      totalFiles: files.length,
-      files: files,
-    });
     
     return files;
   };
@@ -549,7 +529,7 @@ export const AuditorAssignmentsView = ({ onPermissionGranted }: AuditorAssignmen
                           </div>
 
                           <div>
-                            <label className="block text-sm font-semibold text-amber-900 mb-2 flex items-center gap-2">
+                            <label className=" text-sm font-semibold text-amber-900 mb-2 flex items-center gap-2">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                               </svg>

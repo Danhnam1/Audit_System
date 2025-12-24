@@ -65,12 +65,9 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
       setError(null);
       
       try {
-        console.log('🔍 Fetching my assigned actions...');
         const actions = await getMyAssignedActions();
-        console.log('📦 Actions from API:', actions);
         
         if (!actions || actions.length === 0) {
-          console.log('⚠️ No actions found');
           setAudits([]);
           setLoading(false);
           return;
@@ -78,23 +75,19 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
 
         // Get unique findingIds from actions
         const uniqueFindingIds = Array.from(new Set(actions.map((a: any) => a.findingId).filter(Boolean)));
-        console.log('📋 Unique findingIds:', uniqueFindingIds);
 
         // Fetch findings to get auditIds
         const findingPromises = uniqueFindingIds.map(async (findingId: string) => {
           try {
             const finding = await getFindingById(findingId);
-            console.log(`✅ Loaded finding1111 ${findingId}:`, finding);
             return finding;
           } catch (err) {
-            console.error(`❌ Error loading finding ${findingId}:`, err);
             return null;
           }
         });
 
         const findings = await Promise.all(findingPromises);
         const validFindings = findings.filter((f): f is any => f !== null);
-        console.log('✅ Valid findings:', validFindings.length);
 
         // Group actions by auditId (from findings)
         const auditMap = new Map<string, any[]>();
@@ -106,7 +99,6 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                          finding.audit?.auditId ||
                          finding.audit?.AuditId;
           
-          console.log(`📌 Finding ${finding.findingId} -> Audit ID: ${auditId}`);
           
           if (auditId) {
             // Find all actions for this finding
@@ -116,18 +108,14 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
             }
             auditMap.get(auditId)!.push(...relatedActions);
           } else {
-            console.warn(`⚠️ No audit ID found for finding:`, finding);
           }
         });
 
-        console.log('📊 Grouped audits:', Array.from(auditMap.keys()));
 
         // Load audit info and create audit cards
         const auditPromises = Array.from(auditMap.entries()).map(async ([auditId, auditActions]) => {
           try {
-            console.log(`📥 Fetching audit info for ${auditId}...`);
             const auditData = await getAuditPlanById(auditId);
-            console.log(`📋 Raw audit data for ${auditId}:`, auditData);
             
             // Try multiple possible field names for title (same as Auditor component)
             let auditTitle = auditData.title || 
@@ -157,12 +145,9 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
             }
             
             if (!auditTitle) {
-              console.warn(`⚠️ No title found for audit ${auditId}. Available fields:`, Object.keys(auditData));
-              console.warn(`⚠️ Audit data structure:`, JSON.stringify(auditData, null, 2));
               // Last resort: use partial auditId
               auditTitle = `Audit ${auditId.substring(0, 8)}...`;
             } else {
-              console.log(`✅ Found title for audit ${auditId}: "${auditTitle}"`);
             }
             
             const auditType = auditData.type || 
@@ -188,10 +173,8 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
               startDate: auditData.startDate || auditData.audit?.startDate,
               endDate: auditData.endDate || auditData.audit?.endDate,
             };
-            console.log(`✅ Created card for audit ${auditId}:`, auditCard);
             return auditCard;
           } catch (err) {
-            console.error(`❌ Error loading audit ${auditId}:`, err);
             // Even if API fails, create a card with basic info from finding
             const firstFinding = validFindings.find((f: any) => {
               const findingAuditId = f.auditId || f.AuditId || f.auditPlanId;
@@ -229,21 +212,15 @@ const defaultDate = tomorrow.toISOString().split('T')[0];
                            statusLower.includes('archived');
           
           if (isArchived) {
-            console.log(`🚫 Filtering out archived audit: ${audit.auditTitle} (status: "${status}")`);
           }
           
           return !isArchived;
         });
         
-        console.log('🎯 Final audits to display (excluding archived):', {
-          total: validAudits.length,
-          nonArchived: nonArchivedAudits.length,
-          audits: nonArchivedAudits
-        });
+      
         
         setAudits(nonArchivedAudits);
       } catch (err: any) {
-        console.error('❌ Error loading audits:', err);
         setError(err?.message || 'Failed to load audits');
       } finally {
         setLoading(false);

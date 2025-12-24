@@ -112,16 +112,13 @@ const [findingTime, setFindingTime] = useState(() => {
       // Filter users to only show AuditeeOwner role
       const auditeeOwners = users.filter(user => user.roleName === 'AuditeeOwner');
       setDepartmentUsers(auditeeOwners);
-      console.log(`Loaded ${auditeeOwners.length} AuditeeOwner users from department ${deptId} (out of ${users.length} total users):`, auditeeOwners);
       
       // Auto-select witness if there's exactly one AuditeeOwner
       if (auditeeOwners.length === 1 && auditeeOwners[0].userId) {
         setWitnesses(auditeeOwners[0].userId);
-        console.log('Auto-selected witness:', auditeeOwners[0].fullName || auditeeOwners[0].email);
       } else if (auditeeOwners.length > 1 && !witnesses) {
         // If multiple AuditeeOwners exist and no selection yet, auto-select the first one
         setWitnesses(auditeeOwners[0].userId || '');
-        console.log('Auto-selected first witness:', auditeeOwners[0].fullName || auditeeOwners[0].email);
       }
     } catch (err: any) {
       console.error('Error loading department users:', err);
@@ -364,24 +361,8 @@ const [findingTime, setFindingTime] = useState(() => {
         witnessId: witnesses || '', // Single witness's userId (GUID string)
       };
 
-      console.log('========== CREATE FINDING DEBUG ==========');
-      console.log('1. Checklist Item:', checklistItem);
-      console.log('2. Form Data:', { 
-        description, 
-        severity, 
-        deadline, 
-        filesCount: files.length,
-        findingDate,
-        findingTime,
-        departmentName,
-        witnesses: witnesses,
-        witnessesDisplay: getSelectedWitnessesDisplay(),
-      });
-      console.log('3. Finding Payload (camelCase):', JSON.stringify(findingPayload, null, 2));
-      
       // Create finding
       const finding = await createFinding(findingPayload);
-      console.log('Finding created:', finding);
       
       const findingId = finding.findingId || (finding as any).$id || (finding as any).id;
       
@@ -391,12 +372,10 @@ const [findingTime, setFindingTime] = useState(() => {
 
       // Upload files if any
       if (files.length > 0) {
-        console.log(`Uploading ${files.length} file(s)...`);
         
         const uploadResults = [];
         for (const file of files) {
           try {
-            console.log(`Uploading file: ${file.name}...`);
             const result =             await uploadAttachment({
               entityType: 'finding', // lowercase as per API example
               entityId: findingId,
@@ -405,16 +384,9 @@ const [findingTime, setFindingTime] = useState(() => {
               isArchived: false,
               file: file,
             });
-            console.log(`✅ File ${file.name} uploaded successfully:`, result);
             uploadResults.push({ file: file.name, success: true });
           } catch (fileError: any) {
-            console.error(`❌ Error uploading file ${file.name}:`, fileError);
-            console.error('Upload error details:', {
-              message: fileError?.message,
-              response: fileError?.response,
-              data: fileError?.response?.data,
-              status: fileError?.response?.status,
-            });
+          
             uploadResults.push({ file: file.name, success: false, error: fileError?.message });
             // Continue with other files even if one fails
           }
@@ -424,18 +396,14 @@ const [findingTime, setFindingTime] = useState(() => {
         const successCount = uploadResults.filter(r => r.success).length;
         const failCount = uploadResults.filter(r => !r.success).length;
         if (failCount > 0) {
-          console.warn(`⚠️ ${successCount} file(s) uploaded, ${failCount} file(s) failed`);
         } else {
-          console.log(`✅ All ${successCount} file(s) uploaded successfully`);
         }
       }
 
       // Mark checklist item as non-compliant
       try {
         await markChecklistItemNonCompliant(checklistItem.auditItemId);
-        console.log('✅ Checklist item marked as non-compliant');
       } catch (markError: any) {
-        console.error('❌ Error marking item as non-compliant:', markError);
         // Don't throw error, just log it - finding was created successfully
       }
 

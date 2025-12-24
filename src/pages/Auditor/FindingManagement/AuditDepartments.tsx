@@ -65,9 +65,7 @@ const AuditDepartments = () => {
 
       try {
         // Load assignments for this audit
-        console.log('🔍 Fetching assignments for audit:', auditId);
         const assignmentsResponse: any = await getAuditAssignmentsByAudit(auditId);
-        console.log('📦 Raw assignments response:', assignmentsResponse);
 
         let assignments: any[] = [];
         if (Array.isArray(assignmentsResponse)) {
@@ -82,11 +80,8 @@ const AuditDepartments = () => {
           assignments = unwrap(assignmentsResponse);
         }
 
-        console.log('✅ Final assignments array:', assignments);
-        console.log('✅ Assignments count:', assignments.length);
 
         if (!assignments || assignments.length === 0) {
-          console.log('⚠️ No assignments found for this audit');
           setDepartments([]);
           setLoading(false);
           return;
@@ -99,7 +94,6 @@ const AuditDepartments = () => {
         });
 
         if (activeAssignments.length === 0) {
-          console.log('⚠️ No active assignments found');
           setDepartments([]);
           setLoading(false);
           return;
@@ -107,7 +101,6 @@ const AuditDepartments = () => {
 
         // Get unique department IDs
         const uniqueDeptIds = Array.from(new Set(activeAssignments.map((a: any) => a.deptId)));
-        console.log('🏢 Unique department IDs:', uniqueDeptIds);
 
         // Load sensitive departments for this audit to highlight sensitive areas
         let sensitiveDeptIds = new Set<number>();
@@ -135,9 +128,7 @@ const AuditDepartments = () => {
         // Load department info for each unique deptId
         const departmentPromises = uniqueDeptIds.map(async (deptId: number) => {
           try {
-            console.log(`📥 Fetching department ${deptId}...`);
             const deptData = await getDepartmentById(deptId);
-            console.log(`✅ Department ${deptId} data:`, deptData);
 
             const deptAssignments = activeAssignments.filter((a: any) => a.deptId === deptId);
             const firstAssignment = deptAssignments[0];
@@ -156,10 +147,8 @@ const AuditDepartments = () => {
               auditType: auditInfo?.type || '',
               isSensitive: sensitiveDeptIds.has(normalizedDeptId),
             };
-            console.log(`✅ Created card for department ${deptId}:`, cardData);
             return cardData;
           } catch (err) {
-            console.error(`❌ Error loading department ${deptId}:`, err);
             return null;
           }
         });
@@ -168,11 +157,9 @@ const AuditDepartments = () => {
         const validDepartments: DepartmentCard[] = departmentResults.filter(
           (dept): dept is DepartmentCard => dept !== null
         );
-        console.log('🎯 Final departments to display:', validDepartments);
 
         setDepartments(validDepartments);
       } catch (err: any) {
-        console.error('❌ Error loading data:', err);
         setError(err?.message || 'Failed to load departments');
       } finally {
         setLoading(false);

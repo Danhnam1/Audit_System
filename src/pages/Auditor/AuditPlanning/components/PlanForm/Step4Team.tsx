@@ -106,10 +106,6 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
               // Calculate the actual number of auditors
               const actualAuditorCount = valueWithCurrent.length;
               
-              // Debug: Log options and values
-              console.log('[Step4Team] Auditor options:', options);
-              console.log('[Step4Team] Selected auditor IDs:', valueWithCurrent);
-              console.log('[Step4Team] Safe auditor options:', safeAuditorOptions);
 
               return (
                 <>

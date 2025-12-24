@@ -394,16 +394,10 @@ const ActionReview = () => {
             const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
             const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
             
-            console.log(`📋 [Retry] Action: ${action.title} (${action.actionId})`);
-            console.log(`📎 Attachments to approve (Open status): ${openAttachments.length}`);
-            console.log(`❌ Attachments NOT to approve (Rejected status): ${rejectedAttachments.length}`);
-            
             if (openAttachments.length > 0) {
-              console.log(`✅ [Retry] Approving ${openAttachments.length} attachment(s) with "Open" status...`);
               const approvePromises = openAttachments.map(async (attachment) => {
                 try {
                   await updateAttachmentStatus(attachment.attachmentId, 'Approved');
-                  console.log(`  ✓ Approved attachment: ${attachment.fileName}`);
                 } catch (err: any) {
                   console.error(`  ✗ Failed to approve attachment ${attachment.fileName}:`, err);
                   // Continue with other attachments even if one fails
@@ -411,7 +405,6 @@ const ActionReview = () => {
               });
               
               await Promise.all(approvePromises);
-              console.log(`✅ [Retry] Approved ${openAttachments.length} attachment(s)`);
             }
           } catch (attErr) {
             console.warn('Could not load/approve attachments for retry:', attErr);

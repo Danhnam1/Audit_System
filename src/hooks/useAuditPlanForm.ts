@@ -120,16 +120,12 @@ export const useAuditPlanForm = () => {
   const loadPlanForEdit = (details: any) => {
     // Activate edit mode & initialize edit context
     const auditIdValue = String(details.auditId || details.id || '');
-    console.log('📝 loadPlanForEdit called with details:', details);
-    console.log('📝 Extracted auditId:', auditIdValue);
-    console.log('📝 details.auditId:', details.auditId, 'details.id:', details.id);
     
     setIsEditMode(true);
     setEditingAuditId(auditIdValue);
     setShowForm(true);
     setCurrentStep(1); // Always start from step 1 when editing
     
-    console.log('📝 After setting - isEditMode: true, editingAuditId:', auditIdValue);
 
     // Step 1: Basic info - ensure all values are properly formatted
     const titleValue = details.title || details.audit?.title || '';
@@ -191,27 +187,14 @@ export const useAuditPlanForm = () => {
     setDrlFileName(details.drlFileName || '');
     setDrlFile(null);
     
-    console.log('📝 Step 1 values loaded:', {
-      title: titleValue,
-      auditType: auditTypeValue,
-      goal: goalValue,
-      periodFrom: periodFromValue,
-      periodTo: periodToValue,
-      originalStartDate: startDate,
-      originalEndDate: endDate,
-    });
+   
     
     // Debug: Check if dates are valid for validation
     if (periodFromValue && periodToValue) {
       const fromDate = new Date(periodFromValue);
       const toDate = new Date(periodToValue);
       const daysDiff = Math.floor((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
-      console.log('📝 Date validation check:', {
-        fromDate: fromDate.toISOString(),
-        toDate: toDate.toISOString(),
-        daysDiff,
-        isValid: !isNaN(fromDate.getTime()) && !isNaN(toDate.getTime()) && daysDiff >= 0,
-      });
+     
     }
     
     // Step 2: Scope
@@ -256,14 +239,12 @@ export const useAuditPlanForm = () => {
     }
     
     // Step 4: Team
-    console.log('[loadPlanForEdit] Loading audit teams:', details.auditTeams);
     
     // Try multiple ways to get audit teams
     const auditTeamsData = details.auditTeams?.values || 
                            details.auditTeams || 
                            (Array.isArray(details.auditTeams) ? details.auditTeams : []);
     
-    console.log('[loadPlanForEdit] Extracted audit teams data:', auditTeamsData);
     
     if (auditTeamsData && auditTeamsData.length > 0) {
       const auditors: string[] = [];
@@ -271,7 +252,6 @@ export const useAuditPlanForm = () => {
       let ownerId = '';
       
       auditTeamsData.forEach((member: any) => {
-        console.log('[loadPlanForEdit] Processing team member:', member);
         
         // Try multiple field names for userId
         const userId = member.userId || 
@@ -290,7 +270,6 @@ export const useAuditPlanForm = () => {
         
         const isLead = member.isLead || member.isLeadAuditor || false;
         
-        console.log('[loadPlanForEdit] Extracted:', { userId, role, isLead });
         
         // Normalize role comparison (case-insensitive)
         const normalizedRole = String(role || '').toLowerCase().trim();
@@ -299,29 +278,22 @@ export const useAuditPlanForm = () => {
           // If role is empty or 'auditor', treat as auditor
           if (userId) {
             auditors.push(String(userId));
-            console.log('[loadPlanForEdit] Added auditor:', userId);
             if (isLead) {
               leadId = String(userId);
-              console.log('[loadPlanForEdit] Set as lead:', userId);
             }
           }
         } else if (normalizedRole === 'auditeeowner' || normalizedRole === 'auditee owner') {
           if (userId) {
             ownerId = String(userId);
-            console.log('[loadPlanForEdit] Set as owner:', userId);
           }
         }
       });
       
-      console.log('[loadPlanForEdit] Final auditors:', auditors);
-      console.log('[loadPlanForEdit] Final leadId:', leadId);
-      console.log('[loadPlanForEdit] Final ownerId:', ownerId);
       
       setSelectedAuditorIds(auditors);
       setSelectedLeadId(leadId);
       setSelectedOwnerId(ownerId);
     } else {
-      console.log('[loadPlanForEdit] No audit teams found, clearing team data');
       setSelectedAuditorIds([]);
       setSelectedLeadId('');
       setSelectedOwnerId('');

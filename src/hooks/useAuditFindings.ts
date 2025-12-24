@@ -65,12 +65,10 @@ export const useAuditFindings = () => {
       setLoading(true);
       setError(null);
       const data: any = await getAuditChecklistItems(auditId);
-      console.log('fetchChecklistItems received data:', data, 'isArray:', Array.isArray(data));
       
       // API already unwraps in checklists.ts, so data should be an array
       // No need to unwrap again
       const items = Array.isArray(data) ? data : [];
-      console.log('fetchChecklistItems returning items:', items);
       
       setChecklistItems(items);
       return items;
@@ -95,10 +93,7 @@ export const useAuditFindings = () => {
 
       // Use additionalData directly if provided with all required fields
       if (additionalData && additionalData.title && additionalData.description) {
-        console.log('3. useAuditFindings - Received payload:', JSON.stringify(additionalData, null, 2));
-        console.log('4. Calling createFinding API...');
         const result = await createFinding(additionalData as CreateFindingPayload);
-        console.log('5. API Response:', result);
         
         return {
           success: true,
@@ -140,7 +135,6 @@ export const useAuditFindings = () => {
         externalAuditorName: additionalData?.externalAuditorName || 'N/A',
       };
 
-      console.log('Built payload:', payload);
       const result = await createFinding(payload);
       
       return {

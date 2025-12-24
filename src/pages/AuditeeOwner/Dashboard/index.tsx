@@ -44,14 +44,10 @@ const AuditeeOwnerDashboard: React.FC = () => {
           getActionsByDepartmentDashboard(deptId),
         ]);
 
-        console.log('Findings data from API:', findingsData);
-        console.log('Actions data from API:', actionsData);
 
         const findingsArray = Array.isArray(findingsData) ? findingsData : [];
         const actionsArray = Array.isArray(actionsData) ? actionsData : [];
 
-        console.log('Findings array:', findingsArray);
-        console.log('Actions array:', actionsArray);
 
         setFindings(findingsArray);
         setActions(actionsArray);

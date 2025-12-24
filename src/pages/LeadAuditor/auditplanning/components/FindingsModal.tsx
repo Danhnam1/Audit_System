@@ -47,8 +47,6 @@ export const FindingsModal: React.FC<FindingsModalProps> = ({
     setError(null);
     try {
       const data = await getFindingsByAudit(auditId);
-      console.log('loadFindings data222:', data);
-      console.log('loadFindings data isArray222:', Array.isArray(data));
       setFindings(Array.isArray(data) ? data : []);
     } catch (err: any) {
       console.error('Failed to load findings', err);

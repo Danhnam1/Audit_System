@@ -104,11 +104,9 @@ export const markFindingAsReceived = async (findingId: string): Promise<any> => 
 
 // Create a new finding
 export const createFinding = async (payload: CreateFindingPayload): Promise<Finding> => {
-  console.log('4. createFinding API - Received (camelCase):', JSON.stringify(payload, null, 2));
   
   // Convert to PascalCase for .NET API
   const pascalPayload = toPascalCase(payload);
-  console.log('5. createFinding API - After PascalCase transform:', JSON.stringify(pascalPayload, null, 2));
   
   // Handle null values - backend accepts null for rootCauseId and reviewerId
   const finalPayload: any = { ...pascalPayload };
@@ -121,19 +119,12 @@ export const createFinding = async (payload: CreateFindingPayload): Promise<Find
   }
   // Keep null for RootCauseId and ReviewerId as backend accepts them
   
-  console.log('6. Final payload to send:', JSON.stringify(finalPayload, null, 2));
-  console.log('7. Sending POST to /Findings...');
   
   try {
     const result = await apiClient.post('/Findings', finalPayload) as any;
-    console.log('8. API Response received:', result);
     return result;
   } catch (error: any) {
-    console.error('========== API ERROR ==========');
-    console.error('Error response:', error?.response);
-    console.error('Error data:', error?.response?.data);
-    console.error('Error status:', error?.response?.status);
-    console.error('Error message:', error?.message);
+  
     console.error('Full error:', error);
     
     // Try to extract more detailed error message
@@ -160,7 +151,6 @@ export const createFinding = async (payload: CreateFindingPayload): Promise<Find
       }
     }
     
-    console.error('Extracted error message:', errorMessage);
     console.error('Full error data:', errorData);
     throw new Error(errorMessage);
   }

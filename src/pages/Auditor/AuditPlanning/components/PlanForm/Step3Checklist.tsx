@@ -48,41 +48,34 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
       }
 
       try {
-        console.log('[Step3Checklist] Loading used templates for departments:', selectedDeptIds);
         
         // Lấy audits trong period để check (cần period để có audits, nhưng không filter template theo thời gian)
         // Nếu không có period, không thể check được
         if (!periodFrom || !periodTo) {
-          console.log('[Step3Checklist] No period provided, skipping template filter');
           setUsedTemplateIds(new Set());
           return;
         }
 
         const auditsInPeriod = await getAuditsByPeriod(periodFrom, periodTo);
-        console.log('[Step3Checklist] Raw audits response:', auditsInPeriod);
         
         // Unwrap response to handle different formats
         let auditsToCheck = unwrap(auditsInPeriod);
-        console.log('[Step3Checklist] Processed audits array:', auditsToCheck.length, 'audits');
         
         // Filter out inactive and deleted audits
         auditsToCheck = auditsToCheck.filter((a: any) => {
           const status = String(a.status || '').toLowerCase().replace(/\s+/g, '');
           const isActive = status !== 'inactive' && status !== 'deleted';
           if (!isActive) {
-            console.log('[Step3Checklist] Filtered out inactive/deleted audit:', a.auditId || a.id, 'status:', status);
           }
           return isActive;
         });
         
-        console.log('[Step3Checklist] Active audits:', auditsToCheck.length);
         
         // Filter out current audit if editing
         if (editingAuditId) {
           auditsToCheck = auditsToCheck.filter((a: any) => 
             String(a.auditId || a.id) !== String(editingAuditId)
           );
-          console.log('[Step3Checklist] Audits after excluding current:', auditsToCheck.length);
         }
 
         const usedTemplateSet = new Set<string>();
@@ -96,7 +89,6 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
             
             // Unwrap scope departments response
             const scopeDeptArray = unwrap(scopeDepts);
-            console.log(`[Step3Checklist] Audit ${auditId} has ${scopeDeptArray.length} scope departments`);
             
             // Check xem audit này có department nào trùng với selectedDeptIds không
             const hasMatchingDept = scopeDeptArray.some((sd: any) => 
@@ -104,19 +96,16 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
             );
 
             if (hasMatchingDept) {
-              console.log(`[Step3Checklist] Audit ${auditId} has matching department, getting templates...`);
               
               // Lấy checklist templates đã được dùng trong audit này
               const templateMaps = await getAuditChecklistTemplateMapsByAudit(auditId);
               
               // Unwrap template maps response
               const mapsArray = unwrap(templateMaps);
-              console.log(`[Step3Checklist] Audit ${auditId} has ${mapsArray.length} template maps`);
               
               mapsArray.forEach((map: any) => {
                 const templateId = String(map.templateId || map.id || map);
                 usedTemplateSet.add(templateId);
-                console.log(`[Step3Checklist] Added used template: ${templateId}`);
               });
             }
           } catch (err) {
@@ -124,7 +113,6 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
           }
         }
 
-        console.log('[Step3Checklist] Total used template IDs:', usedTemplateSet.size, Array.from(usedTemplateSet));
         setUsedTemplateIds(usedTemplateSet);
       } catch (error) {
         console.error('[Step3Checklist] Error loading used templates:', error);
@@ -216,13 +204,10 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
         const templateId = String(template.templateId || template.id || template.$id);
         const isUsed = usedTemplateIds.has(templateId);
         if (isUsed) {
-          console.log(`[Step3Checklist] Filtering out used template: ${templateId} (${template.title || template.name || templateId})`);
         }
         return !isUsed;
       });
-      console.log(`[Step3Checklist] Filtered templates: ${templates.length} out of ${beforeFilter}`);
     } else {
-      console.log('[Step3Checklist] Not filtering templates - level:', level, 'selectedDeptIds:', selectedDeptIds.length, 'usedTemplateIds:', usedTemplateIds.size);
     }
 
     return templates;

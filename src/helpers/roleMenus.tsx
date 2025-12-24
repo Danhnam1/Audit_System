@@ -26,9 +26,6 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
   // Normalize role - remove spaces and convert to lowercase for comparison
   const normalizedRole = role?.toLowerCase().replace(/\s+/g, '') || '';
   
-  console.log('=== getRoleMenu Debug ===');
-  console.log('Original role:', role);
-  console.log('Normalized role:', normalizedRole);
 
   // Check by normalized role first, then by exact match
   switch (normalizedRole) {

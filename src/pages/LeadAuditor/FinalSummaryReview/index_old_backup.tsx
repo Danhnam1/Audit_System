@@ -103,7 +103,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           return userAuditIds.has(auditIdStr) || userAuditIds.has(auditIdLower);
         });
 
-      console.log('[LeadAuditor] User audits:', userAudits.length);
 
       // Load report requests for these audits
       const reportsWithStatus = await Promise.all(
@@ -133,7 +132,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       );
 
       const validReports = reportsWithStatus.filter((r): r is ReportRequest => r !== null);
-      console.log('[LeadAuditor] Reports with request:', validReports.map(r => ({ id: r.reportRequestId, auditId: r.auditId, status: r.status, title: r.title })));
 
       // Filter only PendingFirstApproval (waiting for Lead Auditor review)
       const pendingReports = validReports.filter(r => {
@@ -141,7 +139,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         return status === 'PendingFirstApproval';
       });
 
-      console.log('[LeadAuditor] Pending reports (PendingFirstApproval):', pendingReports.length);
       setReportRequests(pendingReports);
     } catch (error) {
       console.error("Failed to load report requests:", error);
@@ -176,13 +173,11 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     setSelectedAuditId(auditId);
 
     const loadAllData = async () => {
-      console.log('[LeadAuditor] Loading data for audit:', auditId);
       
       // Load full-detail (for actions and general info)
       setLoadingDetail(true);
       try {
         const res = await getAuditFullDetail(auditId);
-        console.log('[LeadAuditor] Full detail loaded:', res);
         setAuditDetail(res);
       } catch (error) {
         console.error("Failed to load audit detail:", error);
@@ -195,7 +190,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       setLoadingSummary(true);
       try {
         const summaryRes = await getAuditSummary(auditId);
-        console.log('[LeadAuditor] Summary loaded:', summaryRes);
         setSummaryData(summaryRes);
       } catch (error) {
         console.error('Failed to load summary:', error);
@@ -207,7 +201,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       setLoadingFindingsActionsSummary(true);
       try {
         const fasRes = await getAuditFindingsActionsSummary(auditId);
-        console.log('[LeadAuditor] Findings-Actions-Summary loaded:', fasRes);
         setFindingsActionsSummary(fasRes);
       } catch (error) {
         console.error('Failed to load findings-actions-summary:', error);

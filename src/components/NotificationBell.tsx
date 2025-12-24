@@ -68,7 +68,6 @@ export const NotificationBell: React.FC = () => {
       readSet.add(notificationId);
       localStorage.setItem('read_notifications', JSON.stringify(Array.from(readSet)));
     } catch (error) {
-      console.error('Failed to save to localStorage:', error);
     }
   };
 
@@ -99,10 +98,8 @@ export const NotificationBell: React.FC = () => {
           if (me) {
             const meId = String(me.userId || me.$id || me.email);
             setMyUserId(meId || null);
-            console.log('[NotificationBell] Resolved current userId for notifications', { meId });
           }
         } catch (error) {
-          console.error('[NotificationBell] Failed to load user ID:', error);
         }
       };
       void loadUserId();
@@ -110,7 +107,6 @@ export const NotificationBell: React.FC = () => {
   }, [myUserId, user?.email]);
 
   const load = useCallback(async (silent = false) => {
-    console.log('[NotificationBell] Loading notifications', { silent });
     if (!silent) setLoading(true);
     try {
       // Use current myUserId state
@@ -154,9 +150,7 @@ export const NotificationBell: React.FC = () => {
         })
         .sort((a: any, b: any) => (b.createdAtDate?.getTime() || 0) - (a.createdAtDate?.getTime() || 0));
       setItems(sorted);
-      console.log('[NotificationBell] Notifications loaded', { count: sorted.length });
     } catch (error) {
-      console.error('[NotificationBell] Failed to load notifications:', error);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -203,7 +197,6 @@ export const NotificationBell: React.FC = () => {
       
       // Check if we've already shown this notification
       if (shownNotificationIdsRef.current.has(notificationId)) {
-        console.log('[NotificationBell] Duplicate notification ignored:', notificationId);
         return;
       }
       
@@ -216,7 +209,6 @@ export const NotificationBell: React.FC = () => {
         shownNotificationIdsRef.current = new Set(idsArray.slice(-50));
       }
       
-      console.log('[NotificationBell] Received notification from SignalR:', data);
       
       // Show toast notification immediately
       toast.info(data.title || 'New notification', {
@@ -226,17 +218,14 @@ export const NotificationBell: React.FC = () => {
       
       // Reload notifications from API to get the latest data
       // This ensures we have complete and up-to-date information from the server
-      console.log('[NotificationBell] Reloading notifications from API...');
       await loadRef.current(true); // Silent reload (don't show loading spinner)
     };
 
     // Register callback - this will also trigger any pending notification
-    console.log('[NotificationBell] Subscribing to SignalR notifications');
     onNotification(handleNewNotification);
 
     // Cleanup
     return () => {
-      console.log('[NotificationBell] Unsubscribing from SignalR notifications');
       offNotification();
     };
   }, [onNotification, offNotification]); // Removed 'load' from dependencies to prevent re-subscription
@@ -264,7 +253,6 @@ export const NotificationBell: React.FC = () => {
       // await load();
     } catch (error) {
       // Silently fail - localStorage already saved, so it's fine
-      console.log('Backend update failed, but saved to localStorage:', error);
     }
   };
 
@@ -305,7 +293,6 @@ export const NotificationBell: React.FC = () => {
     try {
       await Promise.all(unread.map(n => markNotificationRead(String((n as any).notificationId || ''))).map(p => p.catch(() => null)));
     } catch (error) {
-      console.log('Backend update failed, but saved to localStorage:', error);
     }
 
     toast.success(`Marked ${unread.length} notification(s) as read`);
@@ -317,7 +304,6 @@ export const NotificationBell: React.FC = () => {
       setItems(prev => prev.filter(n => String((n as any).notificationId) !== String(id)));
       toast.success('Notification deleted');
     } catch (error) {
-      console.error('Failed to delete notification:', error);
       toast.error('Failed to delete notification');
     }
   };

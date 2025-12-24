@@ -55,8 +55,6 @@ const AuditExecutionDetail = () => {
           getFindingSeverities(),
           getRootCauses(),
         ]);
-        console.log('Loaded severities:', severitiesData);
-        console.log('Loaded root causes:', rootCausesData);
         
         // Set data or fallback to defaults
         setSeverities(severitiesData.length > 0 ? severitiesData : [
@@ -90,15 +88,12 @@ const AuditExecutionDetail = () => {
         // Fetch single audit plan with full details
         const { getAuditPlanById } = await import('../../../api/audits');
         const plan = await getAuditPlanById(auditId);
-        console.log('Loaded audit plan:', plan);
         setAuditPlan(plan);
 
         // Fetch checklist items
         const items = await fetchChecklistItems(auditId);
-        console.log('Loaded checklist items:', items);
         
         const transformedItems = transformChecklistItems(items);
-        console.log('Transformed checklist items:', transformedItems);
         setChecklist(transformedItems);
       } catch (err) {
         console.error('Error loading audit data:', err);
@@ -191,24 +186,19 @@ const AuditExecutionDetail = () => {
     }
 
     try {
-      console.log('Full auditPlan object:', auditPlan);
-      console.log('scopeDepartments:', auditPlan?.scopeDepartments);
       
       // Auto-get deptId from audit plan's scopeDepartments
       const scopeDepts = auditPlan?.scopeDepartments?.$values 
         || auditPlan?.scopeDepartments?.values 
         || (Array.isArray(auditPlan?.scopeDepartments) ? auditPlan.scopeDepartments : null);
         
-      console.log('Extracted scopeDepts:', scopeDepts);
       
       let deptId: number | undefined;
       if (Array.isArray(scopeDepts) && scopeDepts.length > 0) {
         deptId = scopeDepts[0].deptId;
-        console.log('Auto-filled deptId from scopeDepartments:', deptId);
       } else {
         // Try getting from createdByUser
         deptId = auditPlan?.createdByUser?.deptId;
-        console.log('Trying deptId from createdByUser:', deptId);
       }
 
       if (!deptId) {
@@ -232,15 +222,11 @@ const AuditExecutionDetail = () => {
         externalAuditorName: '', // Backend requires string, not null
       };
 
-      console.log('========== FINDING CREATION DEBUG ==========');
-      console.log('1. Original payload (camelCase):', JSON.stringify(payload, null, 2));
-      console.log('2. Calling createFindingFromChecklistItem...');
       
       const result = await createFindingFromChecklistItem(selectedItem.apiData, payload);
 
       if (result.success && result.data) {
         const findingId = result.data.findingId;
-        console.log('Finding created successfully with ID:', findingId);
         
         // Save findingId to track this item has been uploaded
         setCreatedFindings(prev => ({ ...prev, [selectedItem.id]: findingId }));
@@ -251,7 +237,6 @@ const AuditExecutionDetail = () => {
         // Upload evidence if file selected
         if (findingForm.evidenceFile) {
           try {
-            console.log('Uploading evidence for finding:', findingId);
             
             // Extract user ID from token
             const token = localStorage.getItem('auth-storage');
@@ -266,7 +251,6 @@ const AuditExecutionDetail = () => {
                   const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
                   const payload = JSON.parse(window.atob(base64));
                   userId = payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'] || '';
-                  console.log('Extracted user ID from token:', userId);
                 }
               } catch (parseErr) {
                 console.error('Error parsing token:', parseErr);
@@ -284,7 +268,6 @@ const AuditExecutionDetail = () => {
               status: 'Open', // Same status as Finding
               file: findingForm.evidenceFile,
             });
-            console.log('Evidence uploaded successfully');
           } catch (uploadErr: any) {
             console.error('Error uploading evidence:', uploadErr);
             
@@ -330,7 +313,6 @@ const AuditExecutionDetail = () => {
     return map[criticality] || 'bg-gray-100 text-gray-800';
   };
 
-  console.log('Render state:', { loading, checklistLength: checklist.length, checklist });
 
   if (loading && checklist.length === 0) {
     return (

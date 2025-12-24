@@ -28,10 +28,8 @@ const AdminCriteriaManagement = () => {
     setLoading(true);
     try {
       const res = await getAuditCriteria();
-      console.log('Fetched criteria:', res);
       setCriteria(Array.isArray(res) ? res : []);
     } catch (err) {
-      console.error('Failed to load criteria', err);
       toast.error('Failed to load criteria. Please try again.');
     } finally {
       setLoading(false);
@@ -61,7 +59,6 @@ const AdminCriteriaManagement = () => {
       toast.success('Criteria created successfully!');
       await fetchCriteria();
     } catch (err: any) {
-      console.error('Failed to create criteria', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to create criteria: ' + errorMessage);
     } finally {
