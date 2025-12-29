@@ -13,7 +13,7 @@ interface NotificationItem extends AdminNotificationDTO {
 
 export const NotificationBell: React.FC = () => {
   const { user } = useAuthStore();
-  const { isConnected, onNotification, offNotification } = useSignalR();
+  const { isConnected: _isConnected, onNotification, offNotification } = useSignalR();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
@@ -335,10 +335,6 @@ export const NotificationBell: React.FC = () => {
           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-semibold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5 shadow-md">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
-        )}
-        {/* SignalR connection indicator */}
-        {isConnected && (
-          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white shadow-sm"></span>
         )}
       </button>
 
