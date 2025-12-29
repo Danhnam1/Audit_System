@@ -74,15 +74,15 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
         return status === 'open';
       });
       
-      const rejectedAttachments = currentAttachments.filter(att => {
-        const status = att.status?.toLowerCase() || '';
-        return status === 'rejected';
-      });
+      // const rejectedAttachments = currentAttachments.filter(att => {
+      //   const status = att.status?.toLowerCase() || '';
+      //   return status === 'rejected';
+      // }); // Unused
       
-      const approvedAttachments = currentAttachments.filter(att => {
-        const status = att.status?.toLowerCase() || '';
-        return status === 'approved';
-      });
+      // const approvedAttachments = currentAttachments.filter(att => {
+      //   const status = att.status?.toLowerCase() || '';
+      //   return status === 'approved';
+      // }); // Unused
       
       
       // This ensures rejected attachments are NOT approved
@@ -97,7 +97,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
         });
         
         const results = await Promise.all(approvePromises);
-        const succeeded = results.filter(r => r.success).length;
+        // const succeeded = results.filter(r => r.success).length; // Unused
         const failed = results.filter(r => !r.success).length;
         
         if (failed > 0) {

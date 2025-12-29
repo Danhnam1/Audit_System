@@ -379,3 +379,71 @@ export const validateBeforeAddDepartment = async (
 ): Promise<{ isValid: boolean; message: string }> => {
   return await validateDepartmentUniqueness(auditId, [departmentId], startDate, endDate);
 };
+
+/**
+ * Business Rule 5: Validate schedule milestones với khoảng cách tối thiểu
+ * - evidenceDue > fieldworkStart 5 ngày
+ * - capaDue > evidenceDue 5 ngày
+ * - draftReportDue > capaDue 5 ngày
+ */
+export interface ScheduleValidationResult {
+  isValid: boolean;
+  errors: Record<string, string>; // field -> error message
+}
+
+export const validateScheduleMilestones = (
+  fieldworkStart?: string,
+  evidenceDue?: string,
+  capaDue?: string,
+  draftReportDue?: string
+): ScheduleValidationResult => {
+  const errors: Record<string, string> = {};
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const MIN_DAYS_GAP = 5;
+
+  // Helper to parse date and calculate days difference
+  const getDaysDifference = (laterDate: string, earlierDate: string): number | null => {
+    try {
+      const later = new Date(laterDate);
+      const earlier = new Date(earlierDate);
+      
+      if (isNaN(later.getTime()) || isNaN(earlier.getTime())) {
+        return null;
+      }
+      
+      const diffMs = later.getTime() - earlier.getTime();
+      return Math.floor(diffMs / MS_PER_DAY);
+    } catch (error) {
+      return null;
+    }
+  };
+
+  // Validation 1: evidenceDue > fieldworkStart 5 ngày
+  if (fieldworkStart && evidenceDue) {
+    const daysDiff = getDaysDifference(evidenceDue, fieldworkStart);
+    if (daysDiff !== null && daysDiff < MIN_DAYS_GAP) {
+      errors.evidenceDue = `Evidence Due must be at least ${MIN_DAYS_GAP} days after Fieldwork Start.`;
+    }
+  }
+
+  // Validation 2: capaDue > evidenceDue 5 ngày
+  if (evidenceDue && capaDue) {
+    const daysDiff = getDaysDifference(capaDue, evidenceDue);
+    if (daysDiff !== null && daysDiff < MIN_DAYS_GAP) {
+      errors.capaDue = `CAPA Due must be at least ${MIN_DAYS_GAP} days after Evidence Due.`;
+    }
+  }
+
+  // Validation 3: draftReportDue > capaDue 5 ngày
+  if (capaDue && draftReportDue) {
+    const daysDiff = getDaysDifference(draftReportDue, capaDue);
+    if (daysDiff !== null && daysDiff < MIN_DAYS_GAP) {
+      errors.draftReportDue = `Report Due must be at least ${MIN_DAYS_GAP} days after CAPA Due.`;
+    }
+  }
+
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors,
+  };
+};

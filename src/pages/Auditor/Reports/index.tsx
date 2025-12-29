@@ -758,7 +758,7 @@ const SQAStaffReports = () => {
            
           }
         } else {
-          const error = res.reason as any;
+          // const error = res.reason as any; // Unused
         
         }
       });

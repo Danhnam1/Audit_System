@@ -1003,6 +1003,21 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               Close
             </button>
 
+            {/* Edit button - only for Lead Auditor when plan is Draft */}
+            {_onEdit && selectedPlanDetails.status === 'Draft' && (
+              <button
+                onClick={() => {
+                  if (_onEdit && selectedPlanDetails.auditId) {
+                    _onEdit(selectedPlanDetails.auditId);
+                    onClose();
+                  }
+                }}
+                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-orange-500 hover:bg-orange-600 text-white"
+              >
+                Edit Plan
+              </button>
+            )}
+
             {onForwardToDirector && (
               <button
                 onClick={() => setShowForwardModal(true)}

@@ -68,11 +68,8 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
           >
             <option value="">All Status</option>
-            <option value="Draft">Draft</option>
             <option value="Approved">Approved</option>
-            <option value="PendingReview">Pending Review</option>
-            <option value="PendingDirectorApproval">Pending Director Approval</option>
-            <option value="Rejected">Rejected</option>
+            <option value="InProgress">In Progress</option>
           </select>
         </div>
       </div>

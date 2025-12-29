@@ -378,7 +378,7 @@ const AuditScheduleCalendar = () => {
 
                   {/* Calendar days */}
                   {calendarDays.map((day, index) => {
-                    const dateStr = formatDateForSet(day.date);
+                    // const dateStr = formatDateForSet(day.date); // Unused
                     const hasPlanned = day.audits.some(a => a.type === 'planned');
                     
                   

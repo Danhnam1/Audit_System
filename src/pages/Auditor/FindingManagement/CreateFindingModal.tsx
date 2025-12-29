@@ -376,7 +376,7 @@ const [findingTime, setFindingTime] = useState(() => {
         const uploadResults = [];
         for (const file of files) {
           try {
-            const result =             await uploadAttachment({
+            await uploadAttachment({
               entityType: 'finding', // lowercase as per API example
               entityId: findingId,
               status: 'Open', // Status is required by backend, use 'Open' as default
@@ -393,7 +393,7 @@ const [findingTime, setFindingTime] = useState(() => {
         }
         
         // Show summary of uploads
-        const successCount = uploadResults.filter(r => r.success).length;
+        // const successCount = uploadResults.filter(r => r.success).length; // Unused
         const failCount = uploadResults.filter(r => !r.success).length;
         if (failCount > 0) {
         } else {

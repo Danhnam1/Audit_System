@@ -110,7 +110,7 @@ const AuditeeOwnerAuditList = () => {
         
         // Log each finding's status
         if (findings && findings.length > 0) {
-          findings.forEach((f: Finding, index: number) => {
+          findings.forEach((_f: Finding, _index: number) => {
           
           });
         }
