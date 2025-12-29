@@ -34,7 +34,7 @@ export default function LeadAuditorActionReviewModal({
       try {
         const attachments = await getAttachments('Action', actionIdParam);
         const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
-        const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected');
+        // const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected'); // Unused
         
         
         if (openAttachments.length > 0) {

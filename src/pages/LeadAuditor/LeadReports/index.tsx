@@ -159,7 +159,7 @@ const AuditorLeadReports = () => {
           return acc;
         }, {} as Record<string, ViewReportRequest[]>);
         
-        Object.entries(groupedByAuditId).forEach(([auditId, requests]) => {
+        Object.entries(groupedByAuditId).forEach(([_auditId, requests]) => {
           if (requests.length > 1) {
           
           }
@@ -279,7 +279,7 @@ const AuditorLeadReports = () => {
         }
         
         // Lấy status của report request để hiển thị (bao gồm cả Approved)
-        const reportRequestStatus = String(rr.status || '').trim();
+        // const reportRequestStatus = String(rr.status || '').trim(); // Unused
         
         
         
@@ -1028,7 +1028,7 @@ const AuditorLeadReports = () => {
        
           // DO NOT include id or auditId in update payload - scheduleId is in route
           try {
-            const result = await updateAuditSchedule(scheduleId, updatePayload);
+            await updateAuditSchedule(scheduleId, updatePayload);
          
           } catch (updateErr: any) {
         
@@ -1229,7 +1229,7 @@ const AuditorLeadReports = () => {
           action: 'scheduleTeamUpdated'
         };
         
-        const dispatchRefreshEvent = (attempt: number = 0) => {
+        const dispatchRefreshEvent = (_attempt: number = 0) => {
           // Dispatch CustomEvent for same-tab communication
           const event = new CustomEvent('auditPlanUpdated', {
             detail: eventData,

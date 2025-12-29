@@ -35,7 +35,7 @@ export const SensitiveAreaForm: React.FC<SensitiveAreaFormProps> = ({
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const prevDeptIdsRef = useRef<string>('');
   const loadingRef = useRef(false);
-  const debounceTimerRef = useRef<number | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Memoize department IDs string to compare changes
   const deptIdsString = useMemo(() => {

@@ -231,7 +231,7 @@ const CompliantModal = ({
         const uploadResults = [];
         for (const file of files) {
           try {
-            const result = await uploadAttachment({
+            await uploadAttachment({
               entityType: 'compliant', // EntityType is 'compliant' for compliance items
               entityId: compliantItemId,
               status: 'Compliant',
@@ -246,7 +246,7 @@ const CompliantModal = ({
         }
         
         // Show summary of uploads
-        const successCount = uploadResults.filter(r => r.success).length;
+        // const successCount = uploadResults.filter(r => r.success).length; // Unused
         const failCount = uploadResults.filter(r => !r.success).length;
         if (failCount > 0) {
         } else {

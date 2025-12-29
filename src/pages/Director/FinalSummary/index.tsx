@@ -103,8 +103,8 @@ export default function DirectorFinalSummaryPage() {
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
   
   const [reportRequest, setReportRequest] = useState<{ status?: string; reportRequestId?: string; note?: string } | null>(null);
-  const [loadingReportRequest, setLoadingReportRequest] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [_loadingReportRequest, setLoadingReportRequest] = useState(false);
+  const [submitting, _setSubmitting] = useState(false);
 
   // Audit Effectiveness
   const [auditResult, setAuditResult] = useState<any>(null);
@@ -666,9 +666,9 @@ useEffect(() => {
   const effectivenessValue = auditResult?.effectivenessScore != null
     ? Number(auditResult.effectivenessScore)
     : (auditResult?.percentage != null ? Number(auditResult.percentage) : null);
-  const complianceValue = auditResult?.complianceRate != null
-    ? Number(auditResult.complianceRate)
-    : effectivenessValue;
+  // const _complianceValue = auditResult?.complianceRate != null
+  //   ? Number(auditResult.complianceRate)
+  //   : effectivenessValue; // Unused
   const resultLabel = auditResult?.result || auditResult?.status || '';
 
   // Sync editable fields when auditResult changes

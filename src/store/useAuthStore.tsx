@@ -105,7 +105,7 @@ const useAuthStore = create<AuthState>()(
       setIsI18nLoading: value => set({ isI18nLoading: value }),
       logout: async () => {
         useAuthStore.getState().setIsLoggingOut(true)
-        await authService.logout().catch(reason => {
+        await authService.logout().catch(_reason => {
         })
         set({
           user: null,

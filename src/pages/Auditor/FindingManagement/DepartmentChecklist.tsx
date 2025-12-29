@@ -995,9 +995,9 @@ const DepartmentChecklist = () => {
 
   // Listen for root cause updates
   useEffect(() => {
-    const handleRootCauseUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const _findingId = customEvent.detail?.findingId;
+    const handleRootCauseUpdated = async (_event: Event) => {
+      // const customEvent = event as CustomEvent; // Unused
+      // const _findingId = customEvent.detail?.findingId; // Unused
       
       // Small delay to ensure backend has updated
       await new Promise(resolve => setTimeout(resolve, 1000));

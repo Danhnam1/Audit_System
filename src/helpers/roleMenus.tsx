@@ -114,7 +114,6 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
       return [
         { icon: <DashboardIcon />, label: 'Dashboard', path: `${ROUTES.LEAD_AUDITOR}/dashboard` },
         { icon: <AuditIcon />, label: 'Audit Planning', path: '/lead-auditor/auditplanning' },
-        { icon: <UsersIcon />, label: 'Specify Create Plan', path: '/lead-auditor/specify-create-plan' },
         { icon: <AuditIcon />, label: 'Assignments', path: '/auditor/audit-assignment' },
         { icon: <ClockIcon />, label: 'Request Management', path: '/lead-auditor/request-management' },
         { icon: <DocumentIcon />, label: 'Review Reports', path: '/lead-auditor/lead-reports' },

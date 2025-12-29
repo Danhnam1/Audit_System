@@ -190,12 +190,12 @@ export const useAuditPlanForm = () => {
    
     
     // Debug: Check if dates are valid for validation
-    if (periodFromValue && periodToValue) {
-      const fromDate = new Date(periodFromValue);
-      const toDate = new Date(periodToValue);
-      const daysDiff = Math.floor((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
-     
-    }
+    // if (periodFromValue && periodToValue) {
+    //   const fromDate = new Date(periodFromValue);
+    //   const toDate = new Date(periodToValue);
+    //   // Calculate days difference for validation (currently unused but kept for future use)
+    //   const _daysDiff = Math.floor((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
+    // }
     
     // Step 2: Scope
     const scope = details.scope || details.audit?.scope;

@@ -37,8 +37,7 @@ const AuditorFinalSummaryPage = lazy(() => import("../pages/Auditor/FinalSummary
 const LeadAuditorAuditAssignment = lazy(() => import("../pages/LeadAuditor/AuditAssignment"));
 const LeadAuditorAuditPlanning = lazy(() => import("../pages/LeadAuditor/auditplanning"));
 const LeadAuditorAuditDetail = lazy(() => import("../pages/LeadAuditor/auditplanning/AuditDetail"));
-const LeadAuditorSpecifyCreatePlan = lazy(() => import("../pages/LeadAuditor/SpecifyCreatePlan"));
-const AuditorPlanAssignments = lazy(() => import("../pages/Auditor/PlanAssignments"));
+// const AuditorPlanAssignments = lazy(() => import("../pages/Auditor/PlanAssignments"));
 const LeadAuditorLeadReports = lazy(() => import("../pages/LeadAuditor/LeadReports"));
 const LeadAuditorActionReview = lazy(() => import("../pages/LeadAuditor/ActionReview"));
 const LeadAuditorDashboard = lazy(() => import("../pages/LeadAuditor/Dashboard"));
@@ -692,22 +691,14 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
-            <Route
-                path="/lead-auditor/specify-create-plan"
-                element={
-                    <ProtectedRoute allowedRoles={["Lead Auditor"]}>
-                        <LeadAuditorSpecifyCreatePlan />
-                    </ProtectedRoute>
-                }
-            />
-            <Route
+            {/* <Route
                 path="/auditor/plan-assignments"
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
                         <AuditorPlanAssignments />
                     </ProtectedRoute>
                 }
-            />
+            /> */}
             <Route
                 path="/lead-auditor/lead-reports"
                 element={
