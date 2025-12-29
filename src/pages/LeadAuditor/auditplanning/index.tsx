@@ -556,6 +556,67 @@ const LeadAuditorAuditPlanning = () => {
           schedules: schedulesData,
         };
 
+        // Load sensitive areas from API
+        let sensitiveAreasByDept: Record<number, string[]> = {};
+        let sensitiveFlag = false;
+        let sensitiveAreas: string[] = [];
+        
+        try {
+          const sensitiveDepts = await getSensitiveDepartments(auditId);
+          if (sensitiveDepts && sensitiveDepts.length > 0) {
+            sensitiveFlag = sensitiveDepts.some((sd: any) => sd.sensitiveFlag === true);
+            
+            const allAreas = new Set<string>();
+            
+            sensitiveDepts.forEach((sd: any) => {
+              const deptId = Number(sd.deptId);
+              let areasArray: string[] = [];
+              
+              // Try 'Areas' first (C# convention - backend returns List<string> as Areas)
+              if (Array.isArray(sd.Areas)) {
+                areasArray = sd.Areas;
+              } else if (sd.Areas && typeof sd.Areas === 'string') {
+                try {
+                  const parsed = JSON.parse(sd.Areas);
+                  areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+                } catch {
+                  areasArray = [sd.Areas];
+                }
+              } else if (sd.Areas && typeof sd.Areas === 'object' && sd.Areas.$values) {
+                areasArray = Array.isArray(sd.Areas.$values) ? sd.Areas.$values : [];
+              } else if (Array.isArray(sd.areas)) {
+                areasArray = sd.areas;
+              } else if (sd.areas && typeof sd.areas === 'string') {
+                try {
+                  const parsed = JSON.parse(sd.areas);
+                  areasArray = Array.isArray(parsed) ? parsed : [sd.areas];
+                } catch {
+                  areasArray = [sd.areas];
+                }
+              } else if (sd.areas && typeof sd.areas === 'object' && sd.areas.$values) {
+                areasArray = Array.isArray(sd.areas.$values) ? sd.areas.$values : [];
+              }
+              
+              // Store areas by deptId
+              if (deptId && areasArray.length > 0) {
+                sensitiveAreasByDept[deptId] = areasArray
+                  .filter((area: string) => area && typeof area === 'string' && area.trim())
+                  .map((a: string) => a.trim());
+              }
+              
+              areasArray.forEach((area: string) => {
+                if (area && typeof area === 'string' && area.trim()) {
+                  allAreas.add(area.trim());
+                }
+              });
+            });
+            
+            sensitiveAreas = Array.from(allAreas);
+          }
+        } catch (sensitiveErr) {
+          console.warn('[handleViewDetails] Failed to load sensitive areas:', sensitiveErr);
+        }
+
         // Load approvals history only if plan is rejected
         let latestRejectionComment: string | null = null;
         const planStatus = String(
@@ -636,6 +697,9 @@ const LeadAuditorAuditPlanning = () => {
           {
             ...detailsWithSchedules,
             latestRejectionComment,
+            sensitiveFlag,
+            sensitiveAreas,
+            sensitiveAreasByDept,
           },
           {
             departments: deptList,
@@ -662,12 +726,57 @@ const LeadAuditorAuditPlanning = () => {
         }
 
         // Fallback: use basic plan data from table
+        // Try to load sensitive areas even in fallback case
+        let fallbackSensitiveAreasByDept: Record<number, string[]> = {};
+        try {
+          const sensitiveDepts = await getSensitiveDepartments(auditId);
+          if (sensitiveDepts && sensitiveDepts.length > 0) {
+            sensitiveDepts.forEach((sd: any) => {
+              const deptId = Number(sd.deptId);
+              let areasArray: string[] = [];
+              
+              if (Array.isArray(sd.Areas)) {
+                areasArray = sd.Areas;
+              } else if (sd.Areas && typeof sd.Areas === 'string') {
+                try {
+                  const parsed = JSON.parse(sd.Areas);
+                  areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+                } catch {
+                  areasArray = [sd.Areas];
+                }
+              } else if (sd.Areas && typeof sd.Areas === 'object' && sd.Areas.$values) {
+                areasArray = Array.isArray(sd.Areas.$values) ? sd.Areas.$values : [];
+              } else if (Array.isArray(sd.areas)) {
+                areasArray = sd.areas;
+              } else if (sd.areas && typeof sd.areas === 'string') {
+                try {
+                  const parsed = JSON.parse(sd.areas);
+                  areasArray = Array.isArray(parsed) ? parsed : [sd.areas];
+                } catch {
+                  areasArray = [sd.areas];
+                }
+              } else if (sd.areas && typeof sd.areas === 'object' && sd.areas.$values) {
+                areasArray = Array.isArray(sd.areas.$values) ? sd.areas.$values : [];
+              }
+              
+              if (deptId && areasArray.length > 0) {
+                fallbackSensitiveAreasByDept[deptId] = areasArray
+                  .filter((area: string) => area && typeof area === 'string' && area.trim())
+                  .map((a: string) => a.trim());
+              }
+            });
+          }
+        } catch (sensitiveErr) {
+          console.warn('[handleViewDetails fallback] Failed to load sensitive areas:', sensitiveErr);
+        }
+
         const basicDetails: AuditPlanDetails = {
           ...planFromTable,
           schedules: { values: [] },
           auditTeams: { values: [] },
           scopeDepartments: planFromTable.scopeDepartments || { values: [] },
-        };
+          sensitiveAreasByDept: fallbackSensitiveAreasByDept,
+        } as any;
 
         setSelectedPlanDetails(basicDetails);
         await hydrateTemplateSelection(auditId, basicDetails.templateId);
@@ -756,70 +865,70 @@ const LeadAuditorAuditPlanning = () => {
     setIsSubmittingPlan(true);
     
     try {
-      // Client-side validation
-      if (!formState.title.trim()) {
-        toast.warning('Please enter a title for the plan.');
-        formState.setCurrentStep(1);
+    // Client-side validation
+    if (!formState.title.trim()) {
+      toast.warning('Please enter a title for the plan.');
+      formState.setCurrentStep(1);
         setIsSubmittingPlan(false);
-        return;
-      }
-      if (!formState.periodFrom || !formState.periodTo) {
-        toast.warning('Please select the start and end dates.');
-        formState.setCurrentStep(1);
+      return;
+    }
+    if (!formState.periodFrom || !formState.periodTo) {
+      toast.warning('Please select the start and end dates.');
+      formState.setCurrentStep(1);
         setIsSubmittingPlan(false);
-        return;
-      }
+      return;
+    }
 
       if (!validatePlanPeriod(formState.periodFrom, formState.periodTo, true)) {
-        formState.setCurrentStep(1);
+      formState.setCurrentStep(1);
         setIsSubmittingPlan(false);
-        return;
-      }
-      if (!formState.selectedTemplateIds.length) {
-        toast.warning('Please select at least one Checklist Template (Step 3).');
-        formState.setCurrentStep(3);
+      return;
+    }
+    if (!formState.selectedTemplateIds.length) {
+      toast.warning('Please select at least one Checklist Template (Step 3).');
+      formState.setCurrentStep(3);
         setIsSubmittingPlan(false);
-        return;
-      }
-      if (formState.level === 'department') {
-        if (formState.selectedDeptIds.length === 0) {
-          toast.warning('Please select at least one department for the Department scope (Step 2).');
-          formState.setCurrentStep(2);
+      return;
+    }
+    if (formState.level === 'department') {
+      if (formState.selectedDeptIds.length === 0) {
+        toast.warning('Please select at least one department for the Department scope (Step 2).');
+        formState.setCurrentStep(2);
           setIsSubmittingPlan(false);
+        return;
+      }
+      const ownersForDepts = ownerOptions.filter((o: any) => formState.selectedDeptIds.includes(String(o.deptId ?? '')));
+      if (ownersForDepts.length === 0) {
+        if (!window.confirm('⚠️ The selected departments do not have an Auditee Owner yet.\n\nDo you want to continue creating the audit plan?')) {
+          formState.setCurrentStep(4);
+            setIsSubmittingPlan(false);
           return;
         }
-        const ownersForDepts = ownerOptions.filter((o: any) => formState.selectedDeptIds.includes(String(o.deptId ?? '')));
-        if (ownersForDepts.length === 0) {
-          if (!window.confirm('⚠️ The selected departments do not have an Auditee Owner yet.\n\nDo you want to continue creating the audit plan?')) {
-            formState.setCurrentStep(4);
-            setIsSubmittingPlan(false);
-            return;
-          }
-        }
       }
+    }
 
-      // Schedule constraints: unique dates and strictly increasing order
-      const scheduleErrorMessages = Object.values(scheduleErrors).filter(Boolean);
-      if (scheduleErrorMessages.length > 0) {
-        toast.error('Invalid schedule:\n\n' + scheduleErrorMessages.join('\n'));
-        formState.setCurrentStep(5);
+    // Schedule constraints: unique dates and strictly increasing order
+    const scheduleErrorMessages = Object.values(scheduleErrors).filter(Boolean);
+    if (scheduleErrorMessages.length > 0) {
+      toast.error('Invalid schedule:\n\n' + scheduleErrorMessages.join('\n'));
+      formState.setCurrentStep(5);
         setIsSubmittingPlan(false);
-        return;
-      }
+      return;
+    }
 
-      const primaryTemplateId = formState.selectedTemplateIds[0];
+    const primaryTemplateId = formState.selectedTemplateIds[0];
 
       const basicPayload: any = {
-        title: formState.title || 'Untitled Plan',
-        type: formState.auditType || 'Internal',
-        scope: formState.level === 'academy' ? 'Academy' : 'Department',
-        templateId: primaryTemplateId || undefined,
-        startDate: formState.periodFrom ? new Date(formState.periodFrom).toISOString() : undefined,
-        endDate: formState.periodTo ? new Date(formState.periodTo).toISOString() : undefined,
-        status: 'Draft',
-        isPublished: false,
-        objective: formState.goal || '',
-      };
+      title: formState.title || 'Untitled Plan',
+      type: formState.auditType || 'Internal',
+      scope: formState.level === 'academy' ? 'Academy' : 'Department',
+      templateId: primaryTemplateId || undefined,
+      startDate: formState.periodFrom ? new Date(formState.periodFrom).toISOString() : undefined,
+      endDate: formState.periodTo ? new Date(formState.periodTo).toISOString() : undefined,
+      status: 'Draft',
+      isPublished: false,
+      objective: formState.goal || '',
+    };
 
       let auditId: string;
 
@@ -984,31 +1093,31 @@ const LeadAuditorAuditPlanning = () => {
 
       // For create mode, keep existing separate API calls
       if (!formState.isEditMode) {
-        try {
-          await syncAuditChecklistTemplateMaps({
-            auditId: String(newAuditId),
-            templateIds: formState.selectedTemplateIds,
-          });
-        } catch (templateMapErr) {
+      try {
+        await syncAuditChecklistTemplateMaps({
+          auditId: String(newAuditId),
+          templateIds: formState.selectedTemplateIds,
+        });
+      } catch (templateMapErr) {
           console.error('Failed to sync checklist templates', templateMapErr);
-          toast.error('Failed to save checklist template mappings. Please retry from Step 3.');
-        }
+        toast.error('Failed to save checklist template mappings. Please retry from Step 3.');
+      }
 
         // Attach departments with validation
-        try {
-          let deptIdsToAttach: string[] = [];
-          
-          if (formState.level === 'academy') {
-            deptIdsToAttach = departments.map((d) => String(d.deptId));
-          } else if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
-            deptIdsToAttach = formState.selectedDeptIds;
-          }
-          
-          if (deptIdsToAttach.length > 0) {
+      try {
+        let deptIdsToAttach: string[] = [];
+        
+        if (formState.level === 'academy') {
+          deptIdsToAttach = departments.map((d) => String(d.deptId));
+        } else if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
+          deptIdsToAttach = formState.selectedDeptIds;
+        }
+        
+        if (deptIdsToAttach.length > 0) {
             const startDate = formState.periodFrom;
             const endDate = formState.periodTo;
             
-            const deptResults = await Promise.allSettled(
+          const deptResults = await Promise.allSettled(
               deptIdsToAttach.map(async (deptId) => {
                 // Validate department before adding
                 if (startDate && endDate) {
@@ -1027,10 +1136,10 @@ const LeadAuditorAuditPlanning = () => {
                 
                 return await addAuditScopeDepartment(String(newAuditId), Number(deptId));
               })
-            );
+          );
             
-            const failedDepts = deptResults.filter((r) => r.status === 'rejected');
-            if (failedDepts.length > 0) {
+          const failedDepts = deptResults.filter((r) => r.status === 'rejected');
+          if (failedDepts.length > 0) {
               console.error('Some departments failed to attach:', failedDepts);
               toast.warning(`${failedDepts.length} department(s) failed to attach. Please check the errors above.`);
             }
@@ -1109,13 +1218,13 @@ const LeadAuditorAuditPlanning = () => {
                 console.error('Failed to set sensitive flags:', sensitiveErr);
                 toast.warning('Plan created but sensitive flags could not be saved. Please update manually.');
               }
-            }
+          }
           }
         } catch (scopeErr) {
           console.error('Attach departments to audit failed', scopeErr);
-        }
+      }
 
-        // Attach criteria
+      // Attach criteria
         try {
           const criteriaSet = new Set<string>();
 
@@ -1128,77 +1237,77 @@ const LeadAuditorAuditPlanning = () => {
           }
 
           if (criteriaSet.size > 0) {
-            await Promise.allSettled(
+          await Promise.allSettled(
               Array.from(criteriaSet).map((criteriaId) =>
                 addCriterionToAudit(String(newAuditId), String(criteriaId))
               )
-            );
+          );
           } else {
             toast.warning('No criteria selected to attach to audit.');
-          }
+        }
         } catch (critErr: any) {
           console.error('Attach criteria to audit failed', critErr);
           toast.error('Failed to attach criteria to audit. Please try again.');
-        }
+      }
 
-        // Add team members
-        try {
-          const calls: Promise<any>[] = [];
-          const auditorSet = new Set<string>(formState.selectedAuditorIds);
+      // Add team members
+      try {
+        const calls: Promise<any>[] = [];
+        const auditorSet = new Set<string>(formState.selectedAuditorIds);
           
           // For Lead Auditor: use currentUserId as Lead Auditor if selectedLeadId is not set
           const leadAuditorId = formState.selectedLeadId || currentUserId || '';
           if (leadAuditorId) auditorSet.add(leadAuditorId);
 
-          auditorSet.forEach((uid) => {
+        auditorSet.forEach((uid) => {
             const isLead = uid === leadAuditorId;
-            calls.push(addTeamMember({ auditId: String(newAuditId), userId: uid, roleInTeam: 'Auditor', isLead }));
+          calls.push(addTeamMember({ auditId: String(newAuditId), userId: uid, roleInTeam: 'Auditor', isLead }));
+        });
+
+        if (formState.level === 'academy') {
+          const uniqueOwnerIds = Array.from(new Set(ownerOptions.map((o: any) => String(o.userId)).filter(Boolean)));
+          uniqueOwnerIds.forEach((uid) => {
+            calls.push(addTeamMember({ auditId: String(newAuditId), userId: uid, roleInTeam: 'AuditeeOwner', isLead: false }));
           });
-
-          if (formState.level === 'academy') {
-            const uniqueOwnerIds = Array.from(new Set(ownerOptions.map((o: any) => String(o.userId)).filter(Boolean)));
-            uniqueOwnerIds.forEach((uid) => {
-              calls.push(addTeamMember({ auditId: String(newAuditId), userId: uid, roleInTeam: 'AuditeeOwner', isLead: false }));
-            });
-          } else {
-            const ownersForDepts = ownerOptions.filter((o: any) => formState.selectedDeptIds.includes(String(o.deptId ?? '')));
-            ownersForDepts.forEach((owner: any) => {
-              if (owner.userId) {
-                calls.push(addTeamMember({ auditId: String(newAuditId), userId: String(owner.userId), roleInTeam: 'AuditeeOwner', isLead: false }));
-              }
-            });
-          }
-
-          if (calls.length) {
-            await Promise.allSettled(calls);
-          }
-        } catch (teamErr) {
-          console.error('Attach team failed', teamErr);
+        } else {
+          const ownersForDepts = ownerOptions.filter((o: any) => formState.selectedDeptIds.includes(String(o.deptId ?? '')));
+          ownersForDepts.forEach((owner: any) => {
+            if (owner.userId) {
+              calls.push(addTeamMember({ auditId: String(newAuditId), userId: String(owner.userId), roleInTeam: 'AuditeeOwner', isLead: false }));
+            }
+          });
         }
 
-        // Post schedules
-        try {
-          const schedulePairs = [
-            { name: MILESTONE_NAMES.KICKOFF, date: formState.kickoffMeeting },
-            { name: MILESTONE_NAMES.FIELDWORK, date: formState.fieldworkStart },
-            { name: MILESTONE_NAMES.EVIDENCE, date: formState.evidenceDue },
-            { name: MILESTONE_NAMES.CAPA, date: formState.capaDue },
+        if (calls.length) {
+          await Promise.allSettled(calls);
+        }
+      } catch (teamErr) {
+          console.error('Attach team failed', teamErr);
+      }
+
+      // Post schedules
+      try {
+        const schedulePairs = [
+          { name: MILESTONE_NAMES.KICKOFF, date: formState.kickoffMeeting },
+          { name: MILESTONE_NAMES.FIELDWORK, date: formState.fieldworkStart },
+          { name: MILESTONE_NAMES.EVIDENCE, date: formState.evidenceDue },
+          { name: MILESTONE_NAMES.CAPA, date: formState.capaDue },
             { name: MILESTONE_NAMES.DRAFT, date: formState.draftReportDue },
           ].filter((pair) => pair.date);
 
-          if (schedulePairs.length > 0) {
+        if (schedulePairs.length > 0) {
             const schedulePromises = schedulePairs.map((pair) =>
-              addAuditSchedule({
-                auditId: String(newAuditId),
-                milestoneName: pair.name,
-                dueDate: new Date(pair.date).toISOString(),
-                status: SCHEDULE_STATUS.PLANNED,
-                notes: '',
-              })
-            );
-            await Promise.allSettled(schedulePromises);
-          }
-        } catch (scheduleErr) {
+            addAuditSchedule({
+              auditId: String(newAuditId),
+              milestoneName: pair.name,
+              dueDate: new Date(pair.date).toISOString(),
+              status: SCHEDULE_STATUS.PLANNED,
+              notes: '',
+            })
+          );
+          await Promise.allSettled(schedulePromises);
+        }
+      } catch (scheduleErr) {
           console.error('Failed to post schedules', scheduleErr);
         }
       }
@@ -1225,7 +1334,7 @@ const LeadAuditorAuditPlanning = () => {
           }
         }
       }
-      
+
       // Reset form (closes form after successful creation)
       formState.resetForm();
       setOriginalSelectedAuditorIds([]);
@@ -1491,12 +1600,12 @@ const LeadAuditorAuditPlanning = () => {
                       {formState.isEditMode
                         ? "Edit Audit Plan"
                         : "Create New Audit Plan"}
-                    </h2>
-                    {formState.isEditMode && (
+              </h2>
+              {formState.isEditMode && (
                       <span className="px-3 py-1 bg-white/20 text-white text-sm font-medium rounded-md">
                         Edit Mode
-                      </span>
-                    )}
+                </span>
+              )}
                   </div>
                   <button
                     onClick={() => {
@@ -1530,11 +1639,11 @@ const LeadAuditorAuditPlanning = () => {
                       />
                     </svg>
                   </button>
-                </div>
+            </div>
 
-                {/* Progress Stepper */}
+            {/* Progress Stepper */}
                 <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                  <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between">
                     {[
                       { num: 1, label: "Basic Info" },
                       { num: 2, label: "Scope" },
@@ -1543,7 +1652,7 @@ const LeadAuditorAuditPlanning = () => {
                       { num: 5, label: "Schedule" },
                     ].map((step, idx) => (
                       <div key={step.num} className="flex items-center flex-1">
-                        <div className="flex flex-col items-center">
+                    <div className="flex flex-col items-center">
                           <div
                             className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
                               formState.currentStep === step.num
@@ -1554,7 +1663,7 @@ const LeadAuditorAuditPlanning = () => {
                             }`}
                           >
                             {formState.currentStep > step.num ? "✓" : step.num}
-                          </div>
+                      </div>
                           <span
                             className={`text-xs mt-1 font-medium ${
                               formState.currentStep === step.num 
@@ -1565,8 +1674,8 @@ const LeadAuditorAuditPlanning = () => {
                             }`}
                           >
                             {step.label}
-                          </span>
-                        </div>
+                      </span>
+                    </div>
                         {idx < 4 && (
                           <div
                             className={`h-1 flex-1 mx-2 rounded transition-all ${
@@ -1575,25 +1684,25 @@ const LeadAuditorAuditPlanning = () => {
                                 : "bg-gray-200"
                             }`}
                           ></div>
-                        )}
-                      </div>
-                    ))}
+                    )}
                   </div>
-                </div>
+                ))}
+              </div>
+            </div>
 
                 {/* Modal Content - Scrollable */}
                 <div className="flex-1 overflow-y-auto px-6 py-4">
-                  {formState.currentStep === 1 && (
+              {formState.currentStep === 1 && (
                     <>
-                      <Step1BasicInfo
-                        title={formState.title}
-                        auditType={formState.auditType}
-                        goal={formState.goal}
-                        periodFrom={formState.periodFrom}
-                        periodTo={formState.periodTo}
-                        onTitleChange={formState.setTitle}
-                        onAuditTypeChange={formState.setAuditType}
-                        onGoalChange={formState.setGoal}
+                <Step1BasicInfo
+                  title={formState.title}
+                  auditType={formState.auditType}
+                  goal={formState.goal}
+                  periodFrom={formState.periodFrom}
+                  periodTo={formState.periodTo}
+                  onTitleChange={formState.setTitle}
+                  onAuditTypeChange={formState.setAuditType}
+                  onGoalChange={formState.setGoal}
                         onPeriodFromChange={(value: string) => {
                           formState.setPeriodFrom(value);
                           validatePlanPeriod(value, formState.periodTo, true);
@@ -1605,22 +1714,22 @@ const LeadAuditorAuditPlanning = () => {
                         editingAuditId={formState.editingAuditId}
                         level={formState.level}
                         selectedDeptIds={formState.selectedDeptIds}
-                      />
+                />
                     </>
-                  )}
+              )}
 
-                  {formState.currentStep === 2 && (
-                    <div className="space-y-4">
-                      <Step2Scope
-                        level={formState.level}
-                        selectedDeptIds={formState.selectedDeptIds}
-                        departments={departments}
+              {formState.currentStep === 2 && (
+                <div className="space-y-4">
+                  <Step2Scope
+                    level={formState.level}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    departments={departments}
                         criteria={
                           filteredCriteria.length > 0 && conflictData
                             ? filteredCriteria
                             : criteria
                         }
-                        selectedCriteriaIds={formState.selectedCriteriaIds}
+                    selectedCriteriaIds={formState.selectedCriteriaIds}
                         onLevelChange={(value) => {
                           formState.setLevel(value);
                           if (value === 'academy' && formState.sensitiveFlag) {
@@ -1641,12 +1750,12 @@ const LeadAuditorAuditPlanning = () => {
                           const union = new Set<string>();
                           map.forEach((set) => set.forEach((id) => union.add(String(id))));
                           formState.setSelectedCriteriaIds(Array.from(union));
-                        }}
-                      />
-                      <SensitiveAreaForm
-                        sensitiveFlag={formState.sensitiveFlag}
-                        sensitiveAreas={formState.sensitiveAreas}
-                        sensitiveNotes={formState.sensitiveNotes}
+                    }}
+                  />
+                  <SensitiveAreaForm
+                    sensitiveFlag={formState.sensitiveFlag}
+                    sensitiveAreas={formState.sensitiveAreas}
+                    sensitiveNotes={formState.sensitiveNotes}
                         onFlagChange={(flag) => {
                           formState.setSensitiveFlag(flag);
                           if (flag) {
@@ -1659,107 +1768,107 @@ const LeadAuditorAuditPlanning = () => {
                             formState.setSensitiveNotes('');
                           }
                         }}
-                        onAreasChange={formState.setSensitiveAreas}
-                        onNotesChange={formState.setSensitiveNotes}
-                        selectedDeptIds={formState.selectedDeptIds}
-                        departments={departments}
+                    onAreasChange={formState.setSensitiveAreas}
+                    onNotesChange={formState.setSensitiveNotes}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    departments={departments}
                         level={formState.level}
-                      />
-                    </div>
-                  )}
+                  />
+                </div>
+              )}
 
-                  {formState.currentStep === 3 && (
-                    <Step3Checklist
-                      checklistTemplates={checklistTemplates}
-                      selectedTemplateIds={formState.selectedTemplateIds}
-                      onSelectionChange={formState.setSelectedTemplateIds}
+              {formState.currentStep === 3 && (
+                <Step3Checklist
+                  checklistTemplates={checklistTemplates}
+                  selectedTemplateIds={formState.selectedTemplateIds}
+                  onSelectionChange={formState.setSelectedTemplateIds}
                       level={formState.level}
                       selectedDeptIds={formState.selectedDeptIds}
                       departments={departments}
                       periodFrom={formState.periodFrom}
                       periodTo={formState.periodTo}
                       editingAuditId={formState.editingAuditId}
-                    />
-                  )}
+                />
+              )}
 
-                  {formState.currentStep === 4 && (
-                    <div className="space-y-3">
-                      <Step4Team
-                        level={formState.level}
-                        selectedDeptIds={formState.selectedDeptIds}
-                        selectedAuditorIds={formState.selectedAuditorIds}
-                        sensitiveFlag={formState.sensitiveFlag}
-                        auditorOptions={auditorOptions}
-                        ownerOptions={ownerOptions}
-                        departments={departments}
-                        onAuditorsChange={formState.setSelectedAuditorIds}
+              {formState.currentStep === 4 && (
+                <div className="space-y-3">
+                  <Step4Team
+                    level={formState.level}
+                    selectedDeptIds={formState.selectedDeptIds}
+                    selectedAuditorIds={formState.selectedAuditorIds}
+                    sensitiveFlag={formState.sensitiveFlag}
+                    auditorOptions={auditorOptions}
+                    ownerOptions={ownerOptions}
+                    departments={departments}
+                    onAuditorsChange={formState.setSelectedAuditorIds}
                         periodFrom={formState.periodFrom}
                         periodTo={formState.periodTo}
                         editingAuditId={formState.editingAuditId}
-                      />
+                  />
                       <PermissionPreviewPanel
                         sensitiveFlag={formState.sensitiveFlag}
                       />
-                    </div>
-                  )}
+                </div>
+              )}
 
-                  {formState.currentStep === 5 && (
-                    <Step5Schedule
-                      kickoffMeeting={formState.kickoffMeeting}
-                      fieldworkStart={formState.fieldworkStart}
-                      evidenceDue={formState.evidenceDue}
-                      draftReportDue={formState.draftReportDue}
-                      capaDue={formState.capaDue}
-                      onKickoffChange={formState.setKickoffMeeting}
-                      onFieldworkChange={formState.setFieldworkStart}
-                      onEvidenceChange={formState.setEvidenceDue}
-                      onDraftReportChange={formState.setDraftReportDue}
-                      onCapaChange={formState.setCapaDue}
-                      errors={scheduleErrors}
-                      periodFrom={formState.periodFrom}
-                      periodTo={formState.periodTo}
-                    />
-                  )}
+              {formState.currentStep === 5 && (
+                <Step5Schedule
+                  kickoffMeeting={formState.kickoffMeeting}
+                  fieldworkStart={formState.fieldworkStart}
+                  evidenceDue={formState.evidenceDue}
+                  draftReportDue={formState.draftReportDue}
+                  capaDue={formState.capaDue}
+                  onKickoffChange={formState.setKickoffMeeting}
+                  onFieldworkChange={formState.setFieldworkStart}
+                  onEvidenceChange={formState.setEvidenceDue}
+                  onDraftReportChange={formState.setDraftReportDue}
+                  onCapaChange={formState.setCapaDue}
+                  errors={scheduleErrors}
+                  periodFrom={formState.periodFrom}
+                  periodTo={formState.periodTo}
+                />
+              )}
                 </div>
 
                 {/* Modal Footer - Navigation Buttons */}
                 <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex-shrink-0 rounded-b-xl">
                   <div className="flex justify-between gap-3">
-                    <button
-                      onClick={() => {
-                        if (formState.currentStep > 1) {
-                          formState.setCurrentStep(formState.currentStep - 1);
-                        } else {
-                          if (hasFormData || formState.isEditMode) {
+                <button
+                  onClick={() => {
+                    if (formState.currentStep > 1) {
+                      formState.setCurrentStep(formState.currentStep - 1);
+                    } else {
+                      if (hasFormData || formState.isEditMode) {
                             if (
                               window.confirm(
                                 "Are you sure you want to cancel? All unsaved changes will be lost."
                               )
                             ) {
-                              formState.resetForm();
+                          formState.resetForm();
                               setOriginalSelectedAuditorIds([]);
-                            }
-                          } else {
-                            formState.setShowForm(false);
-                            formState.setCurrentStep(1);
-                          }
                         }
-                      }}
+                    } else {
+                      formState.setShowForm(false);
+                      formState.setCurrentStep(1);
+                      }
+                    }
+                  }}
                       className="border-2 border-gray-400 text-gray-700 hover:bg-gray-100 px-6 py-2.5 rounded-lg font-medium transition-all duration-150"
-                    >
+                >
                       {formState.currentStep === 1 ? "Cancel" : "← Back"}
-                    </button>
+                </button>
 
-                    <div className="flex gap-3">
-                      {formState.currentStep < 5 && (
-                        <button
-                          onClick={() => {
-                            if (canContinue) {
-                              formState.setCurrentStep(formState.currentStep + 1);
-                            } else {
+                <div className="flex gap-3">
+                  {formState.currentStep < 5 && (
+                    <button
+                      onClick={() => {
+                        if (canContinue) {
+                          formState.setCurrentStep(formState.currentStep + 1);
+                        } else {
                               let message = "";
-                              switch (formState.currentStep) {
-                                case 1:
+                          switch (formState.currentStep) {
+                            case 1:
                                   // Check if period validation failed due to minimum days
                                   if (formState.periodFrom && formState.periodTo) {
                                     const fromDate = new Date(formState.periodFrom);
@@ -1780,13 +1889,13 @@ const LeadAuditorAuditPlanning = () => {
                                   } else {
                                     message = "Please fill in the information: Title, Type, Period From, and Period To.";
                                   }
-                                  break;
-                                case 2:
+                              break;
+                            case 2:
                                   message = formState.level === "department"
                                     ? "Please select at least 1 department and 1 inspection criterion"
                                     : "Please select at least 1 inspection criterion";
-                                  break;
-                                case 3:
+                              break;
+                            case 3:
                                   if (formState.level === "department" && formState.selectedDeptIds.length > 0) {
                                     const selectedTemplates = checklistTemplates.filter((tpl: any) =>
                                       formState.selectedTemplateIds.includes(String(tpl.templateId || tpl.id || tpl.$id))
@@ -1816,63 +1925,63 @@ const LeadAuditorAuditPlanning = () => {
                                   } else {
                                     message = "Please select a Checklist Template.";
                                   }
-                                  break;
-                                case 4:
+                              break;
+                            case 4:
                                   message = "Please select at least 2 auditors.";
-                                  break;
-                                default:
+                              break;
+                            default:
                                   message = "Please fill in all information before continuing.";
-                              }
-                              toast.warning(message);
-                            }
-                          }}
-                          disabled={!canContinue}
-                          className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
-                            canContinue
+                          }
+                          toast.warning(message);
+                        }
+                      }}
+                      disabled={!canContinue}
+                      className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md ${
+                        canContinue
                               ? "bg-primary-600 hover:bg-primary-700 text-white cursor-pointer"
                               : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                          }`}
-                        >
-                          Continue →
-                        </button>
-                      )}
-                      {formState.currentStep === 5 && (
-                        <>
-                          <button
-                            onClick={handleSubmitPlan}
+                      }`}
+                    >
+                      Continue →
+                    </button>
+                  )}
+                  {formState.currentStep === 5 && (
+                    <>
+                      <button
+                        onClick={handleSubmitPlan}
                             disabled={isSubmittingPlan}
                             className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
+                      >
                             {isSubmittingPlan
                               ? (formState.isEditMode ? "Updating..." : "Creating...")
                               : (formState.isEditMode ? " Update Plan" : " Submit Plan")}
-                          </button>
-                          {formState.isEditMode && (
-                            <button
-                              onClick={() => {
+                      </button>
+                      {formState.isEditMode && (
+                        <button
+                          onClick={() => {
                                 if (
                                   window.confirm(
                                     "Are you sure you want to cancel? All unsaved changes will be lost."
                                   )
                                 ) {
-                                  formState.resetForm();
+                              formState.resetForm();
                                   setOriginalSelectedAuditorIds([]);
-                                }
-                              }}
-                              className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
-                            >
-                              Cancel
-                            </button>
-                          )}
-                        </>
+                            }
+                          }}
+                          className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-sm hover:shadow-md"
+                        >
+                          Cancel
+                        </button>
                       )}
-                    </div>
-                  </div>
+                    </>
+                  )}
                 </div>
               </div>
+            </div>
+          </div>
             </div>,
             document.body
-          )}
+        )}
 
         {/* Plans Table with Filters */}
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden animate-slideUp animate-delay-100">
@@ -1950,7 +2059,6 @@ const LeadAuditorAuditPlanning = () => {
                 setSelectedPlanDetails(null);
                 setTemplatesForSelectedPlan([]);
               }}
-              onEdit={isDraft ? handleEditPlan : undefined}
               onForwardToDirector={canForwardDraft ? async (auditId: string, comment?: string) => {
                 try {
                   await approveForwardDirector(auditId, { comment });
