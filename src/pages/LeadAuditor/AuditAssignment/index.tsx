@@ -782,11 +782,6 @@ export default function AuditAssignment() {
     });
   };
 
-  // Removed unused getAssignmentsForSelectedAudit function
-  // const getAssignmentsForSelectedAudit = (): Assignment[] => {
-  //   if (!selectedAuditId) return [];
-  //   return assignments.filter(assignment => assignment.auditId === selectedAuditId);
-  // };
 
   return (
     <MainLayout user={layoutUser}>
