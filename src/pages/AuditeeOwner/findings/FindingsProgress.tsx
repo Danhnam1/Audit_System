@@ -372,8 +372,7 @@ const FindingsProgress = () => {
 
   // Listen for action updates from CAPAOwner
   useEffect(() => {
-    const handleActionUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent;
+    const handleActionUpdated = async (_event: Event) => {
       // Small delay to ensure backend has updated
       await new Promise(resolve => setTimeout(resolve, 500));
       // Reload findings to reflect updated action status
@@ -390,10 +389,7 @@ const FindingsProgress = () => {
 
   // Listen for root cause updates
   useEffect(() => {
-    const handleRootCauseUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const findingId = customEvent.detail?.findingId;
-
+    const handleRootCauseUpdated = async (_event: Event) => {
       // Small delay to ensure backend has updated
       await new Promise(resolve => setTimeout(resolve, 1000));
 

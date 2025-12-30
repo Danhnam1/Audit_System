@@ -35,13 +35,7 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
         const planStatus = String(plan.status || 'Draft');
 
         // Lead Auditor filters:
-        // - RejectedByLead     => audit.Status == "Declined"
         // - RejectedByDirector => audit.Status == "Rejected"
-        if (filterStatus === 'RejectedByLead') {
-          if (planStatus !== 'Declined') return false;
-          return true;
-        }
-
         if (filterStatus === 'RejectedByDirector') {
           if (planStatus !== 'Rejected') return false;
           return true;

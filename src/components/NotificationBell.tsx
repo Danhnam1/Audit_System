@@ -13,7 +13,7 @@ interface NotificationItem extends AdminNotificationDTO {
 
 export const NotificationBell: React.FC = () => {
   const { user } = useAuthStore();
-  const { isConnected, onNotification, offNotification } = useSignalR();
+  const { isConnected: _isConnected, onNotification, offNotification } = useSignalR();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
@@ -209,6 +209,19 @@ export const NotificationBell: React.FC = () => {
         shownNotificationIdsRef.current = new Set(idsArray.slice(-50));
       }
       
+      // Filter: Don't show toast for "Your Audit Plan Has Been Approved" when Lead Auditor forwards plan to Director
+      const notificationTitle = (data.title || '').toLowerCase();
+      const userRole = (user?.roleName || '').toLowerCase();
+      const isApprovalNotification = notificationTitle.includes('your audit plan has been approved');
+      const isLeadAuditor = userRole.includes('lead auditor') || userRole.includes('leadauditor');
+      
+      // Skip toast if it's the approval notification and user is Lead Auditor
+      // (This notification is sent when Lead Auditor forwards their own plan to Director)
+      if (isApprovalNotification && isLeadAuditor) {
+        // Still reload notifications but don't show toast
+        await loadRef.current(true);
+        return;
+      }
       
       // Show toast notification immediately
       toast.info(data.title || 'New notification', {
@@ -228,7 +241,7 @@ export const NotificationBell: React.FC = () => {
     return () => {
       offNotification();
     };
-  }, [onNotification, offNotification]); // Removed 'load' from dependencies to prevent re-subscription
+  }, [onNotification, offNotification, user]); // Added 'user' to check role for filtering notifications
 
   const handleMarkRead = async (id: string) => {
     // Save to localStorage immediately (works even without backend)
@@ -322,10 +335,6 @@ export const NotificationBell: React.FC = () => {
           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-semibold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1.5 shadow-md">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
-        )}
-        {/* SignalR connection indicator */}
-        {isConnected && (
-          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white shadow-sm"></span>
         )}
       </button>
 

@@ -151,7 +151,7 @@ const AdminUserManagement = () => {
         return
       }
 
-      const response = await authService.register({
+      await authService.register({
         fullName: formData.fullName,
         email: formData.email,
         password: formData.password,

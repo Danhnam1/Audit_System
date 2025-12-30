@@ -60,7 +60,7 @@ const AssignedTasks = () => {
         const allActions = await getMyAssignedActions();
         
         // Log each action with its details, especially status
-        allActions.forEach((a: any, index: number) => {
+        allActions.forEach((_a: any, _index: number) => {
        
         });
         
@@ -112,7 +112,7 @@ const AssignedTasks = () => {
           const filteredBeforeDedupe = allActions.filter((a: any) => findingIdsForAudit.includes(a.findingId));
           
           // Log all actions before deduplication
-          filteredBeforeDedupe.forEach((a: any, index: number) => {
+          filteredBeforeDedupe.forEach((_a: any, _index: number) => {
           
           });
           
@@ -128,7 +128,7 @@ const AssignedTasks = () => {
           
           
           // Log final actions
-          actions.forEach((a: any, index: number) => {
+          actions.forEach((_a: any, _index: number) => {
          
           });
         } else {

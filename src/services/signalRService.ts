@@ -109,15 +109,15 @@ class SignalRService {
     if (!this.connection) return;
 
     // Connection state changes
-    this.connection.onclose((error) => {
+    this.connection.onclose((_error) => {
       this.reconnectAttempts = 0;
     });
 
-    this.connection.onreconnecting((error) => {
+    this.connection.onreconnecting((_error) => {
       this.reconnectAttempts++;
     });
 
-    this.connection.onreconnected((connectionId) => {
+    this.connection.onreconnected((_connectionId) => {
       this.reconnectAttempts = 0;
     });
   }
