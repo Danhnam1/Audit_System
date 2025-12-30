@@ -14,6 +14,7 @@ import { getUserById } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import { DataTable } from '../../../components/DataTable';
+import { Pagination } from '../../../components/Pagination';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface Department {
@@ -29,6 +30,11 @@ interface Auditor {
   userId: string;
   fullName: string;
   email: string;
+  roleInTeam?: string;
+  role?: string;
+  roleName?: string;
+  isLead?: boolean;
+  isLeadAuditor?: boolean;
 }
 
 interface Assignment {
@@ -67,6 +73,8 @@ export default function AuditAssignment() {
   const [loadingAudits, setLoadingAudits] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage] = useState<number>(10);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [userNamesCache, setUserNamesCache] = useState<Record<string, string>>({});
   const [qrValidityFrom, setQrValidityFrom] = useState<Date | null>(null);
@@ -112,6 +120,7 @@ export default function AuditAssignment() {
     reasonRequest: string;
     actualAuditDate: string;
     status: string;
+    createdBy?: string;
     createdByName?: string;
   }>>([]);
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -123,6 +132,7 @@ export default function AuditAssignment() {
     reasonRequest: string;
     actualAuditDate: string;
     status: string;
+    createdBy?: string;
     createdByName?: string;
   } | null>(null);
   const [processingRequest, setProcessingRequest] = useState(false);
@@ -135,10 +145,10 @@ export default function AuditAssignment() {
       try {
         const auditsData = await getAuditPlans();
         const auditsList = unwrap<Audit>(auditsData);
-        // Only show audits with status "InProgress"
+        // Show audits with status "InProgress" or "Approved"
         const filteredAudits = (Array.isArray(auditsList) ? auditsList : []).filter((audit: Audit) => {
           const statusLower = (audit.status || '').toLowerCase().trim();
-          return statusLower === 'inprogress';
+          return statusLower === 'inprogress' || statusLower === 'approved';
         });
         setAudits(filteredAudits);
       } catch (err: any) {
@@ -354,13 +364,43 @@ export default function AuditAssignment() {
     loadAuditors(auditId);
   };
 
+  // Check if auditor has an Accepted request (busy)
+  const isAuditorBusy = (auditorId: string): boolean => {
+    return assignmentRequests.some((request) => {
+      const requestUserId = String(request.createdBy || '').trim();
+      const auditorIdStr = String(auditorId).trim();
+      const status = (request.status || '').toLowerCase().trim();
+      
+      return requestUserId === auditorIdStr && status === 'accepted';
+    });
+  };
+
   const loadAuditors = async (auditId: string) => {
     if (!auditId) return;
     
     setLoadingAuditors(true);
     try {
       const auditorsData = await getAuditorsByAuditId(auditId);
-      setAuditors(auditorsData || []);
+      const auditorsList = Array.isArray(auditorsData) ? auditorsData : [];
+      
+      // Filter out LeadAuditor from the list
+      const filteredAuditors = auditorsList.filter((auditor: any) => {
+        // Check role fields (case-insensitive)
+        const role = (auditor.roleInTeam || auditor.role || auditor.roleName || '').toLowerCase().trim();
+        const normalizedRole = role.replace(/\s+/g, '');
+        
+        // Check if is LeadAuditor
+        const isLead = auditor.isLead || auditor.isLeadAuditor || false;
+        
+        // Exclude if role is "leadauditor" or "lead auditor" or if isLead flag is true
+        if (normalizedRole === 'leadauditor' || normalizedRole === 'lead auditor' || isLead) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      setAuditors(filteredAuditors);
     } catch (err: any) {
       setAuditors([]);
     } finally {
@@ -698,24 +738,40 @@ export default function AuditAssignment() {
     return false;
   };
 
-  // Check if audit is pending (has no assignments or has pending status)
+  // Check if audit is pending (audits with status "Approved")
   const isPendingAudit = (audit: Audit): boolean => {
-    // Check if audit has any assignments
-    const hasAssignments = assignments.some(
-      (assignment) => String(assignment.auditId || '').trim() === String(audit.auditId).trim()
-    );
-    
-    // Audit is pending if it has no assignments
-    return !hasAssignments;
+    // Pending = audits with status "Approved" (case-insensitive)
+    const status = (audit.status || '').toLowerCase().trim();
+    return status === 'approved';
+  };
+
+  // Check if audit is InProgress
+  const isInProgressAudit = (audit: Audit): boolean => {
+    const status = (audit.status || '').toLowerCase().trim();
+    return status === 'inprogress';
   };
 
   // Get filtered audits based on active tab
   const getFilteredAudits = (): Audit[] => {
     if (activeTab === 'pending') {
+      // Pending tab: only show Approved audits
       return audits.filter(audit => isPendingAudit(audit));
     }
-    return audits;
+    // All tab: only show InProgress audits
+    return audits.filter(audit => isInProgressAudit(audit));
   };
+
+  // Calculate pagination
+  const filteredAudits = getFilteredAudits();
+  const totalPages = Math.ceil(filteredAudits.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedAudits = filteredAudits.slice(startIndex, endIndex);
+
+  // Reset to page 1 when tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
 
   const handleAuditSelect = (auditId: string) => {
     setSelectedAuditId(auditId);
@@ -886,15 +942,18 @@ export default function AuditAssignment() {
                   `}
                 >
                   All Audits
-                  {audits.length > 0 && (
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      activeTab === 'all' 
-                        ? 'bg-white bg-opacity-20 text-white' 
-                        : 'bg-gray-200 text-gray-700'
-                    }`}>
-                      {audits.length}
-                    </span>
-                  )}
+                  {(() => {
+                    const inProgressCount = audits.filter(audit => isInProgressAudit(audit)).length;
+                    return inProgressCount > 0 ? (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        activeTab === 'all' 
+                          ? 'bg-white bg-opacity-20 text-white' 
+                          : 'bg-gray-200 text-gray-700'
+                      }`}>
+                        {inProgressCount}
+                      </span>
+                    ) : null;
+                  })()}
                 </button>
                 <button
                   onClick={() => setActiveTab('pending')}
@@ -960,7 +1019,7 @@ export default function AuditAssignment() {
                         header: 'No.',
                         cellClassName: 'whitespace-nowrap',
                         render: (_, index) => (
-                          <span className="text-sm text-gray-700">{index + 1}</span>
+                          <span className="text-sm text-gray-700">{startIndex + index + 1}</span>
                         ),
                       },
                       {
@@ -1106,9 +1165,18 @@ export default function AuditAssignment() {
                         ),
                       },
                     ]}
-                    data={getFilteredAudits()}
+                    data={paginatedAudits}
                     emptyState={activeTab === 'pending' ? 'No pending audits found.' : 'No audits found.'}
                   />
+                  {totalPages > 1 && (
+                    <div className="px-6 py-4 border-t border-gray-200">
+                      <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPageChange={setCurrentPage}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -1412,17 +1480,24 @@ export default function AuditAssignment() {
                         {auditors.map((auditor) => {
                           const id = String(auditor.userId);
                           const checked = selectedAuditorIds.includes(id);
+                          const isBusy = isAuditorBusy(id);
                           return (
                             <label
                               key={id}
-                              className="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 hover:bg-white transition cursor-pointer border border-transparent hover:border-gray-200"
+                              className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition border border-transparent ${
+                                isBusy
+                                  ? 'bg-gray-100 cursor-not-allowed opacity-60'
+                                  : 'hover:bg-white cursor-pointer hover:border-gray-200'
+                              }`}
                             >
                               <div className="flex items-center gap-3 flex-1">
                                 <input
                                   type="checkbox"
                                   className="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                                   checked={checked}
+                                  disabled={isBusy}
                                   onChange={(e) => {
+                                    if (isBusy) return;
                                     const next = e.target.checked
                                       ? Array.from(new Set([...selectedAuditorIds, id]))
                                       : selectedAuditorIds.filter((x) => x !== id);
@@ -1430,11 +1505,25 @@ export default function AuditAssignment() {
                                   }}
                                 />
                                 <div className="text-sm flex-1">
-                                  <p className="font-medium text-gray-900">{auditor.fullName || 'Unknown'}</p>
-                                  <p className="text-gray-500 text-xs">{auditor.email || 'N/A'}</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className={`font-medium ${isBusy ? 'text-gray-500' : 'text-gray-900'}`}>
+                                      {auditor.fullName || 'Unknown'}
+                                    </p>
+                                    {isBusy && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        Bận
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className={`text-xs ${isBusy ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    {auditor.email || 'N/A'}
+                                  </p>
                                 </div>
                               </div>
-                              {checked && (
+                              {checked && !isBusy && (
                                 <span className="text-xs font-medium text-primary-700 bg-primary-100 px-2.5 py-1 rounded-full border border-primary-200">
                                   Selected
                                 </span>
