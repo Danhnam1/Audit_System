@@ -4,7 +4,7 @@ import { useAuth } from '../../../contexts';
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { AuditPlan, AuditPlanDetails } from '../../../types/auditPlan';
-import { getChecklistTemplates } from '../../../api/checklists';
+import { getChecklistTemplates, createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
 import { 
   createAudit, 
   addAuditScopeDepartment,
@@ -1142,6 +1142,46 @@ const LeadAuditorAuditPlanning = () => {
           if (failedDepts.length > 0) {
               console.error('Some departments failed to attach:', failedDepts);
               toast.warning(`${failedDepts.length} department(s) failed to attach. Please check the errors above.`);
+            }
+            
+            // Create checklist items from template for all successfully attached departments
+            // This should happen regardless of sensitive flag
+            const successfulDepts = deptResults
+              .filter((r) => r.status === 'fulfilled')
+              .map((r) => (r as PromiseFulfilledResult<any>).value)
+              .filter(Boolean);
+            
+            if (successfulDepts.length > 0 && formState.selectedTemplateIds.length > 0) {
+              try {
+                const checklistPromises = successfulDepts.map(async (sd: any) => {
+                  const sdDeptId = Number(sd.deptId || sd.$deptId);
+                  if (!sdDeptId || isNaN(sdDeptId)) return null;
+                  
+                  try {
+                    await createAuditChecklistItemsFromTemplate(
+                      String(newAuditId),
+                      sdDeptId
+                    );
+                    return { deptId: sdDeptId, success: true };
+                  } catch (err) {
+                    console.error(`Failed to create checklist items for department ${sdDeptId}:`, err);
+                    return { deptId: sdDeptId, success: false };
+                  }
+                });
+                
+                const checklistResults = await Promise.allSettled(checklistPromises);
+                const failedChecklists = checklistResults.filter(
+                  (r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success)
+                ).length;
+                
+                if (failedChecklists > 0) {
+                  console.warn(`${failedChecklists} department(s) failed to create checklist items`);
+                }
+                // Don't show toast for checklist creation - it's expected behavior
+              } catch (checklistErr: any) {
+                console.error('Failed to create checklist items from template:', checklistErr);
+                // Don't block plan creation if checklist creation fails
+              }
             }
             
             // Set sensitive flags for departments if enabled

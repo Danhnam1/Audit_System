@@ -1,13 +1,21 @@
 import { MainLayout } from '../../../layouts';
 import { PageHeader } from '../../../components';
 import { useAuth } from '../../../contexts';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuditFindings } from '../../../hooks/useAuditFindings';
 import { getMyAssignments } from '../../../api/auditAssignments';
-import { getAuditPlanById } from '../../../api/audits';
+import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
 import { getCurrentTime } from '../../../api/time';
 import { unwrap } from '../../../utils/normalize';
+import { getAuditSchedules } from '../../../api/auditSchedule';
+import { getDepartments } from '../../../api/departments';
+import { getAdminUsers } from '../../../api/adminUsers';
+import { getAuditorsByAuditId } from '../../../api/auditTeam';
+import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
+import { normalizePlanDetails } from '../../../utils/normalize';
+import { getStatusColor, getBadgeVariant } from '../../../constants';
+import { PlanDetailsModal } from '../AuditPlanning/components/PlanDetailsModal';
 
 interface AuditCard {
   auditId: string;
@@ -28,6 +36,16 @@ const SQAStaffFindingManagement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all');
+  
+  // Modal state
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedPlanDetails, setSelectedPlanDetails] = useState<any>(null);
+  const [templatesForSelectedPlan, setTemplatesForSelectedPlan] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
+  const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
+  const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
+  const [auditTeams, setAuditTeams] = useState<any[]>([]);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -215,8 +233,15 @@ const SQAStaffFindingManagement = () => {
             return false;
           }
           
+          // Approved audits should always be shown (for Pending tab)
+          const isApproved = statusLower === 'approved';
+          if (isApproved) {
+            return true;
+          }
+          
           // Filter out future audits - only show audits where Fieldwork Start date <= currentTime from API
           // Note: startDate now contains Fieldwork Start date (or fallback to audit startDate)
+          // This filter only applies to non-Approved audits
           if (audit.startDate) {
             try {
               const fieldworkStartDate = new Date(audit.startDate);
@@ -247,8 +272,184 @@ const SQAStaffFindingManagement = () => {
     loadAudits();
   }, [currentTime]);
 
+  // Check if audit is pending (audits with status "Approved")
+  const isPendingAudit = (audit: AuditCard): boolean => {
+    // Pending = audits with status "Approved" (case-insensitive)
+    const status = (audit.status || '').toLowerCase().trim();
+    return status === 'approved';
+  };
+
+  // Check if audit is InProgress
+  const isInProgressAudit = (audit: AuditCard): boolean => {
+    const status = (audit.status || '').toLowerCase().trim();
+    return status === 'inprogress' || status === 'in progress';
+  };
+
+  // Get filtered audits based on active tab
+  const getFilteredAudits = (): AuditCard[] => {
+    if (activeTab === 'pending') {
+      // Pending tab: only show Approved audits
+      return audits.filter(audit => isPendingAudit(audit));
+    }
+    // All tab: only show InProgress audits
+    return audits.filter(audit => isInProgressAudit(audit));
+  };
+
   const handleAuditClick = (audit: AuditCard) => {
+    // Don't navigate if in pending tab
+    if (activeTab === 'pending') {
+      return;
+    }
     navigate(`/auditor/findings/audit/${audit.auditId}`);
+  };
+
+  // Load departments and users for PlanDetailsModal
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Load departments
+        const deptRes: any = await getDepartments();
+        const deptList = (deptRes || []).map((d: any) => ({
+          deptId: d.deptId ?? d.$id ?? d.id,
+          name: d.name || d.code || "—",
+        }));
+        setDepartments(deptList);
+
+        // Load users
+        const usersRes: any = await getAdminUsers();
+        const users = unwrap(usersRes) || [];
+        setAuditorOptions(users);
+        setOwnerOptions(users);
+      } catch (err) {
+        console.error('Failed to load departments/users:', err);
+      }
+    };
+    loadData();
+  }, []);
+
+  // Handler: View full details
+  const handleViewDetails = async (auditId: string) => {
+    try {
+      const rawDetails = await getAuditPlanById(auditId);
+
+      // Fetch schedules separately if not included in main response
+      let schedulesData = rawDetails?.schedules;
+      if (
+        !schedulesData ||
+        (!schedulesData.values &&
+          !schedulesData.$values &&
+          !Array.isArray(schedulesData))
+      ) {
+        try {
+          const schedulesResponse = await getAuditSchedules(auditId);
+          const schedulesArray = unwrap(schedulesResponse);
+          schedulesData = { values: schedulesArray };
+        } catch (scheduleErr) {
+          schedulesData = { values: [] };
+        }
+      }
+
+      // Merge schedules into rawDetails
+      const detailsWithSchedules = {
+        ...rawDetails,
+        schedules: schedulesData,
+      };
+
+      // Load sensitive areas
+      let sensitiveAreasByDept: Record<number, string[]> = {};
+      try {
+        const sensitiveDepts = await getSensitiveDepartments(auditId);
+        if (sensitiveDepts && sensitiveDepts.length > 0) {
+          sensitiveDepts.forEach((sd: any) => {
+            const deptId = Number(sd.deptId);
+            let areasArray: string[] = [];
+            
+            if (Array.isArray(sd.Areas)) {
+              areasArray = sd.Areas;
+            } else if (sd.Areas && typeof sd.Areas === "string") {
+              try {
+                const parsed = JSON.parse(sd.Areas);
+                areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+              } catch {
+                areasArray = [sd.Areas];
+              }
+            } else if (Array.isArray(sd.areas)) {
+              areasArray = sd.areas;
+            }
+            
+            if (deptId && areasArray.length > 0) {
+              sensitiveAreasByDept[deptId] = areasArray
+                .filter((area: string) => area && typeof area === "string" && area.trim())
+                .map((a: string) => a.trim());
+            }
+          });
+        }
+      } catch (sensitiveErr) {
+        console.error("Failed to load sensitive areas:", sensitiveErr);
+      }
+
+      // Load templates
+      let templates: any[] = [];
+      try {
+        const templatesRes = await getAuditChecklistTemplateMapsByAudit(auditId);
+        const templatesList = unwrap(templatesRes) || [];
+        templates = Array.isArray(templatesList) ? templatesList : [];
+      } catch (templateErr) {
+        console.error("Failed to load templates:", templateErr);
+      }
+
+      // Load audit teams
+      let teams: any[] = [];
+      try {
+        const teamsRes = await getAuditorsByAuditId(auditId);
+        const teamsList = unwrap(teamsRes) || [];
+        teams = Array.isArray(teamsList) ? teamsList : [];
+        setAuditTeams(teams);
+      } catch (teamErr) {
+        console.error("Failed to load audit teams:", teamErr);
+      }
+
+      // Normalize details
+      const normalizedDetails = normalizePlanDetails(detailsWithSchedules, {
+        departments: departments,
+        criteriaList: [],
+        users: [],
+      });
+
+      const detailsWithSensitive = {
+        ...normalizedDetails,
+        sensitiveAreasByDept,
+      };
+
+      setSelectedPlanDetails(detailsWithSensitive);
+      setTemplatesForSelectedPlan(templates);
+      setShowDetailsModal(true);
+    } catch (err: any) {
+      console.error('Failed to load audit details:', err);
+      alert('Failed to load audit details: ' + (err?.message || 'Unknown error'));
+    }
+  };
+
+  // Get current user's userId for PlanDetailsModal
+  const currentUserId = useMemo(() => {
+    if (!user) return null;
+    const fallbackId =
+      (user as any)?.userId ?? (user as any)?.id ?? (user as any)?.$id ?? null;
+    return fallbackId ? String(fallbackId).trim() : null;
+  }, [user]);
+
+  // Helper functions for PlanDetailsModal
+  const getCriterionName = (id: string) => {
+    return `Criterion ${id}`;
+  };
+
+  const getDepartmentName = (id: string | number) => {
+    const dept = departments.find((d) => String(d.deptId) === String(id));
+    return dept?.name || `Department ${id}`;
+  };
+
+  const getTemplateName = (tid: string | number | null | undefined) => {
+    return `Template ${String(tid ?? "")}`;
   };
 
   return (
@@ -258,6 +459,70 @@ const SQAStaffFindingManagement = () => {
           title="Task Management"
           subtitle="Select a department to manage audit findings"
         />
+      </div>
+
+      {/* Tabs - Always visible */}
+      <div className="px-4 sm:px-6 mb-6" style={{ display: 'block', visibility: 'visible' }}>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+          <nav className="flex space-x-2" aria-label="Tabs" style={{ display: 'flex' }}>
+            <button
+              onClick={() => setActiveTab('all')}
+              type="button"
+              className={`
+                px-6 py-3 rounded-lg font-medium text-sm transition-all duration-200 flex items-center gap-2
+                ${
+                  activeTab === 'all'
+                    ? 'bg-primary-600 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-white'
+                }
+              `}
+              style={{ display: 'inline-flex', visibility: 'visible' }}
+            >
+              All Audits
+              {(() => {
+                const inProgressCount = audits.filter(audit => isInProgressAudit(audit)).length;
+                return inProgressCount > 0 ? (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    activeTab === 'all' 
+                      ? 'bg-white bg-opacity-20 text-white' 
+                      : 'bg-gray-200 text-gray-700'
+                  }`}>
+                    {inProgressCount}
+                  </span>
+                ) : null;
+              })()}
+            </button>
+            <button
+              onClick={() => setActiveTab('pending')}
+              type="button"
+              className={`
+                px-6 py-3 rounded-lg font-medium text-sm transition-all duration-200 flex items-center gap-2
+                ${
+                  activeTab === 'pending'
+                    ? 'bg-orange-600 text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-white'
+                }
+              `}
+              style={{ display: 'inline-flex', visibility: 'visible' }}
+            >
+              Pending
+              {(() => {
+                const pendingCount = audits.filter(audit => isPendingAudit(audit)).length;
+                return (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    activeTab === 'pending'
+                      ? 'bg-white bg-opacity-20 text-white'
+                      : pendingCount > 0
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'bg-gray-200 text-gray-700'
+                  }`}>
+                    {pendingCount}
+                  </span>
+                );
+              })()}
+            </button>
+          </nav>
+        </div>
       </div>
 
       <div className="px-4 sm:px-6 pb-6 sm:pb-8 space-y-6">
@@ -293,13 +558,19 @@ const SQAStaffFindingManagement = () => {
         {/* Available Audits - Table View */}
         {!loading && !error && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {audits.length === 0 ? (
+            {getFilteredAudits().length === 0 ? (
               <div className="p-8 text-center">
                 <svg className="w-20 h-20 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <p className="text-gray-500 font-semibold text-lg">No audits available</p>
-                <p className="text-sm text-gray-400 mt-2">Audits will appear here when you are assigned</p>
+                <p className="text-gray-500 font-semibold text-lg">
+                  {activeTab === 'pending' ? 'No pending audits found' : 'No audits available'}
+                </p>
+                <p className="text-sm text-gray-400 mt-2">
+                  {activeTab === 'pending' 
+                    ? 'No time-constrained audits at the moment' 
+                    : 'Audits will appear here when you are assigned'}
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -334,11 +605,18 @@ const SQAStaffFindingManagement = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {audits.map((audit) => (
+                    {getFilteredAudits().map((audit) => {
+                      const isPending = isPendingAudit(audit);
+                      const canClick = activeTab !== 'pending';
+                      return (
                       <tr
                         key={audit.auditId}
-                        className="hover:bg-primary-50 transition-colors cursor-pointer"
-                        onClick={() => handleAuditClick(audit)}
+                        className={`transition-colors ${
+                          canClick 
+                            ? 'hover:bg-primary-50 cursor-pointer' 
+                            : 'cursor-not-allowed opacity-75'
+                        }`}
+                        onClick={() => canClick && handleAuditClick(audit)}
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center">
@@ -396,21 +674,39 @@ const SQAStaffFindingManagement = () => {
                         </td>
                      
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleAuditClick(audit);
-                            }}
-                            className="inline-flex items-center px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
-                          >
-                            View
-                            <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </button>
+                          <div className="flex items-center justify-center gap-2">
+                            {!isPending && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAuditClick(audit);
+                                }}
+                                className="inline-flex items-center px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                              >
+                                Action
+                                <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleViewDetails(audit.auditId);
+                              }}
+                              className="inline-flex items-center px-3 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 transition-colors shadow-sm"
+                              title="View Details"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -418,6 +714,38 @@ const SQAStaffFindingManagement = () => {
           </div>
         )}
       </div>
+
+      {/* Plan Details Modal */}
+      {showDetailsModal && selectedPlanDetails && (
+        <PlanDetailsModal
+          showModal={showDetailsModal}
+          selectedPlanDetails={selectedPlanDetails}
+          templatesForPlan={templatesForSelectedPlan}
+          onClose={() => {
+            setShowDetailsModal(false);
+            setSelectedPlanDetails(null);
+            setTemplatesForSelectedPlan([]);
+          }}
+          currentUserId={currentUserId}
+          auditTeamsForPlan={auditTeams.filter((m: any) => {
+            const currentAuditId = selectedPlanDetails.auditId || selectedPlanDetails.id;
+            if (!currentAuditId) return false;
+            const teamAuditId = String(m?.auditId || "").trim();
+            return (
+              teamAuditId === String(currentAuditId).trim() ||
+              teamAuditId.toLowerCase() === String(currentAuditId).toLowerCase()
+            );
+          })}
+          getCriterionName={getCriterionName}
+          getDepartmentName={getDepartmentName}
+          getStatusColor={getStatusColor}
+          getBadgeVariant={getBadgeVariant}
+          ownerOptions={ownerOptions}
+          auditorOptions={auditorOptions}
+          getTemplateName={getTemplateName}
+          hideSections={['auditTeam']}
+        />
+      )}
     </MainLayout>
   );
 };
