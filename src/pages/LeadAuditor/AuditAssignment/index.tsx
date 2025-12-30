@@ -66,6 +66,7 @@ export default function AuditAssignment() {
   const [loading, setLoading] = useState(false);
   const [loadingAudits, setLoadingAudits] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'pending'>('all');
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [userNamesCache, setUserNamesCache] = useState<Record<string, string>>({});
   const [qrValidityFrom, setQrValidityFrom] = useState<Date | null>(null);
@@ -665,6 +666,57 @@ export default function AuditAssignment() {
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
+  // Helper function to check if audit is time-constrained
+  const isTimeConstrained = (audit: Audit): boolean => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    
+    // Check if endDate is within 30 days or has passed
+    if (audit.endDate) {
+      const endDate = new Date(audit.endDate);
+      endDate.setHours(0, 0, 0, 0);
+      const daysUntilEnd = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Time-constrained if end date is within 30 days or has passed
+      if (daysUntilEnd <= 30) {
+        return true;
+      }
+    }
+    
+    // Check if startDate is within 7 days
+    if (audit.startDate) {
+      const startDate = new Date(audit.startDate);
+      startDate.setHours(0, 0, 0, 0);
+      const daysUntilStart = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Time-constrained if start date is within 7 days
+      if (daysUntilStart >= 0 && daysUntilStart <= 7) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
+  // Check if audit is pending (has no assignments or has pending status)
+  const isPendingAudit = (audit: Audit): boolean => {
+    // Check if audit has any assignments
+    const hasAssignments = assignments.some(
+      (assignment) => String(assignment.auditId || '').trim() === String(audit.auditId).trim()
+    );
+    
+    // Audit is pending if it has no assignments
+    return !hasAssignments;
+  };
+
+  // Get filtered audits based on active tab
+  const getFilteredAudits = (): Audit[] => {
+    if (activeTab === 'pending') {
+      return audits.filter(audit => isPendingAudit(audit));
+    }
+    return audits;
+  };
+
   const handleAuditSelect = (auditId: string) => {
     setSelectedAuditId(auditId);
   };
@@ -816,6 +868,67 @@ export default function AuditAssignment() {
           </div>
         </div>
 
+        {/* Tabs - Show when not viewing a specific audit */}
+        {!selectedAuditId && (
+          <div className="px-4 sm:px-6 lg:px-8">
+            <div className="mb-6 bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+              <nav className="flex space-x-2" aria-label="Tabs">
+                <button
+                  onClick={() => setActiveTab('all')}
+                  type="button"
+                  className={`
+                    px-6 py-3 rounded-lg font-medium text-sm transition-all duration-200 flex items-center gap-2
+                    ${
+                      activeTab === 'all'
+                        ? 'bg-primary-600 text-white shadow-md'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-white'
+                    }
+                  `}
+                >
+                  All Audits
+                  {audits.length > 0 && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      activeTab === 'all' 
+                        ? 'bg-white bg-opacity-20 text-white' 
+                        : 'bg-gray-200 text-gray-700'
+                    }`}>
+                      {audits.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setActiveTab('pending')}
+                  type="button"
+                  className={`
+                    px-6 py-3 rounded-lg font-medium text-sm transition-all duration-200 flex items-center gap-2
+                    ${
+                      activeTab === 'pending'
+                        ? 'bg-orange-600 text-white shadow-md'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 bg-white'
+                    }
+                  `}
+                >
+                  Pending
+                  {(() => {
+                    const pendingCount = audits.filter(audit => isPendingAudit(audit)).length;
+                    return (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        activeTab === 'pending'
+                          ? 'bg-white bg-opacity-20 text-white'
+                          : pendingCount > 0
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'bg-gray-200 text-gray-700'
+                      }`}>
+                        {pendingCount}
+                      </span>
+                    );
+                  })()}
+                </button>
+              </nav>
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         <div className="px-4 sm:px-6 lg:px-8">
           {!selectedAuditId ? (
@@ -830,9 +943,13 @@ export default function AuditAssignment() {
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <p className="text-red-800">{error}</p>
                 </div>
-              ) : audits.length === 0 ? (
+              ) : getFilteredAudits().length === 0 ? (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-yellow-800">No audits found.</p>
+                  <p className="text-yellow-800">
+                    {activeTab === 'pending' 
+                      ? 'No pending audits found.' 
+                      : 'No audits found.'}
+                  </p>
                 </div>
               ) : (
                 <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
@@ -849,11 +966,22 @@ export default function AuditAssignment() {
                       {
                         key: 'title',
                         header: 'Title',
-                        render: (audit) => (
-                          <div className="max-w-[200px]">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{audit.title || 'Untitled'}</p>
-                          </div>
-                        ),
+                        render: (audit) => {
+                          const isConstrained = isTimeConstrained(audit);
+                          return (
+                            <div className="max-w-[200px] flex items-center gap-2">
+                              <p className="text-sm font-semibold text-gray-900 truncate">{audit.title || 'Untitled'}</p>
+                              {isConstrained && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200" title="Time-constrained audit">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  Urgent
+                                </span>
+                              )}
+                            </div>
+                          );
+                        },
                       },
                       {
                         key: 'type',
@@ -978,8 +1106,8 @@ export default function AuditAssignment() {
                         ),
                       },
                     ]}
-                    data={audits}
-                    emptyState="No audits found."
+                    data={getFilteredAudits()}
+                    emptyState={activeTab === 'pending' ? 'No pending audits found.' : 'No audits found.'}
                   />
                 </div>
               )}

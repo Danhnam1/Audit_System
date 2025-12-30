@@ -51,8 +51,11 @@ const LeadAuditorRequestManagement = lazy(
 );
 
 // CAPA Owner pages (formerly Department Staff)
-const CAPAOwnerDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard/index"));
+// Import without explicit /index để tương thích cả file Dashboard.tsx hoặc Dashboard/index.tsx
+const CAPAOwnerDashboard = lazy(() => import("../pages/CAPAOwner/Dashboard"));
 const CAPAOwnerAuditList = lazy(() => import("../pages/CAPAOwner/AuditList"));
+const CAPAOwnerMyWitnessed = lazy(() => import("../pages/CAPAOwner/MyWitnessed"));
+const CAPAOwnerWitnessedAuditFindings = lazy(() => import("../pages/CAPAOwner/WitnessedAuditFindings"));
 const DepartmentStaffAssignedTasks = lazy(() => import("../pages/CAPAOwner/AssignedTasks"));
 const DepartmentStaffTaskDetail = lazy(() => import("../pages/CAPAOwner/TaskDetail"));
 const DepartmentStaffUploadEvidence = lazy(() => import("../pages/CAPAOwner/UploadEvidence"));
@@ -443,6 +446,22 @@ export function AppRoutes() {
                 element={
                     <ProtectedRoute allowedRoles={["CAPAOwner"]}>
                         <DepartmentStaffCheckDeadlines />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/capa-owner/my-witnessed"
+                element={
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
+                        <CAPAOwnerMyWitnessed />
+                    </ProtectedRoute>
+                }
+            />
+            <Route
+                path="/capa-owner/my-witnessed/audit/:auditId"
+                element={
+                    <ProtectedRoute allowedRoles={["CAPAOwner"]}>
+                        <CAPAOwnerWitnessedAuditFindings />
                     </ProtectedRoute>
                 }
             />

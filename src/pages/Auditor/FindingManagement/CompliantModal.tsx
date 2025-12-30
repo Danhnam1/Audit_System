@@ -97,16 +97,18 @@ const CompliantModal = ({
     setLoadingUsers(true);
     try {
       const users = await getAdminUsersByDepartment(deptId);
-      // Filter users to only show AuditeeOwner role
-      const auditeeOwners = users.filter(user => user.roleName === 'AuditeeOwner');
-      setDepartmentUsers(auditeeOwners);
+      // Include both Department Head (AuditeeOwner) and department staff (CAPAOwner) as potential witnesses
+      const potentialWitnesses = users.filter(
+        (user) => user.roleName === 'AuditeeOwner' || user.roleName === 'CAPAOwner'
+      );
+      setDepartmentUsers(potentialWitnesses);
       
-      // Auto-select witness if there's exactly one AuditeeOwner
-      if (auditeeOwners.length === 1 && auditeeOwners[0].userId) {
-        setSelectedWitnesses(auditeeOwners[0].userId);
-      } else if (auditeeOwners.length > 1 && !selectedWitnesses) {
-        // If multiple AuditeeOwners exist and no selection yet, auto-select the first one
-        setSelectedWitnesses(auditeeOwners[0].userId || '');
+      // Auto-select witness if there's exactly one eligible user
+      if (potentialWitnesses.length === 1 && potentialWitnesses[0].userId) {
+        setSelectedWitnesses(potentialWitnesses[0].userId);
+      } else if (potentialWitnesses.length > 1 && !selectedWitnesses) {
+        // If multiple exist and no selection yet, auto-select the first one
+        setSelectedWitnesses(potentialWitnesses[0].userId || '');
       }
     } catch (err: any) {
       console.error('Error loading department users:', err);
