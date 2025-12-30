@@ -18,6 +18,8 @@ interface Step4TeamProps {
   periodFrom?: string;
   periodTo?: string;
   editingAuditId?: string | null;
+  isAuditorRole?: boolean; // If true, Lead Auditor = current user (read-only)
+  currentUserId?: string | null; // Current user ID to filter out from auditors list
 }
 
 export const Step4Team: React.FC<Step4TeamProps> = ({
@@ -35,6 +37,8 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
   periodFrom,
   periodTo,
   editingAuditId,
+  isAuditorRole = false,
+  currentUserId = null,
 }) => {
   const { user } = useAuth();
   const [availableAuditorIds, setAvailableAuditorIds] = useState<Set<string>>(new Set());
@@ -47,8 +51,12 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
   const safeSelectedDeptIds = Array.isArray(selectedDeptIds) ? selectedDeptIds : [];
   const safeSelectedAuditorIds = Array.isArray(selectedAuditorIds) ? selectedAuditorIds : [];
   
-  // Find current user's userId from auditorOptions by matching email
-  const currentUserId = useMemo(() => {
+  // Find current user's userId from auditorOptions by matching email (only if not provided as prop)
+  const computedCurrentUserId = useMemo(() => {
+    // If currentUserId is provided as prop, use it
+    if (currentUserId) return currentUserId;
+    
+    // Otherwise, compute from user email
     if (!user?.email || !safeAuditorOptions || safeAuditorOptions.length === 0) return null;
     try {
       const found = safeAuditorOptions.find((u: any) => {
@@ -61,7 +69,10 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
       console.error('[Step4Team] Error finding current user:', error);
       return null;
     }
-  }, [user?.email, safeAuditorOptions]);
+  }, [user?.email, safeAuditorOptions, currentUserId]);
+  
+  // Use prop currentUserId if provided, otherwise use computed value
+  const effectiveCurrentUserId = currentUserId || computedCurrentUserId;
 
   // Load available auditors (filter out those already assigned to other audits in the same period)
   useEffect(() => {
@@ -101,27 +112,56 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
     loadAvailableAuditors();
   }, [periodFrom, periodTo, editingAuditId]);
 
-  // For Lead Auditor: ensure current user (Lead Auditor) is always in auditors and always disabled
+  // For Lead Auditor role: ensure current user (Lead Auditor) is always in auditors and always disabled
+  // For Auditor role: ensure current user is NOT in auditors list
   useEffect(() => {
-    if (!currentUserId || !onAuditorsChange) return;
+    if (!effectiveCurrentUserId || !onAuditorsChange) return;
     try {
-      // Always ensure current user is in the list
-      const normalizedCurrentUserId = String(currentUserId).trim();
-      const hasCurrentUser = safeSelectedAuditorIds.some(id => String(id).trim() === normalizedCurrentUserId);
-      if (!hasCurrentUser) {
-        onAuditorsChange([currentUserId, ...safeSelectedAuditorIds]);
+      const normalizedCurrentUserId = String(effectiveCurrentUserId).trim();
+      if (isAuditorRole) {
+        // For Auditor role: remove current user from auditors list if present
+        const hasCurrentUser = safeSelectedAuditorIds.some(id => String(id).trim() === normalizedCurrentUserId);
+        if (hasCurrentUser) {
+          const withoutCurrent = safeSelectedAuditorIds.filter(id => String(id).trim() !== normalizedCurrentUserId);
+          onAuditorsChange(withoutCurrent);
+        }
+      } else {
+        // For Lead Auditor role: always ensure current user is in the list
+        const hasCurrentUser = safeSelectedAuditorIds.some(id => String(id).trim() === normalizedCurrentUserId);
+        if (!hasCurrentUser) {
+          onAuditorsChange([effectiveCurrentUserId, ...safeSelectedAuditorIds]);
+        }
       }
     } catch (error) {
       console.error('[Step4Team] Error in useEffect:', error);
     }
-  }, [currentUserId, safeSelectedAuditorIds, onAuditorsChange]);
+  }, [effectiveCurrentUserId, safeSelectedAuditorIds, onAuditorsChange, isAuditorRole]);
 
   return (
     <div>
       <h3 className="text-md font-semibold text-gray-700 mb-4">Step 4/5: Team & Responsibilities</h3>
       <div className="space-y-4">
-        {/* Lead Auditor selection - only for Lead Auditor role */}
-        {onLeadChange && (
+        {/* Lead Auditor selection */}
+        {isAuditorRole && selectedLeadId ? (
+          // For Auditor role: show Lead Auditor as read-only (current user)
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Lead Auditor *
+            </label>
+            <div className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700">
+              {(() => {
+                const leadUser = safeAuditorOptions.find((u: any) => String(u.userId) === String(selectedLeadId));
+                return leadUser 
+                  ? `${leadUser.fullName || 'Unknown'} (${leadUser.email || 'N/A'})`
+                  : 'Current User';
+              })()}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              You are the Lead Auditor for this plan.
+            </p>
+          </div>
+        ) : onLeadChange ? (
+          // For Lead Auditor role: allow selection
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Lead Auditor *
@@ -144,7 +184,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                 ))}
             </select>
           </div>
-        )}
+        ) : null}
 
         {/* Auditors */}
         <div>
@@ -156,29 +196,29 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
               // Filter auditors based on available auditors (if period is set)
               // If availableAuditorIds is empty (no period or error), show all auditors
               const shouldFilter = periodFrom && periodTo && availableAuditorIds.size > 0;
-              const filteredAuditors = shouldFilter
+              
+              // For Auditor role: filter out current user (Lead Auditor) from auditors list
+              const filteredAuditors = (shouldFilter
                 ? safeAuditorOptions.filter((u: any) => {
                     const userId = String(u?.userId || '');
-                    // Always include current user (Lead Auditor) even if not available
-                    if (currentUserId && userId === String(currentUserId)) return true;
+                    // Exclude current user if isAuditorRole (they are the Lead Auditor)
+                    if (isAuditorRole && effectiveCurrentUserId && userId === String(effectiveCurrentUserId)) return false;
                     // Include if available or if already selected (to avoid removing selected ones)
                     return availableAuditorIds.has(userId) || safeSelectedAuditorIds.includes(userId);
                   })
-                : safeAuditorOptions;
+                : safeAuditorOptions
+              ).filter((u: any) => {
+                // Always exclude current user from auditors list if isAuditorRole
+                if (isAuditorRole && effectiveCurrentUserId) {
+                  return String(u?.userId || '') !== String(effectiveCurrentUserId);
+                }
+                return true;
+              });
 
-              // Ensure current user is always at the top of the list and always disabled
-              const currentUserOption = filteredAuditors.find((u: any) => String(u?.userId || '') === String(currentUserId || ''));
-              const optionsRaw = [
-                currentUserOption
-                  ? {
-                      value: String(currentUserOption.userId),
-                      label: `${currentUserOption.fullName || 'Unknown'} (${currentUserOption.email || 'N/A'})`,
-                      disabled: true,
-                    }
-                  : undefined,
-                ...filteredAuditors
-                  .filter((u: any) => String(u?.userId || '') !== String(currentUserId || ''))
-                  .map((u: any) => {
+              // For Auditor role: exclude current user from options and selected list
+              // For Lead Auditor role: include current user at top (disabled)
+              const optionsRaw = isAuditorRole
+                ? filteredAuditors.map((u: any) => {
                     const userId = String(u?.userId || '');
                     const isAvailable = !shouldFilter || availableAuditorIds.has(userId) || safeSelectedAuditorIds.includes(userId);
                     return {
@@ -186,20 +226,47 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                       label: `${u?.fullName || 'Unknown'} (${u?.email || 'N/A'})${!isAvailable ? ' - Already assigned to another audit' : ''}`,
                       disabled: !isAvailable,
                     };
-                  }),
-              ];
+                  })
+                : (() => {
+                    const currentUserOption = filteredAuditors.find((u: any) => String(u?.userId || '') === String(effectiveCurrentUserId || ''));
+                    return [
+                      currentUserOption
+                        ? {
+                            value: String(currentUserOption.userId),
+                            label: `${currentUserOption.fullName || 'Unknown'} (${currentUserOption.email || 'N/A'})`,
+                            disabled: true,
+                          }
+                        : undefined,
+                      ...filteredAuditors
+                        .filter((u: any) => String(u?.userId || '') !== String(effectiveCurrentUserId || ''))
+                        .map((u: any) => {
+                          const userId = String(u?.userId || '');
+                          const isAvailable = !shouldFilter || availableAuditorIds.has(userId) || safeSelectedAuditorIds.includes(userId);
+                          return {
+                            value: userId,
+                            label: `${u?.fullName || 'Unknown'} (${u?.email || 'N/A'})${!isAvailable ? ' - Already assigned to another audit' : ''}`,
+                            disabled: !isAvailable,
+                          };
+                        }),
+                    ].filter((opt) => !!opt);
+                  })();
+              
               const options = optionsRaw.filter((opt) => !!opt) as {
                 value: string;
                 label: string;
                 disabled: boolean;
               }[];
 
-              // Ensure the value always contains the current user (always at the top of the list)
-              const valueWithCurrent = currentUserId
-                ? Array.from(new Set([currentUserId, ...safeSelectedAuditorIds.filter(id => String(id) !== String(currentUserId))]))
-                : safeSelectedAuditorIds;
+              // For Auditor role: exclude current user from selected list
+              // For Lead Auditor role: ensure current user is always included
+              const valueWithCurrent = isAuditorRole
+                ? safeSelectedAuditorIds.filter(id => String(id) !== String(effectiveCurrentUserId || ''))
+                : (effectiveCurrentUserId
+                    ? Array.from(new Set([effectiveCurrentUserId, ...safeSelectedAuditorIds.filter(id => String(id) !== String(effectiveCurrentUserId))]))
+                    : safeSelectedAuditorIds
+                  );
 
-              // Calculate the actual number of auditors
+              // Calculate the actual number of auditors (excluding Lead Auditor for Auditor role)
               const actualAuditorCount = valueWithCurrent.length;
               
 
@@ -234,15 +301,20 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                       value={valueWithCurrent}
                       onChange={(next) => {
                       if (!onAuditorsChange) return;
-                      if (!currentUserId) {
+                      if (isAuditorRole) {
+                        // For Auditor role: just use the selected list (current user is already excluded)
+                        onAuditorsChange(next);
+                        return;
+                      }
+                      if (!effectiveCurrentUserId) {
                         onAuditorsChange(next);
                         return;
                       }
                       try {
-                        // Filter out current user from next array (in case someone tries to remove it)
-                        const withoutCurrent = next.filter(id => String(id) !== String(currentUserId));
+                        // For Lead Auditor role: Filter out current user from next array (in case someone tries to remove it)
+                        const withoutCurrent = next.filter(id => String(id) !== String(effectiveCurrentUserId));
                         // Always add current user back at the beginning
-                        const withCurrent = [currentUserId, ...withoutCurrent];
+                        const withCurrent = [effectiveCurrentUserId, ...withoutCurrent];
                         onAuditorsChange(withCurrent);
                       } catch (error) {
                         console.error('[Step4Team] Error in onChange:', error);
@@ -251,10 +323,18 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                     placeholder="Select auditor(s)"
                   />
                   )}
-                  {actualAuditorCount < 2 && (
-                    <p className="mt-1 text-xs text-red-600">
-                       At least 2 auditors are required.
-                    </p>
+                  {isAuditorRole ? (
+                    actualAuditorCount < 1 && (
+                      <p className="mt-1 text-xs text-red-600">
+                        At least 1 auditor is required (excluding the Lead Auditor).
+                      </p>
+                    )
+                  ) : (
+                    actualAuditorCount < 2 && (
+                      <p className="mt-1 text-xs text-red-600">
+                        At least 2 auditors are required.
+                      </p>
+                    )
                   )}
                 </>
               );

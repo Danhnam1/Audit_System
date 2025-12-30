@@ -6,6 +6,7 @@ import { getAuditCriterionById } from '../../../../api/auditCriteria';
 import { getAuditSchedules } from '../../../../api/auditSchedule';
 import { getAuditorsByAuditId } from '../../../../api/auditTeam';
 import { unwrap } from '../../../../utils/normalize';
+import { useAuth } from '../../../../contexts';
 
 // Badge variant type matching the constants definition
 type BadgeVariant = 'primary-light' | 'primary-medium' | 'primary-dark' | 'primary-solid' | 'gray-light' | 'gray-medium';
@@ -26,6 +27,7 @@ interface PlanDetailsModalProps {
   }>;
   onClose: () => void;
   onEdit?: (auditId: string) => void;
+  onDelete?: (auditId: string) => Promise<void>;
   onSubmitToLead?: (auditId: string) => Promise<void>;
   // Optional callbacks for Lead Auditor actions
   onForwardToDirector?: (auditId: string, comment?: string) => Promise<void>;
@@ -43,6 +45,8 @@ interface PlanDetailsModalProps {
   ownerOptions: any[];
   auditorOptions?: any[];
   getTemplateName?: (templateId: string | number | null | undefined) => string;
+  // Optional function to get full template info (name, version, description)
+  getTemplateInfo?: (templateId: string | number | null | undefined) => { name?: string; version?: string; description?: string } | null;
   // Optional prop to hide specific sections
   hideSections?: string[];
   // Optional prop to check if current user is Lead Auditor of THIS specific plan
@@ -56,7 +60,8 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   selectedPlanDetails,
   templatesForPlan = [],
   onClose,
-  onEdit: _onEdit,
+  onEdit,
+  onDelete,
   onSubmitToLead,
   onForwardToDirector,
   onRejectPlan,
@@ -70,10 +75,13 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   ownerOptions,
   auditorOptions = [],
   getTemplateName,
+  getTemplateInfo,
   hideSections = [],
   currentUserId = null,
   auditTeamsForPlan = [],
 }) => {
+  const { user } = useAuth();
+  
   if (!showModal || !selectedPlanDetails) return null;
 
   // Check if current user is Lead Auditor of THIS specific plan
@@ -100,49 +108,71 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
   // Check if current user is the plan creator
   const isCreator = React.useMemo(() => {
-    if (!currentUserId || !selectedPlanDetails) return false;
+    if (!selectedPlanDetails) {
+      return false;
+    }
     
     const planCreatedBy = selectedPlanDetails.createdBy || selectedPlanDetails.createdByUser?.userId;
     const planCreatedByEmail = selectedPlanDetails.createdByUser?.email;
     
-    if (!planCreatedBy && !planCreatedByEmail) return false;
-    
-    const normalizedCurrentUserId = String(currentUserId).toLowerCase().trim();
-    
-    // Direct userId match
-    if (planCreatedBy) {
-      const normalizedCreatedBy = String(planCreatedBy).toLowerCase().trim();
-      if (normalizedCreatedBy === normalizedCurrentUserId) {
-        return true;
-      }
+    if (!planCreatedBy && !planCreatedByEmail) {
+      return false;
     }
     
-    // Check via auditorOptions and ownerOptions to match by email
-    const allUsersForLookup = [...(auditorOptions || []), ...(ownerOptions || [])];
-    const currentUserInList = allUsersForLookup.find((u: any) => {
-      const uId = String(u?.userId || '').toLowerCase().trim();
-      return uId === normalizedCurrentUserId;
-    });
-    
-    if (currentUserInList && planCreatedByEmail) {
-      const currentUserEmail = String(currentUserInList.email || '').toLowerCase().trim();
+    // Priority 1: Match by email (most reliable, works even if userId formats differ)
+    if (user?.email && planCreatedByEmail) {
+      const currentUserEmail = String(user.email).toLowerCase().trim();
       const createdByEmail = String(planCreatedByEmail).toLowerCase().trim();
       if (currentUserEmail && createdByEmail && currentUserEmail === createdByEmail) {
+        console.log('[PlanDetailsModal] isCreator: true - email match via useAuth');
         return true;
       }
     }
     
-    // Also check if planCreatedBy matches currentUserInList's userId
-    if (currentUserInList && planCreatedBy) {
-      const currentUserListId = String(currentUserInList.userId || '').toLowerCase().trim();
+    // Priority 2: Direct userId match (if currentUserId is provided)
+    if (currentUserId && planCreatedBy) {
+      const normalizedCurrentUserId = String(currentUserId).toLowerCase().trim();
       const normalizedCreatedBy = String(planCreatedBy).toLowerCase().trim();
-      if (currentUserListId === normalizedCreatedBy) {
+      if (normalizedCurrentUserId === normalizedCreatedBy) {
+        console.log('[PlanDetailsModal] isCreator: true - direct userId match');
         return true;
       }
     }
     
+    // Priority 3: Match via auditorOptions/ownerOptions by userId
+    if (currentUserId) {
+      const allUsersForLookup = [...(auditorOptions || []), ...(ownerOptions || [])];
+      const currentUserInList = allUsersForLookup.find((u: any) => {
+        const uId = String(u?.userId || '').toLowerCase().trim();
+        return uId === String(currentUserId).toLowerCase().trim();
+      });
+      
+      if (currentUserInList) {
+        // Match by email if available
+        if (currentUserInList.email && planCreatedByEmail) {
+          const currentUserEmail = String(currentUserInList.email || '').toLowerCase().trim();
+          const createdByEmail = String(planCreatedByEmail).toLowerCase().trim();
+          if (currentUserEmail && createdByEmail && currentUserEmail === createdByEmail) {
+            console.log('[PlanDetailsModal] isCreator: true - email match via user list');
+            return true;
+          }
+        }
+        
+        // Match by userId
+        if (planCreatedBy) {
+          const currentUserListId = String(currentUserInList.userId || '').toLowerCase().trim();
+          const normalizedCreatedBy = String(planCreatedBy).toLowerCase().trim();
+          if (currentUserListId === normalizedCreatedBy) {
+            console.log('[PlanDetailsModal] isCreator: true - userId match via user list');
+            return true;
+          }
+        }
+      }
+    }
+    
+    console.log('[PlanDetailsModal] isCreator: false - no match found');
     return false;
-  }, [currentUserId, selectedPlanDetails, auditorOptions, ownerOptions]);
+  }, [currentUserId, selectedPlanDetails, auditorOptions, ownerOptions, user?.email]);
 
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showForwardModal, setShowForwardModal] = useState(false);
@@ -159,6 +189,9 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   const [refreshedTeams, setRefreshedTeams] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [hasLoadedRefreshedData, setHasLoadedRefreshedData] = useState(false);
+  
+  // Modal states (if not already declared)
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   
   // Load shared criteria when modal opens
   useEffect(() => {
@@ -603,13 +636,34 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 </span>
               </div>
               {selectedPlanDetails.templateId && templatesForPlan.length === 0 && (
-                <div className="flex items-start gap-3 md:col-span-2">
-                  <span className="text-sm font-bold text-black min-w-[100px]">Template:</span>
-                  <span className="text-sm text-black font-normal">
-                    {getTemplateName
-                      ? getTemplateName(selectedPlanDetails.templateId)
-                      : String(selectedPlanDetails.templateId)}
-                  </span>
+                <div className="md:col-span-2 space-y-2">
+                  <div className="flex items-start gap-3">
+                    <span className="text-sm font-bold text-black min-w-[100px]">Template:</span>
+                    <span className="text-sm text-black font-normal">
+                      {getTemplateName
+                        ? getTemplateName(selectedPlanDetails.templateId)
+                        : String(selectedPlanDetails.templateId)}
+                    </span>
+                  </div>
+                  {(() => {
+                    const templateInfo = getTemplateInfo?.(selectedPlanDetails.templateId);
+                    return (
+                      <>
+                        {templateInfo?.version && (
+                          <div className="flex items-start gap-3">
+                            <span className="text-sm font-bold text-black min-w-[100px]">Version:</span>
+                            <span className="text-sm text-black font-normal">{templateInfo.version}</span>
+                          </div>
+                        )}
+                        {templateInfo?.description && (
+                          <div className="flex items-start gap-3">
+                            <span className="text-sm font-bold text-black min-w-[100px]">Description:</span>
+                            <span className="text-sm text-black font-normal flex-1">{templateInfo.description}</span>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
               <div className="flex items-start gap-3 md:col-span-2">
@@ -630,10 +684,13 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {templatesForPlan.map((tpl: any, index: number) => {
                   const effectiveId = tpl.templateId ?? tpl.id ?? tpl.$id ?? index;
+                  // Try to get full template info if available
+                  const fullTemplateInfo = getTemplateInfo?.(tpl.templateId || tpl.id);
                   const displayName =
-                    tpl.title || tpl.name || getTemplateName?.(tpl.templateId || tpl.id) || `Template ${index + 1}`;
-                  const version = tpl.version;
-                  const description = tpl.description;
+                    tpl.title || tpl.name || fullTemplateInfo?.name || getTemplateName?.(tpl.templateId || tpl.id) || `Template ${index + 1}`;
+                  // Use version and description from template, fallback to fullTemplateInfo if available
+                  const version = tpl.version || fullTemplateInfo?.version;
+                  const description = tpl.description || fullTemplateInfo?.description;
                   const deptId = tpl.deptId;
                   const deptName = deptId != null ? getDepartmentName(String(deptId)) : null;
 
@@ -652,12 +709,10 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                       </div>
 
                       <div className="space-y-1 mb-2">
-                        {version && (
-                          <div className="text-xs text-gray-600">
-                            <span className="font-semibold">Version:</span>{' '}
-                            <span>{version}</span>
-                          </div>
-                        )}
+                        <div className="text-xs text-gray-600">
+                          <span className="font-semibold">Version:</span>{' '}
+                          <span>{version || 'N/A'}</span>
+                        </div>
                         {deptName && (
                           <div className="text-xs text-gray-600">
                             <span className="font-semibold">Department:</span>{' '}
@@ -666,9 +721,10 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                         )}
                       </div>
 
-                      {description && (
-                        <p className="text-xs text-gray-600 line-clamp-3">{description}</p>
-                      )}
+                      <div className="text-xs text-gray-600">
+                        <span className="font-semibold">Description:</span>
+                        <p className="mt-1 text-gray-700 line-clamp-3">{description || 'No description available'}</p>
+                      </div>
                     </div>
                   );
                 })}
@@ -1058,14 +1114,22 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               </button>
             )}
 
-            {/* If the plan is still Draft, allow submitting to Lead Auditor (only if current user is the plan creator and not Lead Auditor) */}
-            {selectedPlanDetails.status === 'Draft' && onSubmitToLead && isCreator && !isLeadAuditor && (
-              <button
-                onClick={() => setShowSubmitModal(true)}
-                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
-              >
-                Submit to Lead Auditor
-              </button>
+            {/* If the plan is still Draft, allow submitting to Lead Auditor (only if current user is the plan creator) */}
+            {(() => {
+              const normalizedStatus = String(selectedPlanDetails.status || '').toLowerCase().trim();
+              const isDraft = normalizedStatus === 'draft';
+              return isDraft && isCreator;
+            })() && (
+              <div className="flex items-center gap-3">
+                {onSubmitToLead && (
+                  <button
+                    onClick={() => setShowSubmitModal(true)}
+                    className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
+                  >
+                    Submit to Lead Auditor
+                  </button>
+                )}
+              </div>
             )}
 
             
@@ -1120,6 +1184,58 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
             >
               Submit
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+
+  // Delete Confirmation Modal
+  const deleteModalContent = showDeleteModal && createPortal(
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+        onClick={() => setShowDeleteModal(false)}
+      />
+      
+      {/* Modal */}
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Confirm Delete
+          </h3>
+          <p className="text-sm text-gray-600 mb-6">
+            Are you sure you want to delete this audit plan? This action cannot be undone.
+          </p>
+          
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(false)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!onDelete) return;
+                try {
+                  await onDelete(selectedPlanDetails.auditId || selectedPlanDetails.id);
+                  setShowDeleteModal(false);
+                  onClose();
+                } catch (err) {
+                  console.error('Delete failed', err);
+                  const errorMessage = (err as any)?.response?.data?.message || (err as any)?.message || String(err);
+                  toast.error('Failed to delete plan: ' + errorMessage);
+                }
+              }}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              Delete
             </button>
           </div>
         </div>
@@ -1328,6 +1444,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       {forwardModalContent}
       {rejectModalContent}
       {rejectionReasonModalContent}
+      {deleteModalContent}
     </>
   );
 };

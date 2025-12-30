@@ -58,13 +58,15 @@ import { PermissionPreviewPanel } from './components/PlanForm/PermissionPreviewP
 import { loadPlanDetailsForEdit } from './components/editPlanService';
 
 // Lead Auditor sees plans in review / execution flow, including rejected states:
-// - PendingReview            : waiting Lead review
+// - PendingReview            : waiting Lead review (submitted by Auditor)
 // - PendingDirectorApproval  : already forwarded to Director
 // - InProgress               : audit is being executed
 // - Approved                 : approved by Director
 // - Declined                 : rejected by Lead Auditor
 // - Rejected                 : rejected by Director
+// Note: Draft plans are created by Auditors, not Lead Auditors
 const LEAD_AUDITOR_VISIBLE_STATUSES = [
+  'pendingreview',
   'pendingdirectorapproval',
   'inprogress',
   'approved',
@@ -139,11 +141,11 @@ const LeadAuditorAuditPlanning = () => {
   const [auditTeams, setAuditTeams] = useState<any[]>([]);
 
   // Lead Auditor can see all plans (no filtering by user)
+  // Only show plans that are submitted for review (not Draft - those are created by Auditors)
   const visiblePlans = useMemo(() => {
     return existingPlans.filter((plan) => {
-      const normStatus = String(plan.status || 'draft').toLowerCase().replace(/\s+/g, '');
-      // Include Draft status for Lead Auditor so they can see plans they create
-      return LEAD_AUDITOR_VISIBLE_STATUSES.includes(normStatus) || normStatus === 'draft';
+      const normStatus = String(plan.status || '').toLowerCase().replace(/\s+/g, '');
+      return LEAD_AUDITOR_VISIBLE_STATUSES.includes(normStatus);
     });
   }, [existingPlans]);
 
@@ -1571,39 +1573,7 @@ const LeadAuditorAuditPlanning = () => {
     <MainLayout user={layoutUser}>
       <PageHeader
         title="Audit Planning"
-        subtitle="Create and manage audit plans"
-        rightContent={
-          <button
-            onClick={() => {
-              if (isSubmittingPlan) {
-                toast.info('Submitting plan...');
-                return;
-              }
-
-              // If form is currently open and in edit mode, reset it first
-              if (formState.showForm && formState.isEditMode) {
-                formState.resetFormForCreate();
-                setOriginalSelectedAuditorIds([]);
-              } else if (!formState.showForm) {
-                // If form is closed, reset and open it
-                formState.resetFormForCreate();
-                setOriginalSelectedAuditorIds([]);
-                formState.setShowForm(true);
-              } else {
-                // If form is open and not in edit mode, just close it
-                formState.setShowForm(false);
-              }
-            }}
-            disabled={isSubmittingPlan}
-            className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-md ${
-              isSubmittingPlan
-                ? 'bg-gray-400 cursor-not-allowed text-gray-200'
-                : 'bg-gradient-to-r from-primary-600 to-primary-700 hover:shadow-lg text-white'
-            }`}
-          >
-            {isSubmittingPlan ? 'Creating...' : '+ Create New Plan'}
-          </button>
-        }
+        subtitle="Review and approve audit plans submitted by Auditors"
       />
 
       <div className="px-6 pb-6 space-y-6">
