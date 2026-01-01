@@ -646,8 +646,15 @@ export default function AuditorFinalSummaryPage() {
       const result = await submitFinalReport(selectedAuditId);
       console.log('[Auditor] Submit result:', result);
       
-      // Don't update reportRequest state - allow user to submit again if needed
-      // Each submit creates a new report request, so we don't need to track the state
+      // Reload report request to update status
+      if (selectedAuditId) {
+        try {
+          const rr = await getReportRequestByAuditId(selectedAuditId);
+          setReportRequest(rr || null);
+        } catch (err) {
+          console.error('Failed to reload report request:', err);
+        }
+      }
       
       alert("Report submitted successfully! Lead Auditor will be notified.");
     } catch (error: any) {
@@ -719,7 +726,7 @@ export default function AuditorFinalSummaryPage() {
                   ) : (
                     <button
                       onClick={handleSubmitReport}
-                      disabled={!canSubmit || submitting}
+                      disabled={!canSubmit || submitting || alreadySubmitted}
                       className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                     >
                       {submitting ? (
@@ -727,6 +734,8 @@ export default function AuditorFinalSummaryPage() {
                           <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           Submitting...
                         </>
+                      ) : alreadySubmitted ? (
+                        "Submitted"
                       ) : (
                         "Submit to Lead Auditor"
                       )}

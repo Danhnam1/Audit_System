@@ -146,7 +146,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
           // For Auditor role: show Lead Auditor as read-only (current user)
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Lead Auditor *
+              Lead Of The Team 
             </label>
             <div className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700">
               {(() => {
