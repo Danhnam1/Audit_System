@@ -260,19 +260,15 @@ export default function MyQR() {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 shadow-sm">
-          <div className="px-4 sm:px-6 lg:px-8 py-4">
-            <h1 className="text-2xl font-semibold text-gray-900">My QR Codes</h1>
-            <p className="text-gray-600 text-sm mt-1">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-6">
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md">
+          <div className="px-6 py-4">
+            <h1 className="text-2xl font-bold text-gray-900">My QR Codes</h1>
+            <p className="text-[#5b6166] text-sm mt-1">
               View and manage your QR codes for audit access
             </p>
           </div>
         </div>
-
-        {/* Content */}
-        <div className="px-4 sm:px-6 lg:px-8">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>

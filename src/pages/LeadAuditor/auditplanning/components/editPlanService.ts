@@ -15,9 +15,26 @@ export const loadPlanDetailsForEdit = async (
 
   try {
     const rawDetails = await getAuditPlanById(auditId);
+    
+    // Extract data from nested 'audit' object if it exists (API response structure)
+    const auditData = rawDetails?.audit || rawDetails;
 
     details = {
       ...rawDetails,
+      // Extract basic fields from auditData (rawDetails.audit if exists, otherwise rawDetails)
+      auditId: auditData?.auditId || auditData?.id || rawDetails?.auditId || rawDetails?.id,
+      id: auditData?.id || auditData?.auditId || rawDetails?.id || rawDetails?.auditId,
+      title: auditData?.title || rawDetails?.title || '',
+      type: auditData?.type || rawDetails?.type || 'Internal',
+      scope: auditData?.scope || rawDetails?.scope || 'Department',
+      templateId: auditData?.templateId || rawDetails?.templateId || null,
+      startDate: auditData?.startDate || auditData?.periodFrom || rawDetails?.startDate || rawDetails?.periodFrom || '',
+      endDate: auditData?.endDate || auditData?.periodTo || rawDetails?.endDate || rawDetails?.periodTo || '',
+      status: auditData?.status || rawDetails?.status || 'Draft',
+      isPublished: auditData?.isPublished ?? rawDetails?.isPublished ?? false,
+      objective: auditData?.objective || auditData?.objectives || rawDetails?.objective || rawDetails?.objectives || '',
+      createdAt: auditData?.createdAt || rawDetails?.createdAt || '',
+      createdBy: auditData?.createdBy || rawDetails?.createdBy || '',
       scopeDepartments: {
         ...rawDetails.scopeDepartments,
         values: unwrap(rawDetails.scopeDepartments)

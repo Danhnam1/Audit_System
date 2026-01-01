@@ -73,6 +73,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             <option value="InProgress">In Progress</option>
             <option value="Approved">Approved</option>
             <option value="RejectedByDirector">Rejected by Director</option>
+            <option value="Declined">Declined</option>
           </select>
         </div>
       </div>

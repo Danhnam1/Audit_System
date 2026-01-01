@@ -12,8 +12,9 @@ import { PlanDetailsModal } from '../Auditor/AuditPlanning/components/PlanDetail
 import { getDepartmentName, getCriterionName } from '../../helpers/auditPlanHelpers';
 import { getChecklistTemplates } from '../../api/checklists';
 import { getAuditSchedules } from '../../api/auditSchedule';
+import { getAuditTeam } from '../../api/auditTeam';
 import { MainLayout } from '../../layouts';
-import {  StatCard } from '../../components';
+import { StatCard, Button } from '../../components';
 
 interface AuditPlan {
   id: string; // use string to preserve GUIDs
@@ -33,71 +34,17 @@ interface AuditPlan {
 const ReviewAuditPlans = () => {
   const [filter, setFilter] = useState<'All' | 'Pending Review' | 'Approved' | 'Rejected'>('Pending Review');
 
-  // Mock data (kept as fallback)
-  const initialPlans: AuditPlan[] = [
-    {
-      id: '1',
-      planId: 'AP-2024-001',
-      title: 'ISO 9001:2015 Quality Management System Audit',
-      department: 'IT Department',
-      scope: 'Document Control, Training Records, Internal Audit Process',
-      startDate: '2024-11-20',
-      endDate: '2024-11-25',
-      submittedBy: 'Nguyen Van A (Lead Auditor)',
-      submittedDate: '2024-11-01',
-      status: 'Pending Review',
-      objectives: [
-        'Verify compliance with ISO 9001:2015 standards',
-        'Assess effectiveness of quality management processes',
-        'Identify areas for improvement',
-      ],
-      auditTeam: ['Tran Thi B', 'Le Van C', 'Pham Thi D'],
-    },
-    {
-      id: '2',
-      planId: 'AP-2024-002',
-      title: 'Information Security Management Audit',
-      department: 'HR Department',
-      scope: 'Access Control, Data Protection, Security Policies',
-      startDate: '2024-11-15',
-      endDate: '2024-11-18',
-      submittedBy: 'Nguyen Van A (Lead Auditor)',
-      submittedDate: '2024-10-28',
-      status: 'Pending Review',
-      objectives: [
-        'Evaluate information security controls',
-        'Review access management procedures',
-        'Assess compliance with security policies',
-      ],
-      auditTeam: ['Hoang Van E', 'Nguyen Thi F'],
-    },
-    {
-      id: '3',
-      planId: 'AP-2024-003',
-      title: 'Process Improvement Audit',
-      department: 'Finance Department',
-      scope: 'Financial Controls, Reporting Procedures',
-      startDate: '2024-10-20',
-      endDate: '2024-10-25',
-      submittedBy: 'Nguyen Van A (Lead Auditor)',
-      submittedDate: '2024-10-15',
-      status: 'Approved',
-      objectives: [
-        'Review financial control processes',
-        'Assess reporting accuracy',
-        'Identify cost optimization opportunities',
-      ],
-      auditTeam: ['Tran Van G', 'Le Thi H'],
-    },
-  ];
+ 
+  
 
-  const [auditPlans, setAuditPlans] = useState<AuditPlan[]>(initialPlans);
+  const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([]);
   const [selectedDetails, setSelectedDetails] = useState<any | null>(null);
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
   const [criteriaList, setCriteriaList] = useState<any[]>([]);
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
   const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
+  const [auditTeams, setAuditTeams] = useState<any[]>([]);
   // loading currently unused; reserved for future spinner
 
   const filteredPlans = filter === 'All'
@@ -118,11 +65,6 @@ const ReviewAuditPlans = () => {
     });
 
   const [processingIdStr, setProcessingIdStr] = useState<string | null>(null);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectPlanId, setRejectPlanId] = useState<string | null>(null);
-  const [rejectComment, setRejectComment] = useState('');
-  const [showApproveModal, setShowApproveModal] = useState(false);
-  const [approvePlanId, setApprovePlanId] = useState<string | null>(null);
 
   // Helper function to check if plan can be approved/rejected
   const canApproveOrReject = (status: string): boolean => {
@@ -230,8 +172,28 @@ const ReviewAuditPlans = () => {
       const auditors = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditor'));
       setOwnerOptions(owners);
       setAuditorOptions(auditors);
+      // Refresh audit teams after loading plans to ensure we have latest team assignments
+      await fetchAuditTeams();
     } catch (err) {
       console.error('Failed to reload plans', err);
+    }
+  };
+
+  // Load audit teams - needs to be refreshed when plans change
+  const fetchAuditTeams = async () => {
+    try {
+      const teams = await getAuditTeam();
+      const teamsArray = unwrap(teams) || [];
+      // Filter out AuditeeOwner from audit teams
+      const filteredTeams = Array.isArray(teamsArray) 
+        ? teamsArray.filter((m: any) => {
+            const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+            return role !== 'auditeeowner';
+          })
+        : [];
+      setAuditTeams(filteredTeams);
+    } catch (err) {
+      console.error("Failed to load audit teams", err);
     }
   };
 
@@ -350,61 +312,23 @@ const ReviewAuditPlans = () => {
     return () => { mounted = false };
   }, []);
 
-  const openApproveModal = (planId: string) => {
-    setApprovePlanId(planId);
-    setShowApproveModal(true);
-  };
-
-  const closeApproveModal = () => {
-    setShowApproveModal(false);
-    setApprovePlanId(null);
-  };
-
-  const handleApprovePlan = async () => {
-    if (!approvePlanId) return;
-    try {
-      setProcessingIdStr(approvePlanId);
-      // Call backend API to approve. Send optional comment if needed.
-      await approvePlan(String(approvePlanId), { comment: 'Approved by Director' });
-      toast.success('Plan approved successfully.');
-      closeApproveModal();
-      // Reload plans to get fresh data
-      await reloadPlans();
-    } catch (err: any) {
-      console.error('Failed to approve plan', err);
-      const errorMessage = err?.response?.data?.message || err?.message || String(err);
-      toast.error('Failed to approve plan: ' + errorMessage);
-    } finally {
-      setProcessingIdStr(null);
-    }
-  };
+  // Also load audit teams on initial mount (before plans are loaded)
+  useEffect(() => {
+    fetchAuditTeams();
+  }, []);
 
   const handleRejectPlan = async (planId: string, comment?: string) => {
     try {
       await rejectPlanContent(String(planId), { comment });
       toast.success('Rejected the Audit Plan');
-      setShowRejectModal(false);
-      setRejectPlanId(null);
-      setRejectComment('');
       // Reload plans to get fresh data
       await reloadPlans();
     } catch (err: any) {
       console.error('Failed to reject plan', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Reject failed: ' + errorMessage);
+      throw err; // Re-throw to let PlanDetailsModal handle the error
     }
-  };
-
-  const openRejectModal = (planId: string) => {
-    setRejectPlanId(planId);
-    setRejectComment('');
-    setShowRejectModal(true);
-  };
-
-  const closeRejectModal = () => {
-    setShowRejectModal(false);
-    setRejectPlanId(null);
-    setRejectComment('');
   };
 
   const openDetails = async (plan: AuditPlan) => {
@@ -721,27 +645,6 @@ const ReviewAuditPlans = () => {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>
                           </button>
-                          {canApproveOrReject(plan.status) ? (
-                            <>
-                              <button
-                                onClick={() => openApproveModal(plan.planId)}
-                                disabled={processingIdStr === plan.planId}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                                  processingIdStr === plan.planId
-                                    ? 'bg-gray-300 cursor-not-allowed text-white'
-                                    : 'bg-primary-600 text-white hover:bg-primary-700'
-                                }`}
-                              >
-                                {processingIdStr === plan.planId ? 'Approving...' : 'Approve'}
-                              </button>
-                              <button
-                                onClick={() => openRejectModal(plan.planId)}
-                                className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors text-red-600 bg-white hover:bg-red-50 border border-red-300"
-                              >
-                                Reject
-                              </button>
-                            </>
-                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -752,122 +655,62 @@ const ReviewAuditPlans = () => {
           </div>
         </div>
       </div>
-      {selectedDetails && (
-        <PlanDetailsModal
-          showModal={true}
-          selectedPlanDetails={selectedDetails}
-          onClose={() => setSelectedDetails(null)}
-          // Director actions are only available in the table, not in the modal
-          getCriterionName={(id: any) => getCriterionName(id, criteriaList)}
-          getDepartmentName={(id: any) => getDepartmentName(id, departments)}
-          getStatusColor={getStatusColor}
-          getBadgeVariant={getBadgeVariant}
-          ownerOptions={ownerOptions}
-          auditorOptions={auditorOptions}
-          getTemplateName={(tid) => {
-            const t = checklistTemplates.find((tpl: any) => String(tpl.templateId || tpl.id || tpl.$id) === String(tid));
-            return t?.name || t?.title || `Template ${String(tid ?? '')}`;
-          }}
-        />
-      )}
-
-      {/* Approve Confirmation Modal */}
-      {showApproveModal && approvePlanId && createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-            onClick={closeApproveModal}
+      {selectedDetails && (() => {
+        const canApproveOrRejectPlan = canApproveOrReject(selectedDetails.status);
+        return (
+          <PlanDetailsModal
+            showModal={true}
+            selectedPlanDetails={selectedDetails}
+            onClose={() => setSelectedDetails(null)}
+            onApprove={canApproveOrRejectPlan ? async (auditId: string, comment?: string) => {
+              try {
+                setProcessingIdStr(auditId);
+                await approvePlan(String(auditId), { comment: comment || 'Approved by Director' });
+                toast.success('Plan approved successfully.');
+                setSelectedDetails(null);
+                await reloadPlans();
+              } catch (err: any) {
+                console.error('Failed to approve plan', err);
+                const errorMessage = err?.response?.data?.message || err?.message || String(err);
+                toast.error('Failed to approve plan: ' + errorMessage);
+              } finally {
+                setProcessingIdStr(null);
+              }
+            } : undefined}
+            onRejectPlan={canApproveOrRejectPlan ? async (auditId: string, comment?: string) => {
+              try {
+                await handleRejectPlan(auditId, comment);
+                setSelectedDetails(null);
+              } catch (err: any) {
+                console.error('Failed to reject plan', err);
+                const errorMessage = err?.response?.data?.message || err?.message || String(err);
+                toast.error('Failed to reject plan: ' + errorMessage);
+              }
+            } : undefined}
+            approveButtonText="Approve"
+            auditTeamsForPlan={auditTeams.filter((m: any) => {
+              const currentAuditId = selectedDetails.auditId || selectedDetails.id;
+              if (!currentAuditId) return false;
+              const teamAuditId = String(m?.auditId || "").trim();
+              return (
+                teamAuditId === String(currentAuditId).trim() ||
+                teamAuditId.toLowerCase() === String(currentAuditId).toLowerCase()
+              );
+            })}
+            getCriterionName={(id: any) => getCriterionName(id, criteriaList)}
+            getDepartmentName={(id: any) => getDepartmentName(id, departments)}
+            getStatusColor={getStatusColor}
+            getBadgeVariant={getBadgeVariant}
+            ownerOptions={ownerOptions}
+            auditorOptions={auditorOptions}
+            getTemplateName={(tid) => {
+              const t = checklistTemplates.find((tpl: any) => String(tpl.templateId || tpl.id || tpl.$id) === String(tid));
+              return t?.name || t?.title || `Template ${String(tid ?? '')}`;
+            }}
           />
-          
-          {/* Modal */}
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Approve Audit Plan
-              </h3>
-              <p className="text-sm text-gray-600 mb-6">
-                Are you sure to approve Audit Plan?
-              </p>
-              
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={closeApproveModal}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleApprovePlan}
-                  disabled={processingIdStr === approvePlanId}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${
-                    processingIdStr === approvePlanId
-                      ? 'bg-gray-300 cursor-not-allowed text-white'
-                      : 'bg-primary-600 text-white hover:bg-primary-700'
-                  }`}
-                >
-                  {processingIdStr === approvePlanId ? 'Approving...' : 'Approve'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+        );
+      })()}
 
-      {/* Reject Confirmation Modal */}
-      {showRejectModal && rejectPlanId && createPortal(
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-            onClick={closeRejectModal}
-          />
-          
-          {/* Modal */}
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Reject Audit Plan
-              </h3>
-              <p className="text-sm text-gray-600 mb-4">
-                Please provide a reason for rejection (optional):
-              </p>
-              
-              <textarea
-                value={rejectComment}
-                onChange={(e) => setRejectComment(e.target.value)}
-                placeholder="Enter rejection reason..."
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 mb-6 min-h-[100px] resize-y"
-              />
-              
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={closeRejectModal}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (rejectPlanId) {
-                      handleRejectPlan(rejectPlanId, rejectComment || undefined);
-                    }
-                  }}
-                  className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md border border-red-300 text-red-700 bg-white hover:bg-red-50"
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
 
     </MainLayout>
   );

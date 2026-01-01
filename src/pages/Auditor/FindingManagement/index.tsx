@@ -454,15 +454,14 @@ const SQAStaffFindingManagement = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="px-4 sm:px-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-6">
         <PageHeader
           title="Task Management"
           subtitle="Select a department to manage audit findings"
         />
-      </div>
 
-      {/* Tabs - Always visible */}
-      <div className="px-4 sm:px-6 mb-6" style={{ display: 'block', visibility: 'visible' }}>
+        {/* Tabs - Always visible */}
+        <div className="mb-6" style={{ display: 'block', visibility: 'visible' }}>
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
           <nav className="flex space-x-2" aria-label="Tabs" style={{ display: 'flex' }}>
             <button

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
+import { PageHeader } from '../../components';
 import { getMyWitnessedFindings, type Finding } from '../../api/findings';
 
 interface FindingWithAudit extends Finding {
@@ -102,11 +103,11 @@ const MyWitnessed = () => {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">My Witnessed Findings</h1>
-          <p className="text-gray-600">Findings where you are assigned as a witness (View Only)</p>
-        </div>
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-6">
+        <PageHeader
+          title="My Witnessed Findings"
+          subtitle="Findings where you are assigned as a witness (View Only)"
+        />
 
         {loading ? (
           <div className="flex items-center justify-center py-12">

@@ -33,12 +33,18 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
       // Status filter
       if (filterStatus) {
         const planStatus = String(plan.status || 'Draft');
+        const normStatus = planStatus.toLowerCase().replace(/\s+/g, '');
 
         // Lead Auditor filters:
-        // - RejectedByDirector => audit.Status == "Rejected"
+        // - RejectedByDirector => audit.Status == "Rejected" (from backend)
         if (filterStatus === 'RejectedByDirector') {
-          if (planStatus !== 'Rejected') return false;
-          return true;
+          return normStatus === 'rejected';
+        }
+
+        // RejectedByLead => audit.Status == "Declined" (from backend)
+        // Backend sets status to "Declined" when Lead Auditor rejects
+        if (filterStatus === 'RejectedByLead') {
+          return normStatus === 'declined';
         }
 
         // Default: exact match on status string

@@ -39,6 +39,7 @@ export const STATUS_COLORS = {
   
   // Rejected/Negative States - Red/Orange (Clear warning)
   'Rejected': 'bg-red-100 text-red-800',
+  'Declined': 'bg-orange-200 text-orange-900', // Rejected by Lead Auditor (different from Director's Rejected)
   'Returned': 'bg-orange-100 text-orange-800',
   'Return': 'bg-orange-100 text-orange-800',
   'Cancelled': 'bg-red-200 text-red-800',
@@ -133,7 +134,7 @@ export const STATUS_GROUPS = {
   INITIAL: ['Draft', 'Pending', 'Submitted', 'Open', 'Assigned'],
   PROCESSING: ['Under Review', 'UnderReview', 'Pending Review', 'PendingReview', 'In Progress', 'InProgress', 'PendingDirectorApproval', 'Pending Director Approval', 'PendingLeadApproval', 'Pending Lead Approval'],
   SUCCESS: ['Approved', 'Completed', 'Resolved', 'Closed', 'Reviewed'],
-  NEGATIVE: ['Rejected', 'Returned', 'Return', 'Cancelled'],
+  NEGATIVE: ['Rejected', 'Declined', 'Returned', 'Return', 'Cancelled'],
   SPECIAL: ['Reopened', 'Overdue'],
   CHECKLIST: ['Compliant', 'NonCompliant', 'Non-Compliant', 'Overdue'],
 } as const;

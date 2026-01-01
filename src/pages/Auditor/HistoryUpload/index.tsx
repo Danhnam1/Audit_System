@@ -449,16 +449,15 @@ const HistoryUploadPage = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="bg-white border-b border-primary-100 shadow-sm mb-6">
-        <div className="px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-primary-600">History Upload</h1>
-            <p className="text-gray-600 text-sm mt-1">Document upload history for each Audit</p>
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-6">
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md">
+          <div className="px-6 py-4 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">History Upload</h1>
+              <p className="text-[#5b6166] text-sm mt-1">Document upload history for each Audit</p>
+            </div>
           </div>
         </div>
-      </div>
-
-      <div className="px-6 pb-6 space-y-6">
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
           <div className="px-6 py-4 border-b border-primary-100 bg-gradient-primary">
             <h2 className="text-lg font-semibold text-white">Audit Upload History</h2>

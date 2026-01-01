@@ -424,7 +424,21 @@ const LeadAuditorAuditPlanning = () => {
     setLoadingPlans(true);
     try {
       const merged = await getPlansWithDepartments();
-      setExistingPlans(merged);
+      
+      // Enrich plans with rejectedBy information for rejected/declined plans
+      // Backend sets status to "Declined" when Lead Auditor rejects
+      // Backend sets status to "Rejected" when Director rejects
+      const enrichedPlans = merged.map((plan: any) => {
+        const planStatus = String(plan.status || '').toLowerCase().replace(/\s+/g, '');
+        if (planStatus === 'declined') {
+          return { ...plan, rejectedBy: 'Lead Auditor' };
+        } else if (planStatus === 'rejected') {
+          return { ...plan, rejectedBy: 'Director' };
+        }
+        return plan;
+      });
+      
+      setExistingPlans(enrichedPlans);
     } catch (error) {
       setExistingPlans([]);
     } finally {
@@ -442,7 +456,14 @@ const LeadAuditorAuditPlanning = () => {
       try {
         const teams = await getAuditTeam();
         const teamsArray = unwrap(teams) || [];
-        setAuditTeams(Array.isArray(teamsArray) ? teamsArray : []);
+        // Filter out AuditeeOwner from audit teams (same as Auditor)
+        const filteredTeams = Array.isArray(teamsArray) 
+          ? teamsArray.filter((m: any) => {
+              const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+              return role !== 'auditeeowner';
+            })
+          : [];
+        setAuditTeams(filteredTeams);
       } catch (err) {
         console.error('Failed to load audit teams', err);
         setAuditTeams([]);
@@ -523,9 +544,10 @@ const LeadAuditorAuditPlanning = () => {
 
   // Only show Approve/Reject when any status field (on plan or nested audit) is PendingReview
   // Note: PendingReview status is no longer used, so this function always returns false
-  const canReviewPlan = (_plan: any) => {
-    // PendingReview status has been removed from the system
-    return false;
+  const canReviewPlan = (plan: any) => {
+    // Lead Auditor can review plans with PendingReview status
+    const planStatus = String(plan?.status || '').toLowerCase().replace(/\s+/g, '');
+    return planStatus === 'pendingreview';
   };
 
   const handleViewDetails = async (auditId: string) => {
@@ -833,10 +855,10 @@ const LeadAuditorAuditPlanning = () => {
 
   // Validation function for plan period
   const validatePlanPeriod = (from: string, to: string, showToast: boolean = false): boolean => {
-    if (!from || !to) {
-      if (showToast) toast.warning('Please select both start and end dates.');
-      return false;
-    }
+    // if (!from || !to) {
+    //   if (showToast) toast.warning('Please select both start and end dates.');
+    //   return false;
+    // }
     const fromDate = new Date(from);
     const toDate = new Date(to);
     if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
@@ -1571,12 +1593,11 @@ const LeadAuditorAuditPlanning = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <PageHeader
-        title="Audit Planning"
-        subtitle="Review and approve audit plans submitted by Auditors"
-      />
-
-      <div className="px-6 pb-6 space-y-6">
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-6">
+        <PageHeader
+          title="Audit Planning"
+          subtitle="Review and approve audit plans submitted by Auditors"
+        />
         {/* Form Modal for creating/editing plans */}
         {formState.showForm &&
           createPortal(
@@ -2054,10 +2075,12 @@ const LeadAuditorAuditPlanning = () => {
         {/* Details Modal */}
         {showDetailsModal && selectedPlanDetails && (() => {
           const canReview = canReviewPlan(selectedPlanDetails);
-          // Check if plan is Draft status (for Lead Auditor to forward)
+          // Check if plan is Draft status (for Lead Auditor to forward to Director directly)
           const planStatus = String(selectedPlanDetails.status || '').toLowerCase().replace(/\s+/g, '');
           const isDraft = planStatus === 'draft';
-          const canForwardDraft = isDraft; // Lead Auditor can forward Draft plans to Director
+          // Only Draft plans can use "Submit to Director" button
+          // PendingReview plans should use "Approve & Forward" button instead
+          const canForwardToDirector = isDraft;
           
           return (
             <PlanDetailsModal
@@ -2069,7 +2092,7 @@ const LeadAuditorAuditPlanning = () => {
                 setSelectedPlanDetails(null);
                 setTemplatesForSelectedPlan([]);
               }}
-              onForwardToDirector={canForwardDraft ? async (auditId: string, comment?: string) => {
+              onForwardToDirector={canForwardToDirector ? async (auditId: string, comment?: string) => {
                 try {
                   await approveForwardDirector(auditId, { comment });
                   await fetchPlans();
@@ -2102,25 +2125,45 @@ const LeadAuditorAuditPlanning = () => {
                   setSelectedPlanDetails(null);
                 } catch (err: any) {
                   console.error('Failed to approve plan', err);
-                  toast.error('Failed to approve plan: ' + (err?.response?.data?.message || err?.message || String(err)));
+                  const errorMessage = err?.response?.data?.message || err?.message || String(err);
+                  const statusCode = err?.response?.status;
+                  
+                  // Check if the plan status was actually updated by fetching the plan details
+                  if (statusCode === 500) {
+                    try {
+                      // Fetch the plan details directly to check if status was updated
+                      const updatedPlanDetails = await getAuditPlanById(auditId);
+                      const updatedStatus = String(updatedPlanDetails?.status || updatedPlanDetails?.audit?.status || '').toLowerCase().replace(/\s+/g, '');
+                      
+                      if (updatedStatus === 'pendingdirectorapproval') {
+                        // Plan was actually approved despite the error
+                        await fetchPlans();
+                        toast.success('Plan approved and forwarded to Director successfully. (Notification may have failed)');
+                        setShowDetailsModal(false);
+                        setSelectedPlanDetails(null);
+                      } else {
+                        toast.error('Failed to approve plan: ' + errorMessage);
+                      }
+                    } catch (checkErr) {
+                      console.error('Failed to check plan status', checkErr);
+                      toast.error('Failed to approve plan: ' + errorMessage);
+                    }
+                  } else {
+                    toast.error('Failed to approve plan: ' + errorMessage);
+                  }
                 }
               } : undefined}
               approveButtonText={canReview ? 'Approve & Forward' : undefined}
             currentUserId={currentUserId}
-            auditTeamsForPlan={(() => {
-              if (!selectedPlanDetails?.auditId && !selectedPlanDetails?.id)
-                return [];
-              const currentAuditId = String(
-                selectedPlanDetails.auditId || selectedPlanDetails.id
-              ).trim();
-              return auditTeams.filter((m: any) => {
-                const teamAuditId = String(m?.auditId || "").trim();
-                return (
-                  teamAuditId === currentAuditId ||
-                  teamAuditId.toLowerCase() === currentAuditId.toLowerCase()
-                );
-              });
-            })()}
+            auditTeamsForPlan={auditTeams.filter((m: any) => {
+              const currentAuditId = selectedPlanDetails.auditId || selectedPlanDetails.id;
+              if (!currentAuditId) return false;
+              const teamAuditId = String(m?.auditId || "").trim();
+              return (
+                teamAuditId === String(currentAuditId).trim() ||
+                teamAuditId.toLowerCase() === String(currentAuditId).toLowerCase()
+              );
+            })}
             getCriterionName={(id: string) => getCriterionName(id, criteria)}
             getDepartmentName={(id: string | number) => {
               return getDepartmentName(id, departments);

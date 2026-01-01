@@ -7,6 +7,7 @@ import { getAuditSchedules } from '../../../../api/auditSchedule';
 import { getAuditorsByAuditId } from '../../../../api/auditTeam';
 import { unwrap } from '../../../../utils/normalize';
 import { useAuth } from '../../../../contexts';
+import { Button } from '../../../../components';
 
 // Badge variant type matching the constants definition
 type BadgeVariant = 'primary-light' | 'primary-medium' | 'primary-dark' | 'primary-solid' | 'gray-light' | 'gray-medium';
@@ -81,6 +82,16 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   auditTeamsForPlan = [],
 }) => {
   const { user } = useAuth();
+  
+  // Reset processing states when modal closes
+  useEffect(() => {
+    if (!showModal) {
+      setIsProcessingForward(false);
+      setIsProcessingReject(false);
+      setIsProcessingApprove(false);
+      setIsProcessingSubmit(false);
+    }
+  }, [showModal]);
   
   if (!showModal || !selectedPlanDetails) return null;
 
@@ -179,6 +190,12 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showRejectionReasonModal, setShowRejectionReasonModal] = useState(false);
   const [reviewComments, setReviewComments] = useState(''); // Review comments for actions
+  
+  // Processing states to prevent double-click
+  const [isProcessingForward, setIsProcessingForward] = useState(false);
+  const [isProcessingReject, setIsProcessingReject] = useState(false);
+  const [isProcessingApprove, setIsProcessingApprove] = useState(false);
+  const [isProcessingSubmit, setIsProcessingSubmit] = useState(false);
   
   // Shared standards for this audit
   const [sharedCriteria, setSharedCriteria] = useState<any[]>([]);
@@ -513,12 +530,15 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     
     // Use found user's fullName, or keep existing fullName, or fallback to User ID
     const fullName = member.fullName || user?.fullName || user?.name;
+    // Get avatar URL from user data
+    const avatarUrl = member.avatarUrl || user?.avatarUrl || user?.avatar || null;
   
     
     return {
       ...member,
       fullName: fullName || (userIdStr ? `User ID: ${userIdStr}` : 'Unknown User'),
       email: member.email || user?.email,
+      avatarUrl: avatarUrl,
     };
   });
 
@@ -588,8 +608,8 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 <div className="flex items-start gap-3">
                   <span className="text-sm font-bold text-black min-w-[100px]">Status:</span>
                   {(() => {
-                    const planStatus = String(selectedPlanDetails.status || '').toLowerCase();
-                    const isRejected = planStatus.includes('rejected') && selectedPlanDetails.latestRejectionComment;
+                    const planStatus = String(selectedPlanDetails.status || '').toLowerCase().replace(/\s+/g, '');
+                    const isRejected = (planStatus === 'rejected' || planStatus === 'declined') && selectedPlanDetails.latestRejectionComment;
                     
                     if (isRejected) {
                       return (
@@ -915,67 +935,198 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           {!hideSections.includes('auditTeam') && combinedAuditTeam.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
-                
-                <h3 className="text-lg font-bold text-primary-700">Audit Team</h3>
+                <h3 className="text-lg font-bold text-primary-700">Team & Responsibilities</h3>
               </div>
-              <div className="space-y-2">
-                {combinedAuditTeam
-                  .filter((m: any) => {
-                    // Double-check: filter out AuditeeOwner one more time
+              
+              {/* Lead Of The Team */}
+              {(() => {
+                // Helper function to enrich member with user data
+                const enrichMember = (member: any): any => {
+                  if (!member) return null;
+                  const userId = member.userId || member.id || member.$id;
+                  const userIdStr = userId ? String(userId).trim() : '';
+                  let user = null;
+                  if (userIdStr) {
+                    // Try multiple lookup strategies
+                    user = userMap.get(userIdStr.toLowerCase()) || userMap.get(userIdStr);
+                    // If still not found, try as number
+                    if (!user && !isNaN(Number(userIdStr)) && userIdStr !== '') {
+                      user = userMap.get(String(Number(userIdStr)));
+                    }
+                  }
+                  // Fallback to email lookup
+                  if (!user && member.email) {
+                    const emailStr = String(member.email).trim();
+                    user = userMap.get(emailStr.toLowerCase()) || userMap.get(emailStr);
+                  }
+                  if (user) {
+                    return {
+                      ...member,
+                      fullName: member.fullName || user.fullName || user.name,
+                      email: member.email || user.email,
+                      avatarUrl: member.avatarUrl || user.avatarUrl || user.avatar || null,
+                    };
+                  }
+                  return member;
+                };
+                
+                // Helper function to check if member is lead
+                const isLeadMember = (m: any): boolean => {
+                  return m.isLead === true || 
+                         m.isLeadAuditor === true ||
+                         String(m.isLead || '').toLowerCase() === 'true' ||
+                         String(m.isLeadAuditor || '').toLowerCase() === 'true';
+                };
+                
+                // Priority 1: Try to find from auditTeamsForPlan (already filtered by auditId, so no need to match again)
+                let leadMember = null;
+                if (auditTeamsForPlan.length > 0) {
+                  leadMember = auditTeamsForPlan.find(isLeadMember);
+                  if (leadMember) {
+                    leadMember = enrichMember(leadMember);
+                  }
+                }
+                
+                // Priority 2: Try from refreshedTeams (most up-to-date data from API)
+                if (!leadMember && hasLoadedRefreshedData && refreshedTeams.length > 0) {
+                  const filteredRefreshedTeams = refreshedTeams.filter((m: any) => {
                     const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
                     return role !== 'auditeeowner';
-                  })
-                  .sort((a: any, b: any) => {
-                    // Sort: Lead Auditor first, then others
-                    if (a.isLead && !b.isLead) return -1;
-                    if (!a.isLead && b.isLead) return 1;
-                    return 0;
-                  })
-                  .map((member: any, idx: number) => {
-                    const memberKey = member.auditTeamId || member.id || member.userId || `member-${idx}`;
-                    // Add refreshKey to key to force re-render when data updates
-                    const uniqueKey = `${memberKey}-${refreshKey}`;
-                    
-                    return (
-                    <div
-                      key={uniqueKey}
-                      className={`flex items-center gap-3 py-2.5 px-3 rounded-lg transition-all `}
-                    >
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        member.isLead ? 'bg-primary-600' : 'bg-gray-300'
-                      }`}>
-                        <span className={`text-xs font-bold ${
-                          member.isLead ? 'text-white' : 'text-gray-700'
-                        }`}>
-                          {member.fullName?.charAt(0)?.toUpperCase() || 'U'}
-                        </span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-sm ${member.isLead ? 'font-semibold text-gray-900' : 'font-normal text-gray-800'}`}>
-                            {member.fullName}
+                  });
+                  leadMember = filteredRefreshedTeams.find(isLeadMember);
+                  if (leadMember) {
+                    leadMember = enrichMember(leadMember);
+                  }
+                }
+                
+                // Priority 3: If not found, try from combinedAuditTeam (already enriched)
+                if (!leadMember) {
+                  leadMember = combinedAuditTeam.find(isLeadMember);
+                }
+                
+                // Priority 4: If still not found, try from auditTeamsFromDetails (before enrichment)
+                if (!leadMember && auditTeamsFromDetails.length > 0) {
+                  leadMember = auditTeamsFromDetails.find(isLeadMember);
+                  if (leadMember) {
+                    leadMember = enrichMember(leadMember);
+                  }
+                }
+                
+                if (!leadMember) return null;
+                
+                return (
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Lead Of The Team
+                    </label>
+                    <div className="w-full border border-gray-300 rounded-lg px-4 py-3 bg-gray-50">
+                      <div className="flex items-center gap-3">
+                        {leadMember.avatarUrl ? (
+                          <img
+                            src={leadMember.avatarUrl}
+                            alt={leadMember.fullName || 'Lead Auditor'}
+                            className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-gray-300"
+                            onError={(e) => {
+                              // Fallback to initial if image fails to load
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              const parent = (e.target as HTMLImageElement).parentElement;
+                              if (parent) {
+                                const fallback = parent.querySelector('.avatar-fallback');
+                                if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                              }
+                            }}
+                          />
+                        ) : null}
+                        <div className={`w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center flex-shrink-0 ${leadMember.avatarUrl ? 'hidden avatar-fallback' : ''}`}>
+                          <span className="text-xs font-bold text-white">
+                            {leadMember.fullName?.charAt(0)?.toUpperCase() || 'U'}
                           </span>
-                          {member.isLead && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${getBadgeVariant('primary-solid')} text-white`}>
-                              Lead Auditor
+                        </div>
+                        <div className="flex-1">
+                          <span className="text-sm font-semibold text-gray-900">
+                            {leadMember.fullName || 'Unknown User'}
+                          </span>
+                          {leadMember.email && (
+                            <span className="text-sm text-gray-600 ml-2">
+                              ({leadMember.email})
                             </span>
                           )}
-                          {member.roleInTeam && !member.isLead && (() => {
-                            const role = String(member.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
-                            // Don't display AuditeeOwner role
-                            if (role === 'auditeeowner') return null;
-                            return (
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getBadgeVariant('primary-light')}`}>
-                                {member.roleInTeam}
-                              </span>
-                            );
-                          })()}
                         </div>
                       </div>
                     </div>
-                    );
-                  })}
-              </div>
+                  </div>
+                );
+              })()}
+
+              {/* Auditors */}
+              {(() => {
+                const auditors = combinedAuditTeam.filter((m: any) => !m.isLead);
+                if (auditors.length === 0) return null;
+                
+                return (
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Auditors <span className="text-red-500">*</span>
+                    </label>
+                    <div className="space-y-2">
+                      {auditors.map((member: any, idx: number) => {
+                        const memberKey = member.auditTeamId || member.id || member.userId || `member-${idx}`;
+                        const uniqueKey = `${memberKey}-${refreshKey}`;
+                        
+                        return (
+                          <div
+                            key={uniqueKey}
+                            className="flex items-center gap-3 py-2.5 px-3 rounded-lg border border-gray-200 bg-white"
+                          >
+                            {member.avatarUrl ? (
+                              <img
+                                src={member.avatarUrl}
+                                alt={member.fullName || 'Auditor'}
+                                className="w-8 h-8 rounded-full object-cover flex-shrink-0 border border-gray-300"
+                                onError={(e) => {
+                                  // Fallback to initial if image fails to load
+                                  (e.target as HTMLImageElement).style.display = 'none';
+                                  const parent = (e.target as HTMLImageElement).parentElement;
+                                  if (parent) {
+                                    const fallback = parent.querySelector('.avatar-fallback');
+                                    if (fallback) (fallback as HTMLElement).style.display = 'flex';
+                                  }
+                                }}
+                              />
+                            ) : null}
+                            <div className={`w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0 ${member.avatarUrl ? 'hidden avatar-fallback' : ''}`}>
+                              <span className="text-xs font-bold text-gray-700">
+                                {member.fullName?.charAt(0)?.toUpperCase() || 'U'}
+                              </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-normal text-gray-800">
+                                  {member.fullName}
+                                </span>
+                                {member.email && (
+                                  <span className="text-sm text-gray-600">
+                                    ({member.email})
+                                  </span>
+                                )}
+                                {member.roleInTeam && (() => {
+                                  const role = String(member.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+                                  if (role === 'auditeeowner') return null;
+                                  return (
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getBadgeVariant('primary-light')}`}>
+                                      {member.roleInTeam}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1060,58 +1211,72 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
             </button>
 
             {onForwardToDirector && (
-              <button
+              <Button
                 onClick={() => setShowForwardModal(true)}
-                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
+                variant="primary"
+                size="md"
               >
-                Forward to Director
-              </button>
+                Submit to Director
+              </Button>
             )}
 
             {onRequestRevision && (
               <button
                 onClick={async () => {
+                  if (isProcessingSubmit) return;
+                  setIsProcessingSubmit(true);
                   try {
                     await onRequestRevision(selectedPlanDetails.auditId, reviewComments);
                     onClose();
                   } catch (err) {
                     console.error('Request revision failed', err);
                     toast.error('Failed to request revision. Please try again.');
+                  } finally {
+                    setIsProcessingSubmit(false);
                   }
                 }}
-                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-500 hover:bg-primary-600 text-white"
+                disabled={isProcessingSubmit}
+                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-500 hover:bg-primary-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Request Revision
+                {isProcessingSubmit ? 'Processing...' : 'Request Revision'}
               </button>
             )}
 
             {onRejectPlan && (
-              <button
+              <Button
                 onClick={() => {
                   setReviewComments('');
                   setShowRejectModal(true);
                 }}
-                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-red-500 hover:bg-red-600 text-white"
+                variant="danger"
+                size="md"
               >
                 Reject
-              </button>
+              </Button>
             )}
 
             {onApprove && (
-              <button
+              <Button
                 onClick={async () => {
+                  if (isProcessingApprove) return;
+                  setIsProcessingApprove(true);
                   try {
                     await onApprove(selectedPlanDetails.auditId, reviewComments);
                     onClose();
                   } catch (err) {
                     console.error('Approve failed', err);
                     alert('Failed to approve: ' + (err as any)?.message || String(err));
+                  } finally {
+                    setIsProcessingApprove(false);
                   }
                 }}
-                className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md bg-primary-600 hover:bg-primary-700 text-white"
+                disabled={isProcessingApprove}
+                variant="primary"
+                size="md"
+                isLoading={isProcessingApprove}
               >
-                {approveButtonText}
-              </button>
+                {isProcessingApprove ? 'Processing...' : approveButtonText}
+              </Button>
             )}
 
             {/* If the plan is still Draft, allow submitting to Lead Auditor (only if current user is the plan creator) */}
@@ -1162,15 +1327,21 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => setShowSubmitModal(false)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              onClick={() => {
+                if (!isProcessingSubmit) {
+                  setShowSubmitModal(false);
+                }
+              }}
+              disabled={isProcessingSubmit}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={async () => {
-                if (!onSubmitToLead) return;
+                if (!onSubmitToLead || isProcessingSubmit) return;
+                setIsProcessingSubmit(true);
                 try {
                   await onSubmitToLead(selectedPlanDetails.auditId);
                   setShowSubmitModal(false);
@@ -1179,11 +1350,14 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   console.error('Failed to submit to lead auditor', err);
                   const errorMessage = (err as any)?.response?.data?.message || (err as any)?.message || String(err);
                   toast.error('Failed to submit to Lead Auditor: ' + errorMessage);
+                } finally {
+                  setIsProcessingSubmit(false);
                 }
               }}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              disabled={isProcessingSubmit}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Submit
+              {isProcessingSubmit ? 'Processing...' : 'Submit'}
             </button>
           </div>
         </div>
@@ -1264,17 +1438,24 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           </p>
           
           <div className="flex items-center justify-end gap-3">
-            <button
+            <Button
               type="button"
-              onClick={() => setShowForwardModal(false)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              onClick={() => {
+                if (!isProcessingForward) {
+                  setShowForwardModal(false);
+                }
+              }}
+              disabled={isProcessingForward}
+              variant="secondary"
+              size="md"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={async () => {
-                if (!onForwardToDirector) return;
+                if (!onForwardToDirector || isProcessingForward) return;
+                setIsProcessingForward(true);
                 try {
                   await onForwardToDirector(selectedPlanDetails.auditId, reviewComments);
                   setShowForwardModal(false);
@@ -1284,12 +1465,17 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   console.error('Forward to director failed', err);
                   const errorMessage = (err as any)?.response?.data?.message || (err as any)?.message || String(err);
                   toast.error('Failed to forward to Director: ' + errorMessage);
+                } finally {
+                  setIsProcessingForward(false);
                 }
               }}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              disabled={isProcessingForward}
+              variant="primary"
+              size="md"
+              isLoading={isProcessingForward}
             >
-              Submit
-            </button>
+              {isProcessingForward ? 'Processing...' : 'Submit'}
+            </Button>
           </div>
         </div>
       </div>
@@ -1303,7 +1489,11 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-        onClick={() => setShowRejectModal(false)}
+        onClick={() => {
+          if (!isProcessingReject) {
+            setShowRejectModal(false);
+          }
+        }}
       />
 
       {/* Modal */}
@@ -1327,25 +1517,32 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
             />
           </div>
           <div className="flex items-center justify-end gap-3 pt-2">
-            <button
+            <Button
               type="button"
-              onClick={() => setShowRejectModal(false)}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors text-sm font-medium"
+              onClick={() => {
+                if (!isProcessingReject) {
+                  setShowRejectModal(false);
+                }
+              }}
+              disabled={isProcessingReject}
+              variant="secondary"
+              size="md"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               onClick={async () => {
-                if (!onRejectPlan) return;
+                if (!onRejectPlan || isProcessingReject) return;
                 const reason = reviewComments.trim();
                 if (!reason) {
                   toast.warning('Please enter a rejection reason.');
                   return;
                 }
+                setIsProcessingReject(true);
                 try {
                   await onRejectPlan(selectedPlanDetails.auditId, reason);
-                  toast.success('Plan rejected successfully.');
+                  // Don't show toast here - let parent component handle it to avoid duplicate
                   setShowRejectModal(false);
                   onClose();
                 } catch (err) {
@@ -1355,12 +1552,17 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                     (err as any)?.message ||
                     String(err);
                   toast.error('Failed to reject plan: ' + errorMessage);
+                } finally {
+                  setIsProcessingReject(false);
                 }
               }}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+              disabled={isProcessingReject}
+              variant="danger"
+              size="md"
+              isLoading={isProcessingReject}
             >
-              Reject Plan
-            </button>
+              {isProcessingReject ? 'Processing...' : 'Reject Plan'}
+            </Button>
           </div>
         </div>
       </div>
@@ -1400,7 +1602,19 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           </div>
           
           <div className="space-y-3">
-            
+            {/* Show who rejected the plan */}
+            {selectedPlanDetails.rejectedBy && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span className="text-sm font-semibold text-blue-900">
+                    Rejected by {selectedPlanDetails.rejectedBy}
+                  </span>
+                </div>
+              </div>
+            )}
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1417,7 +1631,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>This plan was rejected. Please review the reason above and make necessary corrections.</span>
+              <span>This plan was rejected{selectedPlanDetails.rejectedBy ? ` by ${selectedPlanDetails.rejectedBy}` : ''}. Please review the reason above and make necessary corrections.</span>
             </div>
           </div>
           

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { MainLayout } from '../../layouts';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getStatusColor } from '../../constants';
+import { Button } from '../../components';
 
 const AuditPlanDetail = () => {
   const navigate = useNavigate();
@@ -255,18 +256,20 @@ const AuditPlanDetail = () => {
           {/* Action Buttons */}
           {plan.status === 'Pending Review' && (
             <div className="flex gap-3 pt-6 border-t border-gray-200">
-              <button
+              <Button
                 onClick={() => setShowApproveModal(true)}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                variant="success"
+                size="md"
               >
                 Approve Plan
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => setShowRejectModal(true)}
-                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                variant="danger"
+                size="md"
               >
                 Reject Plan
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -280,18 +283,20 @@ const AuditPlanDetail = () => {
                 Are you sure you want to approve this audit plan? The audit team will be notified and can proceed with the audit.
               </p>
               <div className="flex gap-3 justify-end">
-                <button
+                <Button
                   onClick={() => setShowApproveModal(false)}
-                  className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  variant="secondary"
+                  size="md"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleApprove}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${getStatusColor('Approved')}`}
+                  variant="success"
+                  size="md"
                 >
                   Confirm Approval
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -313,18 +318,20 @@ const AuditPlanDetail = () => {
                 placeholder="Enter rejection reason..."
               />
               <div className="flex gap-3 justify-end">
-                <button
+                <Button
                   onClick={() => setShowRejectModal(false)}
-                  className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  variant="secondary"
+                  size="md"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleReject}
-                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${getStatusColor('Rejected')}`}
+                  variant="danger"
+                  size="md"
                 >
                   Confirm Rejection
-                </button>
+                </Button>
               </div>
             </div>
           </div>

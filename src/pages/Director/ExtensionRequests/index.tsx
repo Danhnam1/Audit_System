@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { PageHeader } from '../../../components';
+import { PageHeader, Button } from '../../../components';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
 import {
@@ -405,33 +405,36 @@ export default function DirectorExtensionRequestsPage() {
                   />
                 </div>
                 <div className="flex gap-3 justify-end">
-                  <button
+                  <Button
                     onClick={() => {
                       setShowApproveModal(false);
                       setSelectedRequest(null);
                       setResponseComment('');
                     }}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    variant="secondary"
+                    size="md"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => {
                       setShowApproveModal(false);
                       openRejectModal(selectedRequest);
                     }}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-700 text-white"
+                    variant="danger"
+                    size="md"
                   >
                     Reject
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={handleApprove}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed bg-green-600 hover:bg-green-700 text-white"
+                    variant="success"
+                    size="md"
                   >
                     {submitting ? 'Approving...' : 'Approve'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -592,23 +595,25 @@ export default function DirectorExtensionRequestsPage() {
                   />
                 </div>
                 <div className="flex gap-3 justify-end">
-                  <button
+                  <Button
                     onClick={() => {
                       setShowRejectModal(false);
                       setSelectedRequest(null);
                       setResponseComment('');
                     }}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    variant="secondary"
+                    size="md"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={handleReject}
                     disabled={submitting || !responseComment.trim()}
-                    className="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-700 text-white"
+                    variant="danger"
+                    size="md"
                   >
                     {submitting ? 'Rejecting...' : 'Reject'}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>

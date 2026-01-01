@@ -181,8 +181,24 @@ export const NotificationBell: React.FC = () => {
   }, [open]);
 
   // Handle real-time notifications from SignalR
-  // Use ref to track if we've already shown a notification to prevent duplicates
-  const shownNotificationIdsRef = useRef<Set<string>>(new Set());
+  // Use sessionStorage to track if we've already shown a notification to prevent duplicates across page navigations
+  const getShownNotificationIds = (): Set<string> => {
+    try {
+      const stored = sessionStorage.getItem('shown_notification_ids');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  };
+
+  const saveShownNotificationIds = (ids: Set<string>) => {
+    try {
+      sessionStorage.setItem('shown_notification_ids', JSON.stringify(Array.from(ids)));
+    } catch (error) {
+      console.error('Failed to save shown notification IDs:', error);
+    }
+  };
+
   const loadRef = useRef(load);
   
   // Keep loadRef updated
@@ -195,18 +211,22 @@ export const NotificationBell: React.FC = () => {
       // Create a unique ID for this notification to prevent duplicates
       const notificationId = `${data.notificationId || data.title || ''}_${data.createdAt || Date.now()}`;
       
-      // Check if we've already shown this notification
-      if (shownNotificationIdsRef.current.has(notificationId)) {
+      // Check if we've already shown this notification (from sessionStorage)
+      const shownIds = getShownNotificationIds();
+      if (shownIds.has(notificationId)) {
         return;
       }
       
       // Mark as shown
-      shownNotificationIdsRef.current.add(notificationId);
+      shownIds.add(notificationId);
       
       // Clean up old IDs (keep only last 100 to prevent memory leak)
-      if (shownNotificationIdsRef.current.size > 100) {
-        const idsArray = Array.from(shownNotificationIdsRef.current);
-        shownNotificationIdsRef.current = new Set(idsArray.slice(-50));
+      if (shownIds.size > 100) {
+        const idsArray = Array.from(shownIds);
+        const trimmedIds = new Set(idsArray.slice(-50));
+        saveShownNotificationIds(trimmedIds);
+      } else {
+        saveShownNotificationIds(shownIds);
       }
       
       // Filter: Don't show toast for "Your Audit Plan Has Been Approved" when Lead Auditor forwards plan to Director

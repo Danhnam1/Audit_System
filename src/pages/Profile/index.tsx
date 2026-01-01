@@ -75,6 +75,7 @@ export default function Profile() {
   const handleEdit = () => {
     setIsEditing(true);
     setEditedFullName(fullName);
+    // Set preview to current avatar URL when entering edit mode
     setAvatarPreview(avatarUrl);
     setSelectedAvatarFile(null);
   };
@@ -91,30 +92,50 @@ export default function Profile() {
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-      if (!allowedTypes.includes(file.type)) {
-        toast.error('Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.');
-        return;
-      }
-
-      // Validate file size (max 5MB)
-      const maxSize = 5 * 1024 * 1024; // 5MB
-      if (file.size > maxSize) {
-        toast.error('File size exceeds 5MB limit.');
-        return;
-      }
-
-      setSelectedAvatarFile(file);
-      
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) {
+      return;
     }
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Invalid file type. Only JPEG, PNG, GIF, and WebP images are allowed.');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      toast.error('File size exceeds 5MB limit.');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    // Set file first
+    setSelectedAvatarFile(file);
+    
+    // Create preview immediately using FileReader
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      // Update preview as soon as file is read
+      const result = event.target?.result as string;
+      if (result) {
+        setAvatarPreview(result);
+      }
+    };
+    reader.onerror = () => {
+      toast.error('Failed to read image file.');
+      setSelectedAvatarFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSave = async () => {
@@ -159,11 +180,6 @@ export default function Profile() {
       setSaving(false);
     }
   };
-
-
-
-  const displayAvatar = avatarUrl;
-  const displayInitial = fullName?.charAt(0)?.toUpperCase() || authUser?.fullName?.charAt(0)?.toUpperCase() || '?';
 
   const layoutUser = authUser ? { name: authUser.fullName, avatar: undefined } : undefined;
 

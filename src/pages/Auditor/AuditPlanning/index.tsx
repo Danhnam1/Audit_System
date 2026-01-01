@@ -137,12 +137,18 @@ const SQAStaffAuditPlanning = () => {
     })();
 
     // 1) Status filter:
-    //    - Auditor có thể xem plans có status "Draft" (của chính họ), "Approved" và "InProgress"
+    //    - Auditor có thể xem plans có status "Draft" (của chính họ), "PendingReview", "Approved" và "InProgress"
     const statusFiltered = existingPlans.filter((plan) => {
       const normStatus = String(plan.status || "")
         .toLowerCase()
         .replace(/\s+/g, "");
-      return normStatus === "draft" || normStatus === "approved" || normStatus === "inprogress";
+      return normStatus === "draft" || 
+             normStatus === "pendingreview" || 
+             normStatus === "pendingdirectorapproval" || 
+             normStatus === "approved" || 
+             normStatus === "rejected" || 
+             normStatus === "declined" || 
+             normStatus === "inprogress";
     });
 
     // 2) Nếu không xác định được user hiện tại, trả về rỗng
@@ -286,7 +292,22 @@ const SQAStaffAuditPlanning = () => {
       setLoadingPlans(true);
       try {
         const merged = await getPlansWithDepartments();
-        setExistingPlans(merged);
+        
+        // Enrich plans with rejectedBy information for rejected/declined plans
+        // Backend sets status to "Declined" when Lead Auditor rejects
+        // Backend sets status to "Rejected" when Director rejects
+        const enrichedPlans = merged.map((plan: any) => {
+          const planStatus = String(plan.status || '').toLowerCase().replace(/\s+/g, '');
+          if (planStatus === 'declined') {
+            return { ...plan, rejectedBy: 'Lead Auditor' };
+          } else if (planStatus === 'rejected') {
+            return { ...plan, rejectedBy: 'Director' };
+          }
+          return plan;
+        });
+        
+        setExistingPlans(enrichedPlans);
+        
         // Refresh audit teams after loading plans to ensure we have latest team assignments
         await fetchAuditTeams();
       } catch (error) {
@@ -538,16 +559,16 @@ const SQAStaffAuditPlanning = () => {
 
   // Validation function for plan period
   const validatePlanPeriod = (from: string, to: string, showToast: boolean = false): boolean => {
-    if (!from || !to) {
-      if (showToast) toast.warning("Please select both start and end dates.");
-      return false;
-    }
+    // if (!from || !to) {
+    //   if (showToast) toast.warning("Please select both start and end dates.");
+    //   return false;
+    // }
     const fromDate = new Date(from);
     const toDate = new Date(to);
-    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
-      if (showToast) toast.warning("Invalid date format.");
-      return false;
-    }
+    // if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+    //   if (showToast) toast.warning("Invalid date format.");
+    //   return false;
+    // }
     if (fromDate.getTime() > toDate.getTime()) {
       if (showToast) toast.warning("Invalid period: Start date must be earlier than or equal to the end date.");
       return false;
@@ -1148,13 +1169,68 @@ const SQAStaffAuditPlanning = () => {
         formState.setSensitiveNotes('');
       }
       
-      // Populate form with plan data
-      formState.setTitle(detailsWithId.title || '');
-      formState.setAuditType(detailsWithId.type || 'Internal');
-      formState.setGoal(detailsWithId.objective || '');
-      formState.setPeriodFrom(detailsWithId.startDate || '');
-      formState.setPeriodTo(detailsWithId.endDate || '');
-      formState.setLevel(detailsWithId.scope === 'Academy' ? 'academy' : 'department');
+      // Populate form with plan data - Step 1: Basic Info
+      // Ensure dates are in YYYY-MM-DD format
+      let periodFrom = '';
+      let periodTo = '';
+      
+      if (detailsWithId.startDate) {
+        try {
+          const startDate = new Date(detailsWithId.startDate);
+          if (!isNaN(startDate.getTime())) {
+            periodFrom = startDate.toISOString().split('T')[0];
+          } else if (typeof detailsWithId.startDate === 'string' && detailsWithId.startDate.includes('T')) {
+            periodFrom = detailsWithId.startDate.split('T')[0];
+          } else if (typeof detailsWithId.startDate === 'string') {
+            periodFrom = detailsWithId.startDate;
+          }
+        } catch (e) {
+          console.warn('Failed to parse startDate:', detailsWithId.startDate);
+          periodFrom = typeof detailsWithId.startDate === 'string' ? detailsWithId.startDate.split('T')[0] : '';
+        }
+      }
+      
+      if (detailsWithId.endDate) {
+        try {
+          const endDate = new Date(detailsWithId.endDate);
+          if (!isNaN(endDate.getTime())) {
+            periodTo = endDate.toISOString().split('T')[0];
+          } else if (typeof detailsWithId.endDate === 'string' && detailsWithId.endDate.includes('T')) {
+            periodTo = detailsWithId.endDate.split('T')[0];
+          } else if (typeof detailsWithId.endDate === 'string') {
+            periodTo = detailsWithId.endDate;
+          }
+        } catch (e) {
+          console.warn('Failed to parse endDate:', detailsWithId.endDate);
+          periodTo = typeof detailsWithId.endDate === 'string' ? detailsWithId.endDate.split('T')[0] : '';
+        }
+      }
+      
+      // Set all Step 1 fields
+      console.log('[handleEditPlan] Raw detailsWithId:', detailsWithId);
+      console.log('[handleEditPlan] Loading plan data:', {
+        title: detailsWithId.title,
+        type: detailsWithId.type,
+        objective: detailsWithId.objective,
+        periodFrom,
+        periodTo,
+        scope: detailsWithId.scope,
+        startDate: detailsWithId.startDate,
+        endDate: detailsWithId.endDate
+      });
+      
+      // Ensure we have values - try multiple field names
+      const title = detailsWithId.title || detailsWithId.audit?.title || '';
+      const type = detailsWithId.type || detailsWithId.audit?.type || 'Internal';
+      const objective = detailsWithId.objective || detailsWithId.objectives || detailsWithId.audit?.objective || detailsWithId.audit?.objectives || '';
+      const scope = detailsWithId.scope || detailsWithId.audit?.scope || 'Department';
+      
+      formState.setTitle(title);
+      formState.setAuditType(type);
+      formState.setGoal(objective);
+      formState.setPeriodFrom(periodFrom);
+      formState.setPeriodTo(periodTo);
+      formState.setLevel(scope === 'Academy' ? 'academy' : 'department');
       
       // Load departments
       const scopeDepts = unwrap(detailsWithId.scopeDepartments);
@@ -1202,21 +1278,57 @@ const SQAStaffAuditPlanning = () => {
       
       // Load team
       const teams = unwrap(detailsWithId.auditTeams);
-      const leadAuditor = teams.find((t: any) => t.isLead === true);
-      const auditors = teams.filter((t: any) => !t.isLead).map((t: any) => String(t.userId || t.id));
+      const leadAuditor = teams.find((t: any) => t.isLead === true || t.isLeadAuditor === true);
+      const auditors = teams.filter((t: any) => {
+        const role = String(t.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+        const isLead = t.isLead === true || t.isLeadAuditor === true;
+        return !isLead && role !== 'auditeeowner';
+      }).map((t: any) => String(t.userId || t.id || t.$id));
+      
+      // Note: Auditee Owners are loaded per department in Step4Team component
+      // They are automatically populated based on selectedDeptIds
+      // So we don't need to explicitly load them here
       
       if (leadAuditor) {
-        formState.setSelectedLeadId(String(leadAuditor.userId || leadAuditor.id));
+        formState.setSelectedLeadId(String(leadAuditor.userId || leadAuditor.id || leadAuditor.$id));
       }
       formState.setSelectedAuditorIds(auditors);
       
-      // Load schedules
+      // Note: Auditee Owners are loaded per department in Step4Team component
+      // They are automatically populated based on selectedDeptIds
+      // So we don't need to set selectedOwnerId here as it's handled by the component
+      
+      // Load schedules - try from scheduleMap first, then from schedules.values
       const scheduleMap = detailsWithId.scheduleMap || {};
-      formState.setKickoffMeeting(scheduleMap['kickoffmeeting'] || scheduleMap['kickoff meeting'] || '');
-      formState.setFieldworkStart(scheduleMap['fieldworkstart'] || scheduleMap['fieldwork start'] || '');
-      formState.setEvidenceDue(scheduleMap['evidencedue'] || scheduleMap['evidence due'] || '');
-      formState.setCapaDue(scheduleMap['capadue'] || scheduleMap['capa due'] || '');
-      formState.setDraftReportDue(scheduleMap['draftreportdue'] || scheduleMap['draft report due'] || '');
+      const schedulesArray = unwrap(detailsWithId.schedules) || [];
+      
+      // Helper function to get schedule date
+      const getScheduleDate = (milestoneName: string): string => {
+        // Try from scheduleMap first
+        const mapKey = milestoneName.toLowerCase().replace(/\s+/g, '');
+        if (scheduleMap[mapKey] || scheduleMap[milestoneName]) {
+          const date = scheduleMap[mapKey] || scheduleMap[milestoneName];
+          return typeof date === 'string' ? date.split('T')[0] : '';
+        }
+        
+        // Try from schedules array
+        const schedule = schedulesArray.find((s: any) => {
+          const name = (s.milestoneName || s.name || '').toLowerCase().replace(/\s+/g, '');
+          return name === mapKey || name === milestoneName.toLowerCase().replace(/\s+/g, '');
+        });
+        
+        if (schedule?.dueDate) {
+          return typeof schedule.dueDate === 'string' ? schedule.dueDate.split('T')[0] : '';
+        }
+        
+        return '';
+      };
+      
+      formState.setKickoffMeeting(getScheduleDate('kickoffmeeting') || getScheduleDate('kickoff meeting') || '');
+      formState.setFieldworkStart(getScheduleDate('fieldworkstart') || getScheduleDate('fieldwork start') || '');
+      formState.setEvidenceDue(getScheduleDate('evidencedue') || getScheduleDate('evidence due') || '');
+      formState.setCapaDue(getScheduleDate('capadue') || getScheduleDate('capa due') || '');
+      formState.setDraftReportDue(getScheduleDate('draftreportdue') || getScheduleDate('draft report due') || '');
       
       // Set edit mode
       formState.setIsEditMode(true);
@@ -1224,7 +1336,7 @@ const SQAStaffAuditPlanning = () => {
       formState.setCurrentStep(1);
       formState.setShowForm(true);
       
-      toast.success("Plan loaded for editing.");
+      
     } catch (err: any) {
       console.error("Failed to load plan for editing", err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
@@ -1309,16 +1421,25 @@ const SQAStaffAuditPlanning = () => {
           schedules: schedulesData,
         };
 
-        // Load approvals history only if plan is rejected (API is only for getting rejections)
+        // Load approvals history only if plan is rejected or declined (API is only for getting rejections)
         let latestRejectionComment: string | null = null;
+        let rejectedBy: string | null = null;
         const planStatus = String(
           detailsWithSchedules.status ||
             detailsWithSchedules.audit?.status ||
             ""
-        ).toLowerCase();
-        const isRejected = planStatus.includes("rejected");
+        ).toLowerCase().replace(/\s+/g, '');
+        const isRejected = planStatus === "rejected" || planStatus === "declined";
         
         if (isRejected) {
+          // Determine who rejected based on backend status
+          // Backend sets status to "Declined" when Lead Auditor rejects
+          // Backend sets status to "Rejected" when Director rejects
+          if (planStatus === "declined") {
+            rejectedBy = "Lead Auditor";
+          } else if (planStatus === "rejected") {
+            rejectedBy = "Director";
+          }
           // First, check if comment is stored directly in the audit/auditPlan record
           latestRejectionComment =
             detailsWithSchedules.comment ||
@@ -1358,7 +1479,9 @@ const SQAStaffAuditPlanning = () => {
                     const approvalStatus = String(a.status || "").toLowerCase();
                     return (
                       approvalStatus.includes("rejected") ||
-                      approvalStatus === "rejected"
+                      approvalStatus === "rejected" ||
+                      approvalStatus.includes("declined") ||
+                      approvalStatus === "declined plan"
                     );
                   })
                   .sort((a: any, b: any) => {
@@ -1379,6 +1502,12 @@ const SQAStaffAuditPlanning = () => {
                                           rejected[0].note || 
                                           rejected[0].reason || 
                                           null;
+                  
+                  // rejectedBy is already determined from backend status above
+                  // Store rejection info in detailsWithSchedules
+                  if (rejectedBy) {
+                    (detailsWithSchedules as any).rejectedBy = rejectedBy;
+                  }
                   
                   // Debug logging
                   if (!latestRejectionComment) {
@@ -1600,6 +1729,7 @@ const SQAStaffAuditPlanning = () => {
         const detailsWithRejection = {
           ...normalizedDetails,
           latestRejectionComment,
+          rejectedBy: detailsWithSchedules.rejectedBy || null, // Include who rejected the plan
           sensitiveFlag,
           sensitiveAreas,
           sensitiveAreasByDept,
@@ -1650,12 +1780,21 @@ const SQAStaffAuditPlanning = () => {
           // Failed to fetch schedules separately, using empty array
         }
 
-        // Only fetch approvals if plan is rejected (API is only for getting rejections)
+        // Only fetch approvals if plan is rejected or declined (API is only for getting rejections)
         let latestRejectionComment: string | null = null;
-        const planStatus = String(planFromTable.status || "").toLowerCase();
-        const isRejected = planStatus.includes("rejected");
+        let rejectedBy: string | null = null;
+        const planStatus = String(planFromTable.status || "").toLowerCase().replace(/\s+/g, '');
+        const isRejected = planStatus === "rejected" || planStatus === "declined";
         
         if (isRejected) {
+          // Determine who rejected based on backend status
+          // Backend sets status to "Declined" when Lead Auditor rejects
+          // Backend sets status to "Rejected" when Director rejects
+          if (planStatus === "declined") {
+            rejectedBy = "Lead Auditor";
+          } else if (planStatus === "rejected") {
+            rejectedBy = "Director";
+          }
           // First, check if comment is stored directly in the audit/auditPlan record
           const planFromTableAny = planFromTable as any;
           latestRejectionComment =
@@ -1694,7 +1833,9 @@ const SQAStaffAuditPlanning = () => {
                     const approvalStatus = String(a.status || "").toLowerCase();
                     return (
                       approvalStatus.includes("rejected") ||
-                      approvalStatus === "rejected"
+                      approvalStatus === "rejected" ||
+                      approvalStatus.includes("declined") ||
+                      approvalStatus === "declined plan"
                     );
                   })
                   .sort((a: any, b: any) => {
@@ -1715,6 +1856,14 @@ const SQAStaffAuditPlanning = () => {
                                           rejected[0].note || 
                                           rejected[0].reason || 
                                           null;
+                  
+                  // Determine who rejected (Director or Lead Auditor) based on ApprovalLevel
+                  const approvalLevel = rejected[0].approvalLevel || rejected[0].approval_level || rejected[0].level || '';
+                  rejectedBy = String(approvalLevel).toLowerCase().includes('director') 
+                    ? 'Director' 
+                    : String(approvalLevel).toLowerCase().includes('lead') || String(approvalLevel).toLowerCase().includes('auditor')
+                    ? 'Lead Auditor'
+                    : null;
                   
                   // Debug logging
                   if (!latestRejectionComment) {
@@ -1859,6 +2008,7 @@ const SQAStaffAuditPlanning = () => {
             roleName: "N/A",
           },
           latestRejectionComment,
+          rejectedBy, // Include who rejected the plan
           sensitiveFlag,
           sensitiveAreas,
           sensitiveAreasByDept,
@@ -1952,41 +2102,41 @@ const SQAStaffAuditPlanning = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <PageHeader
-        title="Audit Planning"
-        subtitle="Create and manage audit plans"
-        rightContent={
-          <button
-            onClick={() => {
-              if (isSubmittingPlan) {
-                toast.info("Submitting plan...");
-                return;
-              }
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-6">
+        <PageHeader
+          title="Audit Planning"
+          subtitle="Create and manage audit plans"
+          rightContent={
+            <button
+              onClick={() => {
+                if (isSubmittingPlan) {
+                  toast.info("Submitting plan...");
+                  return;
+                }
 
-              if (formState.showForm && formState.isEditMode) {
-                formState.resetFormForCreate();
-                setOriginalSelectedAuditorIds([]);
-              } else if (!formState.showForm) {
-                formState.resetFormForCreate();
-                setOriginalSelectedAuditorIds([]);
-                formState.setShowForm(true);
-              } else {
-                formState.setShowForm(false);
-              }
-            }}
-            disabled={isSubmittingPlan}
-            className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-md ${
-              isSubmittingPlan
-                ? "bg-gray-400 cursor-not-allowed text-gray-200"
-                : "bg-gradient-to-r from-primary-600 to-primary-700 hover:shadow-lg text-white"
-            }`}
-          >
-            {isSubmittingPlan ? "Creating..." : "+ Create New Plan"}
-          </button>
-        }
-      />
+                if (formState.showForm && formState.isEditMode) {
+                  formState.resetFormForCreate();
+                  setOriginalSelectedAuditorIds([]);
+                } else if (!formState.showForm) {
+                  formState.resetFormForCreate();
+                  setOriginalSelectedAuditorIds([]);
+                  formState.setShowForm(true);
+                } else {
+                  formState.setShowForm(false);
+                }
+              }}
+              disabled={isSubmittingPlan}
+              className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-md ${
+                isSubmittingPlan
+                  ? "bg-gray-400 cursor-not-allowed text-gray-200"
+                  : "bg-gradient-to-r from-primary-600 to-primary-700 hover:shadow-lg text-white"
+              }`}
+            >
+              {isSubmittingPlan ? "Creating..." : "+ Create New Plan"}
+            </button>
+          }
+        />
 
-      <div className="px-6 pb-6 space-y-6">
         <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
           <div className="p-6">
             <FilterBar
@@ -2018,7 +2168,7 @@ const SQAStaffAuditPlanning = () => {
         </div>
       </div>
 
-        {/* Form Modal for creating/editing plans */}
+      {/* Form Modal for creating/editing plans */}
         {formState.showForm &&
           createPortal(
             <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

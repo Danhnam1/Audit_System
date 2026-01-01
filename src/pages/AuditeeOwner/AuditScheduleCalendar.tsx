@@ -291,17 +291,14 @@ const AuditScheduleCalendar = () => {
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="px-4 sm:px-6">
-          <PageHeader
-            title="Audit Schedule"
-            subtitle={department ? `Schedule for ${department.name}` : 'View scheduled audit dates'}
-          />
-        </div>
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-6">
+        <PageHeader
+          title="Audit Schedule"
+          subtitle={department ? `Schedule for ${department.name}` : 'View scheduled audit dates'}
+        />
 
         {/* Scan QR Code Button */}
-        <div className="px-4 sm:px-6">
+        <div>
           <button
             onClick={() => setShowScanQRModal(true)}
             className="w-full sm:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2 shadow-md"
@@ -314,7 +311,7 @@ const AuditScheduleCalendar = () => {
         </div>
 
         {/* Calendar */}
-        <div className="px-4 sm:px-6">
+        <div>
           <div className="bg-white rounded-lg shadow-md border border-gray-200 p-5 max-w-3xl mx-auto">
             {loading ? (
               <div className="flex items-center justify-center py-8">

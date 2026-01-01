@@ -125,15 +125,9 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
       registerHandler();
     }
     
-    // If there's a pending notification (arrived before callback was registered), trigger it now
-    if (latestNotification) {
-      try {
-        callback(latestNotification);
-      } catch (error) {
-        console.error('[SignalRContext] Error triggering callback for pending notification:', error);
-      }
-    }
-  }, [registerHandler, latestNotification]);
+    // Don't trigger pending notification on re-registration to prevent duplicate toasts when navigating pages
+    // The notification will be handled by the SignalR handler if it's truly new
+  }, [registerHandler]);
 
   const offNotification = useCallback(() => {
     notificationCallbackRef.current = null;
