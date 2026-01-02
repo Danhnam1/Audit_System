@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { DataTable, type TableColumn } from '../../../../components/DataTable';
+import { getStatusColor } from '../../../../constants';
 
 interface Criteria {
   criteriaId: string;
@@ -16,15 +17,15 @@ interface CriteriaTabProps {
 }
 
 const CriteriaTab: React.FC<CriteriaTabProps> = ({ criteria, loading, departments = [] }) => {
-  const getStatusColor = (status?: string) => {
+  const normalizeStatus = (status?: string): string => {
     const statusLower = status?.toLowerCase() || '';
     if (statusLower === 'active') {
-      return 'bg-green-100 text-green-800';
+      return 'Active';
     }
     if (statusLower === 'inactive') {
-      return 'bg-gray-100 text-gray-800';
+      return 'Inactive';
     }
-    return 'bg-blue-100 text-blue-800';
+    return status || '';
   };
 
   const criteriaColumns: TableColumn<Criteria>[] = useMemo(() => [
@@ -61,7 +62,7 @@ const CriteriaTab: React.FC<CriteriaTabProps> = ({ criteria, loading, department
       header: 'Status',
       cellClassName: 'whitespace-nowrap',
       render: (criterion) => (
-        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(criterion.status)}`}>
+        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(normalizeStatus(criterion.status))}`}>
           {criterion.status || 'N/A'}
         </span>
       ),

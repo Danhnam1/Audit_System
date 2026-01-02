@@ -1207,17 +1207,6 @@ const SQAStaffAuditPlanning = () => {
       }
       
       // Set all Step 1 fields
-      console.log('[handleEditPlan] Raw detailsWithId:', detailsWithId);
-      console.log('[handleEditPlan] Loading plan data:', {
-        title: detailsWithId.title,
-        type: detailsWithId.type,
-        objective: detailsWithId.objective,
-        periodFrom,
-        periodTo,
-        scope: detailsWithId.scope,
-        startDate: detailsWithId.startDate,
-        endDate: detailsWithId.endDate
-      });
       
       // Ensure we have values - try multiple field names
       const title = detailsWithId.title || detailsWithId.audit?.title || '';

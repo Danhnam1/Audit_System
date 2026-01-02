@@ -135,7 +135,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       const currentUserEmail = String(user.email).toLowerCase().trim();
       const createdByEmail = String(planCreatedByEmail).toLowerCase().trim();
       if (currentUserEmail && createdByEmail && currentUserEmail === createdByEmail) {
-        console.log('[PlanDetailsModal] isCreator: true - email match via useAuth');
         return true;
       }
     }
@@ -145,7 +144,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       const normalizedCurrentUserId = String(currentUserId).toLowerCase().trim();
       const normalizedCreatedBy = String(planCreatedBy).toLowerCase().trim();
       if (normalizedCurrentUserId === normalizedCreatedBy) {
-        console.log('[PlanDetailsModal] isCreator: true - direct userId match');
         return true;
       }
     }
@@ -164,7 +162,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           const currentUserEmail = String(currentUserInList.email || '').toLowerCase().trim();
           const createdByEmail = String(planCreatedByEmail).toLowerCase().trim();
           if (currentUserEmail && createdByEmail && currentUserEmail === createdByEmail) {
-            console.log('[PlanDetailsModal] isCreator: true - email match via user list');
             return true;
           }
         }
@@ -174,14 +171,11 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           const currentUserListId = String(currentUserInList.userId || '').toLowerCase().trim();
           const normalizedCreatedBy = String(planCreatedBy).toLowerCase().trim();
           if (currentUserListId === normalizedCreatedBy) {
-            console.log('[PlanDetailsModal] isCreator: true - userId match via user list');
             return true;
           }
         }
       }
     }
-    
-    console.log('[PlanDetailsModal] isCreator: false - no match found');
     return false;
   }, [currentUserId, selectedPlanDetails, auditorOptions, ownerOptions, user?.email]);
 

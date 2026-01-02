@@ -1,5 +1,6 @@
 import { MainLayout } from '../../layouts';
 import { useNavigate } from 'react-router-dom';
+import { getStatusColor } from '../../constants';
 
 interface Deadline {
   id: number;
@@ -90,12 +91,12 @@ const CheckDeadlines = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const normalizeStatus = (status: string): string => {
     switch (status) {
-      case 'Completed': return 'bg-green-100 text-green-800';
-      case 'In Progress': return 'bg-blue-100 text-blue-800';
-      case 'Pending': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'Completed': return 'Completed';
+      case 'In Progress': return 'InProgress';
+      case 'Pending': return 'Pending';
+      default: return status;
     }
   };
 
@@ -108,7 +109,7 @@ const CheckDeadlines = () => {
             <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(deadline.priority)}`}>
               {deadline.priority}
             </span>
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(deadline.status)}`}>
+            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(normalizeStatus(deadline.status))}`}>
               {deadline.status}
             </span>
           </div>

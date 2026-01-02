@@ -3,6 +3,7 @@ import { getActionById, getActionsByFinding, type Action } from '../../api/actio
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById, type AdminUserDto } from '../../api/adminUsers';
 import { getRootCauseById, type RootCause } from '../../api/rootCauses';
+import { getStatusColor } from '../../constants';
 
 interface ActionDetailModalProps {
   isOpen: boolean;
@@ -255,13 +256,14 @@ const ActionDetailModal = ({
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const normalizeStatus = (status: string): string => {
     const statusLower = status?.toLowerCase() || '';
-    if (statusLower === 'completed' || statusLower === 'approved') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-    if (statusLower === 'active' || statusLower === 'open') return 'bg-blue-100 text-blue-700 border-blue-200';
-    if (statusLower === 'closed') return 'bg-gray-100 text-gray-700 border-gray-200';
-    if (statusLower === 'pending' || statusLower === 'reviewed') return 'bg-amber-100 text-amber-700 border-amber-200';
-    return 'bg-gray-100 text-gray-700 border-gray-200';
+    if (statusLower === 'completed' || statusLower === 'approved') return 'Approved';
+    if (statusLower === 'active' || statusLower === 'open') return 'InProgress';
+    if (statusLower === 'closed') return 'Closed';
+    if (statusLower === 'pending') return 'Pending';
+    if (statusLower === 'reviewed') return 'Reviewed';
+    return status;
   };
 
   return (
@@ -399,10 +401,10 @@ const ActionDetailModal = ({
                                   Action {actionIndex + 1}
                                 </span>
                                 <div className="flex items-center gap-2">
-                                  <span className={`px-2 py-0.5 rounded ${
+                                  <span className={`px-2 py-0.5 rounded border ${
                                     isSelected
-                                      ? 'bg-white/20 text-white'
-                                      : getStatusColor(action.status)
+                                      ? 'bg-white/20 text-white border-white/30'
+                                      : getStatusColor(normalizeStatus(action.status)) + ' border-gray-200'
                                   }`}>
                                     {action.status}
                                   </span>

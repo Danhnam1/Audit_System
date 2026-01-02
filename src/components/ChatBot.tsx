@@ -23,7 +23,7 @@ export const ChatBot = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: 'Hello!  am the chatbot supporting the Audit system. Do you have any questions?',
+      text: 'Hello! I am the chatbot supporting the Audit system. Do you have any questions?',
       isUser: false,
       timestamp: new Date(),
     },
@@ -76,12 +76,12 @@ export const ChatBot = () => {
       );
 
       if (response.isError) {
-        toast.error(response.errorMessage || 'Có lỗi xảy ra khi gửi tin nhắn');
+        toast.error(response.errorMessage || 'An error occurred while sending the message');
         setMessages((prev) => [
           ...prev,
           {
             id: (Date.now() + 1).toString(),
-            text: 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau.',
+            text: 'Sorry, an error occurred. Please try again later.',
             isUser: false,
             timestamp: new Date(),
           },
@@ -96,12 +96,12 @@ export const ChatBot = () => {
         setMessages((prev) => [...prev, botMessage]);
       }
     } catch (error: any) {
-      toast.error('Không thể kết nối đến chatbot. Vui lòng thử lại sau.');
+      toast.error('Unable to connect to chatbot. Please try again later.');
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
-          text: 'Xin lỗi, tôi không thể kết nối đến server. Vui lòng thử lại sau.',
+          text: 'Sorry, I cannot connect to the server. Please try again later.',
           isUser: false,
           timestamp: new Date(),
         },
@@ -122,7 +122,7 @@ export const ChatBot = () => {
     setMessages([
       {
         id: '1',
-        text: 'Xin chào! Tôi là chatbot hỗ trợ hệ thống Audit. Bạn có câu hỏi gì không?',
+        text: 'Hello! I am the chatbot supporting the Audit system. Do you have any questions?',
         isUser: false,
         timestamp: new Date(),
       },
@@ -191,7 +191,7 @@ export const ChatBot = () => {
               <button
                 onClick={handleClearChat}
                 className="p-1.5 hover:bg-white/20 rounded transition-colors"
-                title="Xóa lịch sử chat"
+                title="Clear chat history"
               >
                 <svg
                   className="w-4 h-4"
@@ -274,7 +274,7 @@ export const ChatBot = () => {
                         style={{ animationDelay: '0.2s' }}
                       ></div>
                     </div>
-                    <span className="text-xs text-gray-500">Đang suy nghĩ...</span>
+                    <span className="text-xs text-gray-500">Thinking...</span>
                   </div>
                 </div>
               </div>

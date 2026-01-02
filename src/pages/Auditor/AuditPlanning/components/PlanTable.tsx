@@ -166,20 +166,6 @@ export const PlanTable: React.FC<PlanTableProps> = ({
           // TODO: Re-enable creator check once we verify the data structure
           const canEditDelete = isDraft; // && isCreator;
           
-          // Debug log to understand data structure
-          if (isDraft) {
-            console.log('[PlanTable] Draft plan details:', {
-              planTitle: plan.title,
-              planStatus: plan.status,
-              isDraft,
-              isCreator,
-              currentUserId,
-              currentUserEmail,
-              planCreatedBy: plan.createdBy || plan.createdByUserId || plan.createdByUser?.userId,
-              planCreatedByEmail: plan.createdByUser?.email,
-              planKeys: Object.keys(plan),
-            });
-          }
           
           return (
             <div className="flex items-center justify-center gap-2">

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MainLayout } from '../../layouts';
 import { useNavigate } from 'react-router-dom';
+import { getStatusColor } from '../../constants';
 
 interface Finding {
   id: number;
@@ -73,13 +74,14 @@ const FindingsProgress = () => {
 
   const filteredFindings = filter === 'All' ? findings : findings.filter(f => f.status === filter);
 
-  const getStatusColor = (status: string) => {
+  const normalizeStatus = (status: string): string => {
+    // Map status to standard format used in constants
     switch (status) {
-      case 'Completed': return 'bg-green-100 text-green-800';
-      case 'In Progress': return 'bg-blue-100 text-blue-800';
-      case 'Not Started': return 'bg-gray-100 text-gray-800';
-      case 'Overdue': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'Completed': return 'Completed';
+      case 'In Progress': return 'InProgress';
+      case 'Not Started': return 'Draft';
+      case 'Overdue': return 'Overdue';
+      default: return status;
     }
   };
 
@@ -253,7 +255,7 @@ const FindingsProgress = () => {
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-lg font-semibold text-gray-800">{finding.title}</h3>
-                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(finding.status)}`}>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(normalizeStatus(finding.status))}`}>
                           {finding.status}
                         </span>
                       </div>

@@ -524,7 +524,6 @@ const SQAStaffReports = () => {
                 }
               } catch (err) {
                 // Ignore errors for individual report requests
-                console.debug(`Failed to load report request for audit ${auditId}:`, err);
               }
             }
           })
@@ -1019,9 +1018,9 @@ const SQAStaffReports = () => {
       return;
     }
     
-    // If we can't determine creator, show warning but allow (for backward compatibility)
+    // If we can't determine creator, allow (for backward compatibility)
     if (isAuditCreator === null) {
-      console.warn('[Reports] Could not determine audit creator, allowing submit for backward compatibility');
+      // Allow submit for backward compatibility
     }
     
     // Evidence Due validation removed per request

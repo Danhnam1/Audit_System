@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { MainLayout } from '../../layouts';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getStatusColor } from '../../constants';
 import { Button } from '../../components';
 
 const AuditPlanDetail = () => {

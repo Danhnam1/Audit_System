@@ -16,6 +16,7 @@ import { toast } from 'react-toastify';
 import { DataTable } from '../../../components/DataTable';
 import { Pagination } from '../../../components/Pagination';
 import { QRCodeSVG } from 'qrcode.react';
+import { getStatusColor } from '../../../constants';
 
 interface Department {
   deptId: number;
@@ -182,10 +183,6 @@ export default function AuditAssignment() {
         // Load assignment requests
         try {
           const requestsData = await getAllAuditAssignmentRequests();
-          console.log('[AuditAssignment] Raw requests data:', requestsData);
-          console.log('[AuditAssignment] Type of requestsData:', typeof requestsData);
-          console.log('[AuditAssignment] Is array?', Array.isArray(requestsData));
-          console.log('[AuditAssignment] Has $values?', requestsData?.$values);
           
           // Handle different response formats
           let requestsArray: any[] = [];
@@ -202,11 +199,6 @@ export default function AuditAssignment() {
             requestsArray = Array.isArray(requestsList) ? requestsList : [];
           }
           
-          console.log('[AuditAssignment] Processed assignment requests:', requestsArray);
-          console.log('[AuditAssignment] Number of requests:', requestsArray.length);
-          if (requestsArray.length > 0) {
-            console.log('[AuditAssignment] First request sample:', requestsArray[0]);
-          }
           setAssignmentRequests(requestsArray);
         } catch (reqErr: any) {
           console.error('[AuditAssignment] Failed to load assignment requests:', reqErr);
@@ -1080,13 +1072,6 @@ export default function AuditAssignment() {
                         header: 'Status',
                         cellClassName: 'whitespace-nowrap',
                         render: (audit) => {
-                          const getStatusColor = (status: string) => {
-                            const statusLower = status.toLowerCase();
-                            if (statusLower === 'inprogress') return 'bg-blue-100 text-blue-800';
-                            if (statusLower === 'draft') return 'bg-gray-100 text-gray-800';
-                            if (statusLower === 'approved') return 'bg-green-100 text-green-800';
-                            return 'bg-gray-100 text-gray-800';
-                          };
                           return (
                             <span
                               className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(audit.status || 'Draft')}`}
@@ -1233,12 +1218,6 @@ export default function AuditAssignment() {
 
                           // Check if there's a pending request matching this department and audit
                           // Match by: deptId, auditId, and optionally auditAssignmentId if assignment exists
-                          console.log(`[AuditAssignment] Checking requests for dept ${dept.deptId}, audit ${selectedAuditId}:`, {
-                            totalRequests: assignmentRequests.length,
-                            activeAssignments: activeAssignments.length,
-                            activeAssignmentIds: activeAssignments.map(a => a.assignmentId)
-                          });
-                          
                           const matchedRequest = assignmentRequests.find(req => {
                             // Check deptId match (handle both number and string)
                             const matchesDept = Number(req.deptId) === Number(dept.deptId);
@@ -1247,53 +1226,23 @@ export default function AuditAssignment() {
                             // Check status is pending
                             const isPending = (req.status || '').toLowerCase().trim() === 'pending';
                             
-                            console.log(`[AuditAssignment] Checking request ${req.requestId}:`, {
-                              reqDeptId: req.deptId,
-                              deptId: dept.deptId,
-                              matchesDept,
-                              reqAuditId: req.auditId,
-                              selectedAuditId,
-                              matchesAudit,
-                              reqStatus: req.status,
-                              isPending,
-                              reqAuditAssignmentId: req.auditAssignmentId
-                            });
-                            
                             // If there are active assignments, also check auditAssignmentId match
                             if (activeAssignments.length > 0) {
                               const matchesAssignment = activeAssignments.some(assignment => 
                                 String(req.auditAssignmentId || '').toLowerCase().trim() === String(assignment.assignmentId || '').toLowerCase().trim()
                               );
-                              console.log(`[AuditAssignment] Request ${req.requestId} matchesAssignment:`, matchesAssignment);
                               if (matchesDept && matchesAudit && isPending && matchesAssignment) {
-                                console.log('[AuditAssignment] ✓ Found matched request with assignment:', {
-                                  request: req,
-                                  assignment: activeAssignments.find(a => String(req.auditAssignmentId || '') === String(a.assignmentId || '')),
-                                  dept: dept.deptId,
-                                  audit: selectedAuditId
-                                });
                                 return true;
                               }
                               return false;
                             } else {
                               // If no active assignments, just check deptId and auditId
                               if (matchesDept && matchesAudit && isPending) {
-                                console.log('[AuditAssignment] ✓ Found matched request without assignment:', {
-                                  request: req,
-                                  dept: dept.deptId,
-                                  audit: selectedAuditId
-                                });
                                 return true;
                               }
                               return false;
                             }
                           });
-                          
-                          if (matchedRequest) {
-                            console.log('[AuditAssignment] ✓ Matched request found for dept:', dept.deptId, matchedRequest);
-                          } else {
-                            console.log('[AuditAssignment] ✗ No matched request for dept:', dept.deptId);
-                          }
 
                           // Determine if this department has sensitive areas
                           const isSensitiveDept = !!(
@@ -2732,7 +2681,6 @@ export default function AuditAssignment() {
                       const requestsData = await getAllAuditAssignmentRequests();
                       const requestsList = unwrap<any>(requestsData);
                       const requestsArray = Array.isArray(requestsList) ? requestsList : [];
-                      console.log('[AuditAssignment] Reloaded requests after reject:', requestsArray);
                       setAssignmentRequests(requestsArray);
                       
                       const assignmentsData = await getAuditAssignments().catch(() => []);
@@ -2770,7 +2718,6 @@ export default function AuditAssignment() {
                       const requestsData = await getAllAuditAssignmentRequests();
                       const requestsList = unwrap<any>(requestsData);
                       const requestsArray = Array.isArray(requestsList) ? requestsList : [];
-                      console.log('[AuditAssignment] Reloaded requests after approve:', requestsArray);
                       setAssignmentRequests(requestsArray);
                       
                       const assignmentsData = await getAuditAssignments().catch(() => []);

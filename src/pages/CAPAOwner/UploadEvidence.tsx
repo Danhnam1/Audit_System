@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MainLayout } from '../../layouts';
 import { useNavigate, useParams } from 'react-router-dom';
+import { getStatusColor } from '../../constants';
 
 interface Evidence {
   id: number;
@@ -60,14 +61,6 @@ const UploadEvidence = () => {
     }, 2000);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Approved': return 'bg-green-100 text-green-800';
-      case 'Rejected': return 'bg-red-100 text-red-800';
-      case 'Pending': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';

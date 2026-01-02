@@ -644,7 +644,6 @@ export default function AuditorFinalSummaryPage() {
     setSubmitting(true);
     try {
       const result = await submitFinalReport(selectedAuditId);
-      console.log('[Auditor] Submit result:', result);
       
       // Reload report request to update status
       if (selectedAuditId) {

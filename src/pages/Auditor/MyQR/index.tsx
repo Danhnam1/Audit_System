@@ -10,6 +10,7 @@ import useAuthStore from '../../../store/useAuthStore';
 import { getAdminUsers } from '../../../api/adminUsers';
 import { QRCodeSVG } from 'qrcode.react';
 import QRCode from 'qrcode';
+import { getStatusColor } from '../../../constants';
 
 interface AccessGrant {
   grantId: string;
@@ -161,12 +162,12 @@ export default function MyQR() {
     }
   };
 
-  const getStatusColor = (status: string): string => {
+  const normalizeStatus = (status: string): string => {
     const statusLower = status.toLowerCase();
-    if (statusLower === 'active') return 'bg-green-100 text-green-800';
-    if (statusLower === 'expired') return 'bg-red-100 text-red-800';
-    if (statusLower === 'revoked') return 'bg-gray-100 text-gray-800';
-    return 'bg-yellow-100 text-yellow-800';
+    if (statusLower === 'active') return 'Active';
+    if (statusLower === 'expired') return 'Expired';
+    if (statusLower === 'revoked') return 'Revoked';
+    return status;
   };
 
   const downloadQRCode = async (grant: AccessGrant) => {
@@ -371,7 +372,7 @@ export default function MyQR() {
                           <label className="block text-xs font-medium text-gray-500 mb-1">
                             Status
                           </label>
-                          <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getStatusColor(grant.status)}`}>
+                          <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getStatusColor(normalizeStatus(grant.status))}`}>
                             {grant.status}
                           </span>
                         </div>

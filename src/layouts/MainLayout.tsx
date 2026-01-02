@@ -104,10 +104,6 @@ export const MainLayout = ({
   const defaultMenuItems: SidebarMenuItem[] = getRoleMenu(role);
   const finalMenuItems: SidebarMenuItem[] = menuItems || defaultMenuItems;
   
-  // Debug: log menu items for roles that reported missing items
-  if (normalizedRole === 'auditor' || role === 'Admin' || role === 'Lead Auditor') {
-    console.debug('[MainLayout] role:', role, 'hasPlanPermission:', hasPlanPermission, 'menuItems:', finalMenuItems);
-  }
 
  
   // Default user

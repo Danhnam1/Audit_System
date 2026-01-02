@@ -5,6 +5,7 @@ import { getActionsByFinding, updateActionProgressPercent, type Action } from '.
 import { getAttachments, updateAttachmentStatus } from '../../../../api/attachments';
 import { toast } from 'react-toastify';
 import type { Finding } from '../../../../api/findings';
+import { getStatusColor } from '../../../../constants';
 
 interface FindingsTabProps {
   findings: Finding[];
@@ -51,18 +52,20 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
     return 'bg-gray-100 text-gray-800 border-gray-300';
   };
 
-  const getStatusColor = (status: string) => {
+  const normalizeStatus = (status: string): string => {
     const statusLower = status?.toLowerCase() || '';
+    // Map various status formats to standard format
     if (statusLower === 'open' || statusLower === 'pending') {
-      return 'bg-blue-100 text-blue-800';
+      return 'Pending';
     }
     if (statusLower === 'closed' || statusLower === 'resolved') {
-      return 'bg-gray-100 text-gray-800';
+      return 'Resolved';
     }
-    if (statusLower === 'in progress' || statusLower === 'in-progress') {
-      return 'bg-purple-100 text-purple-800';
+    if (statusLower === 'in progress' || statusLower === 'in-progress' || statusLower === 'inprogress') {
+      return 'InProgress';
     }
-    return 'bg-gray-100 text-gray-800';
+    // Return original status with first letter capitalized
+    return status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : '';
   };
 
   const handleViewFindingDetail = async (finding: Finding) => {
@@ -186,7 +189,7 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
       header: 'Status',
       cellClassName: 'whitespace-nowrap',
       render: (finding) => (
-        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(finding.status || '')}`}>
+        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(normalizeStatus(finding.status || ''))}`}>
           {finding.status || 'N/A'}
         </span>
       ),
@@ -320,7 +323,7 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
                                 <h4 className="text-xl font-bold text-gray-900">
                                   {action.title || 'Untitled Action'}
                                 </h4>
-                                <span className={`px-4 py-1.5 rounded-full text-xs font-bold shadow-sm ${getStatusColor(action.status || '')}`}>
+                                <span className={`px-4 py-1.5 rounded-full text-xs font-bold shadow-sm ${getStatusColor(normalizeStatus(action.status || ''))}`}>
                                   {action.status || 'N/A'}
                                 </span>
                   </div>

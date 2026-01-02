@@ -246,13 +246,7 @@ const AuditorLeadReports = () => {
         
         // Debug: Log if audit not found in auditMap
         if (!audit && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
-          console.warn(`[LeadReports] Audit not found in auditMap for ReportRequest:`, {
-            auditId,
-            reportRequestId: rr.reportRequestId,
-            status: rr.status,
-            requestedAt: rr.requestedAt,
-            auditMapKeys: Array.from(auditMap.keys()).slice(0, 10), // First 10 keys for debugging
-          });
+          // Audit not found in auditMap
         }
         
         if (!audit) {
@@ -322,15 +316,6 @@ const AuditorLeadReports = () => {
         const hasAllowedStatus = allowedStatuses.includes(reportStatus);
         
         // Debug: Log reports that are filtered out
-        if (!hasAllowedStatus && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
-          console.warn(`[LeadReports] Report filtered out due to status:`, {
-            title: p.title,
-            auditId: p.auditId,
-            rawStatus: rawStatus,
-            normalizedStatus: reportStatus,
-            allowedStatuses: allowedStatuses
-          });
-        }
         
         if (!hasAllowedStatus) return false;
         

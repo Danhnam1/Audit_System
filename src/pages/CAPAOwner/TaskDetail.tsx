@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { MainLayout } from '../../layouts';
 import { useParams, useNavigate } from 'react-router-dom';
+import { getStatusColor } from '../../constants';
 
 interface TaskDetail {
   id: number;
@@ -51,12 +52,12 @@ const TaskDetail = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const normalizeStatus = (status: string): string => {
     switch (status) {
-      case 'Completed': return 'bg-green-100 text-green-800';
-      case 'In Progress': return 'bg-blue-100 text-blue-800';
-      case 'Pending': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'Completed': return 'Completed';
+      case 'In Progress': return 'InProgress';
+      case 'Pending': return 'Pending';
+      default: return status;
     }
   };
 
@@ -93,7 +94,7 @@ const TaskDetail = () => {
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
                   {task.priority}
                 </span>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(task.status)}`}>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(normalizeStatus(task.status))}`}>
                   {task.status}
                 </span>
               </div>
