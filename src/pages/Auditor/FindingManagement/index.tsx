@@ -462,8 +462,8 @@ const SQAStaffFindingManagement = () => {
 
         {/* Tabs - Always visible */}
         <div className="mb-6" style={{ display: 'block', visibility: 'visible' }}>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
-          <nav className="flex space-x-2" aria-label="Tabs" style={{ display: 'flex' }}>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+            <nav className="flex space-x-2" aria-label="Tabs" style={{ display: 'flex' }}>
             <button
               onClick={() => setActiveTab('all')}
               type="button"
@@ -641,9 +641,7 @@ const SQAStaffFindingManagement = () => {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className=
-                             'bg-gray-100 text-gray-800 px-2.5 py-1 rounded-full text-xs font-semibold' 
-                          >
+                          <span className="bg-gray-100 text-gray-800 px-2.5 py-1 rounded-full text-xs font-semibold">
                             {audit.scope || 'N/A'}
                           </span>
                         </td>
@@ -712,6 +710,7 @@ const SQAStaffFindingManagement = () => {
             )}
           </div>
         )}
+      </div>
       </div>
 
       {/* Plan Details Modal */}

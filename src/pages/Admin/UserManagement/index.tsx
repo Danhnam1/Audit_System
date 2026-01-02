@@ -7,6 +7,7 @@ import { apiClient } from '../../../hooks/axios';
 import { getDepartments } from '../../../api/departments';
 import { bulkRegisterUsers } from '../../../api/adminUsers';
 import { toast } from 'react-toastify';
+import { validateRequired, validateEmail, validatePassword, validateSelected, SPECIAL_CHAR_REGEX } from '../../../helpers/formValidation';
 
 interface CreateUserForm {
   fullName: string;
@@ -80,37 +81,37 @@ const AdminUserManagement = () => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
-  const specialCharRegex = /[!@#$%^&*(),.?":{}|<>]/;
-
   const validateForm = (): boolean => {
-    if (!formData.fullName.trim()) {
-      toast.error('Please enter the full name.');
+    // Validate full name
+    const fullNameError = validateRequired(formData.fullName, 'Full name');
+    if (fullNameError) {
+      toast.error(fullNameError);
       return false;
     }
-    if (!formData.email.trim()) {
-      toast.error('Please enter the email.');
+
+    // Validate email
+    const emailError = validateEmail(formData.email, 'Email');
+    if (emailError) {
+      toast.error(emailError);
       return false;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      toast.error('Invalid email address.');
-      return false;
-    }
+
     // For edit mode, password is optional; only validate on create
     if (!editingUserId) {
-      if (!formData.password) {
-        toast.error('Please enter the password.');
-        return false;
-      }
-      if (formData.password.length < 6 || !specialCharRegex.test(formData.password)) {
-        toast.error('Password must be at least 6 characters and contain at least one special character.');
+      const passwordError = validatePassword(formData.password);
+      if (passwordError) {
+        toast.error(passwordError);
         return false;
       }
     }
-    if (!formData.role) {
-      toast.error('Please select a role.');
+
+    // Validate role
+    const roleError = validateSelected(formData.role, 'Role');
+    if (roleError) {
+      toast.error(roleError);
       return false;
     }
+
     // if (!formData.deptId) {
     //   toast.error('Please select a department.');
     //   return false;
@@ -414,7 +415,7 @@ const AdminUserManagement = () => {
       return;
     }
 
-    if (!specialCharRegex.test(newPassword)) {
+    if (!SPECIAL_CHAR_REGEX.test(newPassword)) {
       toast.error('Password must contain at least one special character');
       return;
     }

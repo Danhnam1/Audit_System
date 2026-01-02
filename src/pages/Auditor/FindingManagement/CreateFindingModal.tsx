@@ -6,6 +6,14 @@ import { markChecklistItemNonCompliant } from '../../../api/checklists';
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
+import {
+  validateRequired,
+  validateDateNotPast,
+  validateDateAfter,
+  validateDateBefore,
+  validateFiles,
+  validateSelected,
+} from '../../../helpers/formValidation';
 
 interface CreateFindingModalProps {
   isOpen: boolean;
@@ -271,52 +279,62 @@ const [findingTime, setFindingTime] = useState(() => {
   const validateForm = (): boolean => {
     const newErrors: typeof errors = {};
     
-    if (!description.trim()) {
-      newErrors.description = 'Description is required';
+    // Validate description
+    const descriptionError = validateRequired(description, 'Description');
+    if (descriptionError) {
+      newErrors.description = descriptionError;
     }
     
-    if (!severity) {
-      newErrors.severity = 'Severity is required';
+    // Validate severity
+    const severityError = validateSelected(severity, 'Severity');
+    if (severityError) {
+      newErrors.severity = severityError;
     }
     
+    // Validate deadline
     if (!deadline) {
       newErrors.deadline = 'Deadline is required';
     } else {
-      const deadlineDate = new Date(deadline);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Check if deadline is not in the past
+      const pastError = validateDateNotPast(deadline, 'Deadline');
+      if (pastError) {
+        newErrors.deadline = pastError;
+      } else if (fieldworkStartDate) {
+        // Check if deadline is after fieldwork start date
+        const afterError = validateDateAfter(
+          deadline,
+          fieldworkStartDate.toISOString().split('T')[0],
+          'Deadline',
+          'Fieldwork Start date'
+        );
+        if (afterError) {
+          newErrors.deadline = afterError;
+        }
+      }
       
-      if (deadlineDate < today) {
-        newErrors.deadline = 'Deadline cannot be before today';
-      } else if (fieldworkStartDate && deadlineDate < fieldworkStartDate) {
-        newErrors.deadline = `Deadline must be on or after Fieldwork Start date (${fieldworkStartDate.toISOString().split('T')[0]})`;
-      } else if (evidenceDueDate) {
-        // Deadline must be at least 1 day before Evidence Due date
-        const maxDeadlineDate = new Date(evidenceDueDate);
-        maxDeadlineDate.setDate(maxDeadlineDate.getDate() - 1);
-        maxDeadlineDate.setHours(0, 0, 0, 0);
-        
-        if (deadlineDate > maxDeadlineDate) {
-          const maxDeadlineStr = maxDeadlineDate.toISOString().split('T')[0];
-          newErrors.deadline = `Deadline must be on or before ${maxDeadlineStr} `;
+      // Check if deadline is before evidence due date (with 1 day offset)
+      if (!newErrors.deadline && evidenceDueDate) {
+        const beforeError = validateDateBefore(
+          deadline,
+          evidenceDueDate.toISOString().split('T')[0],
+          'Deadline',
+          'Evidence Due date',
+          1 // 1 day offset
+        );
+        if (beforeError) {
+          newErrors.deadline = beforeError;
         }
       }
     }
     
-   
-    
     // Validate files - check if at least one file is uploaded
-    if (files.length === 0) {
-      newErrors.files = 'At least one attachment is required';
-    } else if (errors.files) {
-      // Check if there's an existing file error
+    if (errors.files) {
+      // Keep existing file error if present
       newErrors.files = errors.files;
     } else {
-      // Additional validation: check each file in current files array
-      const maxSize = 10 * 1024 * 1024; // 10MB
-      const invalidCurrentFiles = files.filter(file => file.size > maxSize);
-      if (invalidCurrentFiles.length > 0) {
-        newErrors.files = `Some files exceed 10MB limit: ${invalidCurrentFiles.map(f => f.name).join(', ')}`;
+      const filesError = validateFiles(files, undefined, 1); // minCount = 1
+      if (filesError) {
+        newErrors.files = filesError;
       }
     }
     

@@ -11,7 +11,7 @@ import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import FindingDetailModal from '../../Auditor/FindingManagement/FindingDetailModal';
 import LeadAuditorActionDetailsModal from './LeadAuditorActionDetailsModal';
-import { getStatusColor } from '../../../constants';
+import { getStatusColor, getAuditTypeBadgeColor } from '../../../constants';
 
 interface Audit {
   auditId: string;
@@ -64,22 +64,14 @@ const ActionReview = () => {
     currentAction: string;
   } | null>(null);
 
+  // Use centralized badge color functions
   const getStatusBadgeColor = (status: string) => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
   };
-
-  const getAuditTypeBadgeColor = (auditType: string) => {
-    const typeLower = auditType?.toLowerCase() || '';
-    switch (typeLower) {
-      case 'internal':
-        return 'bg-purple-50 text-purple-700 border border-purple-200';
-      case 'external':
-        return 'bg-orange-50 text-orange-700 border border-orange-200';
-      case 'compliance':
-        return 'bg-indigo-50 text-indigo-700 border border-indigo-200';
-      default:
-        return 'bg-gray-50 text-gray-700 border border-gray-200';
-    }
+  
+  // Use centralized getAuditTypeBadgeColor from constants with light variant
+  const getAuditTypeBadgeColorLocal = (auditType: string) => {
+    return getAuditTypeBadgeColor(auditType, 'light');
   };
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
@@ -599,7 +591,7 @@ const ActionReview = () => {
                            
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getAuditTypeBadgeColor(audit.type)}`}>
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getAuditTypeBadgeColorLocal(audit.type)}`}>
                                 {audit.type || 'N/A'}
                               </span>
                             </td>

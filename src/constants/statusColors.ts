@@ -152,3 +152,57 @@ export const getStatusProgress = (status: string): number => {
   if (isStatusInGroup(status, 'NEGATIVE')) return 0;
   return 0;
 };
+
+/**
+ * Badge color for audit status (used in audit lists/cards)
+ * Different from getStatusColor - this is for badge styling with borders
+ */
+export const getStatusBadgeColor = (status: string): string => {
+  const statusLower = status?.toLowerCase() || '';
+  switch (statusLower) {
+    case 'assigned':
+      return 'bg-blue-100 text-blue-800 border border-blue-300';
+    case 'in progress':
+      return 'bg-yellow-100 text-yellow-800 border border-yellow-300';
+    case 'completed':
+      return 'bg-green-100 text-green-800';
+    case 'archived':
+      return 'bg-gray-100 text-gray-800 border border-gray-300';
+    default:
+      return 'bg-gray-100 text-gray-800 border border-gray-300';
+  }
+};
+
+/**
+ * Badge color for audit type (used in audit lists/cards)
+ * Supports multiple color schemes based on context
+ */
+export const getAuditTypeBadgeColor = (auditType: string, variant: 'default' | 'light' = 'default'): string => {
+  const typeLower = auditType?.toLowerCase() || '';
+  
+  if (variant === 'light') {
+    // Light variant used in CAPAOwner and AuditeeOwner
+    switch (typeLower) {
+      case 'internal':
+        return 'bg-purple-50 text-purple-700 border border-purple-200';
+      case 'external':
+        return 'bg-orange-50 text-orange-700 border border-orange-200';
+      case 'compliance':
+        return 'bg-indigo-50 text-indigo-700 border border-indigo-200';
+      default:
+        return 'bg-gray-50 text-gray-700 border border-gray-200';
+    }
+  }
+  
+  // Default variant
+  switch (typeLower) {
+    case 'internal':
+      return 'bg-blue-100 text-blue-800 border border-blue-300';
+    case 'external':
+      return 'bg-purple-100 text-purple-800 border border-purple-300';
+    case 'supplier':
+      return 'bg-orange-100 text-orange-800 border border-orange-300';
+    default:
+      return 'bg-gray-100 text-gray-800 border border-gray-300';
+  }
+};

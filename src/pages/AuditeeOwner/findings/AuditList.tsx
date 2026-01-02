@@ -7,6 +7,7 @@ import { getAuditPlanById } from '../../../api/audits';
 import { DataTable } from '../../../components/DataTable';
 import type { TableColumn } from '../../../components/DataTable';
 import { Pagination } from '../../../components';
+import { getStatusBadgeColor, getAuditTypeBadgeColor } from '../../../constants';
 
 interface AuditCard {
   auditId: string;
@@ -23,36 +24,6 @@ interface AuditCard {
   isPublished?: boolean;
   rawData?: any; // Store raw data for debugging
 }
-
-const getStatusBadgeColor = (status: string) => {
-  const statusLower = status?.toLowerCase() || '';
-  switch (statusLower) {
-    case 'assigned':
-      return 'bg-blue-100 text-blue-800 border border-blue-300';
-    case 'in progress':
-      return 'bg-yellow-100 text-yellow-800 border border-yellow-300';
-    case 'completed':
-      return 'bg-green-100 text-green-800';
-    case 'archived':
-      return 'bg-gray-100 text-gray-800 border border-gray-300';
-    default:
-      return 'bg-gray-100 text-gray-800 border border-gray-300';
-  }
-};
-
-const getAuditTypeBadgeColor = (auditType: string) => {
-  const typeLower = auditType?.toLowerCase() || '';
-  switch (typeLower) {
-    case 'internal':
-      return 'bg-purple-50 text-purple-700 border border-purple-200';
-    case 'external':
-      return 'bg-orange-50 text-orange-700 border border-orange-200';
-    case 'compliance':
-      return 'bg-indigo-50 text-indigo-700 border border-indigo-200';
-    default:
-      return 'bg-gray-50 text-gray-700 border border-gray-200';
-  }
-};
 
 const AuditeeOwnerAuditList = () => {
   const { user } = useAuth();
@@ -475,7 +446,7 @@ const AuditeeOwnerAuditList = () => {
                   header: 'Type',
                   cellClassName: 'whitespace-nowrap',
                   render: (audit: AuditCard) => (
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(audit.auditType)}`}>
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(audit.auditType, 'light')}`}>
                       {audit.auditType || 'N/A'}
                     </span>
                   ),
