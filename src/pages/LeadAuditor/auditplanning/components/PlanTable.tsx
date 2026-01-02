@@ -10,8 +10,8 @@ interface PlanTableProps {
   existingPlans: any[];
   loadingPlans: boolean;
   onViewDetails: (auditId: string) => void;
-  onEditPlan: (auditId: string) => void;
-  onDeletePlan: (auditId: string) => void;
+  onEditPlan?: (auditId: string) => void;
+  onDeletePlan?: (auditId: string) => void;
   onUpload?: (auditId: string) => void;
   getStatusColor: (status: string) => string;
   getBadgeVariant: (variant: BadgeVariant) => string;
@@ -122,7 +122,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
               </button>
-              {isDraft && (
+              {isDraft && onEditPlan && (
                 <button
                   onClick={() => onEditPlan(plan.auditId)}
                   className="p-1.5 text-orange-400 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
@@ -133,7 +133,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
                   </svg>
                 </button>
               )}
-              {isDraft && (
+              {isDraft && onDeletePlan && (
                 <button
                   onClick={() => onDeletePlan(plan.auditId || plan.id)}
                   className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"

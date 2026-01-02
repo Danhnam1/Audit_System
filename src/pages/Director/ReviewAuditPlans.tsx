@@ -7,7 +7,7 @@ import { getDepartments } from '../../api/departments';
 import { getAuditCriteria } from '../../api/auditCriteria';
 import { getAdminUsers } from '../../api/adminUsers';
 import { getPlansWithDepartments } from '../../services/auditPlanning.service';
-import { getStatusColor, getBadgeVariant } from '../../constants';
+import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from '../../constants';
 import { PlanDetailsModal } from '../Auditor/AuditPlanning/components/PlanDetailsModal';
 import { getDepartmentName, getCriterionName } from '../../helpers/auditPlanHelpers';
 import { getChecklistTemplates } from '../../api/checklists';
@@ -33,6 +33,7 @@ interface AuditPlan {
 
 const ReviewAuditPlans = () => {
   const [filter, setFilter] = useState<'All' | 'Pending Review' | 'Approved' | 'Rejected'>('Pending Review');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
  
   
@@ -47,22 +48,38 @@ const ReviewAuditPlans = () => {
   const [auditTeams, setAuditTeams] = useState<any[]>([]);
   // loading currently unused; reserved for future spinner
 
-  const filteredPlans = filter === 'All'
-    ? auditPlans
-    : auditPlans.filter((plan) => {
-      const s = String(plan.status || '').toLowerCase();
-      if (filter === 'Pending Review') {
-        return s === 'pendingdirectorapproval' || s === 'pending director approval';
-      }
-      if (filter === 'Approved') {
-        // Director wants the Approved tab to also show audits that are in progress
-        const isApprovedLike = s === 'approved' || s === 'approve';
-        const isInProgressLike = s === 'inprogress' || s === 'in progress';
-        return isApprovedLike || isInProgressLike;
-      }
-      if (filter === 'Rejected') return s === 'rejected';
-      return false;
-    });
+  const filteredPlans = (() => {
+    // First filter by status
+    let statusFiltered = filter === 'All'
+      ? auditPlans
+      : auditPlans.filter((plan) => {
+        const s = String(plan.status || '').toLowerCase();
+        if (filter === 'Pending Review') {
+          return s === 'pendingdirectorapproval' || s === 'pending director approval';
+        }
+        if (filter === 'Approved') {
+          // Director wants the Approved tab to also show audits that are in progress
+          const isApprovedLike = s === 'approved' || s === 'approve';
+          const isInProgressLike = s === 'inprogress' || s === 'in progress';
+          return isApprovedLike || isInProgressLike;
+        }
+        if (filter === 'Rejected') return s === 'rejected';
+        return false;
+      });
+
+    // Then filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase().trim();
+      statusFiltered = statusFiltered.filter((plan) => {
+        const title = String(plan.title || '').toLowerCase();
+        const submittedBy = String(plan.submittedBy || '').toLowerCase();
+        const scope = String(plan.scope || '').toLowerCase();
+        return title.includes(query) || submittedBy.includes(query) || scope.includes(query);
+      });
+    }
+
+    return statusFiltered;
+  })();
 
   const [processingIdStr, setProcessingIdStr] = useState<string | null>(null);
 
@@ -518,8 +535,31 @@ const ReviewAuditPlans = () => {
         </div>
 
 
-        {/* Status Tabs */}
+        {/* Search Bar and Status Tabs */}
         <div className="animate-slideUp animate-delay-200 bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden mb-6">
+          {/* Search Bar */}
+          <div className="px-6 py-4 border-b border-primary-100">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by title, submitted by, or scope..."
+                className="w-full px-4 py-2.5 pl-10 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
+              />
+              <svg
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Status Tabs */}
           <div className="px-6 py-4 border-b border-primary-100">
             <div className="flex gap-2">
               <button
@@ -665,7 +705,25 @@ const ReviewAuditPlans = () => {
             onApprove={canApproveOrRejectPlan ? async (auditId: string, comment?: string) => {
               try {
                 setProcessingIdStr(auditId);
-                await approvePlan(String(auditId), { comment: comment || 'Approved by Director' });
+                const response = await approvePlan(String(auditId), { comment: comment || 'Approved by Director' });
+                
+                // Log notification sending results
+                // apiClient may return response.data directly or the full response
+                const responseData = response?.data || response;
+                if (responseData) {
+                  const { totalNotifications, sentSuccess, sentFailed } = responseData;
+                  console.log('[Director Approve] Notification results:', {
+                    totalNotifications,
+                    sentSuccess: sentSuccess || [],
+                    sentFailed: sentFailed || []
+                  });
+                  
+                  if (sentFailed && sentFailed.length > 0) {
+                    console.warn('[Director Approve] Some notifications failed to send via SignalR:', sentFailed);
+                    console.warn('[Director Approve] Notifications were still created in database. Users will see them when they refresh or reconnect SignalR.');
+                  }
+                }
+                
                 toast.success('Plan approved successfully.');
                 setSelectedDetails(null);
                 await reloadPlans();
@@ -701,6 +759,7 @@ const ReviewAuditPlans = () => {
             getDepartmentName={(id: any) => getDepartmentName(id, departments)}
             getStatusColor={getStatusColor}
             getBadgeVariant={getBadgeVariant}
+            getAuditTypeBadgeColor={getAuditTypeBadgeColor}
             ownerOptions={ownerOptions}
             auditorOptions={auditorOptions}
             getTemplateName={(tid) => {

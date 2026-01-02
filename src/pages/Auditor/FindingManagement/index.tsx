@@ -14,7 +14,7 @@ import { getAdminUsers } from '../../../api/adminUsers';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
 import { normalizePlanDetails } from '../../../utils/normalize';
-import { getStatusColor, getBadgeVariant } from '../../../constants';
+import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from '../../../constants';
 import { PlanDetailsModal } from '../AuditPlanning/components/PlanDetailsModal';
 
 interface AuditCard {
@@ -630,13 +630,7 @@ const SQAStaffFindingManagement = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            audit.auditType?.toLowerCase() === 'internal' 
-                              ? 'bg-blue-100 text-blue-800'
-                              : audit.auditType?.toLowerCase() === 'external'
-                              ? 'bg-purple-100 text-purple-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getAuditTypeBadgeColor(audit.auditType || '', 'default')}`}>
                             {audit.auditType || 'N/A'}
                           </span>
                         </td>

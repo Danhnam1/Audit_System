@@ -43,6 +43,7 @@ interface PlanDetailsModalProps {
   getDepartmentName: (deptId: string | number) => string;
   getStatusColor: (status: string) => string;
   getBadgeVariant: (variant: BadgeVariant) => string;
+  getAuditTypeBadgeColor?: (auditType: string, variant?: 'default' | 'light') => string;
   ownerOptions: any[];
   auditorOptions?: any[];
   getTemplateName?: (templateId: string | number | null | undefined) => string;
@@ -73,6 +74,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   getDepartmentName,
   getStatusColor,
   getBadgeVariant,
+  getAuditTypeBadgeColor,
   ownerOptions,
   auditorOptions = [],
   getTemplateName,
@@ -582,7 +584,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               </div>
               <div className="flex items-start gap-3">
                 <span className="text-sm font-bold text-black min-w-[100px]">Type:</span>
-                <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-light')}`}>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getAuditTypeBadgeColor ? getAuditTypeBadgeColor(selectedPlanDetails.type || '', 'default') : getBadgeVariant('primary-light')}`}>
                   {selectedPlanDetails.type}
                 </span>
               </div>

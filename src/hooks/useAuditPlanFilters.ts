@@ -9,10 +9,27 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
   const [filterDepartment, setFilterDepartment] = useState<string>('');
   const [sortDateOrder, setSortDateOrder] = useState<string>(''); // 'desc' (newest to oldest), 'asc' (oldest to newest), '' (no sort)
   const [filterStatus, setFilterStatus] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Filter audit plans based on filter criteria
   const filteredPlans = useMemo(() => {
     const filtered = existingPlans.filter((plan: any) => {
+      // Search filter (search in title, objective, and type)
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase().trim();
+        const title = String(plan.title || '').toLowerCase();
+        const objective = String(plan.objective || '').toLowerCase();
+        const type = String(plan.type || plan.auditType || '').toLowerCase();
+        const scope = String(plan.scope || '').toLowerCase();
+        
+        if (!title.includes(query) && 
+            !objective.includes(query) && 
+            !type.includes(query) && 
+            !scope.includes(query)) {
+          return false;
+        }
+      }
+
       // Department filter
       if (filterDepartment) {
         const deptArray = plan.scopeDepartments || [];
@@ -47,8 +64,14 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
           return normStatus === 'declined';
         }
 
-        // Default: exact match on status string
-        if (planStatus !== filterStatus) return false;
+        // Handle "Declined" filter - backend returns "declined" (lowercase)
+        if (filterStatus === 'Declined') {
+          return normStatus === 'declined';
+        }
+
+        // Handle other status filters with normalized comparison
+        const normFilterStatus = filterStatus.toLowerCase().replace(/\s+/g, '');
+        if (normStatus !== normFilterStatus) return false;
       }
 
       return true;
@@ -86,23 +109,26 @@ export const useAuditPlanFilters = (existingPlans: any[] = []) => {
     });
 
     return sorted;
-  }, [existingPlans, filterDepartment, sortDateOrder, filterStatus]);
+  }, [existingPlans, filterDepartment, sortDateOrder, filterStatus, searchQuery]);
 
   // Clear all filters
   const clearFilters = () => {
     setFilterDepartment('');
     setSortDateOrder('');
     setFilterStatus('');
+    setSearchQuery('');
   };
 
   return {
     filterDepartment,
     sortDateOrder,
     filterStatus,
+    searchQuery,
     filteredPlans,
     setFilterDepartment,
     setSortDateOrder,
     setFilterStatus,
+    setSearchQuery,
     clearFilters,
   };
 };

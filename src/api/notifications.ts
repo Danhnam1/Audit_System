@@ -25,9 +25,8 @@ export const getNotificationById = async (notificationId: string): Promise<Admin
   return res?.data || res;
 };
 
-export const markNotificationRead = async (notificationId: string): Promise<AdminNotificationDTO> => {
-  const res: any = await apiClient.put(`/admin/AdminNotification/${notificationId}`, { isRead: true });
-  return res?.data || res;
+export const markNotificationRead = async (notificationId: string): Promise<void> => {
+  await apiClient.put(`/admin/AdminNotification/${notificationId}/read`);
 };
 
 export const deleteNotification = async (notificationId: string): Promise<void> => {

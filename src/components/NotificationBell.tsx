@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import useAuthStore from '../store/useAuthStore';
+import useAuthStore, { useUserId } from '../store/useAuthStore';
 import { useSignalR } from '../contexts/SignalRContext';
-import { getAdminUsers } from '../api/adminUsers';
 import { getNotifications, markNotificationRead, deleteNotification, type AdminNotificationDTO } from '../api/notifications.ts';
 import { unwrap } from '../utils/normalize';
 import { toast } from 'react-toastify';
@@ -13,44 +12,25 @@ interface NotificationItem extends AdminNotificationDTO {
 
 export const NotificationBell: React.FC = () => {
   const { user } = useAuthStore();
+  const userIdFromToken = useUserId(); // Get userId from JWT token
   const { isConnected: _isConnected, onNotification, offNotification } = useSignalR();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
-  const [myUserId, setMyUserId] = useState<string | null>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
   const [statusFilter, setStatusFilter] = useState<'All' | 'Read' | 'Unread'>('All');
   
-  // Get read notifications from localStorage
-  const getReadNotifications = (): Set<string> => {
-    try {
-      const stored = localStorage.getItem('read_notifications');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
-  };
-
-  // Check if notification is unread
+  // Check if notification is unread (only based on backend API response)
   const isUnread = useCallback((n: any) => {
-    const notificationId = String(n.notificationId || '');
-    const readSet = getReadNotifications();
-    if (readSet.has(notificationId)) return false;
     return !n.isRead && !n.readAt;
   }, []);
 
-  // Filter notifications based on status
+  // Filter notifications based on status (only based on backend API response)
   const filteredItems = useMemo(() => {
     if (statusFilter === 'All') return items;
-    const readSet = getReadNotifications();
     return items.filter((n: any) => {
-      const notificationId = String(n.notificationId || '');
-      // Check if marked as read in localStorage
-      const isMarkedRead = readSet.has(notificationId);
-      // Check if marked as read in API response
-      const isReadFromAPI = n.isRead || n.readAt;
-      const isRead = isMarkedRead || isReadFromAPI;
+      const isRead = n.isRead || n.readAt;
       
       if (statusFilter === 'Unread') {
         return !isRead;
@@ -61,65 +41,50 @@ export const NotificationBell: React.FC = () => {
     });
   }, [items, statusFilter]);
 
-  // Save read notification to localStorage
-  const markAsReadInStorage = (notificationId: string) => {
-    try {
-      const readSet = getReadNotifications();
-      readSet.add(notificationId);
-      localStorage.setItem('read_notifications', JSON.stringify(Array.from(readSet)));
-    } catch (error) {
-    }
-  };
-
-  // Only count notifications that are not read
-  // Check both: API isRead/readAt AND localStorage
+  // Only count notifications that are not read (only based on backend API response)
   const unreadCount = useMemo(() => {
-    const readSet = getReadNotifications();
     return items.filter(n => {
-      const notificationId = String((n as any).notificationId || '');
-      // Check if marked as read in localStorage
-      if (readSet.has(notificationId)) {
-        return false;
-      }
-      // Check if marked as read in API response
       const isRead = (n as any).isRead;
       const readAt = (n as any).readAt;
       return !isRead && !readAt;
     }).length;
   }, [items]);
 
-  // Load user ID once on mount
-  useEffect(() => {
-    if (!myUserId && user?.email) {
-      const loadUserId = async () => {
-        try {
-          const admins = await getAdminUsers();
-          const me = (admins || []).find((a: any) => String(a.email || '').toLowerCase() === String(user?.email || '').toLowerCase());
-          if (me) {
-            const meId = String(me.userId || me.$id || me.email);
-            setMyUserId(meId || null);
-          }
-        } catch (error) {
-        }
-      };
-      void loadUserId();
-    }
-  }, [myUserId, user?.email]);
+  // Helper to normalize GUID for comparison (case-insensitive, remove any extra characters)
+  const normalizeUserId = (id: string | null | undefined): string | null => {
+    if (!id) return null;
+    // Convert to string, lowercase, remove all whitespace and special characters except hyphens
+    let normalized = String(id).toLowerCase().trim();
+    // Remove any curly braces or brackets that might be in the GUID
+    normalized = normalized.replace(/[{}[\]]/g, '');
+    return normalized;
+  };
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      // Use current myUserId state
-      const meId = myUserId; 
+      // Use userId from JWT token (most reliable)
+      const meId = normalizeUserId(userIdFromToken);
 
       const res = await getNotifications();
       const all = unwrap<AdminNotificationDTO>(res);
 
       // Filter notifications for current user
+      // Compare normalized GUIDs (case-insensitive)
       const mine = (all || []).filter((n: any) => {
-        if (meId) return String(n.userId || n.recipientId) === meId;
-        // fallback by email if API stores email in userId
-        if (user?.email) return String(n.userId || '').toLowerCase() === String(user.email).toLowerCase();
+        const notificationUserId = normalizeUserId(n.userId || n.recipientId);
+        
+        // Primary: Match by userId from JWT token
+        if (meId && notificationUserId) {
+          return notificationUserId === meId;
+        }
+        
+        // Fallback: Match by email (if backend stores email in userId field)
+        if (!meId && user?.email) {
+          const notificationEmail = String(n.userId || '').toLowerCase().trim();
+          return notificationEmail === String(user.email).toLowerCase().trim();
+        }
+        
         return false;
       });
 
@@ -129,39 +94,27 @@ export const NotificationBell: React.FC = () => {
         return status !== 'inactive'; // only show active notifications
       });
 
-      // Merge with localStorage read status
-      const readSet = getReadNotifications();
+      // Sort by creation date (newest first)
       const sorted: NotificationItem[] = activeMine
-        .map((n: any) => {
-          const notificationId = String(n.notificationId || '');
-          // If marked as read in localStorage, ensure isRead is true
-          if (readSet.has(notificationId) && !n.isRead) {
-            return {
-              ...n,
-              isRead: true,
-              readAt: n.readAt || new Date().toISOString(),
-              createdAtDate: n.createdAt ? new Date(n.createdAt) : null
-            };
-          }
-          return {
-            ...n,
-            createdAtDate: n.createdAt ? new Date(n.createdAt) : null
-          };
-        })
+        .map((n: any) => ({
+          ...n,
+          createdAtDate: n.createdAt ? new Date(n.createdAt) : null
+        }))
         .sort((a: any, b: any) => (b.createdAtDate?.getTime() || 0) - (a.createdAtDate?.getTime() || 0));
       setItems(sorted);
     } catch (error) {
+      console.error('Failed to load notifications:', error);
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [myUserId, user?.email]);
+  }, [userIdFromToken, user?.email]);
 
   // Load notifications from API when user ID is ready or email changes
   useEffect(() => {
-    if (myUserId || user?.email) {
+    if (userIdFromToken || user?.email) {
       void load();
     }
-  }, [load, myUserId, user?.email]);
+  }, [load, userIdFromToken, user?.email]);
 
   // Handle click outside to close dropdown
   useEffect(() => {
@@ -208,6 +161,14 @@ export const NotificationBell: React.FC = () => {
   
   useEffect(() => {
     const handleNewNotification = async (data: NotificationData) => {
+      // Check if this notification is for the current user
+      const notificationUserId = normalizeUserId(data.userId);
+      const currentUserId = normalizeUserId(userIdFromToken);
+      
+      if (notificationUserId && currentUserId && notificationUserId !== currentUserId) {
+        return; // Not for this user, ignore
+      }
+
       // Create a unique ID for this notification to prevent duplicates
       const notificationId = `${data.notificationId || data.title || ''}_${data.createdAt || Date.now()}`;
       
@@ -229,28 +190,9 @@ export const NotificationBell: React.FC = () => {
         saveShownNotificationIds(shownIds);
       }
       
-      // Filter: Don't show toast for "Your Audit Plan Has Been Approved" when Lead Auditor forwards plan to Director
-      const notificationTitle = (data.title || '').toLowerCase();
-      const userRole = (user?.roleName || '').toLowerCase();
-      const isApprovalNotification = notificationTitle.includes('your audit plan has been approved');
-      const isLeadAuditor = userRole.includes('lead auditor') || userRole.includes('leadauditor');
-      
-      // Skip toast if it's the approval notification and user is Lead Auditor
-      // (This notification is sent when Lead Auditor forwards their own plan to Director)
-      if (isApprovalNotification && isLeadAuditor) {
-        // Still reload notifications but don't show toast
-        await loadRef.current(true);
-        return;
-      }
-      
-      // Show toast notification immediately
-      toast.info(data.title || 'New notification', {
-        position: 'top-right',
-        autoClose: 5000,
-      });
-      
       // Reload notifications from API to get the latest data
       // This ensures we have complete and up-to-date information from the server
+      // No toast notification - users can check notification bell for new notifications
       await loadRef.current(true); // Silent reload (don't show loading spinner)
     };
 
@@ -264,71 +206,67 @@ export const NotificationBell: React.FC = () => {
   }, [onNotification, offNotification, user]); // Added 'user' to check role for filtering notifications
 
   const handleMarkRead = async (id: string) => {
-    // Save to localStorage immediately (works even without backend)
-    markAsReadInStorage(id);
-    
-    // Update UI immediately
-    setItems(prev => prev.map(n => {
-      if (String((n as any).notificationId) === String(id)) {
-        return {
-          ...(n as any),
-          isRead: true,
-          readAt: new Date().toISOString()
-        } as any;
-      }
-      return n;
-    }));
-
-    // Try to update backend (optional - won't break if it fails)
     try {
+      // Update backend first
       await markNotificationRead(id);
-      // Optionally reload from API if backend update succeeds
-      // await load();
+      
+      // Update UI after successful backend update
+      setItems(prev => prev.map(n => {
+        if (String((n as any).notificationId) === String(id)) {
+          return {
+            ...(n as any),
+            isRead: true,
+            readAt: new Date().toISOString()
+          } as any;
+        }
+        return n;
+      }));
     } catch (error) {
-      // Silently fail - localStorage already saved, so it's fine
+      console.error('Failed to mark notification as read:', error);
+      toast.error('Failed to mark notification as read');
     }
   };
 
   const handleMarkAllRead = async () => {
     const unread = items.filter(n => {
-      const notificationId = String((n as any).notificationId || '');
-      const readSet = getReadNotifications();
-      // Check both localStorage and API status
-      if (readSet.has(notificationId)) return false;
       const isRead = (n as any).isRead;
       const readAt = (n as any).readAt;
       return !isRead && !readAt;
     });
     
     if (unread.length === 0) return;
-    
-    // Save all to localStorage immediately
-    unread.forEach(n => {
-      const id = String((n as any).notificationId || '');
-      if (id) markAsReadInStorage(id);
-    });
 
-    // Update UI immediately
-    setItems(prev => prev.map(n => {
-      const notificationId = String((n as any).notificationId || '');
-      const readSet = getReadNotifications();
-      if (readSet.has(notificationId) && !(n as any).isRead) {
-        return {
-          ...(n as any),
-          isRead: true,
-          readAt: (n as any).readAt || new Date().toISOString()
-        } as any;
-      }
-      return n;
-    }));
-
-    // Try to update backend (optional)
     try {
-      await Promise.all(unread.map(n => markNotificationRead(String((n as any).notificationId || ''))).map(p => p.catch(() => null)));
-    } catch (error) {
-    }
+      // Update backend for all unread notifications
+      await Promise.all(
+        unread.map(n => 
+          markNotificationRead(String((n as any).notificationId || ''))
+            .catch(err => {
+              console.error(`Failed to mark notification ${(n as any).notificationId} as read:`, err);
+              return null;
+            })
+        )
+      );
 
-    toast.success(`Marked ${unread.length} notification(s) as read`);
+      // Update UI after successful backend updates
+      setItems(prev => prev.map(n => {
+        const isRead = (n as any).isRead;
+        const readAt = (n as any).readAt;
+        if (!isRead && !readAt) {
+          return {
+            ...(n as any),
+            isRead: true,
+            readAt: new Date().toISOString()
+          } as any;
+        }
+        return n;
+      }));
+
+      toast.success(`Marked ${unread.length} notification(s) as read`);
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error);
+      toast.error('Failed to mark all notifications as read');
+    }
   };
 
   const handleDelete = async (id: string) => {

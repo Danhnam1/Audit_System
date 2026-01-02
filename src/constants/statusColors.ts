@@ -182,11 +182,12 @@ export const getAuditTypeBadgeColor = (auditType: string, variant: 'default' | '
   
   if (variant === 'light') {
     // Light variant used in CAPAOwner and AuditeeOwner
+    // Colors match default variant for consistency
     switch (typeLower) {
       case 'internal':
-        return 'bg-purple-50 text-purple-700 border border-purple-200';
+        return 'bg-blue-50 text-blue-700 border border-blue-200';
       case 'external':
-        return 'bg-orange-50 text-orange-700 border border-orange-200';
+        return 'bg-purple-50 text-purple-700 border border-purple-200';
       case 'compliance':
         return 'bg-indigo-50 text-indigo-700 border border-indigo-200';
       default:

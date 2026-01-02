@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { Audit, Finding, ActionWithDetails, AuditMetadata } from '../types';
+import { getAuditTypeBadgeColor } from '../../../../constants';
 
 type AuditDetailsModalProps = {
   open: boolean;
@@ -129,7 +130,13 @@ export const AuditDetailsModal = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm text-gray-700">
                   <div>
                     <p className="text-xs text-gray-500 uppercase">Audit type</p>
-                    <p className="font-medium text-gray-900">{auditDetail.type || '-'}</p>
+                    {auditDetail.type ? (
+                      <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-medium ${getAuditTypeBadgeColor(auditDetail.type, 'default')}`}>
+                        {auditDetail.type}
+                      </span>
+                    ) : (
+                      <p className="font-medium text-gray-900">-</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 uppercase">Scope</p>

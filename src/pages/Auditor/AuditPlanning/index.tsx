@@ -27,19 +27,19 @@ import {
   getCriterionName,
   getDepartmentName,
 } from "../../../helpers/auditPlanHelpers";
-import { getStatusColor, getBadgeVariant } from "../../../constants";
+import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from "../../../constants";
 import { toast } from "react-toastify";
 
 // Import components
 import { FilterBar } from "./components/FilterBar";
 import { PlanTable } from "./components/PlanTable";
 import { PlanDetailsModal } from "./components/PlanDetailsModal";
-import { Step1BasicInfo } from "../../LeadAuditor/auditplanning/components/PlanForm/Step1BasicInfo";
-import { Step2Scope } from "../../LeadAuditor/auditplanning/components/PlanForm/Step2Scope";
-import { Step3Checklist } from "../../LeadAuditor/auditplanning/components/PlanForm/Step3Checklist";
-import { Step4Team } from "../../LeadAuditor/auditplanning/components/PlanForm/Step4Team";
-import { Step5Schedule } from "../../LeadAuditor/auditplanning/components/PlanForm/Step5Schedule";
-import { SensitiveAreaForm } from "../../LeadAuditor/auditplanning/components/PlanForm/SensitiveAreaForm";
+import { Step1BasicInfo } from "./components/PlanForm/Step1BasicInfo";
+import { Step2Scope } from "./components/PlanForm/Step2Scope";
+import { Step3Checklist } from "./components/PlanForm/Step3Checklist";
+import { Step4Team } from "./components/PlanForm/Step4Team";
+import { Step5Schedule } from "./components/PlanForm/Step5Schedule";
+import { SensitiveAreaForm } from "./components/PlanForm/SensitiveAreaForm";
 
 const SQAStaffAuditPlanning = () => {
   const { user } = useAuth();
@@ -626,7 +626,7 @@ const SQAStaffAuditPlanning = () => {
       // Call API to submit plan (changes status from Draft to PendingReview)
       await submitToLeadAuditor(auditId);
       toast.success(
-        "Plan submitted to Lead Auditor successfully. Status changed to Pending Review."
+        "Plan submitted to Lead Auditor successfully."
       );
 
       // Refresh plans list to reflect status change
@@ -1056,10 +1056,12 @@ const SQAStaffAuditPlanning = () => {
               filterDepartment={filterState.filterDepartment}
               sortDateOrder={filterState.sortDateOrder}
               filterStatus={filterState.filterStatus}
+              searchQuery={filterState.searchQuery}
               departments={departments}
               onFilterDepartmentChange={filterState.setFilterDepartment}
               onSortDateOrderChange={filterState.setSortDateOrder}
               onFilterStatusChange={filterState.setFilterStatus}
+              onSearchQueryChange={filterState.setSearchQuery}
               onClearFilters={filterState.clearFilters}
               filteredCount={filterState.filteredPlans.length}
               totalCount={visiblePlans.length}
@@ -1671,6 +1673,7 @@ const SQAStaffAuditPlanning = () => {
           }
           getStatusColor={getStatusColor}
           getBadgeVariant={getBadgeVariant}
+          getAuditTypeBadgeColor={getAuditTypeBadgeColor}
           ownerOptions={ownerOptions}
           auditorOptions={auditorOptions}
           getTemplateName={(tid) => {
