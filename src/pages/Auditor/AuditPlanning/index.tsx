@@ -1325,11 +1325,8 @@ const SQAStaffAuditPlanning = () => {
                       sensitiveNotes={formState.sensitiveNotes}
                       onFlagChange={(flag) => {
                         formState.setSensitiveFlag(flag);
-                        if (flag) {
-                          if (formState.level !== "department") {
-                            formState.setLevel("department");
-                          }
-                        } else {
+                        // Don't auto-change level - let user see warning message instead
+                        if (!flag) {
                           formState.setSensitiveAreas([]);
                           formState.setSensitiveNotes("");
                         }
@@ -1340,24 +1337,7 @@ const SQAStaffAuditPlanning = () => {
                       departments={departments}
                       level={formState.level}
                     />
-                    {/* Show validation error for Step 2 if exists
-                      {!validateStep2 && (
-                        <div className="mt-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
-                          <p className="text-sm font-medium text-red-800">
-                            ⚠️ Validation Error
-                          </p>
-                          {formState.level === "department" ? (
-                            <p className="text-sm text-red-700 mt-1">
-                              {formState.selectedDeptIds.length === 0 && "Please select at least one department. "}
-                              {formState.selectedCriteriaIds.length === 0 && "Please select at least one standard/criteria."}
-                            </p>
-                          ) : (
-                            <p className="text-sm text-red-700 mt-1">
-                              Please select at least one standard/criteria.
-                            </p>
-                          )}
-                        </div>
-                      )} */}
+                    
                   </div>
                 )}
 

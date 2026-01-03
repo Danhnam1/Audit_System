@@ -245,7 +245,7 @@ export default function MyQR() {
           document.body.removeChild(link);
           URL.revokeObjectURL(url);
           
-          toast.success('QR code downloaded successfully!');
+          
         }, 'image/png');
       };
       img.onerror = () => {
@@ -388,7 +388,6 @@ export default function MyQR() {
               </div>
             </>
           )}
-        </div>
       </div>
     </MainLayout>
   );

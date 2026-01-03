@@ -8,6 +8,7 @@ import { StatCard, BarChartCard, PieChartCard } from '../../../components';
 import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
 import { getReportRequestByAuditId, getAllReportRequests, type ViewReportRequest } from '../../../api/reportRequest';
 import { getDepartments } from '../../../api/departments';
+import { getAuditSchedules } from '../../../api/auditSchedule';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
 import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/auditDocuments';
 import { getAuditTeam } from '../../../api/auditTeam';
@@ -37,8 +38,11 @@ const SQAStaffReports = () => {
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [showRejectReasonModal, setShowRejectReasonModal] = useState(false);
   const [rejectReasonText, setRejectReasonText] = useState<string>('');
+  const [rejectSchedules, setRejectSchedules] = useState<any[]>([]);
+  const [loadingRejectSchedules, setLoadingRejectSchedules] = useState(false);
   const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
+  const [leadAuditorNames, setLeadAuditorNames] = useState<Record<string, string>>({}); // auditId -> Lead Auditor name
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
   const [reportRequests, setReportRequests] = useState<Record<string, ViewReportRequest>>({});
   const [allReportRequests, setAllReportRequests] = useState<ViewReportRequest[]>([]);
@@ -372,17 +376,18 @@ const SQAStaffReports = () => {
       const teams = Array.isArray(teamsRes) ? teamsRes : [];
       const userAuditIds = new Set<string>();
       const leadAuditIdsSet = new Set<string>();
+      const leadAuditorNamesMap: Record<string, string> = {};
       
       if (normalizedCurrentUserId) {
         teams.forEach((m: any) => {
           // Try multiple userId fields and normalize for comparison
-          const memberUserId = m?.userId 
+          const memberUserId = m?.userId;
           if (memberUserId) {
             const normalizedMemberUserId = String(memberUserId).toLowerCase().trim();
             // Match if userIds match (case-insensitive)
             if (normalizedMemberUserId === normalizedCurrentUserId) {
               // Collect all possible auditId formats
-              const auditId = m?.auditId ;
+              const auditId = m?.auditId;
               if (auditId) {
                 const auditIdStr = String(auditId).trim();
                 if (auditIdStr) {
@@ -402,8 +407,33 @@ const SQAStaffReports = () => {
         });
       }
       
-      // Set lead audit IDs
+      // Build Lead Auditor names map for all audits
+      teams.forEach((m: any) => {
+        if (m?.isLead === true) {
+          const auditId = m?.auditId;
+          if (auditId) {
+            const auditIdStr = String(auditId).trim();
+            if (auditIdStr && !leadAuditorNamesMap[auditIdStr]) {
+              // Try to get name from member data or lookup from adminUsers
+              let leadName = m?.fullName || m?.name || '';
+              if (!leadName && m?.userId) {
+                const leadUser = users.find((u: any) => {
+                  const uId = u?.userId || (u as any)?.$id || (u as any)?.id;
+                  return String(uId).toLowerCase().trim() === String(m.userId).toLowerCase().trim();
+                });
+                leadName = leadUser?.fullName || leadUser?.email || '';
+              }
+              if (leadName) {
+                leadAuditorNamesMap[auditIdStr] = leadName;
+              }
+            }
+          }
+        }
+      });
+      
+      // Set lead audit IDs and names
       setLeadAuditIds(leadAuditIdsSet);
+      setLeadAuditorNames(leadAuditorNamesMap);
       
       // Get audit IDs where current user is the creator
       const creatorAuditIds = new Set<string>();
@@ -672,78 +702,50 @@ const SQAStaffReports = () => {
     };
   }, [reloadReports]);
 
-  // Fetch reject notes for any audits already marked Returned/Rejected
+  // Fetch reject notes ONLY for audits that have ReportRequest with status "Returned"
+  // Don't call API if ReportRequest doesn't exist yet (audit hasn't been submitted)
+  // IMPORTANT: Preserve existing rejectNotes when reportRequests changes (e.g., during reloadReports)
   useEffect(() => {
-    const arr = Array.isArray(audits) ? audits : [];
+    // Only load notes for audits that:
+    // 1. Have a ReportRequest (already submitted at least once)
+    // 2. AND ReportRequest status is "Returned"
+    const returnedIds: string[] = [];
     
-    
-    // Check both audit status and ReportRequest status
-    const returnedIds = arr
-      .filter((audit: any) => {
-        const auditId = String(audit.auditId || audit.id || audit.$id || '');
-        
-        // Check audit status
-        const state = audit.status || audit.state || audit.approvalStatus;
-        const norm = String(state || '').toLowerCase();
-        const isAuditRejected = norm.includes('reject') || norm.includes('return');
-        
-        // Check ReportRequest status (priority - this is the source of truth)
-        const reportRequest = reportRequests[auditId];
-        const reportStatus = reportRequest?.status || '';
-        const isReportRejected = String(reportStatus).toLowerCase() === 'returned';
-        
-        // If ReportRequest exists and status is Returned, definitely need to load note
-        if (isReportRejected) {
-          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        
-          }
-          return true;
-        }
-        
-        // Otherwise check audit status
-        return isAuditRejected;
-      })
-      .map((audit: any) => String(audit.auditId || audit.id || audit.$id || ''))
-      .filter(Boolean);
-
-    // Also check reportRequests directly for any Returned status
+    // Check reportRequests directly - this is the source of truth
     Object.keys(reportRequests).forEach(auditId => {
       const reportRequest = reportRequests[auditId];
-      if (reportRequest && String(reportRequest.status || '').toLowerCase() === 'returned') {
-        if (!returnedIds.includes(auditId)) {
-          returnedIds.push(auditId);
-          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+      if (reportRequest) {
+        const reportStatus = String(reportRequest.status || '').toLowerCase();
+        // Only load note if ReportRequest exists AND status is "returned"
+        if (reportStatus === 'returned') {
+          if (!returnedIds.includes(auditId)) {
+            returnedIds.push(auditId);
           }
         }
       }
     });
+    
+    // Note: We only load notes for audits that have ReportRequest with status "Returned"
+    // This prevents calling API for audits that haven't been submitted yet (no ReportRequest exists)
+    // The reportRequests state is loaded from API in reloadReports(), so it's the source of truth
 
-    const missing = returnedIds.filter((id) => !(id in rejectNotes) || !rejectNotes[id] || rejectNotes[id].trim().length === 0);
-    
-    if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-    
-    }
+    // Only load notes that are missing - preserve existing notes
+    // This prevents losing rejectNotes when reportRequests is reloaded
+    const missing = returnedIds.filter((id) => {
+      // Only load if note doesn't exist or is empty
+      const existingNote = rejectNotes[id];
+      return !existingNote || existingNote.trim().length === 0;
+    });
     
     if (!missing.length) {
-      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-      }
       return;
     }
 
     let cancelled = false;
     const loadNotes = async () => {
-      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-      }
-      
-      const results = await Promise.allSettled(missing.map((id) => {
-        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        }
-        return getAuditReportNote(id);
-      }));
+      const results = await Promise.allSettled(missing.map((id) => getAuditReportNote(id)));
       
       if (cancelled) {
-        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        }
         return;
       }
       
@@ -751,24 +753,16 @@ const SQAStaffReports = () => {
       results.forEach((res, idx) => {
         if (res.status === 'fulfilled') {
           const note = res.value ?? '';
-          patch[missing[idx]] = note;
-          // Log để debug
-          if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-           
+          // Only set if note is not empty
+          if (note && note.trim().length > 0) {
+            patch[missing[idx]] = note;
           }
-        } else {
-          // const error = res.reason as any; // Unused
-        
         }
       });
       
       if (Object.keys(patch).length) {
-        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        }
+        // Merge with existing notes - don't overwrite existing notes
         setRejectNotes((prev) => ({ ...prev, ...patch }));
-      } else {
-        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        }
       }
     };
 
@@ -776,7 +770,7 @@ const SQAStaffReports = () => {
     return () => {
       cancelled = true;
     };
-  }, [audits, rejectNotes, reportRequests]); // Added reportRequests to dependencies
+  }, [reportRequests]); // Only depend on reportRequests - rejectNotes is preserved in the filter logic
 
   // Load charts when audit changes
   useEffect(() => {
@@ -955,29 +949,6 @@ const SQAStaffReports = () => {
     return (audits || []).find((a: any) => String(a.auditId || a.id || a.$id) === sid);
   }, [audits, selectedAuditId]);
 
-  // Check if current user is the audit plan creator
-  const isAuditCreator = useMemo(() => {
-    if (!selectedAuditRow || !user?.email || !adminUsers.length) return null;
-    
-    // Get current user ID
-    const currentUser = adminUsers.find((u: any) => {
-      const uEmail = String(u?.email || '').toLowerCase().trim();
-      const userEmail = String(user.email).toLowerCase().trim();
-      return uEmail === userEmail;
-    });
-    const currentUserIdStr = currentUser?.userId ? String(currentUser.userId).toLowerCase().trim() : null;
-    
-    if (!currentUserIdStr) return null;
-    
-    // Get createdBy from audit (try multiple fields)
-    const createdBy = selectedAuditRow?.createdBy || selectedAuditRow?.createdByUser?.userId || selectedAuditRow?.createdByUser?.id || selectedAuditRow?.createdByUser?.$id;
-    const createdByStr = createdBy ? String(createdBy).toLowerCase().trim() : null;
-    
-    if (!createdByStr) return null; // Can't determine, return null
-    
-    return currentUserIdStr === createdByStr;
-  }, [selectedAuditRow, user, adminUsers]);
-
   // NOTE: Previously we restricted export/upload to the creator only.
   // Now we allow any team member (already filtered in `reloadReports`) once the report is Closed/Completed.
 
@@ -1004,26 +975,14 @@ const SQAStaffReports = () => {
   const handleSubmitToLead = async () => {
     if (!selectedAuditId) return;
     
-    // Validate: Lead Auditor cannot submit
     const auditIdStr = String(selectedAuditId).trim();
     const isLeadAuditor = leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase());
-    if (isLeadAuditor) {
-      toast.error('Lead Auditor cannot submit reports. Only regular Auditors can submit.');
+    
+    // Validate: Only Lead Auditor of the team can submit
+    if (!isLeadAuditor) {
+      toast.error('Only Lead Auditor of the team can submit reports.');
       return;
     }
-    
-    // Validate: Only audit plan creator can submit
-    if (isAuditCreator === false) {
-      toast.error('Only the audit plan creator can submit reports.');
-      return;
-    }
-    
-    // If we can't determine creator, allow (for backward compatibility)
-    if (isAuditCreator === null) {
-      // Allow submit for backward compatibility
-    }
-    
-    // Evidence Due validation removed per request
     
     try {
       setSubmitLoading(true);
@@ -1118,8 +1077,35 @@ const SQAStaffReports = () => {
       }, 3000);
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
-      const errorMessage = err?.response?.data?.message || err?.message || String(err);
-      toast.error('Failed to submit to Lead Auditor: ' + errorMessage);
+      
+      // Extract error message from various possible formats
+      let errorMessage = 'Failed to submit to Lead Auditor';
+      
+      if (err?.response?.data) {
+        const data = err.response.data;
+        if (typeof data === 'string') {
+          errorMessage = data;
+        } else if (data?.message) {
+          errorMessage = data.message;
+        } else if (data?.Message) {
+          errorMessage = data.Message;
+        } else if (data?.error) {
+          errorMessage = data.error;
+        } else if (data?.Error) {
+          errorMessage = data.Error;
+        }
+      } else if (err?.message) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      
+      // Special handling for "ReportRequest not found" error
+      if (errorMessage.toLowerCase().includes('reportrequest not found')) {
+        errorMessage = 'ReportRequest not found. Please contact administrator or try again.';
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setSubmitLoading(false);
     }
@@ -1550,15 +1536,25 @@ const SQAStaffReports = () => {
                       const completed = isCompletedStatus(statusToCheck);
                       const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
 
-                      if (isLeadAuditor || completed) {
+                      // Hide button only if audit is completed/closed/approved
+                      if (completed) {
                         return null;
                       }
 
                       const key = String(selectedAuditId || '').trim();
                       const hasRejectNote = key && rejectNotes[key] && rejectNotes[key].trim().length > 0;
-                      // Disable if: loading, no audit selected, already submitted (not rejected), rejected without note, or not the creator
-                      const disabled = submitLoading || !selectedAuditId || (submitted && !rejected) || (rejected && !hasRejectNote) || isAuditCreator === false;
+                      
+                      // Disable if: loading, no audit selected, already submitted (not rejected), rejected without note, or NOT Lead Auditor of team
+                      // Only Lead Auditor of the team can submit (isLead === true in AuditTeam)
+                      const disabled = submitLoading 
+                        || !selectedAuditId 
+                        || (submitted && !rejected) 
+                        || (rejected && !hasRejectNote) 
+                        || !isLeadAuditor; // Only Lead Auditor of team can submit
 
+                      // Get Lead Auditor name for this audit
+                      const leadAuditorName = leadAuditorNames[auditIdStr] || 'Lead Auditor';
+                      
                       let label = submitLoading
                         ? 'Submitting...'
                         : submitted && !rejected
@@ -1567,7 +1563,9 @@ const SQAStaffReports = () => {
                             ? hasRejectNote
                               ? 'Resubmit to Lead Auditor'
                               : 'Loading reject reason...'
-                            : 'Submit to Lead Auditor';
+                            : !isLeadAuditor
+                              ? `Only Lead of the team: ${leadAuditorName} can submit`
+                              : 'Submit to Lead Auditor';
 
                       return (
                         <button
@@ -1581,8 +1579,8 @@ const SQAStaffReports = () => {
                           title={
                             disabled && submitted && !rejected
                               ? 'Report has been submitted and is pending review'
-                              : disabled && isAuditCreator === false
-                              ? 'Only the audit plan creator can submit reports'
+                              : disabled && !isLeadAuditor
+                              ? 'Only Lead Auditor of the team can submit reports'
                               : undefined
                           }
                         >
@@ -1604,81 +1602,28 @@ const SQAStaffReports = () => {
               </div>
 
               <div className="p-6 space-y-6">
-            {/* Reject Note Alert - Show when audit is rejected */}
-            {(() => {
-              const key = String(selectedAuditRow?.auditId || selectedAuditId || '');
-              const noteFromApi = key ? rejectNotes[key] : '';
-              const hasRejectNote = noteFromApi && noteFromApi.trim().length > 0;
-              const isRejected = isRejectedStatus(selectedAuditRow?.status) || 
-                                String(reportRequests[key]?.status || '').toLowerCase() === 'returned';
-              
-              if (isRejected && hasRejectNote) {
-                return (
-                  <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-lg shadow-sm">
-                    <div className="flex items-start gap-3">
-                      
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-base font-semibold text-red-900">
-                            Report Rejected by Lead Auditor
-                          </h3>
-                          
-                        </div>
-                        <div className="bg-white rounded-lg p-3 border border-red-200">
-                          <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                            {noteFromApi.length > 200 
-                              ? `${noteFromApi.substring(0, 200)}...` 
-                              : noteFromApi}
-                          </p>
-                        </div>
-                        <p className="text-xs text-red-700 mt-2">
-                          Please review the feedback above and resubmit your report after making necessary corrections.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              
-              // Show loading state if rejected but note is still loading
-              if (isRejected && !hasRejectNote) {
-                return (
-                  <div className="mb-6 p-4 bg-yellow-50 border-l-4 border-yellow-500 rounded-r-lg shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-shrink-0">
-                        <div className="w-8 h-8 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-yellow-900">
-                          Loading rejection reason...
-                        </p>
-                        <p className="text-xs text-yellow-700 mt-1">
-                          Please wait while we fetch the feedback from Lead Auditor.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              
-              return null;
-            })()}
-
             {/* Section 1: Alerts + small summary title */}
             <div className="flex items-center justify-between mb-4">
              
               <div className="flex items-center gap-3">
                 {(() => {
-                  // Only show reject reason if:
-                  // 1. Status is actually rejected/returned (not submitted)
+                  // Only show reject reason button if:
+                  // 1. ReportRequest status is "Returned" (source of truth)
                   // 2. AND there's a reject note from Lead Auditor
                   const key = String(selectedAuditRow?.auditId || selectedAuditId || '');
+                  const reportRequest = reportRequests[key];
+                  const reportStatus = reportRequest?.status || '';
+                  const isReportRejected = String(reportStatus).toLowerCase() === 'returned';
+                  
+                  if (!isReportRejected) {
+                    return null;
+                  }
+                  
                   const noteFromApi = key ? rejectNotes[key] : '';
                   const hasRejectNote = noteFromApi && noteFromApi.trim().length > 0;
-                  const isRejected = isRejectedStatus(selectedAuditRow?.status);
                   
-                  // Only show if truly rejected AND has a reject note from Lead Auditor
-                  if (!isRejected || !hasRejectNote) {
+                  // Only show if has a reject note from Lead Auditor
+                  if (!hasRejectNote) {
                     return null;
                   }
                   
@@ -1688,8 +1633,33 @@ const SQAStaffReports = () => {
                   
                   return (
                     <button
-                      onClick={() => {
-                        setRejectReasonText(reason ? String(reason) : 'No reason provided. Please edit and resubmit.');
+                      onClick={async () => {
+                        const reasonText = reason ? String(reason) : 'No reason provided. Please edit and resubmit.';
+                        setRejectReasonText(reasonText);
+                        
+                        // Parse rejection note to check for schedule changes
+                        const hasScheduleChanges = reasonText.includes('--- Changes Made ---') && 
+                                                  reasonText.includes('Schedules:') && 
+                                                  reasonText.includes('updated');
+                        
+                        if (hasScheduleChanges && selectedAuditId) {
+                          // Load schedules for this audit
+                          setLoadingRejectSchedules(true);
+                          try {
+                            const schedulesRes = await getAuditSchedules(selectedAuditId);
+                            const schedulesData = unwrap(schedulesRes);
+                            const schedulesList = Array.isArray(schedulesData) ? schedulesData : [];
+                            setRejectSchedules(schedulesList);
+                          } catch (err) {
+                            console.error('Failed to load schedules for rejection modal', err);
+                            setRejectSchedules([]);
+                          } finally {
+                            setLoadingRejectSchedules(false);
+                          }
+                        } else {
+                          setRejectSchedules([]);
+                        }
+                        
                         setShowRejectReasonModal(true);
                       }}
                       className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 border border-red-200 hover:bg-red-100 hover:border-red-300 transition-colors cursor-pointer"
@@ -2244,15 +2214,58 @@ const SQAStaffReports = () => {
                   </div>
                 </div>
                 
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Reason for rejection:
-                  </label>
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                      {rejectReasonText}
-                    </p>
+                <div className="mb-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Reason for rejection:
+                    </label>
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                        {rejectReasonText.split('--- Changes Made ---')[0].trim()}
+                      </p>
+                    </div>
                   </div>
+                  
+                  {/* Show schedule changes if available */}
+                  {rejectReasonText.includes('--- Changes Made ---') && rejectReasonText.includes('Schedules:') && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Schedule Changes:
+                      </label>
+                      {loadingRejectSchedules ? (
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                          <div className="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                          <p className="text-xs text-gray-500">Loading schedules...</p>
+                        </div>
+                      ) : rejectSchedules.length > 0 ? (
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg max-h-64 overflow-y-auto">
+                          <div className="space-y-2">
+                            {rejectSchedules.map((schedule: any, idx: number) => {
+                              const milestoneName = schedule.milestoneName || schedule.milestone || `Schedule ${idx + 1}`;
+                              const dueDate = schedule.dueDate ? new Date(schedule.dueDate).toLocaleDateString('en-GB', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric'
+                              }) : 'N/A';
+                              
+                              return (
+                                <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border border-blue-100">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-gray-900">{milestoneName}</p>
+                                    <p className="text-xs text-gray-500">Due Date: {dueDate}</p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-500 text-center">
+                          No schedule details available
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex items-center justify-end gap-3">

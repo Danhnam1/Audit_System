@@ -113,7 +113,14 @@ export const useAuditPlanData = ({ userIdFromToken, user }: UseAuditPlanDataProp
 
         try {
           const crit = await getAuditCriteria();
-          setCriteria(Array.isArray(crit) ? crit : []);
+          // Filter out inactive criteria
+          const activeCriteria = Array.isArray(crit) 
+            ? crit.filter((c: any) => {
+                const status = String(c.status || '').toLowerCase().trim();
+                return status !== 'inactive';
+              })
+            : [];
+          setCriteria(activeCriteria);
         } catch (e) {
           console.error("Failed to load audit criteria", e);
         }

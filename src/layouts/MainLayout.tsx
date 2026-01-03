@@ -2,14 +2,12 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
-import { Navigation } from '../components';
+import { Navigation, PageTransition } from '../components';
 import { ChatBot } from '../components/ChatBot';
 import './icons.tsx';
 import useAuthStore, { useUserId } from '../store/useAuthStore';
 import { getRoleMenu } from '../helpers/roleMenus';
 import { hasAuditPlanCreationPermission } from '../api/auditPlanAssignment';
-
-
 export interface Team {
   id: string;
   name: string;
@@ -193,7 +191,9 @@ export const MainLayout = ({
         {/* Content below header */}
         <main className="flex-1 overflow-y-auto">
           <div className="p-4 sm:p-6 lg:p-8">
-            {children}
+            <PageTransition animation="fadeIn" delay={0}>
+              {children}
+            </PageTransition>
           </div>
         </main>
       </div>

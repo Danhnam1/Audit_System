@@ -12,3 +12,4 @@ export { Pagination } from './Pagination';
 export { DataTable } from './DataTable';
 export { PageHeader } from './PageHeader';
 export { ChatBot } from './ChatBot';
+export { PageTransition, PageSection } from './PageTransition';
