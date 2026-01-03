@@ -8,6 +8,7 @@ export { StatCard } from './StatCard';
 export * from './charts';
 export { Button } from './Button';
 export { NotificationBell } from './NotificationBell';
+export { NotificationToastContainer } from './NotificationToast';
 export { Pagination } from './Pagination';
 export { DataTable } from './DataTable';
 export { PageHeader } from './PageHeader';

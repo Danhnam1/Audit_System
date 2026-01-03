@@ -710,7 +710,7 @@ const SQAStaffReports = () => {
     // 1. Have a ReportRequest (already submitted at least once)
     // 2. AND ReportRequest status is "Returned"
     const returnedIds: string[] = [];
-    
+
     // Check reportRequests directly - this is the source of truth
     Object.keys(reportRequests).forEach(auditId => {
       const reportRequest = reportRequests[auditId];
@@ -718,13 +718,13 @@ const SQAStaffReports = () => {
         const reportStatus = String(reportRequest.status || '').toLowerCase();
         // Only load note if ReportRequest exists AND status is "returned"
         if (reportStatus === 'returned') {
-          if (!returnedIds.includes(auditId)) {
-            returnedIds.push(auditId);
+        if (!returnedIds.includes(auditId)) {
+          returnedIds.push(auditId);
           }
         }
       }
     });
-    
+
     // Note: We only load notes for audits that have ReportRequest with status "Returned"
     // This prevents calling API for audits that haven't been submitted yet (no ReportRequest exists)
     // The reportRequests state is loaded from API in reloadReports(), so it's the source of truth
@@ -755,7 +755,7 @@ const SQAStaffReports = () => {
           const note = res.value ?? '';
           // Only set if note is not empty
           if (note && note.trim().length > 0) {
-            patch[missing[idx]] = note;
+          patch[missing[idx]] = note;
           }
         }
       });
@@ -1554,7 +1554,7 @@ const SQAStaffReports = () => {
 
                       // Get Lead Auditor name for this audit
                       const leadAuditorName = leadAuditorNames[auditIdStr] || 'Lead Auditor';
-                      
+
                       let label = submitLoading
                         ? 'Submitting...'
                         : submitted && !rejected
@@ -1565,7 +1565,7 @@ const SQAStaffReports = () => {
                               : 'Loading reject reason...'
                             : !isLeadAuditor
                               ? `Only Lead of the team: ${leadAuditorName} can submit`
-                              : 'Submit to Lead Auditor';
+                            : 'Submit to Lead Auditor';
 
                       return (
                         <button
@@ -2216,14 +2216,14 @@ const SQAStaffReports = () => {
                 
                 <div className="mb-6 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Reason for rejection:
-                    </label>
-                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Reason for rejection:
+                  </label>
+                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
                         {rejectReasonText.split('--- Changes Made ---')[0].trim()}
-                      </p>
-                    </div>
+                    </p>
+                  </div>
                   </div>
                   
                   {/* Show schedule changes if available */}

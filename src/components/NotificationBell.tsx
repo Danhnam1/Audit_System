@@ -26,18 +26,31 @@ export const NotificationBell: React.FC = () => {
     return !n.isRead && !n.readAt;
   }, []);
 
-  // Filter notifications based on status (only based on backend API response)
+  // Filter notifications based on status and sort by creation date (newest first)
   const filteredItems = useMemo(() => {
-    if (statusFilter === 'All') return items;
-    return items.filter((n: any) => {
-      const isRead = n.isRead || n.readAt;
-      
-      if (statusFilter === 'Unread') {
-        return !isRead;
-      } else {
-        // statusFilter === 'Read'
-        return isRead;
-      }
+    let filtered = items;
+    
+    // Filter by status
+    if (statusFilter !== 'All') {
+      filtered = items.filter((n: any) => {
+        const isRead = n.isRead || n.readAt;
+        
+        if (statusFilter === 'Unread') {
+          return !isRead;
+        } else {
+          // statusFilter === 'Read'
+          return isRead;
+        }
+      });
+    }
+    
+    // Sort by creation date (newest first) - ensure filtered items are also sorted
+    return filtered.sort((a: any, b: any) => {
+      const aDate = a.createdAtDate || (a.createdAt ? new Date(a.createdAt) : null);
+      const bDate = b.createdAtDate || (b.createdAt ? new Date(b.createdAt) : null);
+      const aTime = aDate?.getTime() || 0;
+      const bTime = bDate?.getTime() || 0;
+      return bTime - aTime; // Newest first
     });
   }, [items, statusFilter]);
 
@@ -358,6 +371,7 @@ export const NotificationBell: React.FC = () => {
             ) : (
               filteredItems.map((n) => {
                 const unread = isUnread(n);
+
                 return (
                   <div 
                     key={String((n as any).notificationId || Math.random())} 
@@ -407,7 +421,10 @@ export const NotificationBell: React.FC = () => {
                           <div className="flex items-start gap-1 flex-shrink-0">
                             {unread && (
                               <button 
-                                onClick={() => (n as any).notificationId && handleMarkRead(String((n as any).notificationId))} 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  (n as any).notificationId && handleMarkRead(String((n as any).notificationId));
+                                }} 
                                 className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md transition-colors opacity-0 group-hover:opacity-100"
                                 title="Mark as read"
                               >
@@ -417,7 +434,10 @@ export const NotificationBell: React.FC = () => {
                               </button>
                             )}
                             <button
-                              onClick={() => (n as any).notificationId && handleDelete(String((n as any).notificationId))}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                (n as any).notificationId && handleDelete(String((n as any).notificationId));
+                              }}
                               className="p-1.5 text-red-600 hover:bg-red-100 rounded-md transition-colors opacity-0 group-hover:opacity-100"
                               title="Delete notification"
                             >
