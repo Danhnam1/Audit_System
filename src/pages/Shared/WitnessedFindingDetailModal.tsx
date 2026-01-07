@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { getFindingById, type Finding } from '../../api/findings';
+import { getFindingById, type Finding, witnessConfirmFinding, witnessDisagreeFinding } from '../../api/findings';
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { getDepartmentById } from '../../api/departments';
 import { getSeverityColor } from '../../constants/statusColors';
+import { toast } from 'react-toastify';
 
 interface WitnessedFindingDetailModalProps {
   isOpen: boolean;
@@ -21,6 +22,11 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
   const [departmentName, setDepartmentName] = useState<string>('');
   const [createdByName, setCreatedByName] = useState<string>('');
   const [descriptionHeight, setDescriptionHeight] = useState<number>(120);
+  
+  // Rejection modal state
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [submittingReject, setSubmittingReject] = useState(false);
 
   useEffect(() => {
     if (isOpen && findingId) {
@@ -108,6 +114,50 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
     const downloadUrl = attachment.filePath || attachment.blobPath;
     if (downloadUrl) {
       window.open(downloadUrl, '_blank');
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!finding) return;
+    
+    try {
+      await witnessConfirmFinding(finding.findingId);
+      toast.success('Finding confirmed successfully!');
+      
+      // Reload finding to get updated status
+      await loadFinding();
+    } catch (err: any) {
+      console.error('Error confirming witness:', err);
+      toast.error(err?.message || 'Failed to confirm finding');
+    }
+  };
+
+  const handleRejectClick = () => {
+    setShowRejectModal(true);
+  };
+
+  const handleRejectConfirm = async () => {
+    if (!finding) return;
+    
+    if (!rejectReason.trim()) {
+      toast.error('Please provide a reason for rejection');
+      return;
+    }
+
+    setSubmittingReject(true);
+    try {
+      await witnessDisagreeFinding(finding.findingId, rejectReason.trim());
+      toast.success('Finding rejected successfully. Auditor will be notified.');
+      
+      // Close modal and reload finding
+      setShowRejectModal(false);
+      setRejectReason('');
+      await loadFinding();
+    } catch (err: any) {
+      console.error('Error rejecting witness:', err);
+      toast.error(err?.message || 'Failed to reject finding');
+    } finally {
+      setSubmittingReject(false);
     }
   };
 
@@ -280,7 +330,31 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
         </div>
 
         {/* Footer - always visible */}
-        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-end flex-shrink-0">
+        <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <div className="flex gap-3">
+            {finding?.status === 'Open' && (
+              <>
+                <button
+                  onClick={handleApprove}
+                  className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Approve
+                </button>
+                <button
+                  onClick={handleRejectClick}
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Reject
+                </button>
+              </>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="px-6 py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
@@ -289,6 +363,52 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
           </button>
         </div>
       </div>
+
+      {/* Rejection Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="bg-red-600 px-6 py-4 rounded-t-xl">
+              <h3 className="text-lg font-semibold text-white">Reject Finding</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                Please provide a reason for rejecting this finding:
+              </p>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                rows={4}
+                placeholder="Enter rejection reason..."
+                disabled={submittingReject}
+              />
+            </div>
+            <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectReason('');
+                }}
+                disabled={submittingReject}
+                className="px-4 py-2 text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectConfirm}
+                disabled={submittingReject || !rejectReason.trim()}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {submittingReject && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                )}
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

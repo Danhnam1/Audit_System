@@ -120,7 +120,7 @@ const DepartmentChecklist = () => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
   };
   // Tab state
-  const [activeTab, setActiveTab] = useState<'checklist' | 'action'>('checklist');
+  const [activeTab, setActiveTab] = useState<'checklist' | 'action' | 'disagreed'>('checklist');
 
   // Action tab state
   const [myFindings, setMyFindings] = useState<Finding[]>([]);
@@ -132,6 +132,10 @@ const DepartmentChecklist = () => {
   const [verifiedActionsCount, setVerifiedActionsCount] = useState(0);
   // const [processingActionId, setProcessingActionId] = useState<string | null>(null);
   const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
+  
+  // Disagreed tab state
+  const [disagreedFindings, setDisagreedFindings] = useState<Finding[]>([]);
+  const [loadingDisagreedFindings, setLoadingDisagreedFindings] = useState(false);
 
   // Action detail modal state
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
@@ -990,6 +994,8 @@ const DepartmentChecklist = () => {
   useEffect(() => {
     if (activeTab === 'action' && auditId && deptId) {
       loadMyFindings();
+    } else if (activeTab === 'disagreed' && auditId && deptId) {
+      loadDisagreedFindings();
     }
   }, [activeTab, auditId, deptId]);
 
@@ -1021,7 +1027,7 @@ const DepartmentChecklist = () => {
     try {
       const allFindings = await getMyFindings();
 
-      // Filter findings by current audit and department
+      // Filter findings by current audit and department, exclude WitnessDisagreed
       const filteredFindings = allFindings.filter((finding) => {
         // Check audit match
         const findingAuditId = finding.audit?.auditId || finding.auditId || '';
@@ -1031,7 +1037,11 @@ const DepartmentChecklist = () => {
         const findingDeptId = finding.deptId || null;
         const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
         
-        const matches = auditMatch && deptMatch;
+        // Exclude WitnessDisagreed status
+        const statusLower = (finding.status || '').toLowerCase();
+        const isNotDisagreed = statusLower !== 'witnessdisagreed';
+        
+        const matches = auditMatch && deptMatch && isNotDisagreed;
         
       
         
@@ -1073,6 +1083,39 @@ const DepartmentChecklist = () => {
       toast.error('Failed to load findings');
     } finally {
       setLoadingFindings(false);
+    }
+  };
+
+  const loadDisagreedFindings = async () => {
+    setLoadingDisagreedFindings(true);
+    try {
+      const allFindings = await getMyFindings();
+
+      // Filter findings by current audit and department, only WitnessDisagreed
+      const filteredFindings = allFindings.filter((finding) => {
+        // Check audit match
+        const findingAuditId = finding.audit?.auditId || finding.auditId || '';
+        const auditMatch = !auditId || String(findingAuditId) === String(auditId);
+        
+        // Check department match
+        const findingDeptId = finding.deptId || null;
+        const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
+        
+        // Only WitnessDisagreed status
+        const statusLower = (finding.status || '').toLowerCase();
+        const isDisagreed = statusLower === 'witnessdisagreed';
+        
+        const matches = auditMatch && deptMatch && isDisagreed;
+        
+        return matches;
+      });
+
+      setDisagreedFindings(filteredFindings);
+    } catch (err: any) {
+      console.error('Error loading disagreed findings:', err);
+      toast.error('Failed to load disagreed findings');
+    } finally {
+      setLoadingDisagreedFindings(false);
     }
   };
 
@@ -1377,12 +1420,26 @@ const DepartmentChecklist = () => {
                   </span>
                 )}
               </button>
+              <button
+                onClick={() => setActiveTab('disagreed')}
+                className={`px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-colors relative ${activeTab === 'disagreed'
+                    ? 'border-primary-600 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+              >
+                Witness Disagreed
+                {disagreedFindings.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full">
+                    {disagreedFindings.length}
+                  </span>
+                )}
+              </button>
             </nav>
           </div>
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'checklist' ? (
+        {activeTab === 'checklist' && (
           <>
             {/* Loading State */}
             {loading && (
@@ -1673,7 +1730,9 @@ const DepartmentChecklist = () => {
               </div>
             )}
           </>
-        ) : (
+        )}
+
+        {activeTab === 'action' && (
           <>
             {/* Action Tab Content */}
             {loadingFindings ? (
@@ -1793,6 +1852,76 @@ const DepartmentChecklist = () => {
                               className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
                             >
                               View Actions
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'disagreed' && (
+          <>
+            {/* Disagreed Tab Content */}
+            {loadingDisagreedFindings ? (
+              <div className="bg-white rounded-xl border border-primary-100 shadow-md p-8 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                <p className="text-gray-600">Loading disagreed findings...</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+                <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-gray-50">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+                    Witness Disagreed Findings ({disagreedFindings.length})
+                  </h2>
+                </div>
+
+                {disagreedFindings.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500">No disagreed findings found</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-200">
+                    {disagreedFindings.map((finding) => (
+                      <div
+                        key={finding.findingId}
+                        className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="text-sm sm:text-base font-medium text-gray-900">
+                                {finding.title}
+                              </h3>
+                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                                Witness Disagreed
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-6 mt-2">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
+                                  ? 'bg-red-100 text-red-700'
+                                  : finding.severity?.toLowerCase() === 'medium' || finding.severity?.toLowerCase() === 'normal'
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-green-100 text-green-700'
+                              }`}>
+                                {finding.severity || 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setSelectedFindingId(finding.findingId);
+                                setShowDetailModal(true);
+                              }}
+                              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                            >
+                              View Details
                             </button>
                           </div>
                         </div>

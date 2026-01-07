@@ -4,7 +4,7 @@ import { useAuth } from '../../../contexts';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
-import { createAction, getActionsByFinding, type Action, rejectActionForResubmit } from '../../../api/actions';
+import { createAction, getActionsByFinding, getActionsByRootCause, type Action, rejectActionForResubmit } from '../../../api/actions';
 import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
 import apiClient from '../../../api/client';
@@ -53,8 +53,8 @@ const FindingsProgress = () => {
   // New states for root cause assignment
   const [findingRootCauses, setFindingRootCauses] = useState<any[]>([]); // Root causes of selected finding
   const [loadingRootCauses, setLoadingRootCauses] = useState(false);
-  const [submittedRootCauseIds, setSubmittedRootCauseIds] = useState<Set<number>>(new Set()); // Track submitted root causes
-  const [assignedRootCauseData, setAssignedRootCauseData] = useState<Record<number, { staffId: string; staffName: string; dueDate: string }>>({}); // Track assigned data
+  const [submittedRootCauseIds, setSubmittedRootCauseIds] = useState<Set<string>>(new Set()); // Track submitted root causes (UUID strings)
+  const [assignedRootCauseData, setAssignedRootCauseData] = useState<Record<string, { staffId: string; staffName: string; dueDate: string }>>({}); // Track assigned data
 
   // Individual root cause assignment modal
   const [showIndividualAssignModal, setShowIndividualAssignModal] = useState(false);
@@ -67,6 +67,11 @@ const FindingsProgress = () => {
   // Description view modal
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
   const [selectedDescription, setSelectedDescription] = useState<{ name: string; description: string; category?: string } | null>(null);
+
+  // Tab state for Witness Disagreed
+  const [activeTab, setActiveTab] = useState<'findings' | 'disagreed'>('findings');
+  const [disagreedFindings, setDisagreedFindings] = useState<Finding[]>([]);
+  const [loadingDisagreedFindings, setLoadingDisagreedFindings] = useState(false);
 
   // Helper function to get status badge color
   const getStatusBadgeColor = (status: string) => {
@@ -367,8 +372,50 @@ const FindingsProgress = () => {
 
   useEffect(() => {
     reloadFindings();
+    loadDisagreedFindings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auditIdFromState]);
+
+  // Load disagreed findings
+  const loadDisagreedFindings = async () => {
+    try {
+      setLoadingDisagreedFindings(true);
+
+      const deptId = getUserDeptId();
+      if (!deptId) {
+        return;
+      }
+
+      const allFindings = await getFindingsByDepartment(deptId);
+
+      // Filter findings by auditId and WitnessDisagreed status
+      let filteredFindings = allFindings;
+      if (auditIdFromState) {
+        filteredFindings = allFindings.filter((finding: Finding) => {
+          const findingAuditId = finding.auditId ||
+            (finding as any).AuditId ||
+            (finding as any).auditPlanId ||
+            (finding as any).audit?.auditId;
+
+          const statusLower = (finding.status || '').toLowerCase().trim();
+          const isWitnessDisagreed = statusLower === 'witnessdisagreed';
+
+          return String(findingAuditId) === String(auditIdFromState) && isWitnessDisagreed;
+        });
+      } else {
+        filteredFindings = allFindings.filter((finding: Finding) => {
+          const statusLower = (finding.status || '').toLowerCase().trim();
+          return statusLower === 'witnessdisagreed';
+        });
+      }
+
+      setDisagreedFindings(filteredFindings);
+    } catch (err: any) {
+      console.error('Error fetching disagreed findings:', err);
+    } finally {
+      setLoadingDisagreedFindings(false);
+    }
+  };
 
   // Listen for action updates from CAPAOwner
   useEffect(() => {
@@ -416,10 +463,10 @@ const FindingsProgress = () => {
   const getFilteredFindings = () => {
     let filtered = findings;
 
-    // Filter out findings with status "Archived"
+    // Filter out findings with status "Archived" and "WitnessDisagreed"
     filtered = filtered.filter(finding => {
       const statusLower = (finding.status || '').toLowerCase().trim();
-      return statusLower !== 'archived';
+      return statusLower !== 'archived' && statusLower !== 'witnessdisagreed';
     });
 
     // Apply search filter
@@ -482,7 +529,7 @@ const FindingsProgress = () => {
   };
 
 
-  // Load root causes for the selected finding
+  // Load root causes for the selected finding - NEW FLOW: Load all root causes with their actions
   const loadFindingRootCauses = async (findingId: string) => {
     setLoadingRootCauses(true);
     try {
@@ -490,47 +537,46 @@ const FindingsProgress = () => {
       const rootCauses = res.data.$values || [];
 
       // Fetch actions for this finding to check which root causes are already assigned
-      let assignedRootCauseIds = new Set<number>();
-      const assignedDataMap: Record<number, { staffId: string; staffName: string; dueDate: string }> = {};
+      let assignedRootCauseIds = new Set<string>();
+      const assignedDataMap: Record<string, { staffId: string; staffName: string; dueDate: string }> = {};
 
       try {
         const actions = await getActionsByFinding(findingId);
+
         if (actions && actions.length > 0) {
           // IMPORTANT: Only consider actions that are NOT rejected
-          // When LeadAuditor rejects an action, it should be possible to assign again
           const validActions = actions.filter((action: Action) => {
             const statusLower = action.status?.toLowerCase() || '';
-            // Exclude rejected and leadrejected actions
             return statusLower !== 'rejected' && statusLower !== 'leadrejected';
           });
 
-          // Get all root cause IDs that have valid (non-rejected) actions and fetch user info
-          const actionsWithRootCause = validActions.filter((action: Action) => action.rootCauseId);
-
+          // Get all root cause IDs that have valid (non-rejected) actions AND have assignedTo
+          // Only consider "assigned" if action has BOTH rootCauseId AND assignedTo
+          const fullyAssignedActions = validActions.filter((action: Action) => 
+            action.rootCauseId && action.assignedTo
+          );
 
           // Fetch user info for all assigned actions
           await Promise.all(
-            actionsWithRootCause.map(async (action: Action) => {
-              if (action.rootCauseId) {
-                assignedRootCauseIds.add(action.rootCauseId);
+            fullyAssignedActions.map(async (action: Action) => {
+              const rcId = String(action.rootCauseId); // Ensure string
+              assignedRootCauseIds.add(rcId);
 
-                // Get assigned user info
-                if (action.assignedTo && !assignedDataMap[action.rootCauseId]) {
-                  try {
-                    const user = await getUserById(action.assignedTo);
-                    assignedDataMap[action.rootCauseId] = {
-                      staffId: action.assignedTo,
-                      staffName: user.fullName || user.email || 'Unknown',
-                      dueDate: action.dueDate || ''
-                    };
-                  } catch (err) {
-                    console.warn(`Failed to fetch user info for ${action.assignedTo}:`, err);
-                    assignedDataMap[action.rootCauseId] = {
-                      staffId: action.assignedTo,
-                      staffName: 'Unknown',
-                      dueDate: action.dueDate || ''
-                    };
-                  }
+              // Get assigned user info
+              if (!assignedDataMap[rcId]) {
+                try {
+                  const user = await getUserById(action.assignedTo);
+                  assignedDataMap[rcId] = {
+                    staffId: action.assignedTo,
+                    staffName: user.fullName || user.email || 'Unknown',
+                    dueDate: action.dueDate || ''
+                  };
+                } catch (err) {
+                  assignedDataMap[rcId] = {
+                    staffId: action.assignedTo,
+                    staffName: 'Unknown',
+                    dueDate: action.dueDate || ''
+                  };
                 }
               }
             })
@@ -544,16 +590,22 @@ const FindingsProgress = () => {
       setSubmittedRootCauseIds(assignedRootCauseIds);
 
       // Update assignedRootCauseData
-      if (Object.keys(assignedDataMap).length > 0) {
-        setAssignedRootCauseData(assignedDataMap);
-      }
+      setAssignedRootCauseData(assignedDataMap);
 
-      // Show all approved root causes (both assigned and unassigned)
-      const approvedRootCauses = rootCauses.filter((rc: any) =>
-        rc.status?.toLowerCase() === 'approved'
+      // NEW FLOW: Show ALL root causes with actions (not just approved ones)
+      // Load actions for each root cause
+      const rootCausesWithActions = await Promise.all(
+        rootCauses.map(async (rc: any) => {
+          try {
+            const actions = await getActionsByRootCause(rc.rootCauseId);
+            return { ...rc, actions: actions || [] };
+          } catch (err) {
+            return { ...rc, actions: [] };
+          }
+        })
       );
 
-      setFindingRootCauses(approvedRootCauses);
+      setFindingRootCauses(rootCausesWithActions);
     } catch (err) {
       console.error('Error loading root causes:', err);
       setFindingRootCauses([]);
@@ -626,14 +678,15 @@ const FindingsProgress = () => {
       });
 
       // Mark this root cause as submitted and save assigned data
+      const rcIdStr = String(selectedRootCause.rootCauseId);
       const newSubmittedIds = new Set(submittedRootCauseIds);
-      newSubmittedIds.add(selectedRootCause.rootCauseId);
+      newSubmittedIds.add(rcIdStr);
       setSubmittedRootCauseIds(newSubmittedIds);
 
       const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
       setAssignedRootCauseData(prev => ({
         ...prev,
-        [selectedRootCause.rootCauseId]: {
+        [rcIdStr]: {
           staffId: individualStaffId,
           staffName: staffName,
           dueDate: individualDueDate
@@ -642,8 +695,8 @@ const FindingsProgress = () => {
 
       // Check if all root causes are now assigned
       const allRootCausesRes = await apiClient.get(`/RootCauses/by-finding/${selectedFindingForAssign.findingId}`);
-      const allRootCauses = (allRootCausesRes.data.$values || []).filter((rc: any) => rc.status?.toLowerCase() === 'approved');
-      const allAssigned = allRootCauses.every((rc: any) => newSubmittedIds.has(rc.rootCauseId));
+      const allRootCauses = allRootCausesRes.data.$values || [];
+      const allAssigned = allRootCauses.every((rc: any) => newSubmittedIds.has(String(rc.rootCauseId)));
 
       // Mark finding as received if all root causes assigned
       if (allAssigned) {
@@ -691,7 +744,22 @@ const FindingsProgress = () => {
     }
   };
 
-  // Confirm and actually assign finding (create action)
+  // Handle open assign modal - reset state first
+  const handleOpenAssignModal = (finding: Finding) => {
+    // Reset all state first
+    setSubmittedRootCauseIds(new Set());
+    setAssignedRootCauseData({});
+    setFindingRootCauses([]);
+    
+    // Then set the finding and open modal
+    setSelectedFindingForAssign(finding);
+    setShowAssignModal(true);
+    
+    // Load data
+    loadStaffMembers(finding.deptId);
+    loadFindingRootCauses(finding.findingId);
+  };
+
   // Handle close assign modal
   const handleCloseAssignModal = () => {
     setSelectedFindingForAssign(null);
@@ -762,7 +830,41 @@ const FindingsProgress = () => {
         {/* Content */}
         {!loading && !error && (
           <>
+            {/* Tab Navigation */}
+            <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-4">
+              <div className="border-b border-gray-200">
+                <nav className="flex -mb-px">
+                  <button
+                    onClick={() => setActiveTab('findings')}
+                    className={`px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'findings'
+                        ? 'border-primary-600 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Findings ({filteredFindings.length})
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('disagreed')}
+                    className={`px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-colors relative ${
+                      activeTab === 'disagreed'
+                        ? 'border-primary-600 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Witness Disagreed
+                    {disagreedFindings.length > 0 && (
+                      <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full">
+                        {disagreedFindings.length}
+                      </span>
+                    )}
+                  </button>
+                </nav>
+              </div>
+            </div>
+
             {/* Findings Table */}
+            {activeTab === 'findings' && (
             <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
               {/* Header with Search and Filters */}
               <div className="border-b border-gray-200 bg-gray-50">
@@ -1065,13 +1167,9 @@ const FindingsProgress = () => {
                                 null
                               ) : (() => {
                                 const rcStatus = rootCauseStatusMap[finding.findingId];
-                                const allApproved = rcStatus?.allApproved || false;
-                                const hasPendingRC = rcStatus?.hasPending || false;
-                                const hasRejectedRC = rcStatus?.hasRejected || false;
                                 const totalCount = rcStatus?.totalCount || 0;
 
-                                // Show appropriate button based on root cause status
-                                // Only allow assign when ALL root causes are approved
+                                // NEW FLOW: Allow assign if there are root causes (no need to wait for approval)
                                 if (totalCount === 0) {
                                   return (
                                     <button
@@ -1082,51 +1180,15 @@ const FindingsProgress = () => {
                                       No Root Cause
                                     </button>
                                   );
-                                } else if (hasPendingRC) {
+                                } else {
+                                  // Has root causes - allow assign
                                   return (
                                     <button
-                                      disabled
-                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-yellow-700 bg-yellow-100 rounded-lg cursor-not-allowed opacity-80"
-                                      title="Some root causes are pending review"
-                                    >
-                                      Pending Review
-                                    </button>
-                                  );
-                                } else if (hasRejectedRC) {
-                                  return (
-                                    <button
-                                      disabled
-                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-red-700 bg-red-100 rounded-lg cursor-not-allowed opacity-80"
-                                      title="Some root causes were rejected - please update"
-                                    >
-                                      RC Rejected
-                                    </button>
-                                  );
-                                } else if (allApproved) {
-                                  // All root causes approved - allow assign
-                                  return (
-                                    <button
-                                      onClick={() => {
-                                        setSelectedFindingForAssign(finding);
-                                        setShowAssignModal(true);
-                                        loadStaffMembers(finding.deptId);
-                                        loadFindingRootCauses(finding.findingId);
-                                      }}
+                                      onClick={() => handleOpenAssignModal(finding)}
                                       className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
-                                      title="All root causes approved - ready to assign"
+                                      title="Assign CAPA Owner for root causes"
                                     >
                                       Assign
-                                    </button>
-                                  );
-                                } else {
-                                  // Fallback: not all approved
-                                  return (
-                                    <button
-                                      disabled
-                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
-                                      title="Not all root causes are approved yet"
-                                    >
-                                      Incomplete
                                     </button>
                                   );
                                 }
@@ -1204,6 +1266,90 @@ const FindingsProgress = () => {
                 </div>
               )}
             </div>
+            )}
+
+            {/* Disagreed Findings Tab */}
+            {activeTab === 'disagreed' && (
+              <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+                <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-gray-50">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+                    Witness Disagreed Findings ({disagreedFindings.length})
+                  </h2>
+                </div>
+
+                {loadingDisagreedFindings ? (
+                  <div className="p-8 text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading disagreed findings...</p>
+                  </div>
+                ) : disagreedFindings.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500">No disagreed findings found</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Title
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Severity
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Deadline
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {disagreedFindings.map((finding) => (
+                          <tr
+                            key={finding.findingId}
+                            className="hover:bg-gray-50 transition-colors"
+                          >
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
+                              <div className="flex items-center gap-2">
+                                <div className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">
+                                  {finding.title}
+                                </div>
+                                <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-300 flex-shrink-0">
+                                  Witness Disagreed
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(finding.severity || '')}`}>
+                                {finding.severity || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatDate(finding.deadline)}
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2 justify-center">
+                                <button
+                                  onClick={() => {
+                                    setSelectedFindingId(finding.findingId);
+                                    setShowDetailModal(true);
+                                  }}
+                                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                                >
+                                  View Details
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
 
@@ -1235,14 +1381,14 @@ const FindingsProgress = () => {
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4 flex items-center justify-between z-10">
+                <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Assign Root Causes</h2>
-                    <p className="text-sm text-gray-500 mt-1">{selectedFindingForAssign.title}</p>
+                    <h2 className="text-base font-semibold text-gray-900">Assign CAPA Owners</h2>
+                    <p className="text-sm text-gray-600 mt-0.5">{selectedFindingForAssign.title}</p>
                   </div>
                   <button
                     onClick={handleCloseAssignModal}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    className="p-1.5 hover:bg-gray-100 rounded"
                   >
                     <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1265,8 +1411,8 @@ const FindingsProgress = () => {
                       <svg className="w-16 h-16 text-amber-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                       </svg>
-                      <p className="text-sm text-amber-700 font-medium mb-2">No approved root causes found</p>
-                      <p className="text-xs text-amber-600">Root causes must be approved before assignment</p>
+                      <p className="text-sm text-amber-700 font-medium mb-2">No root causes found</p>
+                      <p className="text-xs text-amber-600">Please add root causes for this finding first</p>
                     </div>
                   ) : (
                     <div>
@@ -1286,113 +1432,103 @@ const FindingsProgress = () => {
                         </div>
                       </div>
 
-                      {/* Root Causes Table */}
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                STT
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                Root Cause
-                              </th>
+                      {/* Root Causes List - Simple Design */}
+                      <div className="space-y-3">
+                        {findingRootCauses.map((rootCause, index) => {
+                          const rcId = String(rootCause.rootCauseId); // Ensure string for comparison
+                          const isAssigned = submittedRootCauseIds.has(rcId);
+                          const assignedData = assignedRootCauseData[rcId];
+                          const actions = rootCause.actions || [];
 
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                Assigned To
-                              </th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                Due Date
-                              </th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                                Action
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {findingRootCauses.map((rootCause, index) => {
-                              const isAssigned = submittedRootCauseIds.has(rootCause.rootCauseId);
-                              const assignedData = assignedRootCauseData[rootCause.rootCauseId];
-
-                              return (
-                                <tr key={rootCause.rootCauseId} className={isAssigned ? 'bg-green-50' : 'hover:bg-gray-50'}>
-                                  <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                    {index + 1}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <div className="flex items-center gap-2">
-                                      <p className="text-sm font-medium text-gray-900">{rootCause.name}</p>
+                          return (
+                            <div key={rootCause.rootCauseId} className={`border rounded-lg ${isAssigned ? 'border-green-300 bg-green-50' : 'border-gray-300 bg-white'}`}>
+                              {/* Root Cause Header */}
+                              <div className="px-4 py-3 border-b border-gray-200">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-xs font-bold text-gray-600">#{index + 1}</span>
+                                      <h3 className="text-sm font-semibold text-gray-900">{rootCause.name}</h3>
                                       {isAssigned && (
-                                        <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
-                                          Assigned
+                                        <span className="px-2 py-0.5 text-xs font-medium bg-green-600 text-white rounded">
+                                          ✓ Assigned
                                         </span>
                                       )}
                                     </div>
-                                  </td>
+                                    {rootCause.description && (
+                                      <p className="text-xs text-gray-600">{rootCause.description}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
 
-                                  <td className="px-4 py-3 text-sm text-gray-700">
+                              {/* Remediation Proposals */}
+                              <div className="px-4 py-3">
+                                {actions.length === 0 ? (
+                                  <p className="text-xs text-gray-500 italic py-2">No remediation proposals yet</p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <p className="text-xs font-semibold text-gray-700">Remediation Proposals: {actions.length}</p>
+                                    {actions.map((action: any) => (
+                                      <div key={action.actionId} className="border border-gray-200 rounded p-2 bg-gray-50">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <p className="text-xs font-medium text-gray-900 flex-1">{action.title}</p>
+                                          <span className={`px-2 py-0.5 text-xs rounded flex-shrink-0 ${
+                                            action.status === 'Approved' ? 'bg-green-100 text-green-700' :
+                                            action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700' :
+                                            action.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                            'bg-gray-100 text-gray-700'
+                                          }`}>
+                                            {action.status || 'Pending'}
+                                          </span>
+                                        </div>
+                                        {action.description && (
+                                          <p className="text-xs text-gray-600 mt-1">{action.description}</p>
+                                        )}
+                                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                          <span>Progress: {action.progressPercent || 0}%</span>
+                                          <span>•</span>
+                                          <span>Due: {formatDate(action.dueDate)}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Assignment Section */}
+                              <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-xs">
                                     {assignedData ? (
-                                      <div className="flex items-center gap-1">
-                                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                        <span className="text-green-700 font-medium">{assignedData.staffName}</span>
+                                      <div>
+                                        <span className="text-green-700 font-medium">✓ {assignedData.staffName}</span>
+                                        <span className="text-gray-500 ml-2">Due: {new Date(assignedData.dueDate).toLocaleDateString()}</span>
                                       </div>
                                     ) : (
-                                      <span className="text-gray-400 italic">Not assigned</span>
+                                      <span className="text-gray-500">Not assigned</span>
                                     )}
-                                  </td>
-                                  <td className="px-4 py-3 text-sm text-gray-700">
-                                    {assignedData ? (
-                                      <span className="text-gray-900">{new Date(assignedData.dueDate).toLocaleDateString()}</span>
-                                    ) : (
-                                      <span className="text-gray-400 italic">-</span>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-3 text-center">
-                                    <div className="flex items-center justify-center gap-2">
-                                      <button
-                                        onClick={() => {
-                                          setSelectedDescription({
-                                            name: rootCause.name,
-                                            description: rootCause.description || 'No description available'
-                                          });
-                                          setShowDescriptionModal(true);
-                                        }}
-                                        className="p-1.5 rounded-lg  hover:bg-purple-50 border border-blue-200 transition-colors"
-                                        title="View Details"
-                                      >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                        </svg>
-                                      </button>
-                                      {!isAssigned ? (
-                                        <button
-                                          onClick={() => {
-                                            setSelectedRootCause(rootCause);
-                                            setIndividualStaffId('');
-                                            setIndividualDueDate('');
-                                            setIndividualStaffError('');
-                                            setIndividualDateError('');
-                                            setShowIndividualAssignModal(true);
-                                          }}
-                                          className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-primary-600 text-white hover:bg-primary-700"
-                                        >
-                                          Assign
-                                        </button>
-                                      ) : (
-                                        <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 cursor-not-allowed">
-                                          Assigned
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                                  </div>
+                                  {!isAssigned && (
+                                    <button
+                                      onClick={() => {
+                                        setSelectedRootCause(rootCause);
+                                        setIndividualStaffId('');
+                                        setIndividualDueDate('');
+                                        setIndividualStaffError('');
+                                        setIndividualDateError('');
+                                        setShowIndividualAssignModal(true);
+                                      }}
+                                      className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded hover:bg-primary-700"
+                                    >
+                                      Assign
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1428,26 +1564,24 @@ const FindingsProgress = () => {
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="bg-primary-600 px-6 py-4 rounded-t-xl">
-                  <h3 className="text-lg font-semibold text-white">Assign Root Cause</h3>
-                  <p className="text-sm text-primary-100 mt-1">{selectedRootCause.name}</p>
+                <div className="bg-primary-600 px-4 py-3 rounded-t-xl">
+                  <h3 className="text-base font-semibold text-white">Assign CAPA Owner</h3>
+                  <p className="text-sm text-primary-100 mt-0.5">{selectedRootCause.name}</p>
                 </div>
 
                 {/* Body */}
-                <div className="p-6 space-y-4">
+                <div className="p-4 space-y-3">
                   {/* Root Cause Info */}
                   {selectedRootCause.description && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <p className="text-xs font-semibold text-gray-700 uppercase mb-1">Description</p>
-                      <p className="text-sm text-gray-900">{selectedRootCause.description}</p>
+                    <div className="bg-gray-50 border rounded p-2">
+                      <p className="text-xs text-gray-600">{selectedRootCause.description}</p>
                     </div>
                   )}
 
                   {/* CAPA Owner Selection */}
-
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Assign to CAPA Owner <span className="text-red-500">*</span>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      CAPA Owner <span className="text-red-500">*</span>
                     </label>
                     {loadingStaff ? (
                       <div className="flex items-center gap-2 py-2">
@@ -1455,8 +1589,8 @@ const FindingsProgress = () => {
                         <span className="text-sm text-gray-500">Loading CAPA owners...</span>
                       </div>
                     ) : staffMembers.length === 0 ? (
-                      <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-                        <p className="text-sm text-red-700">No CAPA owners found in this department</p>
+                      <div className="bg-red-50 border rounded p-2 text-center">
+                        <p className="text-xs text-red-700">No CAPA owners found</p>
                       </div>
                     ) : (
                       <select
@@ -1465,13 +1599,12 @@ const FindingsProgress = () => {
                           setIndividualStaffId(e.target.value);
                           if (individualStaffError) setIndividualStaffError('');
                         }}
-                        className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${individualStaffError ? 'border-red-300' : 'border-gray-300'
-                          }`}
+                        className={`w-full px-3 py-2 border rounded focus:ring-2 focus:ring-primary-500 text-sm ${individualStaffError ? 'border-red-300' : 'border-gray-300'}`}
                       >
-                        <option value="">-- Select CAPA Owner --</option>
+                        <option value="">Select CAPA Owner</option>
                         {staffMembers.map((staff) => (
                           <option key={staff.userId} value={staff.userId}>
-                            {staff.fullName} {staff.email ? `(${staff.email})` : ''}
+                            {staff.fullName}
                           </option>
                         ))}
                       </select>
@@ -1483,16 +1616,13 @@ const FindingsProgress = () => {
 
                   {/* Due Date */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Due Date <span className="text-red-500">*</span>
                     </label>
 
                     {selectedFindingForAssign?.deadline && (
-                      <p className="text-xs text-gray-500 mb-2">
-                        Finding deadline:{' '}
-                        <span className="font-medium text-gray-700">
-                          {formatVNDate(new Date(selectedFindingForAssign.deadline))}
-                        </span>
+                      <p className="text-xs text-gray-500 mb-1">
+                        Finding deadline: {formatVNDate(new Date(selectedFindingForAssign.deadline))}
                       </p>
                     )}
 
@@ -1503,35 +1633,26 @@ const FindingsProgress = () => {
                         setIndividualDueDate(e.target.value);
                         if (individualDateError) setIndividualDateError('');
                       }}
-                      // ✅ MIN = hôm nay (giờ VN)
                       min={formatVNDate(new Date())}
-
-                      // ✅ MAX = deadline của finding (giờ VN)
                       max={
                         selectedFindingForAssign?.deadline
                           ? formatVNDate(new Date(selectedFindingForAssign.deadline))
                           : undefined
                       }
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${individualDateError ? 'border-red-300' : 'border-gray-300'
-                        }`}
+                      className={`w-full px-3 py-2 border rounded focus:ring-2 focus:ring-primary-500 text-sm ${individualDateError ? 'border-red-300' : 'border-gray-300'}`}
                     />
 
                     {individualDateError && (
                       <p className="mt-1 text-xs text-red-600">{individualDateError}</p>
                     )}
-                    {selectedFindingForAssign?.deadline && !individualDateError && (
-                      <p className="mt-1 text-xs text-gray-500">
-                        Must be on or before finding deadline
-                      </p>
-                    )}
                   </div>
                 </div>
 
                 {/* Footer */}
-                <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end gap-3">
+                <div className="bg-gray-50 px-4 py-3 rounded-b-xl flex justify-end gap-2">
                   <button
                     onClick={() => setShowIndividualAssignModal(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                    className="px-3 py-1.5 border rounded text-sm text-gray-700 hover:bg-gray-100"
                   >
                     Cancel
                   </button>
@@ -1571,17 +1692,16 @@ const FindingsProgress = () => {
                       }
 
                       if (!hasError) {
-                        // Create action immediately
                         handleAssignSingleRootCause();
                       }
                     }}
                     disabled={!individualStaffId || !individualDueDate || submittingAssign}
-                    className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {submittingAssign ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                        Creating Action...
+                        Assigning...
                       </>
                     ) : (
                       'Assign'
@@ -1886,55 +2006,36 @@ const FindingsProgress = () => {
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="bg-blue-600 px-6 py-4 rounded-t-xl">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                        </svg>
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-white">Root Cause Details</h3>
-                        <p className="text-sm text-purple-100 mt-1">{selectedDescription.name}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setShowDescriptionModal(false);
-                        setSelectedDescription(null);
-                      }}
-                      className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Body */}
-                <div className="p-6 space-y-4">
-
-                  {/* Description */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Description</label>
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-                        {selectedDescription.description}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end">
+                <div className="bg-gray-100 px-4 py-3 border-b rounded-t-xl flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-gray-900">{selectedDescription.name}</h3>
                   <button
                     onClick={() => {
                       setShowDescriptionModal(false);
                       setSelectedDescription(null);
                     }}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="p-1.5 hover:bg-gray-200 rounded"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-4">
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                    {selectedDescription.description}
+                  </p>
+                </div>
+
+                {/* Footer */}
+                <div className="bg-gray-50 px-4 py-3 rounded-b-xl flex justify-end border-t">
+                  <button
+                    onClick={() => {
+                      setShowDescriptionModal(false);
+                      setSelectedDescription(null);
+                    }}
+                    className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded hover:bg-primary-700"
                   >
                     Close
                   </button>

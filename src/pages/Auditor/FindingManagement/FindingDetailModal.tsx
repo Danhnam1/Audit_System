@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { getFindingById, type Finding } from '../../../api/findings';
+import { type Finding } from '../../../api/findings';
 import { getAttachments, type Attachment } from '../../../api/attachments';
 import { getUserById } from '../../../api/adminUsers';
 import { getDepartmentById } from '../../../api/departments';
-import { createRootCause, type CreateRootCauseDto, updateRootCause, approveRootCause, rejectRootCause, getRootCauseLogs } from '../../../api/rootCauses';
+import { createRootCause, type CreateRootCauseDto, updateRootCause, getRootCauseLogs } from '../../../api/rootCauses';
+import { type Action, getActionsByRootCause } from '../../../api/actions';
 import useAuthStore from '../../../store/useAuthStore';
 import apiClient from '../../../api/client';
 import { analyzeFinding, type SuggestedRootCause } from '../../../api/chatbot';
@@ -30,12 +31,9 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const [rootCauses, setRootCauses] = useState<any[]>([]);
   const [rootCauseName, setRootCauseName] = useState<string>('');
   const [rootCauseDescription, setRootCauseDescription] = useState<string>('');
-  // Category removed - no longer needed
   const [isEditingRootCause, setIsEditingRootCause] = useState(false);
   const [isSavingRootCause, setIsSavingRootCause] = useState(false);
   const [editingRootCauseId, setEditingRootCauseId] = useState<number | null>(null);
-  const [reviewingRootCauseId, setReviewingRootCauseId] = useState<number | null>(null);
-  const [rejectReason, setRejectReason] = useState<string>('');
   const [editingReasonReject, setEditingReasonReject] = useState<string>('');
   const [isProcessingReview, setIsProcessingReview] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -57,7 +55,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   
   const { role } = useAuthStore();
   const isAuditeeOwner = role === 'AuditeeOwner';
-  const isAuditor = role === 'Auditor';
   
   // Debug logging
 
@@ -114,17 +111,109 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
 
   useEffect(() => {
     if (isOpen && findingId) {
+      // Clear state first to ensure fresh load
+      setFinding(null);
+      setRootCauses([]);
+      setError(null);
+      
+      // Always reload fresh data when modal opens (no cache)
       loadFinding();
       loadAttachments();
+    } else if (!isOpen) {
+      // Clear state when modal closes
+      setFinding(null);
+      setRootCauses([]);
+      setAttachments([]);
+      setWitnessName('');
+      setWitnessData(null);
+      setDepartmentName('');
+      setCreatedByName('');
+      setCreatedByData(null);
+      setError(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, findingId]);
+
+  // Listen for root cause updates from outside (e.g., CAPA Owner rejecting witnessed)
+  useEffect(() => {
+    if (!isOpen || !findingId) return;
+
+    const handleRootCauseUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const updatedFindingId = customEvent.detail?.findingId;
+
+      // Reload if this finding's root causes were updated, or if no specific findingId provided (reload all)
+      if (!updatedFindingId || updatedFindingId === findingId) {
+        // Small delay to ensure backend has updated
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Reload finding data first (to get latest status, etc.)
+        // Force fresh data by adding timestamp to prevent cache
+        try {
+          const freshFindingRes = await apiClient.get(`/Findings/${findingId}?_t=${Date.now()}`) as any;
+          const freshFinding = freshFindingRes.data || freshFindingRes;
+          setFinding(freshFinding);
+          
+          // Also reload witness name if changed
+          if (freshFinding?.witnessId) {
+            try {
+              const witnessUser = await getUserById(freshFinding.witnessId);
+              setWitnessName(witnessUser?.fullName || '');
+              setWitnessData(witnessUser);
+            } catch (err) {
+              console.error('Error reloading witness:', err);
+            }
+          }
+        } catch (err) {
+          console.error('Error reloading finding:', err);
+        }
+        
+        // Reload root causes (force fresh data by adding timestamp to prevent cache)
+        try {
+          const res = await apiClient.get(`/RootCauses/by-finding/${findingId}?_t=${Date.now()}`);
+          const rootCausesList = res.data.$values || [];
+          
+          // Fetch history and actions for each root cause
+          const rootCausesWithHistory = await Promise.all(
+            rootCausesList.map(async (rc: any) => {
+              try {
+                const logs = await getRootCauseLogs(rc.rootCauseId);
+                // Fetch actions (remediation proposals) for this root cause
+                let actions: Action[] = [];
+                try {
+                  actions = await getActionsByRootCause(rc.rootCauseId);
+                } catch (actionErr) {
+                  console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+                }
+                return { ...rc, history: logs, actions: actions };
+              } catch (err) {
+                console.error('Error loading history for root cause:', rc.rootCauseId, err);
+                return { ...rc, history: [], actions: [] };
+              }
+            })
+          );
+          
+          setRootCauses(rootCausesWithHistory);
+        } catch (err) {
+          console.error('Error reloading root causes:', err);
+        }
+      }
+    };
+
+    window.addEventListener('rootCauseUpdated', handleRootCauseUpdated);
+
+    return () => {
+      window.removeEventListener('rootCauseUpdated', handleRootCauseUpdated);
+    };
   }, [isOpen, findingId]);
 
   const loadFinding = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getFindingById(findingId);
-      setFinding(data);
+      // Force fresh data by adding timestamp to prevent cache
+      const data = await apiClient.get(`/Findings/${findingId}?_t=${Date.now()}`) as any;
+      setFinding(data.data || data);
       
       // Fetch witness name if witnessId exists
       if (data?.witnessId) {
@@ -177,19 +266,27 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       }
 
       // Fetch all root causes by finding ID with their history
+      // Force fresh data by adding timestamp to prevent cache
       try {
-        const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+        const res = await apiClient.get(`/RootCauses/by-finding/${findingId}?_t=${Date.now()}`);
         const rootCausesList = res.data.$values || [];
         
-        // Fetch history for each root cause
+        // Fetch history and actions for each root cause
         const rootCausesWithHistory = await Promise.all(
           rootCausesList.map(async (rc: any) => {
             try {
               const logs = await getRootCauseLogs(rc.rootCauseId);
-              return { ...rc, history: logs };
+              // Fetch actions (remediation proposals) for this root cause
+              let actions: Action[] = [];
+              try {
+                actions = await getActionsByRootCause(rc.rootCauseId);
+              } catch (actionErr) {
+                console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+              }
+              return { ...rc, history: logs, actions: actions };
             } catch (err) {
               console.error('Error loading history for root cause:', rc.rootCauseId, err);
-              return { ...rc, history: [] };
+              return { ...rc, history: [], actions: [] };
             }
           })
         );
@@ -282,10 +379,31 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       setEditingReasonReject('');
       setIsEditingRootCause(false);
       
-      // Reload all root causes
-      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+      // Reload all root causes with actions (force fresh data)
+      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}?_t=${Date.now()}`);
       const rootCausesList = res.data.$values || [];
-      setRootCauses(rootCausesList);
+      
+      // Fetch history and actions for each root cause
+      const rootCausesWithHistory = await Promise.all(
+        rootCausesList.map(async (rc: any) => {
+          try {
+            const logs = await getRootCauseLogs(rc.rootCauseId);
+            // Fetch actions (remediation proposals) for this root cause
+            let actions: Action[] = [];
+            try {
+              actions = await getActionsByRootCause(rc.rootCauseId);
+            } catch (actionErr) {
+              console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+            }
+            return { ...rc, history: logs, actions: actions };
+          } catch (err) {
+            console.error('Error loading history for root cause:', rc.rootCauseId, err);
+            return { ...rc, history: [], actions: [] };
+          }
+        })
+      );
+      
+      setRootCauses(rootCausesWithHistory);
       
       // Small delay to ensure state is updated before dispatching event
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -332,10 +450,31 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       
       showToast(`${draftRootCauses.length} root cause(s) submitted for review!`, 'success');
       
-      // Reload all root causes
-      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+      // Reload all root causes with actions (force fresh data)
+      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}?_t=${Date.now()}`);
       const rootCausesList = res.data.$values || [];
-      setRootCauses(rootCausesList);
+      
+      // Fetch history and actions for each root cause
+      const rootCausesWithHistory = await Promise.all(
+        rootCausesList.map(async (rc: any) => {
+          try {
+            const logs = await getRootCauseLogs(rc.rootCauseId);
+            // Fetch actions (remediation proposals) for this root cause
+            let actions: Action[] = [];
+            try {
+              actions = await getActionsByRootCause(rc.rootCauseId);
+            } catch (actionErr) {
+              console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+            }
+            return { ...rc, history: logs, actions: actions };
+          } catch (err) {
+            console.error('Error loading history for root cause:', rc.rootCauseId, err);
+            return { ...rc, history: [], actions: [] };
+          }
+        })
+      );
+      
+      setRootCauses(rootCausesWithHistory);
       
       // Small delay to ensure state is updated before dispatching event
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -365,10 +504,31 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       await apiClient.delete(`/RootCauses/${rootCauseToDelete}`);
       showToast('Draft deleted successfully!', 'success');
       
-      // Reload all root causes
-      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+      // Reload all root causes with actions (force fresh data)
+      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}?_t=${Date.now()}`);
       const rootCausesList = res.data.$values || [];
-      setRootCauses(rootCausesList);
+      
+      // Fetch history and actions for each root cause
+      const rootCausesWithHistory = await Promise.all(
+        rootCausesList.map(async (rc: any) => {
+          try {
+            const logs = await getRootCauseLogs(rc.rootCauseId);
+            // Fetch actions (remediation proposals) for this root cause
+            let actions: Action[] = [];
+            try {
+              actions = await getActionsByRootCause(rc.rootCauseId);
+            } catch (actionErr) {
+              console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+            }
+            return { ...rc, history: logs, actions: actions };
+          } catch (err) {
+            console.error('Error loading history for root cause:', rc.rootCauseId, err);
+            return { ...rc, history: [], actions: [] };
+          }
+        })
+      );
+      
+      setRootCauses(rootCausesWithHistory);
     } catch (err: any) {
       console.error('Error deleting root cause:', err);
       showToast('Failed to delete draft: ' + (err.message || 'Unknown error'), 'error');
@@ -389,68 +549,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     setIsEditingRootCause(true);
   };
   
-  // Handle approve root cause
-  const handleApproveRootCause = async (id: number) => {
-    setIsProcessingReview(true);
-    try {
-      await approveRootCause(id);
-      showToast('Root cause approved successfully!', 'success');
-      
-      // Reload root causes
-      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
-      const rootCausesList = res.data.$values || [];
-      setRootCauses(rootCausesList);
-      
-      // Small delay to ensure state is updated before dispatching event
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Dispatch event to notify other components about root cause update
-      window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
-        detail: { findingId: findingId }
-      }));
-    } catch (err: any) {
-      console.error('Error approving root cause:', err);
-      showToast('Failed to approve root cause: ' + (err.message || 'Unknown error'), 'error');
-    } finally {
-      setIsProcessingReview(false);
-    }
-  };
-  
-  // Handle reject root cause
-  const handleRejectRootCause = async (id: number, reason: string) => {
-    if (!reason.trim()) {
-      showToast('Please provide a reason for rejection', 'error');
-      return;
-    }
-    
-    setIsProcessingReview(true);
-    try {
-      await rejectRootCause(id, reason);
-      showToast('Root cause rejected successfully!', 'success');
-      setReviewingRootCauseId(null);
-      setRejectReason('');
-      
-      // Reload root causes
-      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
-      const rootCausesList = res.data.$values || [];
-      setRootCauses(rootCausesList);
-      
-      // Small delay to ensure state is updated before dispatching event
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Dispatch event to notify other components about root cause update
-      window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
-        detail: { findingId: findingId }
-      }));
-    } catch (err: any) {
-      console.error('Error rejecting root cause:', err);
-      showToast('Failed to reject root cause: ' + (err.message || 'Unknown error'), 'error');
-    } finally {
-      setIsProcessingReview(false);
-    }
-  };
-  
-
   
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -931,7 +1029,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                           rootCauses.map((rc, index) => {
                             const statusLower = rc.status?.toLowerCase() || '';
                             const isDraft = statusLower === 'draft';
-                            const isPending = statusLower === 'pending' || statusLower === 'pendingreview';
                             const isApproved = statusLower === 'approved';
                             const isRejected = statusLower === 'rejected';
                             
@@ -982,34 +1079,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                       )}
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    {isDraft && (
-                                      <span className="px-3 py-1 bg-gray-50 text-gray-600 text-xs font-semibold rounded-full border border-gray-300">
-                                        Draft
-                                      </span>
-                                    )}
-                                    {isPending && (
-                                      <span className="px-3 py-1 bg-amber-50 text-amber-600 text-xs font-semibold rounded-full border border-amber-200">
-                                        Pending Review
-                                      </span>
-                                    )}
-                                    {isApproved && (
-                                      <span className="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-full border-2 border-green-300 flex items-center gap-1.5 shadow-sm">
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                        Approved
-                                      </span>
-                                    )}
-                                    {isRejected && (
-                                      <span className="px-3 py-1 bg-rose-50 text-rose-600 text-xs font-semibold rounded-full border border-rose-200 flex items-center gap-1">
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
-                                        Rejected
-                                      </span>
-                                    )}
-                                  </div>
+                                
                                 </div>
                                 
                                 {rc.description && (
@@ -1020,6 +1090,43 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   <div className="mt-3 pl-10 bg-rose-50 border border-rose-200 rounded-lg p-3">
                                     <p className="text-xs font-semibold text-rose-600 mb-1">Rejection Reason:</p>
                                     <p className="text-sm text-rose-600">{rc.reasonReject}</p>
+                                  </div>
+                                )}
+                                
+                                {/* Remediation Proposals (Actions) */}
+                                {rc.actions && rc.actions.length > 0 && (
+                                  <div className="mt-4 pl-10">
+                                    <h5 className="text-xs font-semibold text-gray-700 mb-2 uppercase">Proposed solutions ({rc.actions.length})</h5>
+                                    <div className="space-y-2">
+                                      {rc.actions.map((action: Action) => (
+                                        <div
+                                          key={action.actionId}
+                                          className="bg-blue-50 border border-blue-200 rounded-lg p-3 hover:bg-blue-100 transition-colors"
+                                        >
+                                      
+                                          {action.description && (
+                                            <p className="text-xs text-gray-700 mb-2">{action.description}</p>
+                                          )}
+                                          <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                                          
+                                            {action.dueDate && (
+                                              <span className="flex items-center gap-1">
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                </svg>
+                                                Due: {formatDate(action.dueDate)}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {action.reviewFeedback && (
+                                            <div className="mt-2 pt-2 border-t border-blue-200">
+                                              <p className="text-xs font-medium text-gray-700 mb-1">Review Feedback:</p>
+                                              <p className="text-xs text-gray-600">{action.reviewFeedback}</p>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 )}
                                 
@@ -1133,38 +1240,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                           </svg>
-                                        </button>
-                                      </>
-                                    )}
-                                    
-                                    {/* Auditor Review Buttons - Any Auditor can review pending root causes */}
-                                    {isAuditor && isPending && !isAuditeeOwner && (
-                                      <>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleApproveRootCause(rc.rootCauseId);
-                                          }}
-                                          disabled={isProcessingReview}
-                                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-semibold disabled:opacity-50 flex items-center gap-1"
-                                        >
-                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                          </svg>
-                                          Approve
-                                        </button>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setReviewingRootCauseId(rc.rootCauseId);
-                                          }}
-                                          disabled={isProcessingReview}
-                                          className="px-3 py-1.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors text-xs font-semibold disabled:opacity-50 flex items-center gap-1"
-                                        >
-                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                          </svg>
-                                          Reject
                                         </button>
                                       </>
                                     )}
@@ -1545,99 +1620,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                   className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
                 >
                   Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Reject Root Cause Modal */}
-      {reviewingRootCauseId && (
-        <div className="fixed inset-0 z-[60] overflow-y-auto">
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
-            onClick={() => {
-              setReviewingRootCauseId(null);
-              setRejectReason('');
-            }}
-          />
-
-          {/* Modal */}
-          <div className="flex min-h-full items-center justify-center p-4">
-            <div
-              className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-auto animate-slideUp"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="sticky top-0 bg-gradient-to-r from-red-600 to-red-700 px-6 py-5 rounded-t-2xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </div>
-                    <h3 className="text-xl font-bold text-white">Reject Root Cause</h3>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setReviewingRootCauseId(null);
-                      setRejectReason('');
-                    }}
-                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                  >
-                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="p-6 space-y-4">
-                <p className="text-gray-700">Please provide a reason for rejecting this root cause:</p>
-                <textarea
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="Enter rejection reason..."
-                  rows={4}
-                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition-colors resize-none"
-                  autoFocus
-                />
-              </div>
-
-              {/* Footer */}
-              <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3 rounded-b-2xl">
-                <button
-                  onClick={() => {
-                    setReviewingRootCauseId(null);
-                    setRejectReason('');
-                  }}
-                  disabled={isProcessingReview}
-                  className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors font-semibold disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleRejectRootCause(reviewingRootCauseId, rejectReason)}
-                  disabled={isProcessingReview || !rejectReason.trim()}
-                  className="px-5 py-2.5 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isProcessingReview ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Rejecting...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                      Reject
-                    </>
-                  )}
                 </button>
               </div>
             </div>

@@ -15,9 +15,9 @@ const toPascalCase = (obj: any): any => {
 
 export interface CreateActionDto {
   findingId: string;
-  title: string;
+  title?: string | null;
   description: string;
-  assignedTo: string;
+  assignedTo?: string | null;
   assignedDeptId: number;
   progressPercent: number;
   dueDate: string;
@@ -123,5 +123,17 @@ export const getActionsByDepartmentDashboard = async (deptId: number): Promise<A
   const res = await apiClient.get(`/AuditDashboard/department/${deptId}/actions`) as any;
   const { unwrap } = await import('../utils/normalize');
   return unwrap<Action>(res);
+};
+
+// Get actions by root cause ID
+export const getActionsByRootCause = async (rootCauseId: number): Promise<Action[]> => {
+  try {
+    const res = await apiClient.get(`/Action/by-root-cause/${rootCauseId}`) as any;
+    const { unwrap } = await import('../utils/normalize');
+    return unwrap<Action>(res);
+  } catch (err) {
+    console.error('Error fetching actions by root cause:', err);
+    return [];
+  }
 };
 

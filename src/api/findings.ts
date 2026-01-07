@@ -219,6 +219,19 @@ export const returnFinding = async (findingId: string, reasonReturn: string): Pr
   return apiClient.put(`/Findings/${findingId}/return`, payload) as any;
 };
 
+// Witness confirm finding
+export const witnessConfirmFinding = async (findingId: string): Promise<void> => {
+  await apiClient.put(`/Findings/${findingId}/witness-confirmed`);
+};
+
+// Witness disagree finding (reject with reason)
+export const witnessDisagreeFinding = async (findingId: string, reason: string): Promise<void> => {
+  const payload = {
+    Reason: reason
+  };
+  await apiClient.put(`/Findings/${findingId}/witness-disagreed`, payload);
+};
+
 export default {
   getFindings,
   getFindingById,
@@ -232,4 +245,6 @@ export default {
   approveFindingActionHigherLevel,
   returnFindingAction,
   rejectFindingActionHigherLevel,
+  witnessConfirmFinding,
+  witnessDisagreeFinding,
 };

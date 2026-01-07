@@ -5,6 +5,25 @@ export interface RootCause {
   rootCauseId: number;
   name: string;
   description?: string;
+  proposedAction?: string;
+}
+
+export interface RemediationProposal {
+  id: number;
+  rootCauseId: number;
+  title: string;
+  description: string;
+  status: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CreateRemediationProposalDto {
+  rootCauseId: number;
+  title: string;
+  description: string;
+  status: string;
 }
 
 export interface CreateRootCauseDto {
@@ -12,6 +31,7 @@ export interface CreateRootCauseDto {
   description: string;
   status: string;
   category: string;
+  proposedAction?: string;
 }
 
 // Get all root causes
@@ -125,4 +145,40 @@ export const getRootCauseLogs = async (entityId: string): Promise<RootCauseLog[]
     console.error('Error fetching root cause logs:', err);
     return [];
   }
+};
+
+// Remediation Proposal APIs
+export const getRemediationProposalsByRootCause = async (rootCauseId: number): Promise<RemediationProposal[]> => {
+  try {
+    const res = await apiClient.get(`/RemediationProposals/root-cause/${rootCauseId}`);
+    const proposals = unwrap<RemediationProposal>(res.data);
+    return proposals;
+  } catch (err) {
+    console.error('Error fetching remediation proposals:', err);
+    return [];
+  }
+};
+
+export const createRemediationProposal = async (dto: CreateRemediationProposalDto): Promise<RemediationProposal> => {
+  const pascalDto = toPascalCase(dto);
+  const res = await apiClient.post('/RemediationProposals', pascalDto);
+  return res.data;
+};
+
+export const updateRemediationProposal = async (id: number, dto: Partial<CreateRemediationProposalDto>): Promise<RemediationProposal> => {
+  const pascalDto = toPascalCase(dto);
+  const res = await apiClient.put(`/RemediationProposals/${id}`, pascalDto);
+  return res.data;
+};
+
+export const deleteRemediationProposal = async (id: number): Promise<void> => {
+  await apiClient.delete(`/RemediationProposals/${id}`);
+};
+
+export const approveRemediationProposal = async (id: number): Promise<void> => {
+  await apiClient.post(`/RemediationProposals/${id}/approve`);
+};
+
+export const rejectRemediationProposal = async (id: number, reason: string): Promise<void> => {
+  await apiClient.post(`/RemediationProposals/${id}/reject`, { reason });
 };

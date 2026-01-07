@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
-import { getMyWitnessedFindings, type Finding } from '../../api/findings';
+import { getMyWitnessedFindings, type Finding, witnessConfirmFinding, witnessDisagreeFinding } from '../../api/findings';
+import { toast } from 'react-toastify';
 
 interface FindingWithAudit extends Finding {
   auditTitle?: string;
@@ -24,6 +25,15 @@ const CAPAOwnerMyWitnessed = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [groupedAudits, setGroupedAudits] = useState<GroupedAudit[]>([]);
+  
+  // Rejection modal state
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [selectedFindingForReject, setSelectedFindingForReject] = useState<FindingWithAudit | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [submittingReject, setSubmittingReject] = useState(false);
+  
+  // Filter state - default to 'All' to see all witnessed findings
+  const [statusFilter, setStatusFilter] = useState<string>('All');
 
   useEffect(() => {
     const fetchWitnessedFindings = async () => {
@@ -53,11 +63,22 @@ const CAPAOwnerMyWitnessed = () => {
     fetchWitnessedFindings();
   }, []);
 
-  // Group findings by audit
+  // Remove duplicate findings by title and get unique findings
   useEffect(() => {
+    // Filter findings by status first
+    const filteredFindings = statusFilter === 'All' 
+      ? findings 
+      : findings.filter(f => f.status === statusFilter);
+
+    // Remove duplicates by finding title - keep only the first occurrence
+    const uniqueFindings = filteredFindings.filter((finding, index, self) =>
+      index === self.findIndex((f) => f.title === finding.title)
+    );
+
+    // Group unique findings by audit for display
     const auditMap = new Map<string, GroupedAudit>();
 
-    findings.forEach((finding) => {
+    uniqueFindings.forEach((finding) => {
       const auditId = finding.audit?.auditId || finding.auditId;
 
       if (!auditId) {
@@ -82,7 +103,16 @@ const CAPAOwnerMyWitnessed = () => {
     });
 
     setGroupedAudits(Array.from(auditMap.values()));
-  }, [findings]);
+  }, [findings, statusFilter]);
+
+  // Calculate total unique findings for display
+  const totalUniqueFindings = statusFilter === 'All' 
+    ? findings.filter((finding, index, self) => 
+        index === self.findIndex((f) => f.title === finding.title)
+      ).length
+    : findings.filter(f => f.status === statusFilter).filter((finding, index, self) => 
+        index === self.findIndex((f) => f.title === finding.title)
+      ).length;
 
   const handleAuditClick = (auditId: string, auditTitle: string) => {
     navigate(`/capa-owner/my-witnessed/audit/${auditId}`, {
@@ -99,6 +129,59 @@ const CAPAOwnerMyWitnessed = () => {
     }
   };
 
+  const handleConfirmWitness = async (finding: FindingWithAudit) => {
+    try {
+      await witnessConfirmFinding(finding.findingId);
+      toast.success('Finding confirmed successfully!');
+      
+      // Reload findings
+      const updatedFindings = await getMyWitnessedFindings();
+      const findingsWithAudit = updatedFindings.map((f) => ({
+        ...f,
+        auditTitle: f.audit?.title || 'N/A',
+        auditType: f.audit?.type || 'N/A',
+      }));
+      setFindings(findingsWithAudit);
+    } catch (err: any) {
+      console.error('Error confirming witness:', err);
+      toast.error(err?.message || 'Failed to confirm finding');
+    }
+  };
+
+  const handleRejectWitness = async () => {
+    if (!selectedFindingForReject) return;
+    
+    if (!rejectReason.trim()) {
+      toast.error('Please provide a reason for rejection');
+      return;
+    }
+
+    setSubmittingReject(true);
+    try {
+      await witnessDisagreeFinding(selectedFindingForReject.findingId, rejectReason.trim());
+      toast.success('Finding rejected successfully. Auditor will be notified.');
+      
+      // Reload findings
+      const updatedFindings = await getMyWitnessedFindings();
+      const findingsWithAudit = updatedFindings.map((f) => ({
+        ...f,
+        auditTitle: f.audit?.title || 'N/A',
+        auditType: f.audit?.type || 'N/A',
+      }));
+      setFindings(findingsWithAudit);
+      
+      // Close modal
+      setShowRejectModal(false);
+      setSelectedFindingForReject(null);
+      setRejectReason('');
+    } catch (err: any) {
+      console.error('Error rejecting witness:', err);
+      toast.error(err?.message || 'Failed to reject finding');
+    } finally {
+      setSubmittingReject(false);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -109,6 +192,29 @@ const CAPAOwnerMyWitnessed = () => {
           <p className="text-gray-600">
             Findings where you are assigned as a witness (CAPA Owner)
           </p>
+        </div>
+
+        {/* Status Filter */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex items-center gap-4">
+            <label className="text-sm font-medium text-gray-700">Filter by Status:</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="All">All</option>
+              <option value="PendingWitnessConfirmation">Pending Confirmation</option>
+              <option value="Confirmed">Confirmed</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Open">Open</option>
+              <option value="Received">Received</option>
+              <option value="Closed">Closed</option>
+            </select>
+            <div className="ml-auto text-sm text-gray-600">
+              Showing {totalUniqueFindings} findings in {groupedAudits.length} audits
+            </div>
+          </div>
         </div>
 
         {loading ? (

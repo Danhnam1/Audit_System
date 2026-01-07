@@ -336,7 +336,21 @@ const ActionReview = () => {
     setLoadingActions(true);
     try {
       const actionsData = await getActionsByFinding(findingId);
-      setActions(Array.isArray(actionsData) ? actionsData : []);
+      const allActions = Array.isArray(actionsData) ? actionsData : [];
+      
+      // Filter out actions that don't have assignedTo (these are remediation proposals, not assigned actions)
+      // Only show actions that have been assigned to a CAPA Owner
+      const assignedActions = allActions.filter(action => action.assignedTo);
+      
+      // Remove duplicates by actionId (in case API returns duplicates)
+      const uniqueActionsById = new Map<string, Action>();
+      assignedActions.forEach(action => {
+        if (!uniqueActionsById.has(action.actionId)) {
+          uniqueActionsById.set(action.actionId, action);
+        }
+      });
+      
+      setActions(Array.from(uniqueActionsById.values()));
     } catch (err: any) {
       console.error('Error loading actions:', err);
       toast.error('Failed to load actions');

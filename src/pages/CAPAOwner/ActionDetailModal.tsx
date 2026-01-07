@@ -294,7 +294,7 @@ const ActionDetailModal = ({
                       <h3 className="text-sm font-bold text-white">Team Members</h3>
                       <p className="text-xs text-white/80">
                         {(() => {
-                          const uniqueUsers = new Set(relatedActions.map(a => a.assignedTo));
+                          const uniqueUsers = new Set(relatedActions.filter(a => a.assignedTo).map(a => a.assignedTo));
                           return `${uniqueUsers.size} ${uniqueUsers.size === 1 ? 'member' : 'members'}`;
                         })()}
                       </p>
@@ -319,13 +319,16 @@ const ActionDetailModal = ({
               <div className="p-3 space-y-2 overflow-y-auto max-h-[calc(95vh-120px)]">
                 {(() => {
                   // Group actions by assignedTo user to avoid duplicates
+                  // IMPORTANT: Only include actions that have assignedTo
                   const userActionsMap = new Map<string, Action[]>();
                   relatedActions.forEach(action => {
                     const userId = action.assignedTo;
-                    if (!userActionsMap.has(userId)) {
-                      userActionsMap.set(userId, []);
+                    if (userId) { // Only add if assignedTo exists
+                      if (!userActionsMap.has(userId)) {
+                        userActionsMap.set(userId, []);
+                      }
+                      userActionsMap.get(userId)!.push(action);
                     }
-                    userActionsMap.get(userId)!.push(action);
                   });
                   
                   // Create array of unique users with their actions
@@ -338,7 +341,7 @@ const ActionDetailModal = ({
                   
                   return uniqueUsers.map((userGroup, index) => {
                     const user = relatedActionsUsers[userGroup.userId];
-                    const userName = user?.fullName || userGroup.userId || 'Unknown';
+                    const userName = user?.fullName || 'Unknown User';
                     const hasSelectedAction = userGroup.actions.some(a => a.actionId === selectedActionId);
                     
                     return (

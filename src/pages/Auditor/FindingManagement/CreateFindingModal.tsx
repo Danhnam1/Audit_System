@@ -5,6 +5,8 @@ import { uploadAttachment } from '../../../api/attachments';
 import { markChecklistItemNonCompliant } from '../../../api/checklists';
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
+import { createRootCause } from '../../../api/rootCauses';
+import { createAction } from '../../../api/actions';
 import { unwrap } from '../../../utils/normalize';
 import {
   validateRequired,
@@ -57,6 +59,23 @@ const CreateFindingModal = ({
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [showWitnessesDropdown, setShowWitnessesDropdown] = useState(false);
 
+  // Root Causes - Array structure
+  interface RootCause {
+    id: number;
+    rootCauseName: string;
+    rootCauseDescription: string;
+    proposedAction: string;
+  }
+  
+  const [rootCauses, setRootCauses] = useState<RootCause[]>([
+    {
+      id: 1,
+      rootCauseName: '',
+      rootCauseDescription: '',
+      proposedAction: '',
+    },
+  ]);
+  const [nextRootCauseId, setNextRootCauseId] = useState(2);
   
  // Additional fields (Giờ Việt Nam)
 const [findingDate] = useState(() => {
@@ -96,6 +115,11 @@ const [findingTime, setFindingTime] = useState(() => {
     severity?: string;
     deadline?: string;
     files?: string;
+    rootCauses?: Record<number, {
+      rootCauseName?: string;
+      rootCauseDescription?: string;
+      proposedAction?: string;
+    }>;
   }>({});
 
   // Confirmation modals
@@ -110,6 +134,8 @@ const [findingTime, setFindingTime] = useState(() => {
       loadDepartmentUsers();
     }
   }, [isOpen]);
+
+
 
   const loadDepartmentUsers = async () => {
     if (!deptId || deptId <= 0) return;
@@ -290,6 +316,45 @@ const [findingTime, setFindingTime] = useState(() => {
     if (severityError) {
       newErrors.severity = severityError;
     }
+
+    // Validate root causes array
+    if (rootCauses.length === 0) {
+      alert('Please add at least one root cause');
+      return false;
+    }
+
+    const rootCauseErrors: Record<number, any> = {};
+    let hasRootCauseError = false;
+
+    rootCauses.forEach((rc) => {
+      const rcErrors: any = {};
+      
+      const nameError = validateRequired(rc.rootCauseName, 'Root Cause Name');
+      if (nameError) {
+        rcErrors.rootCauseName = nameError;
+        hasRootCauseError = true;
+      }
+
+      const descError = validateRequired(rc.rootCauseDescription, 'Root Cause Description');
+      if (descError) {
+        rcErrors.rootCauseDescription = descError;
+        hasRootCauseError = true;
+      }
+
+      const actionError = validateRequired(rc.proposedAction, 'Proposed Action');
+      if (actionError) {
+        rcErrors.proposedAction = actionError;
+        hasRootCauseError = true;
+      }
+
+      if (Object.keys(rcErrors).length > 0) {
+        rootCauseErrors[rc.id] = rcErrors;
+      }
+    });
+
+    if (hasRootCauseError) {
+      newErrors.rootCauses = rootCauseErrors;
+    }
     
     // Validate deadline
     if (!deadline) {
@@ -373,7 +438,7 @@ const [findingTime, setFindingTime] = useState(() => {
         severity: severity,
         rootCauseId: null, // null is accepted by backend
         deptId: deptId,
-        status: 'Open',
+        status: witnesses ? 'Open' : '', // If witness assigned, status = PendingWitnessConfirmation
         deadline: new Date(deadline).toISOString(),
         reviewerId: null, // null is accepted by backend
         source: '', // Empty string
@@ -389,6 +454,43 @@ const [findingTime, setFindingTime] = useState(() => {
       if (!findingId) {
         throw new Error('Finding ID not found in response');
       }
+
+      // Create multiple root causes with actions
+      for (const rc of rootCauses) {
+        // Create root cause with status 'Pending' (waiting for department head to assign CAPA owner)
+        const rootCausePayload = {
+          findingId: findingId,
+          name: rc.rootCauseName.trim(),
+          description: rc.rootCauseDescription.trim(),
+          proposedAction: rc.proposedAction.trim(),
+          status: 'Pending',
+          category: '', // Empty category as requested
+        };
+
+        const rootCause = await createRootCause(rootCausePayload);
+        const rootCauseId = rootCause.rootCauseId || (rootCause as any).$id || (rootCause as any).id;
+
+        if (!rootCauseId) {
+          throw new Error('Root Cause ID not found in response');
+        }
+
+        // Create action with proposed action as description (department head will assign CAPA owner later)
+        const actionPayload = {
+          findingId: findingId,
+          title: rc.rootCauseName.trim(), // Use root cause name as title (for backend validation)
+          description: rc.proposedAction.trim(), // Proposed action as description
+          assignedTo: null, // To be assigned by department head
+          assignedDeptId: deptId,
+          rootCauseId: rootCauseId,
+          progressPercent: 0,
+          dueDate: new Date().toISOString(), // Temporary date, will be updated when assigned
+          reviewFeedback: '',
+        };
+
+        await createAction(actionPayload);
+      }
+
+      // Don't mark as 'Received' - let it stay as 'Open' until department head assigns actions
 
       // Upload files if any
       if (files.length > 0) {
@@ -436,6 +538,13 @@ const [findingTime, setFindingTime] = useState(() => {
       setWitnesses('');
       setFieldworkStartDate(null);
       setEvidenceDueDate(null);
+      setRootCauses([{
+        id: 1,
+        rootCauseName: '',
+        rootCauseDescription: '',
+        proposedAction: '',
+      }]);
+      setNextRootCauseId(2);
       
       onSuccess?.();
       onClose();
@@ -462,11 +571,18 @@ const [findingTime, setFindingTime] = useState(() => {
     if (submitting) return;
 
     // Check if form has any data
+    const hasRootCauseData = rootCauses.some(rc => 
+      rc.rootCauseName.trim() !== '' ||
+      rc.rootCauseDescription.trim() !== '' ||
+      rc.proposedAction.trim() !== ''
+    );
+    
     const hasData = description.trim() !== '' ||
                    severity !== '' ||
                    deadline !== '' ||
                    witnesses !== '' ||
-                   files.length > 0;
+                   files.length > 0 ||
+                   hasRootCauseData;
 
     if (hasData) {
       // Show confirmation modal if form has data
@@ -491,6 +607,13 @@ const [findingTime, setFindingTime] = useState(() => {
     setWitnesses('');
     setFieldworkStartDate(null);
     setEvidenceDueDate(null);
+    setRootCauses([{
+      id: 1,
+      rootCauseName: '',
+      rootCauseDescription: '',
+      proposedAction: '',
+    }]);
+    setNextRootCauseId(2);
     setShowCancelConfirmModal(false);
     onClose();
   };
@@ -815,6 +938,172 @@ const [findingTime, setFindingTime] = useState(() => {
                 readOnly
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
               />
+            </div>
+
+            {/* Root Causes Section */}
+            <div className="border-t border-gray-300 pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Root Causes</h3>
+                  <p className="text-sm text-gray-600 mt-1">Department head will assign corrective actions later</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRootCauses([
+                      ...rootCauses,
+                      {
+                        id: nextRootCauseId,
+                        rootCauseName: '',
+                        rootCauseDescription: '',
+                        proposedAction: '',
+                      },
+                    ]);
+                    setNextRootCauseId(nextRootCauseId + 1);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Root Cause
+                </button>
+              </div>
+
+              {/* Root Causes List */}
+              <div className="space-y-6">
+                {rootCauses.map((rc, index) => (
+                  <div key={rc.id} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                    {/* Header with remove button */}
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-md font-semibold text-gray-900">Root Cause #{index + 1}</h4>
+                      {rootCauses.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRootCauses(rootCauses.filter(r => r.id !== rc.id));
+                            // Clear errors for this root cause
+                            if (errors.rootCauses?.[rc.id]) {
+                              const newErrors = { ...errors };
+                              if (newErrors.rootCauses) {
+                                delete newErrors.rootCauses[rc.id];
+                              }
+                              setErrors(newErrors);
+                            }
+                          }}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Remove this root cause"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Root Cause Name */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Root Cause Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={rc.rootCauseName}
+                          onChange={(e) => {
+                            const updated = rootCauses.map(r => 
+                              r.id === rc.id ? { ...r, rootCauseName: e.target.value } : r
+                            );
+                            setRootCauses(updated);
+                            // Clear error
+                            if (errors.rootCauses?.[rc.id]?.rootCauseName) {
+                              const newErrors = { ...errors };
+                              if (newErrors.rootCauses?.[rc.id]) {
+                                delete newErrors.rootCauses[rc.id].rootCauseName;
+                              }
+                              setErrors(newErrors);
+                            }
+                          }}
+                          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                            errors.rootCauses?.[rc.id]?.rootCauseName ? 'border-red-300' : 'border-gray-300'
+                          }`}
+                          placeholder="Enter root cause name..."
+                        />
+                        {errors.rootCauses?.[rc.id]?.rootCauseName && (
+                          <p className="mt-1 text-sm text-red-600">{errors.rootCauses[rc.id].rootCauseName}</p>
+                        )}
+                      </div>
+
+                      {/* Root Cause Description */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Root Cause Description <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          value={rc.rootCauseDescription}
+                          onChange={(e) => {
+                            const updated = rootCauses.map(r => 
+                              r.id === rc.id ? { ...r, rootCauseDescription: e.target.value } : r
+                            );
+                            setRootCauses(updated);
+                            // Clear error
+                            if (errors.rootCauses?.[rc.id]?.rootCauseDescription) {
+                              const newErrors = { ...errors };
+                              if (newErrors.rootCauses?.[rc.id]) {
+                                delete newErrors.rootCauses[rc.id].rootCauseDescription;
+                              }
+                              setErrors(newErrors);
+                            }
+                          }}
+                          rows={3}
+                          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                            errors.rootCauses?.[rc.id]?.rootCauseDescription ? 'border-red-300' : 'border-gray-300'
+                          }`}
+                          placeholder="Describe the root cause..."
+                        />
+                        {errors.rootCauses?.[rc.id]?.rootCauseDescription && (
+                          <p className="mt-1 text-sm text-red-600">{errors.rootCauses[rc.id].rootCauseDescription}</p>
+                        )}
+                      </div>
+
+                      {/* Proposed Action (Corrective Action Suggestion) */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Proposed Corrective Action <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          value={rc.proposedAction}
+                          onChange={(e) => {
+                            const updated = rootCauses.map(r => 
+                              r.id === rc.id ? { ...r, proposedAction: e.target.value } : r
+                            );
+                            setRootCauses(updated);
+                            // Clear error
+                            if (errors.rootCauses?.[rc.id]?.proposedAction) {
+                              const newErrors = { ...errors };
+                              if (newErrors.rootCauses?.[rc.id]) {
+                                delete newErrors.rootCauses[rc.id].proposedAction;
+                              }
+                              setErrors(newErrors);
+                            }
+                          }}
+                          rows={3}
+                          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                            errors.rootCauses?.[rc.id]?.proposedAction ? 'border-red-300' : 'border-gray-300'
+                          }`}
+                          placeholder="Describe the proposed corrective action for this root cause..."
+                        />
+                        {errors.rootCauses?.[rc.id]?.proposedAction && (
+                          <p className="mt-1 text-sm text-red-600">{errors.rootCauses[rc.id].proposedAction}</p>
+                        )}
+                        <p className="mt-1 text-xs text-gray-500">
+                          This suggestion will be reviewed by the department head when assigning tasks
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* File Upload */}
