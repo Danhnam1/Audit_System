@@ -1,6 +1,6 @@
 import { toast } from "react-toastify";
 import { createAudit, completeUpdateAuditPlan, setSensitiveFlag } from "../api/audits";
-import { createAuditChecklistItemsFromTemplate } from "../api/checklists";
+// import { createAuditChecklistItemsFromTemplate } from "../api/checklists";
 import { addCriterionToAudit } from "../api/auditCriteriaMap";
 import { addTeamMember } from "../api/auditTeam";
 import { addAuditSchedule } from "../api/auditSchedule";
@@ -352,33 +352,33 @@ export const attachDepartmentsToAudit = async (
 /**
  * Creates checklist items from templates for departments
  */
-export const createChecklistItemsForDepartments = async (
-  auditId: string,
-  successfulDepts: any[]
-): Promise<void> => {
-  if (successfulDepts.length === 0) {
-    return;
-  }
+// export const createChecklistItemsForDepartments = async (
+//   auditId: string,
+//   successfulDepts: any[]
+// ): Promise<void> => {
+//   if (successfulDepts.length === 0) {
+//     return;
+//   }
 
-  try {
-    const checklistPromises = successfulDepts.map(async (sd: any) => {
-      const sdDeptId = Number(sd.deptId || sd.$deptId);
-      if (!sdDeptId || isNaN(sdDeptId)) return null;
+//   try {
+//     const checklistPromises = successfulDepts.map(async (sd: any) => {
+//       const sdDeptId = Number(sd.deptId || sd.$deptId);
+//       if (!sdDeptId || isNaN(sdDeptId)) return null;
 
-      try {
-        await createAuditChecklistItemsFromTemplate(auditId, sdDeptId);
-        return { deptId: sdDeptId, success: true };
-      } catch (err) {
-        console.error(`Failed to create checklist items for department ${sdDeptId}:`, err);
-        return { deptId: sdDeptId, success: false };
-      }
-    });
+//       try {
+//         // await createAuditChecklistItemsFromTemplate(auditId, sdDeptId);
+//         return { deptId: sdDeptId, success: true };
+//       } catch (err) {
+//         console.error(`Failed to create checklist items for department ${sdDeptId}:`, err);
+//         return { deptId: sdDeptId, success: false };
+//       }
+//     });
 
-    await Promise.allSettled(checklistPromises);
-  } catch (checklistErr: any) {
-    console.error("Failed to create checklist items from template:", checklistErr);
-  }
-};
+//     await Promise.allSettled(checklistPromises);
+//   } catch (checklistErr: any) {
+//     console.error("Failed to create checklist items from template:", checklistErr);
+//   }
+// };
 
 /**
  * Sets sensitive flags for departments
@@ -653,10 +653,10 @@ export const submitAuditPlan = async (
       // Attach departments
       const successfulDepts = await attachDepartmentsToAudit(auditId, formState, departments);
 
-      if (successfulDepts.length > 0 && formState.selectedTemplateIds.length > 0) {
-        // Create checklist items
-        await createChecklistItemsForDepartments(auditId, successfulDepts);
-      }
+      // if (successfulDepts.length > 0 && formState.selectedTemplateIds.length > 0) {
+      //   // Create checklist items
+      //   await createChecklistItemsForDepartments(auditId, successfulDepts);
+      // }
 
       // Set sensitive flags
       await setSensitiveFlagsForDepartments(auditId, formState, successfulDepts, departments);

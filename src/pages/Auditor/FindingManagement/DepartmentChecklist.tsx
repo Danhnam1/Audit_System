@@ -2,7 +2,12 @@ import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getChecklistItemsByDepartment, createAuditChecklistItem, updateAuditChecklistItem, deleteAuditChecklistItem, type CreateAuditChecklistItemDto, type UpdateAuditChecklistItemDto, getCompliantIdByAuditItemId } from '../../../api/checklists';
+import { getChecklistItemsByDepartment, createAuditChecklistItem, 
+  updateAuditChecklistItem, 
+  deleteAuditChecklistItem,
+   type CreateAuditChecklistItemDto, 
+   type UpdateAuditChecklistItemDto,
+    getCompliantIdByAuditItemId } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
 import { getFindings, getMyFindings, getFindingById, updateFinding, type Finding} from '../../../api/findings';
 import { getFindingSeverities } from '../../../api/findingSeverity';

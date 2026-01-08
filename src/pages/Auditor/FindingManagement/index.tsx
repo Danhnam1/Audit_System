@@ -238,10 +238,15 @@ const SQAStaffFindingManagement = () => {
           if (isApproved) {
             return true;
           }
+
+          // InProgress audits should be shown regardless of date filter
+          const isInProgress = statusLower === 'inprogress' || statusLower === 'in progress';
+          if (isInProgress) {
+            return true;
+          }
           
           // Filter out future audits - only show audits where Fieldwork Start date <= currentTime from API
-          // Note: startDate now contains Fieldwork Start date (or fallback to audit startDate)
-          // This filter only applies to non-Approved audits
+          // This filter only applies to audits that are neither Approved nor InProgress
           if (audit.startDate) {
             try {
               const fieldworkStartDate = new Date(audit.startDate);

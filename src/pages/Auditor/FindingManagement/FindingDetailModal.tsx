@@ -212,13 +212,14 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
     setError(null);
     try {
       // Force fresh data by adding timestamp to prevent cache
-      const data = await apiClient.get(`/Findings/${findingId}?_t=${Date.now()}`) as any;
-      setFinding(data.data || data);
+      const res = await apiClient.get(`/Findings/${findingId}?_t=${Date.now()}`) as any;
+      const payload = res?.data || res;
+      setFinding(payload);
       
       // Fetch witness name if witnessId exists
-      if (data?.witnessId) {
+      if (payload?.witnessId) {
         try {
-          const witnessUser = await getUserById(data.witnessId);
+          const witnessUser = await getUserById(payload.witnessId);
           setWitnessName(witnessUser?.fullName || '');
           setWitnessData(witnessUser);
         } catch (err) {
@@ -229,22 +230,9 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       }
       
       // Fetch createdBy user details
-      if (data?.createdBy) {
+      if (payload?.createdBy) {
         try {
-          const createdByUser = await getUserById(data.createdBy);
-          setCreatedByName(createdByUser?.fullName || '');
-          setCreatedByData(createdByUser);
-        } catch (err) {
-          console.error('Error loading created by user:', err);
-          setCreatedByName('');
-          setCreatedByData(null);
-        }
-      }
-      
-      // Fetch createdBy user details
-      if (data?.createdBy) {
-        try {
-          const createdByUser = await getUserById(data.createdBy);
+          const createdByUser = await getUserById(payload.createdBy);
           setCreatedByName(createdByUser?.fullName || '');
           setCreatedByData(createdByUser);
         } catch (err) {
@@ -255,9 +243,9 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       }
       
       // Fetch department name if deptId exists
-      if (data?.deptId) {
+      if (payload?.deptId) {
         try {
-          const dept = await getDepartmentById(data.deptId);
+          const dept = await getDepartmentById(payload.deptId);
           setDepartmentName(dept?.name || '');
         } catch (err) {
           console.error('Error loading department:', err);

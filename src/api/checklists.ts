@@ -245,31 +245,52 @@ export const markChecklistItemNonCompliant = async (auditItemId: string) => {
 };
 
 // Create audit checklist items from template
+// API docs: POST /api/AuditChecklistItems/from-template?auditId={uuid}&deptId={int32}
+// Parameters are query parameters, not body
 export const createAuditChecklistItemsFromTemplate = async (auditId: string, deptId: number) => {
+  // Validate inputs
+  if (!auditId || auditId.trim() === '') {
+    throw new Error('Invalid audit ID: auditId is required and cannot be empty');
+  }
   
-  // Try POST with query params in URL first (as per user's original request)
+  if (!deptId || isNaN(deptId)) {
+    throw new Error('Invalid department ID: deptId is required and must be a number');
+  }
+  
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const trimmedAuditId = auditId.trim();
+  if (!uuidRegex.test(trimmedAuditId)) {
+    console.warn('[createAuditChecklistItemsFromTemplate] auditId may not be a valid UUID:', trimmedAuditId);
+  }
+  
+  // Build URL with query parameters (as per API documentation)
+  const baseUrl = `/AuditChecklistItems/from-template`;
   const params = new URLSearchParams({
-    auditId: auditId,
+    auditId: trimmedAuditId,
     deptId: deptId.toString(),
   });
   
-  const urlWithParams = `/AuditChecklistItems/from-template?${params.toString()}`;
+  const url = `${baseUrl}?${params.toString()}`;
   
-  try {
-    const res = await apiClient.post(urlWithParams, {});
-    return res.data || res;
-  } catch (error: any) {
-    
-    // Fallback: POST with body (PascalCase for .NET)
-    const url = `/AuditChecklistItems/from-template`;
-    const payload = {
-      AuditId: auditId,
-      DeptId: deptId,
-    };
-    
-    const res = await apiClient.post(url, payload);
-    return res.data || res;
-  }
+  console.log('[createAuditChecklistItemsFromTemplate] Calling API with query parameters:', { 
+    url, 
+    auditId: trimmedAuditId, 
+    deptId,
+    fullUrl: url
+  });
+  
+  // POST with empty body (null = empty body like curl -d '')
+  // Parameters in query string, add accept header as per API docs
+  const res = await apiClient.post(url, null, {
+    headers: {
+      'Accept': 'text/plain',
+    },
+  });
+  
+  console.log('[createAuditChecklistItemsFromTemplate] API response:', res);
+  
+  return res.data || res;
 };
 
 // Create audit checklist item

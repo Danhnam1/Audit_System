@@ -6,7 +6,7 @@ import { getAuditScopeDepartmentsByAuditId, getAuditPlans, getSensitiveDepartmen
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { createAuditAssignment, getAuditAssignments, bulkCreateAuditAssignments, getAllAuditAssignmentRequests, approveAuditAssignmentRequest, rejectAuditAssignmentRequest } from '../../../api/auditAssignments';
 import { getDepartmentById } from '../../../api/departments';
-import { createAuditChecklistItemsFromTemplate } from '../../../api/checklists';
+import { createAuditChecklistItemsFromTemplate, getChecklistItemsByDepartment } from '../../../api/checklists';
 import { issueAccessGrant, getAccessGrants } from '../../../api/accessGrant';
 
 import { getUserById } from '../../../api/adminUsers';
@@ -632,18 +632,92 @@ export default function AuditAssignment() {
       }
       
 
-      if (isSensitiveDept) {
-        // Add checklist items from template to this audit and department
-        try {
-       
-          await createAuditChecklistItemsFromTemplate(
+      // Create checklist items from template for ALL departments (not just sensitive)
+      // Check if checklist items already exist before creating (to avoid duplicates)
+      // Do NOT return early; we still need to continue flow (e.g., QR modal for sensitive dept)
+      try {
+        // Validate auditId before calling API
+        if (!selectedAuditId || selectedAuditId.trim() === '') {
+          console.error('[AuditAssignment] Cannot create checklist items: invalid auditId', {
             selectedAuditId,
-            selectedDepartment.deptId
-          );
-        } catch (checklistError: any) {
-          // Do not block assignment if checklist creation fails
+            type: typeof selectedAuditId,
+            length: selectedAuditId?.length
+          });
+          throw new Error('Invalid audit ID');
         }
+        
+        const auditIdToUse = selectedAuditId.trim();
+        const deptIdToUse = selectedDepartment.deptId;
+        let shouldCreate = true;
+        
+        // Check if checklist items already exist for this audit and department
+        try {
+          const existingItems = await getChecklistItemsByDepartment(deptIdToUse);
+          // Filter items that belong to this audit
+          const itemsForThisAudit = existingItems.filter((item: any) => {
+            const itemAuditId = item.auditId || item.AuditId || item.auditPlanId;
+            return String(itemAuditId) === String(auditIdToUse);
+          });
+          
+          if (itemsForThisAudit.length > 0) {
+            console.log('ℹ️ [AuditAssignment] Checklist items already exist for this audit and department, skipping creation:', {
+              auditId: auditIdToUse,
+              deptId: deptIdToUse,
+              existingItemsCount: itemsForThisAudit.length,
+              note: 'Items were likely created during audit plan submission. Skipping to avoid duplicates.'
+            });
+            shouldCreate = false; // skip creation but continue flow
+          }
+        } catch (checkErr: any) {
+          // If check fails, continue with creation (maybe items don't exist)
+          console.warn('[AuditAssignment] Could not check existing checklist items, will attempt to create:', checkErr?.message);
+        }
+        
+        if (shouldCreate) {
+          // Log detailed information for debugging
+          console.log('🔍 [AuditAssignment] Creating checklist items from template:', {
+            auditId: auditIdToUse,
+            auditIdType: typeof auditIdToUse,
+            auditIdLength: auditIdToUse.length,
+            auditIdIsValidUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(auditIdToUse),
+            deptId: deptIdToUse,
+            deptIdType: typeof deptIdToUse,
+            selectedDepartment: {
+              deptId: selectedDepartment.deptId,
+              name: selectedDepartment.name
+            }
+          });
+          
+          const result = await createAuditChecklistItemsFromTemplate(
+            auditIdToUse,
+            deptIdToUse
+          );
+          
+          console.log('✅ [AuditAssignment] Checklist items created successfully:', result);
+        }
+      } catch (checklistError: any) {
+        // Check if error is due to duplicate (items already exist)
+        const errorMessage = checklistError?.response?.data?.message || checklistError?.message || '';
+        const isDuplicateError = errorMessage.toLowerCase().includes('duplicate') || 
+                                 errorMessage.toLowerCase().includes('already exist') ||
+                                 errorMessage.toLowerCase().includes('trùng');
+        
+        if (isDuplicateError) {
+          console.log('ℹ️ [AuditAssignment] Checklist items already exist (duplicate detected), skipping:', errorMessage);
+          // Don't show warning for duplicate - it's expected if items were created earlier
+        } else {
+          // Do not block assignment if checklist creation fails, but log the error
+          console.error('[AuditAssignment] Failed to create checklist items from template:', {
+            error: checklistError,
+            response: checklistError?.response,
+            responseData: checklistError?.response?.data,
+            message: checklistError?.message
+          });
+          toast.warning(`Checklist items creation failed: ${errorMessage || 'Unknown error'}. Assignment will continue.`);
+        }
+      }
 
+      if (isSensitiveDept) {
         // Always show QR modal for sensitive departments.
         // Backend is responsible for calculating a valid QR validity window,
         // even if audit start / end dates are missing.
