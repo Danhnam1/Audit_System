@@ -27,6 +27,7 @@ const SQAStaffReports = () => {
   // Audit list and selected audit
   const [audits, setAudits] = useState<any[]>([]);
   const [selectedAuditId, setSelectedAuditId] = useState<string>('');
+  const selectedAuditIdRef = useRef<string>('');
   const [loadingCharts, setLoadingCharts] = useState(false);
   const [summary, setSummary] = useState<any | null>(null);
   const [showSummary, setShowSummary] = useState(false);
@@ -584,7 +585,17 @@ const SQAStaffReports = () => {
         return isVisibleStatus(auditStatus);
       });
       
-      setAudits(filtered);
+      // Apply preserved statuses to filtered audits before setting state
+      const filteredWithPreservedStatuses = filtered.map(a => {
+        const auditId = String(a.auditId || a.id || a.$id || '').trim();
+        const recentUpdate = recentlyUpdatedStatusesRef.current.get(auditId);
+        if (recentUpdate && (Date.now() - recentUpdate.timestamp < 5000)) {
+          return { ...a, status: recentUpdate.status, state: recentUpdate.status, approvalStatus: recentUpdate.status };
+        }
+        return a;
+      });
+      
+      setAudits(filteredWithPreservedStatuses);
       
       // Initialize file input refs for all audits
       filtered.forEach((a: any) => {
@@ -645,18 +656,9 @@ const SQAStaffReports = () => {
         ? depts.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
         : [];
       setDepartments(deptList);
-      
-      // Also update audits state with preserved statuses
-      setAudits(prev => prev.map(a => {
-        const auditId = String(a.auditId || a.id || a.$id || '').trim();
-        const recentUpdate = recentlyUpdatedStatusesRef.current.get(auditId);
-        if (recentUpdate && (Date.now() - recentUpdate.timestamp < 5000)) {
-          return { ...a, status: recentUpdate.status, state: recentUpdate.status, approvalStatus: recentUpdate.status };
-        }
-        return a;
-      }));
       // Preserve selectedAuditId if it still exists in the filtered list
-      const currentSelectedId = String(selectedAuditId || '').trim();
+      // Use ref to get the latest selectedAuditId value (avoid stale closure)
+      const currentSelectedId = String(selectedAuditIdRef.current || selectedAuditId || '').trim();
       const currentSelectedExists = currentSelectedId && filtered.some((a: any) => {
         const auditId = String(a.auditId || a.id || a.$id || '').trim();
         return auditId === currentSelectedId;
@@ -668,8 +670,11 @@ const SQAStaffReports = () => {
         // Current selected audit no longer exists, select first one or clear
         const firstId = filtered?.[0]?.auditId || filtered?.[0]?.id || filtered?.[0]?.$id || '';
         if (firstId) {
-          setSelectedAuditId(String(firstId));
+          const newId = String(firstId);
+          selectedAuditIdRef.current = newId;
+          setSelectedAuditId(newId);
         } else {
+          selectedAuditIdRef.current = '';
           setSelectedAuditId('');
           setShowSummary(false);
         }
@@ -816,6 +821,11 @@ const SQAStaffReports = () => {
       }
     };
     loadCharts();
+  }, [selectedAuditId]);
+
+  // Sync selectedAuditIdRef with selectedAuditId state
+  useEffect(() => {
+    selectedAuditIdRef.current = selectedAuditId;
   }, [selectedAuditId]);
 
   // Load summary and extension requests when audit changes
@@ -1325,7 +1335,11 @@ const SQAStaffReports = () => {
               {audits.length > 0 ? (
                 <select
                   value={selectedAuditId}
-                  onChange={(e) => setSelectedAuditId(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    selectedAuditIdRef.current = value;
+                    setSelectedAuditId(value);
+                  }}
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 >
                   {audits.map((a: any) => {
@@ -1415,6 +1429,7 @@ const SQAStaffReports = () => {
                             e.stopPropagation();
                             const id = String(audit.auditId);
                             // Mở modal summary để xem chi tiết và submit
+                            selectedAuditIdRef.current = id;
                             setSelectedAuditId(id);
                             setShowSummary(true);
                           }}

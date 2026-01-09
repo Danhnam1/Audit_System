@@ -120,6 +120,17 @@ const ReviewAuditPlans = () => {
 
   const [processingIdStr, setProcessingIdStr] = useState<string | null>(null);
 
+  // Function to clear all filters
+  const clearFilters = () => {
+    setSearchQuery('');
+    setFilterDepartment('');
+    setDateFrom('');
+    setDateTo('');
+  };
+
+  // Check if any filter is active
+  const hasActiveFilters = searchQuery || filterDepartment || dateFrom || dateTo;
+
   // Helper function to check if plan can be approved/rejected
   const canApproveOrReject = (status: string): boolean => {
     const s = String(status || '').toLowerCase();
@@ -252,6 +263,97 @@ const ReviewAuditPlans = () => {
     }
   };
 
+  // Optimized function to refresh only plans (used after approve/reject)
+  const refreshPlansOnly = async () => {
+    try {
+      const plansRes = await getPlansWithDepartments();
+
+      // Build departments map from existing departments state (no need to reload)
+      const deptMap: Record<string, string> = {};
+      departments.forEach((d) => {
+        const name = d.name || '—';
+        const keys = [d.deptId, String(d.deptId), Number(d.deptId)].filter((k) => k !== undefined && k !== null);
+        keys.forEach((k: any) => (deptMap[String(k)] = name));
+      });
+
+      // Build user map from existing users (no need to reload)
+      const usersArr = [...(auditorOptions || []), ...(ownerOptions || [])];
+      const userMap = usersArr.reduce((acc: any, u: any) => {
+        const keys = [u.userId, u.id, u.$id, u.email, u.fullName]
+          .filter(Boolean)
+          .map((k: any) => String(k).toLowerCase());
+        keys.forEach((k: string) => (acc[k] = u));
+        return acc;
+      }, {} as any);
+
+      const plansList = Array.isArray(plansRes) ? plansRes : [];
+      const mapped: AuditPlan[] = plansList.map((p: any) => {
+        const scopeArr = unwrap(p.scopeDepartments || p.scope || p.scopeDepartment);
+        const deptNames = (scopeArr || [])
+          .map((d: any) => d.deptName || deptMap[String(d.deptId ?? d.id ?? d.$id ?? d.departmentId)] || d.name)
+          .filter(Boolean);
+
+        let department = deptNames.length ? deptNames.join(', ') : '—';
+        if (department === '—' && p.department) {
+          department = deptMap[String(p.department)] || String(p.department);
+        }
+
+        // Resolve submitter
+        let createdByUser = p.createdByUser;
+        if (createdByUser && typeof createdByUser === 'string') {
+          const lu = userMap[String(createdByUser).toLowerCase()];
+          createdByUser = lu || { fullName: createdByUser };
+        }
+        if (!createdByUser) {
+          const candidate = p.createdBy || p.submittedBy || p.submittedByUser || p.ownerId || p.createdByUserId;
+          if (candidate) {
+            const lu = userMap[String(candidate).toLowerCase()];
+            createdByUser = lu || { fullName: String(candidate) };
+          }
+        }
+        let submittedBy = (createdByUser && createdByUser.fullName) || p.submittedBy || p.createdBy || 'Unknown';
+
+        return {
+          id: String(p.auditId ?? p.id ?? p.$id ?? ''),
+          planId: String(p.auditId ?? p.id ?? p.$id ?? ''),
+          title: p.title || p.name || 'Untitled',
+          department,
+          scope: p.scope || '—',
+          startDate: p.startDate || p.periodFrom || '',
+          endDate: p.endDate || p.periodTo || '',
+          submittedBy,
+          submittedDate: p.createdAt || p.submittedAt || '',
+          status: String(p.status || p.auditStatus || 'Pending Review') as any,
+          objectives: p.objective ? [String(p.objective)] : Array.isArray(p.objectives) ? p.objectives : [],
+          auditTeam: Array.isArray(p.auditTeams)
+            ? p.auditTeams.map((t: any) => t.fullName || t.name || String(t))
+            : p.auditTeams && Array.isArray(p.auditTeams?.values)
+              ? p.auditTeams.values.map((t: any) => t.fullName || t.name)
+              : [],
+          project: p.project || p.Project || '',
+        };
+      });
+
+      // Keep plans visible after actions
+      const directorRelevant = mapped.filter((m) => {
+        const s = String(m.status || '').toLowerCase();
+        return (
+          s === 'pendingdirectorapproval' ||
+          s === 'pending director approval' ||
+          s === 'approved' ||
+          s === 'approve' ||
+          s === 'inprogress' ||
+          s === 'in progress' ||
+          s === 'rejected'
+        );
+      });
+
+      setAuditPlans(directorRelevant);
+    } catch (err) {
+      console.error('Failed to refresh plans', err);
+    }
+  };
+
   // Fetch plans from backend (prefer plans that were forwarded to Director)
   useEffect(() => {
     let mounted = true;
@@ -378,7 +480,7 @@ const ReviewAuditPlans = () => {
       await rejectPlanContent(String(planId), { comment });
       toast.success('Rejected the Audit Plan');
       // Reload plans to get fresh data
-      await reloadPlans();
+      await refreshPlansOnly();
     } catch (err: any) {
       console.error('Failed to reject plan', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
@@ -585,7 +687,7 @@ const ReviewAuditPlans = () => {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by title, submitted by, or scope..."
+                  placeholder="Search by title"
                   className="w-full px-4 py-2.5 pl-10 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
                 />
                 <svg
@@ -615,7 +717,7 @@ const ReviewAuditPlans = () => {
               </div>
             </div>
             {/* Date Filters */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Date From</label>
                 <input
@@ -635,6 +737,17 @@ const ReviewAuditPlans = () => {
                 />
               </div>
             </div>
+            {/* Clear Filter Button */}
+            {hasActiveFilters && (
+              <div className="flex justify-end">
+                <button
+                  onClick={clearFilters}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Status Tabs */}
@@ -804,7 +917,7 @@ const ReviewAuditPlans = () => {
                 
                 toast.success('Plan approved successfully.');
                 setSelectedDetails(null);
-                await reloadPlans();
+                await refreshPlansOnly();
               } catch (err: any) {
                 console.error('Failed to approve plan', err);
                 const errorMessage = err?.response?.data?.message || err?.message || String(err);
