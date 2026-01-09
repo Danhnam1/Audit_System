@@ -2135,7 +2135,6 @@ const SQAStaffReports = () => {
                   <div className="rounded-lg border border-gray-100 p-4">
                     <div className="flex items-center justify-between mb-4">
                       <div className="text-sm font-semibold text-gray-700">
-                        Overdue, Active & Return Checklist Items
                       </div>
                       <div className="flex items-center gap-2">
                         <select
@@ -2170,8 +2169,8 @@ const SQAStaffReports = () => {
                             <th className="px-3 py-2 text-left text-gray-700">Department</th>
                             <th className="px-3 py-2 text-left text-gray-700">Question</th>
                             <th className="px-3 py-2 text-left text-gray-700">Status</th>
-                            <th className="px-3 py-2 text-left text-gray-700">Due date</th>
-                            <th className="px-3 py-2 text-left text-gray-700">Notes</th>
+                            {/* <th className="px-3 py-2 text-left text-gray-700">Due date</th> */}
+                            {/* <th className="px-3 py-2 text-left text-gray-700">Notes</th> */}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -2208,12 +2207,12 @@ const SQAStaffReports = () => {
                                       {status}
                                     </span>
                                   </td>
-                                  <td className="px-3 py-2 whitespace-nowrap">
+                                  {/* <td className="px-3 py-2 whitespace-nowrap">
                                     {dueDate ? new Date(dueDate).toLocaleDateString() : '—'}
                                   </td>
                                   <td className="px-3 py-2">
                                     <span className="line-clamp-2 text-xs text-gray-700">{notes}</span>
-                                  </td>
+                                  </td> */}
                                 </tr>
                               );
                             })
