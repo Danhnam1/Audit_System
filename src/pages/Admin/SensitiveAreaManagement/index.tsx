@@ -403,28 +403,9 @@ const SensitiveAreaManagement = () => {
               <div className="space-y-1">
                 <p className="text-xs uppercase tracking-[0.25em] text-gray-500 font-semibold">Admin · Safety</p>
                 <h1 className="text-3xl font-bold text-gray-900">Restricted Area Management</h1>
-                <p className="text-sm text-gray-600">Manage sensitive areas by department with quick filters and inline editing.</p>
+                
               </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    const firstUnconfigured = filteredDepartments.find((d: { deptId: number | string; name: string }) => {
-                      const deptId = String(d.deptId);
-                      const config = departmentSensitiveAreas.get(deptId);
-                      return !config || !config.areas || config.areas.length === 0;
-                    });
-                    if (firstUnconfigured) {
-                      handleEdit(String(firstUnconfigured.deptId));
-                    } else {
-                      toast.info('All departments are configured');
-                    }
-                  }}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary-600 text-white text-sm font-semibold shadow-sm hover:bg-primary-700 transition-all duration-150 hover:shadow-md"
-                >
-                  <FaPlus className="w-4 h-4" />
-                  Add Area
-                </button>
-              </div>
+             
             </div>
           </div>
 

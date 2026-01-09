@@ -2038,8 +2038,8 @@ const AuditorLeadReports = () => {
                                     <th className="px-3 py-2 text-left text-gray-700">Department</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Question</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Status</th>
-                                    <th className="px-3 py-2 text-left text-gray-700">Due date</th>
-                                    <th className="px-3 py-2 text-left text-gray-700">Notes</th>
+                                    {/* <th className="px-3 py-2 text-left text-gray-700">Due date</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Notes</th> */}
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -2076,12 +2076,12 @@ const AuditorLeadReports = () => {
                                               {status}
                                             </span>
                                           </td>
-                                          <td className="px-3 py-2 whitespace-nowrap">
+                                          {/* <td className="px-3 py-2 whitespace-nowrap">
                                             {dueDate ? new Date(dueDate).toLocaleDateString() : '—'}
                                           </td>
                                           <td className="px-3 py-2">
                                             <span className="line-clamp-2 text-xs text-gray-700">{notes}</span>
-                                          </td>
+                                          </td> */}
                                         </tr>
                                       );
                                     })
