@@ -665,7 +665,15 @@ export default function AuditorFinalSummaryPage() {
     }
   };
 
-  const alreadySubmitted = Boolean(reportRequest?.status);
+  // Check if report has been submitted
+  // Only consider as submitted if reportRequest exists AND has a valid submitted status
+  // Allow resubmit if status is "Returned" or "Rejected"
+  const alreadySubmitted = Boolean(
+    reportRequest?.status && 
+    (reportRequest.status === 'PendingFirstApproval' || 
+     reportRequest.status === 'PendingSecondApproval' || 
+     reportRequest.status === 'Approved')
+  );
   const canSubmit = selectedAuditId && 
     !loadingReportRequest && 
     !submitting &&

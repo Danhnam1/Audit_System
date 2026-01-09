@@ -1153,13 +1153,9 @@ const SQAStaffReports = () => {
         console.warn('[Reports] Failed to dispatch reportSubmitted event:', err);
       }
       
-      // Reload immediately to get updated data from backend
-      // recentlyUpdatedStatusesRef will preserve the status during reload
+      // Reload to sync with backend - state has already been updated above for immediate UI feedback
+      // reloadReports will merge with current state, so table won't disappear
       await reloadReports();
-      // Clear the ref after reload completes (after a reasonable time)
-      setTimeout(() => {
-        recentlyUpdatedStatusesRef.current.delete(String(selectedAuditId));
-      }, 3000);
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
       
