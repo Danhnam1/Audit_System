@@ -1087,18 +1087,11 @@ export default function AuditAssignment() {
                         key: 'title',
                         header: 'Title',
                         render: (audit) => {
-                          const isConstrained = isTimeConstrained(audit);
+                          // const isConstrained = isTimeConstrained(audit);
                           return (
                             <div className="max-w-[200px] flex items-center gap-2">
                               <p className="text-sm font-semibold text-gray-900 truncate">{audit.title || 'Untitled'}</p>
-                              {isConstrained && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200" title="Time-constrained audit">
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  Urgent
-                                </span>
-                              )}
+                             
                             </div>
                           );
                         },

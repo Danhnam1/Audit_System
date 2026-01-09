@@ -246,7 +246,13 @@ const AuditorLeadReports = () => {
         
         // Debug: Log if audit not found in auditMap
         if (!audit && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
-          // Audit not found in auditMap
+          console.warn(`[LeadReports] Audit not found in auditMap for ReportRequest:`, {
+            auditId,
+            reportRequestId: rr.reportRequestId,
+            status: rr.status,
+            requestedAt: rr.requestedAt,
+            auditMapKeys: Array.from(auditMap.keys()).slice(0, 10), // First 10 keys for debugging
+          });
         }
         
         if (!audit) {
@@ -316,6 +322,15 @@ const AuditorLeadReports = () => {
         const hasAllowedStatus = allowedStatuses.includes(reportStatus);
         
         // Debug: Log reports that are filtered out
+        if (!hasAllowedStatus && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
+          console.warn(`[LeadReports] Report filtered out due to status:`, {
+            title: p.title,
+            auditId: p.auditId,
+            rawStatus: rawStatus,
+            normalizedStatus: reportStatus,
+            allowedStatuses: allowedStatuses
+          });
+        }
         
         if (!hasAllowedStatus) return false;
         
@@ -569,6 +584,51 @@ const AuditorLeadReports = () => {
     });
   }, [audits, adminUsers, revisionRequestsMap]);
 
+  // Map of auditId -> hasReturnedFinding (check if any finding has "return" status)
+  // This is populated when summary is loaded for an audit (when View is clicked)
+  const [auditHasReturnedFinding, setAuditHasReturnedFinding] = useState<Record<string, boolean>>({});
+  
+  // Update map when summary is loaded
+  useEffect(() => {
+    if (!summary || !selectedAuditId) return;
+    
+    const findings: any[] = [];
+    // Extract findings from summary (same logic as allFindings)
+    const byAudit = unwrapValues((summary as any).findingsInAudit);
+    byAudit.forEach((m: any) =>
+      unwrapValues(m?.findings).forEach((f: any) => findings.push(f)),
+    );
+    const months = unwrapValues((summary as any).findingsByMonth);
+    months.forEach((m: any) =>
+      unwrapValues(m?.findings).forEach((f: any) => findings.push(f)),
+    );
+    unwrapValues((summary as any).findings).forEach((f: any) => findings.push(f));
+    unwrapValues((summary as any).byDepartment).forEach((d: any) => {
+      unwrapValues(d?.findings).forEach((f: any) => findings.push(f));
+    });
+    
+    // Check if any finding has "return" status
+    const hasReturned = findings.some((f: any) => {
+      const findingStatus = String(f?.status || '').toLowerCase().trim();
+      return findingStatus === 'return' || 
+             findingStatus === 'returned' || 
+             findingStatus.includes('return');
+    });
+    
+    if (hasReturned) {
+      setAuditHasReturnedFinding(prev => ({
+        ...prev,
+        [selectedAuditId]: true
+      }));
+    } else {
+      setAuditHasReturnedFinding(prev => {
+        const next = { ...prev };
+        delete next[selectedAuditId];
+        return next;
+      });
+    }
+  }, [summary, selectedAuditId]);
+
   const filteredRows = useMemo(() => {
     let list = rows;
     if (statusFilter !== 'all') {
@@ -636,6 +696,55 @@ const AuditorLeadReports = () => {
 
   const handleApprove = async () => {
     if (!approveAuditId) return;
+    
+    // Check if audit has any finding with "return" status
+    // First check cached map, then load summary if needed
+    let hasReturnedFinding = auditHasReturnedFinding[approveAuditId];
+    
+    if (hasReturnedFinding === undefined) {
+      // Load summary to check findings if not already cached
+      try {
+        const auditSummary = await getAuditSummary(approveAuditId);
+        const findings: any[] = [];
+        // Extract findings from summary
+        const byAudit = unwrapValues((auditSummary as any).findingsInAudit);
+        byAudit.forEach((m: any) =>
+          unwrapValues(m?.findings).forEach((f: any) => findings.push(f)),
+        );
+        const months = unwrapValues((auditSummary as any).findingsByMonth);
+        months.forEach((m: any) =>
+          unwrapValues(m?.findings).forEach((f: any) => findings.push(f)),
+        );
+        unwrapValues((auditSummary as any).findings).forEach((f: any) => findings.push(f));
+        unwrapValues((auditSummary as any).byDepartment).forEach((d: any) => {
+          unwrapValues(d?.findings).forEach((f: any) => findings.push(f));
+        });
+        
+        // Check if any finding has "return" status
+        hasReturnedFinding = findings.some((f: any) => {
+          const findingStatus = String(f?.status || '').toLowerCase().trim();
+          return findingStatus === 'return' || 
+                 findingStatus === 'returned' || 
+                 findingStatus.includes('return');
+        });
+        
+        // Cache the result
+        setAuditHasReturnedFinding(prev => ({
+          ...prev,
+          [approveAuditId]: hasReturnedFinding
+        }));
+      } catch (err) {
+        console.warn('Failed to load summary to check findings:', err);
+        // Continue with approve if we can't check (fail open)
+        hasReturnedFinding = false;
+      }
+    }
+    
+    if (hasReturnedFinding) {
+      toast.error('Cannot approve audit report when it has findings with Return status');
+      return;
+    }
+    
     setActionLoading(approveAuditId);
     setActionMsg(null);
     try {
@@ -1598,6 +1707,7 @@ const AuditorLeadReports = () => {
           getStatusColor={getStatusColor}
           reportSearch={reportSearch}
           setReportSearch={setReportSearch}
+          auditHasReturnedFinding={auditHasReturnedFinding}
         />
 
         {/* View Details Modal */}

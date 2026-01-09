@@ -131,16 +131,21 @@ const AdminUserManagement = () => {
     try {
       // If editingUserId is set, perform update (PUT) instead of register
       if (editingUserId) {
-        const updatePayload = {
-          fullName: formData.fullName,
-          roleName: formData.role,
-          // Send null instead of 0 to indicate no department; backend typically treats null as absence
-          deptId: formData.deptId ? Number(formData.deptId) : null,
-          isActive: true,
-          status: 'Active'
-        }
+        // Backend expects multipart/form-data with PascalCase keys
+        const updateFormData = new FormData()
+        updateFormData.append('FullName', formData.fullName)
+        updateFormData.append('RoleName', formData.role)
+        // Send empty string when no department to align with swagger
+        updateFormData.append('DeptId', formData.deptId ? String(Number(formData.deptId)) : '')
+        updateFormData.append('IsActive', 'true')
+        updateFormData.append('Status', 'Active')
+        // avatarFile optional: send an empty blob so backend accepts "required" field
+        const emptyAvatar = new Blob([], { type: 'application/octet-stream' })
+        updateFormData.append('avatarFile', emptyAvatar, '')
 
-        await apiClient.put(`/admin/AdminUsers/${editingUserId}`, updatePayload)
+        await apiClient.put(`/admin/AdminUsers/${editingUserId}`, updateFormData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        } as any)
 
         toast.success('Edit user sucessfully');
         // refresh list and reset
