@@ -137,6 +137,12 @@ const DepartmentChecklist = () => {
   const [verifiedActionsCount, setVerifiedActionsCount] = useState(0);
   // const [processingActionId, setProcessingActionId] = useState<string | null>(null);
   const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
+  // Control visibility of action UI (View Actions, modal)
+  const showActionsUI = true;
+  // Hide quick proposal buttons (mark compliant / non-compliant)
+  const showProposalButtons = false;
+  // Hide Active actions inside the modal (only show non-active)
+  const visibleActions = (findingActions || []).filter(a => (a.status || '').toLowerCase() !== 'active');
   
   // Disagreed tab state
   const [disagreedFindings, setDisagreedFindings] = useState<Finding[]>([]);
@@ -1688,7 +1694,7 @@ const DepartmentChecklist = () => {
                                   </svg>
                                 </button>
                               </div>
-                            ) : (
+                            ) : showProposalButtons ? (
                               <>
                                 {/* Green Checkmark */}
                                 <button
@@ -1724,7 +1730,7 @@ const DepartmentChecklist = () => {
                                   </svg>
                                 </button>
                               </>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                         </div>
@@ -1762,8 +1768,8 @@ const DepartmentChecklist = () => {
                     {myFindings.map((finding) => (
                       <div
                         key={finding.findingId}
-                        className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 hover:bg-gray-50 transition-colors cursor-pointer"
-                        onClick={() => handleViewFindingActions(finding)}
+                        className={`px-3 sm:px-4 md:px-6 py-3 sm:py-4 hover:bg-gray-50 transition-colors ${showActionsUI ? 'cursor-pointer' : ''}`}
+                        onClick={showActionsUI ? () => handleViewFindingActions(finding) : undefined}
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                           <div className="flex-1 min-w-0">
@@ -1849,15 +1855,17 @@ const DepartmentChecklist = () => {
                             >
                               Detail Finding
                             </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleViewFindingActions(finding);
-                              }}
-                              className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
-                            >
-                              View Actions
-                            </button>
+                            {showActionsUI && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewFindingActions(finding);
+                                }}
+                                className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+                              >
+                                View Actions
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1898,15 +1906,18 @@ const DepartmentChecklist = () => {
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <h3 className="text-sm sm:text-base font-medium text-gray-900">
                                 {finding.title}
                               </h3>
                               <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
                                 Witness Disagreed
                               </span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(finding.status || 'WitnessDisagreed')}`}>
+                                {finding.status || 'WitnessDisagreed'}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-6 mt-2">
+                            <div className="flex items-center gap-6 mt-2 flex-wrap">
                               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                                 finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
                                   ? 'bg-red-100 text-red-700'
@@ -1941,7 +1952,7 @@ const DepartmentChecklist = () => {
       </div>
 
       {/* Actions Modal */}
-      {showActionsModal && selectedFindingForActions && (
+      {showActionsUI && showActionsModal && selectedFindingForActions && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div
             className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
@@ -1997,13 +2008,21 @@ const DepartmentChecklist = () => {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {findingActions.map((action) => (
+                    {visibleActions.length === 0 && (
+                      <div className="text-center py-8 text-gray-500">Không có hành động đang mở.</div>
+                    )}
+                    {visibleActions.map((action) => (
                       <div
                         key={action.actionId}
-                        className="bg-white border-2 border-blue-200 rounded-xl p-5 hover:shadow-xl hover:border-blue-400 transition-all duration-200"
+                        className="bg-white border border-blue-200 rounded-xl p-4 hover:shadow-md hover:border-blue-400 transition-all duration-200"
                       >
-                        <div className="flex items-start justify-between mb-3">
-                          <h3 className="text-base font-semibold text-gray-900 flex-1 mr-3">{action.title}</h3>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-base font-semibold text-gray-900">{action.title}</h3>
+                            {action.dueDate && (
+                              <p className="text-xs text-gray-500 mt-1">Due: {new Date(action.dueDate).toLocaleDateString()}</p>
+                            )}
+                          </div>
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${action.status?.toLowerCase() === 'verified'
                               ? 'bg-green-100 text-green-700'
                               : action.status?.toLowerCase() === 'completed'
@@ -2015,51 +2034,21 @@ const DepartmentChecklist = () => {
                             {action.status || 'N/A'}
                           </span>
                         </div>
-                        <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
-                          <div className="flex items-center gap-1">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            <span className="font-medium">Progress: {action.progressPercent || 0}%</span>
-                          </div>
-                          {action.dueDate && (
-                            <div className="flex items-center gap-1">
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                              </svg>
-                              <span>Due: {new Date(action.dueDate).toLocaleDateString()}</span>
-                            </div>
-                          )}
-                        </div>
-                        {action.progressPercent !== undefined && (
-                          <div className="mb-4">
-                            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
-                              <div
-                                className="bg-blue-600 h-3 rounded-full transition-all duration-500 shadow-md relative overflow-hidden"
-                                style={{ width: `${action.progressPercent}%` }}
-                              >
-                                <div className="absolute inset-0 bg-white opacity-20 animate-pulse"></div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-end gap-2 pt-3 border-t-2 border-blue-100">
+                        <div className="flex items-center justify-end gap-2 pt-3">
                           <button
                             onClick={() => {
                               setSelectedActionId(action.actionId);
                               setSelectedActionFindingId(action.findingId);
                               
-                              // If status is Verified, open review modal with approve/reject buttons
-                              // Otherwise, open read-only details modal
                               if (action.status?.toLowerCase() === 'verified') {
-                                setShowActionDetailModal(true); // Review modal (with approve/reject)
+                                setShowActionDetailModal(true);
                               } else {
-                                setShowActionDetailsModal(true); // Read-only modal
+                                setShowActionDetailsModal(true);
                               }
                             }}
-                            className="px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all duration-200 shadow-md hover:shadow-xl hover:scale-105 flex items-center gap-2 group"
+                            className="px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all duration-200 shadow-sm flex items-center gap-2"
                           >
-                            <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>

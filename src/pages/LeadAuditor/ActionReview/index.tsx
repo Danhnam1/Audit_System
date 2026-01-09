@@ -63,6 +63,10 @@ const ActionReview = () => {
     current: number;
     currentAction: string;
   } | null>(null);
+  // Toggle between regular findings and WitnessDisagreed findings
+  const [showDisagreedTab, setShowDisagreedTab] = useState(false);
+  const [disagreedCount, setDisagreedCount] = useState(0);
+  const [regularCount, setRegularCount] = useState(0);
 
   // Use centralized badge color functions
   const getStatusBadgeColor = (status: string) => {
@@ -283,12 +287,23 @@ const ActionReview = () => {
     try {
       const findingsData = await getFindingsByDepartment(deptId);
       // Filter findings by selectedAuditId
-      const filteredFindings = selectedAuditId 
+      let filteredFindings = selectedAuditId 
         ? findingsData.filter((finding: Finding) => {
             const findingAuditId = finding.auditId || finding.audit?.auditId || '';
             return String(findingAuditId) === String(selectedAuditId);
           })
         : findingsData;
+
+      const disagreed = filteredFindings.filter((f: Finding) => (f.status || '').toLowerCase().trim() === 'witnessdisagreed');
+      const normal = filteredFindings.filter((f: Finding) => (f.status || '').toLowerCase().trim() !== 'witnessdisagreed');
+      setDisagreedCount(disagreed.length);
+      setRegularCount(normal.length);
+
+      // Apply WitnessDisagreed tab filter
+      filteredFindings = filteredFindings.filter((finding: Finding) => {
+        const statusLower = (finding.status || '').toLowerCase().trim();
+        return showDisagreedTab ? statusLower === 'witnessdisagreed' : statusLower !== 'witnessdisagreed';
+      });
       
       // Load actions for each finding to check for "Approved" status
       const actionsMap: Record<string, Action[]> = {};
@@ -533,6 +548,7 @@ const ActionReview = () => {
                   ? 'Select a finding to view its actions'
                   : 'Select a department to view its findings'}
               </p>
+            
             </div>
           </div>
         )}
@@ -710,69 +726,107 @@ const ActionReview = () => {
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
                 <p className="text-gray-600">Loading findings...</p>
               </div>
-            ) : findings.length === 0 ? (
-              <div className="p-8 text-center">
-                <p className="text-gray-500">No findings found for this department</p>
-              </div>
             ) : (
-              <div className="divide-y divide-gray-200">
-                {findings.map((finding) => (
-                  <div
-                    key={finding.findingId}
-                  className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
->
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-semibold text-gray-900 mb-2">
-                          {finding.title}
-                        </h3>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            finding. severity?. toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
-                              ? 'bg-red-100 text-red-700'
-                              : finding.severity?.toLowerCase() === 'medium' || finding.severity?.toLowerCase() === 'normal'
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-green-100 text-green-700'
-                          }`}>
-                            {finding.severity || 'N/A'}
-                                                  
-                          </span>
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
-                            {getDisplayStatus(finding) || 'No status'}
-                          </span>
-                        
-                          {hasApprovedAction(finding.findingId) && (
-                            <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
-                              Review
-                            </span>
-                          )}
+              <>
+                <div className="px-4 sm:px-6 py-3 border-b border-gray-200 bg-gray-50 flex items-center gap-3">
+                  <button
+                    onClick={() => setShowDisagreedTab(false)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                      showDisagreedTab
+                        ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                        : 'border-primary-500 text-primary-600 bg-primary-50'
+                    }`}
+                  >
+                    Findings
+                    <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold rounded-full bg-white border border-primary-200 text-primary-600">
+                      {regularCount}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setShowDisagreedTab(true)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                      showDisagreedTab
+                        ? 'border-primary-500 text-primary-600 bg-primary-50'
+                        : 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    Witness Disagreed
+                    <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-[10px] font-bold rounded-full bg-white border border-red-200 text-red-600">
+                      {disagreedCount}
+                    </span>
+                  </button>
+                </div>
+
+                {findings.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500">
+                      {showDisagreedTab ? 'No Witness Disagreed findings' : 'No findings found for this department'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-200">
+                    {findings.map((finding) => (
+                      <div
+                        key={finding.findingId}
+                        className="px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-base font-semibold text-gray-900 mb-2">
+                              {finding.title}
+                            </h3>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
+                                  ? 'bg-red-100 text-red-700'
+                                  : finding.severity?.toLowerCase() === 'medium' || finding.severity?.toLowerCase() === 'normal'
+                                  ? 'bg-yellow-100 text-yellow-700'
+                                  : 'bg-green-100 text-green-700'
+                              }`}>
+                                {finding.severity || 'N/A'}
+                              </span>
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
+                                {getDisplayStatus(finding) || 'No status'}
+                              </span>
+                              {showDisagreedTab && (
+                                <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">
+                                  Witness Disagreed
+                                </span>
+                              )}
+                              {hasApprovedAction(finding.findingId) && (
+                                <span className="px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">
+                                  Review
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedFindingForDetail(finding.findingId);
+                                setShowFindingDetailModal(true);
+                              }}
+                              className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
+                            >
+                              Detail
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleFindingSelect(finding.findingId);
+                              }}
+                              className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors whitespace-nowrap"
+                            >
+                              View Actions
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedFindingForDetail(finding.findingId);
-                            setShowFindingDetailModal(true);
-                          }}
-                          className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
-                        >
-                          Detail
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleFindingSelect(finding.findingId);
-                          }}
-                          className="px-3 py-1.5 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors whitespace-nowrap"
-                        >
-                          View Actions
-                        </button>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div> ) : (
           // Level 4: Actions

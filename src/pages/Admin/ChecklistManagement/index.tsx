@@ -1097,10 +1097,10 @@ const AdminChecklistManagement = () => {
                            onChange={(e) => setItemForm({ ...itemForm, answerType: e.target.value })}
                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                          >
-                           <option value="Text">Text</option>
+                           {/* <option value="Text">Text</option> */}
                            <option value="Yes/No">Yes/No</option>
-                           <option value="Number">Number</option>
-                           <option value="Date">Date</option>
+                           {/* <option value="Number">Number</option> */}
+                           {/* <option value="Date">Date</option> */}
                          </select>
                        </div>
                        <div>
