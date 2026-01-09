@@ -114,3 +114,80 @@ export const getReportRequestByAuditId = async (auditId: string): Promise<ViewRe
   }
 };
 
+// Get report request from submitAudit API (Reports page)
+// Filter by status values that come from submitAudit: "Pending", "Approved", "Returned"
+export const getReportRequestFromSubmitAudit = async (auditId: string): Promise<ViewReportRequest | null> => {
+  try {
+    const allRequests = await getAllReportRequests();
+    // Filter ReportRequests for this auditId with statuses from submitAudit API
+    const submitAuditStatuses = ['Pending', 'Approved', 'Returned', 'Rejected'];
+    const matchingRequests = allRequests.filter(r => {
+      if (r.auditId !== auditId) return false;
+      const status = String(r.status || '').trim();
+      return submitAuditStatuses.some(s => status === s || status.toLowerCase() === s.toLowerCase());
+    });
+    
+    if (matchingRequests.length === 0) {
+      return null;
+    }
+    
+    // Return the LATEST one
+    if (matchingRequests.length === 1) {
+      return matchingRequests[0];
+    }
+    
+    const latest = matchingRequests.reduce((latest, current) => {
+      const latestCompletedAt = latest.completedAt ? new Date(latest.completedAt).getTime() : 0;
+      const currentCompletedAt = current.completedAt ? new Date(current.completedAt).getTime() : 0;
+      const latestRequestedAt = latest.requestedAt ? new Date(latest.requestedAt).getTime() : 0;
+      const currentRequestedAt = current.requestedAt ? new Date(current.requestedAt).getTime() : 0;
+      const latestLatest = Math.max(latestCompletedAt, latestRequestedAt);
+      const currentLatest = Math.max(currentCompletedAt, currentRequestedAt);
+      return currentLatest >= latestLatest ? current : latest;
+    });
+    
+    return latest;
+  } catch (error) {
+    console.error('Failed to get report request from submitAudit:', error);
+    return null;
+  }
+};
+
+// Get report request from submitFinalReport API (Final Summary page)
+// Filter by status values that come from submitFinalReport: "PendingFirstApproval", "PendingSecondApproval", "Approved", "Rejected"
+export const getReportRequestFromFinalSubmit = async (auditId: string): Promise<ViewReportRequest | null> => {
+  try {
+    const allRequests = await getAllReportRequests();
+    // Filter ReportRequests for this auditId with statuses from submitFinalReport API
+    const finalSubmitStatuses = ['PendingFirstApproval', 'PendingSecondApproval', 'Approved', 'Rejected', 'Returned'];
+    const matchingRequests = allRequests.filter(r => {
+      if (r.auditId !== auditId) return false;
+      const status = String(r.status || '').trim();
+      return finalSubmitStatuses.some(s => status === s || status.toLowerCase() === s.toLowerCase());
+    });
+    
+    if (matchingRequests.length === 0) {
+      return null;
+    }
+    
+    // Return the LATEST one
+    if (matchingRequests.length === 1) {
+      return matchingRequests[0];
+    }
+    
+    const latest = matchingRequests.reduce((latest, current) => {
+      const latestCompletedAt = latest.completedAt ? new Date(latest.completedAt).getTime() : 0;
+      const currentCompletedAt = current.completedAt ? new Date(current.completedAt).getTime() : 0;
+      const latestRequestedAt = latest.requestedAt ? new Date(latest.requestedAt).getTime() : 0;
+      const currentRequestedAt = current.requestedAt ? new Date(current.requestedAt).getTime() : 0;
+      const latestLatest = Math.max(latestCompletedAt, latestRequestedAt);
+      const currentLatest = Math.max(currentCompletedAt, currentRequestedAt);
+      return currentLatest >= latestLatest ? current : latest;
+    });
+    
+    return latest;
+  } catch (error) {
+    console.error('Failed to get report request from final submit:', error);
+    return null;
+  }
+};

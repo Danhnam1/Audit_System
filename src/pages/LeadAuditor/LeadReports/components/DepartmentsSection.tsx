@@ -1,5 +1,6 @@
 import React from 'react';
 import { unwrap } from '../../../../utils/normalize';
+import { getSeverityColor } from '../../../../constants/statusColors';
 
 interface DeptEntry { key: string; name: string; count: number; deptId?: any }
 
@@ -118,7 +119,7 @@ const DepartmentsSection: React.FC<Props> = ({
                     >
                       <td className="px-4 py-2 text-sm text-gray-900 font-medium">{f?.title || '—'}</td>
                       <td className="px-4 py-2 text-sm">
-                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${String(f?.severity||'').toLowerCase().includes('major') ? 'bg-amber-100 text-amber-700' : String(f?.severity||'').toLowerCase().includes('minor') ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{f?.severity || '—'}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getSeverityColor(f?.severity || '')}`}>{f?.severity || '—'}</span>
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{created}</td>
                       <td className="px-4 py-2 text-sm text-gray-700 whitespace-nowrap">{deadline}</td>

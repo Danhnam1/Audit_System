@@ -39,12 +39,19 @@ const AuditorLeadReports = () => {
   const [selectedAuditId, setSelectedAuditId] = useState<string>('');
   const [summary, setSummary] = useState<any | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'departments' | 'summary' | 'checklist'>('departments');
+  const [activeTab, setActiveTab] = useState<'departmentsSummary' | 'checklist'>('departmentsSummary');
   const [auditChecklistItems, setAuditChecklistItems] = useState<any[] | null>(null);
   const [overdueDeptFilter, setOverdueDeptFilter] = useState<string>('all');
   const [compliantStatusFilter, setCompliantStatusFilter] = useState<'all' | 'compliant' | 'noncompliant'>('all');
   const [compliantDeptFilter, setCompliantDeptFilter] = useState<string>('all');
   const [selectedDeptKey, setSelectedDeptKey] = useState<string>('');
+  // Summary tab states (for Finding, No Findings, Checklist items tabs)
+  const [summaryTab, setSummaryTab] = useState<'finding' | 'nofindings' | 'checklistitems'>('finding');
+  // Filters for No Findings tab
+  const [nofindingsDeptFilter, setNofindingsDeptFilter] = useState<string>('all');
+  // Filters for Checklist items tab
+  const [checklistitemsStatusFilter, setChecklistitemsStatusFilter] = useState<'all' | 'overdue' | 'active' | 'return'>('all');
+  const [checklistitemsDeptFilter, setChecklistitemsDeptFilter] = useState<string>('all');
   const lastAuditIdRef = useRef<string>('');
   const [selectedFindingId, setSelectedFindingId] = useState<string>('');
   const [showFindingModal, setShowFindingModal] = useState(false);
@@ -465,7 +472,7 @@ const AuditorLeadReports = () => {
         setSummary(sum);
         setRevisionRequests(requests);
         setAuditChecklistItems(Array.isArray(checklistItems) ? checklistItems : []);
-        setActiveTab('departments');
+        setActiveTab('departmentsSummary');
         if (lastAuditIdRef.current !== selectedAuditId) {
           setSelectedDeptKey('');
           setSelectedFindingId('');
@@ -1607,6 +1614,72 @@ const AuditorLeadReports = () => {
     return Array.from(deptSet).sort();
   }, [auditChecklistItems]);
 
+  // Compliant items only (for "No Findings" tab)
+  const compliantItemsOnly = useMemo(() => {
+    if (!auditChecklistItems) return [];
+    let filtered = auditChecklistItems.filter((item: any) => {
+      const rawStatus = String(item.status || '').toLowerCase();
+      // Check noncompliant first (because "noncompliant" contains "compliant")
+      const isNonCompliant = rawStatus === 'noncompliant' || rawStatus === 'non-compliant' || rawStatus.includes('noncompliant') || rawStatus.includes('non-compliant');
+      // Then check compliant (exact match or contains, but not if it's noncompliant)
+      const isCompliant = !isNonCompliant && (rawStatus === 'compliant' || rawStatus.includes('compliant'));
+      return isCompliant;
+    });
+    
+    // Filter by department
+    if (nofindingsDeptFilter !== 'all') {
+      filtered = filtered.filter((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        return String(deptName).trim() === nofindingsDeptFilter;
+      });
+    }
+    
+    return filtered;
+  }, [auditChecklistItems, nofindingsDeptFilter]);
+
+  // Overdue + Active + Return items (for "Checklist items" tab)
+  const overdueAndActiveItems = useMemo(() => {
+    if (!auditChecklistItems) return [];
+    let filtered = auditChecklistItems.filter((item: any) => {
+      const rawStatus = String(item.status || '').toLowerCase().trim();
+      const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
+      const isActive = rawStatus === 'active';
+      const isReturn = rawStatus === 'return' || rawStatus === 'returned' || rawStatus.includes('return');
+      
+      // Filter by status
+      if (checklistitemsStatusFilter === 'all') {
+        return isOverdue || isActive || isReturn;
+      } else if (checklistitemsStatusFilter === 'overdue') {
+        return isOverdue;
+      } else if (checklistitemsStatusFilter === 'active') {
+        return isActive;
+      } else if (checklistitemsStatusFilter === 'return') {
+        return isReturn;
+      }
+      return false;
+    });
+    
+    // Filter by department
+    if (checklistitemsDeptFilter !== 'all') {
+      filtered = filtered.filter((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        return String(deptName).trim() === checklistitemsDeptFilter;
+      });
+    }
+    
+    return filtered;
+  }, [auditChecklistItems, checklistitemsStatusFilter, checklistitemsDeptFilter]);
+
   // Filtered overdue items
   const filteredOverdueItems = useMemo(() => {
     if (!checklistOverview.overdueItems) return [];
@@ -1671,7 +1744,7 @@ const AuditorLeadReports = () => {
 
   useEffect(() => {
     if (!showViewModal) return;
-    if (activeTab !== 'departments') return;
+    if (activeTab !== 'departmentsSummary') return;
     if (selectedDeptKey) return;
     if (departmentEntries.length > 0) {
       setSelectedDeptKey(departmentEntries[0].key);
@@ -1708,7 +1781,7 @@ const AuditorLeadReports = () => {
           getStatusColor={getStatusColor}
           reportSearch={reportSearch}
           setReportSearch={setReportSearch}
-          auditHasReturnedFinding={auditHasReturnedFinding}
+          // auditHasReturnedFinding={auditHasReturnedFinding}
         />
 
         {/* View Details Modal */}
@@ -1740,15 +1813,14 @@ const AuditorLeadReports = () => {
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setActiveTab('departments')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'departments' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                    >Departments</button>
+                      onClick={() => setActiveTab('departmentsSummary')}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'departmentsSummary' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    >Departments & Summary</button>
                     <button
-                      onClick={() => setActiveTab('summary')}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'summary' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-                    >Summary</button>
-                    <button
-                      onClick={() => setActiveTab('checklist')}
+                      onClick={() => {
+                        setActiveTab('checklist');
+                        setSummaryTab('nofindings');
+                      }}
                       className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'checklist' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                     >Checklist</button>
                   </div>
@@ -1778,226 +1850,255 @@ const AuditorLeadReports = () => {
                     );
                   })()}
                 </div>
-                {activeTab === 'departments' ? (
-                  <DepartmentsSection
-                    departmentEntries={departmentEntries}
-                    selectedDeptKey={selectedDeptKey}
-                    setSelectedDeptKey={setSelectedDeptKey}
-                    findings={findingsForSelectedDept}
-                    onViewFinding={(finding) => {
-                      setSelectedFindingId(String(finding?.findingId || ''));
-                      setShowFindingModal(true);
-                    }}
-                    findingsSearch={findingsSearch}
-                    setFindingsSearch={setFindingsSearch}
-                    findingsSeverity={findingsSeverity}
-                    setFindingsSeverity={setFindingsSeverity}
-                    onViewAttachments={(attachments, findingTitle) => {
-                      setSelectedAttachments(attachments);
-                      setSelectedFindingTitle(findingTitle);
-                      setShowAttachmentsModal(true);
-                    }}
-                  />
-                ) : activeTab === 'summary' ? (
-                  <SummaryTab
-                    summary={summary}
-                    severityEntries={severityEntries}
-                    severityTotal={severityTotal}
-                  />
+                {activeTab === 'departmentsSummary' ? (
+                  <>
+                   <div className="mb-8 pt-8 border-t border-gray-200">
+                      <SummaryTab
+                        summary={summary}
+                        severityEntries={severityEntries}
+                        severityTotal={severityTotal}
+                      />
+                    </div>
+                    <DepartmentsSection
+                      departmentEntries={departmentEntries}
+                      selectedDeptKey={selectedDeptKey}
+                      setSelectedDeptKey={setSelectedDeptKey}
+                      findings={findingsForSelectedDept}
+                      onViewFinding={(finding) => {
+                        setSelectedFindingId(String(finding?.findingId || ''));
+                        setShowFindingModal(true);
+                      }}
+                      findingsSearch={findingsSearch}
+                      setFindingsSearch={setFindingsSearch}
+                      findingsSeverity={findingsSeverity}
+                      setFindingsSeverity={setFindingsSeverity}
+                      onViewAttachments={(attachments, findingTitle) => {
+                        setSelectedAttachments(attachments);
+                        setSelectedFindingTitle(findingTitle);
+                        setShowAttachmentsModal(true);
+                      }}
+                    />
+                   
+                  </>
                 ) : activeTab === 'checklist' ? (
                   <>
-                    {/* Checklist KPI */}
-                    <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <div className="text-xs text-gray-600 mb-1">Total Checklist Items</div>
-                        <div className="text-2xl font-bold text-gray-800">{checklistOverview.totalOverdue + checklistOverview.totalCompliant}</div>
-                      </div>
-                      <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <div className="text-xs text-gray-600 mb-1">Checklist Overdue</div>
-                        <div className="text-2xl font-bold text-red-600">{checklistOverview.totalOverdue}</div>
-                      </div>
-                      {/* <div className="bg-white rounded-lg border border-gray-200 p-4">
-                        <div className="text-xs text-gray-600 mb-1">Total checklist complaint/non-compliant</div>
-                        <div className="text-2xl font-bold text-emerald-600">{checklistOverview.totalCompliant}</div>
-                      </div> */}
+                    {/* Tabs: Finding | No Findings | Checklist items */}
+                    <div className="border-b border-gray-100 mb-4">
+                      <nav className="flex gap-4 text-sm">
+                        
+                        <button
+                          type="button"
+                          onClick={() => setSummaryTab('nofindings')}
+                          className={`pb-2 border-b-2 transition-colors ${
+                            summaryTab === 'nofindings'
+                              ? 'border-primary-600 text-primary-700 font-semibold'
+                              : 'border-transparent text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          No Findings
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSummaryTab('checklistitems')}
+                          className={`pb-2 border-b-2 transition-colors ${
+                            summaryTab === 'checklistitems'
+                              ? 'border-primary-600 text-primary-700 font-semibold'
+                              : 'border-transparent text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          Checklist items
+                        </button>
+                      </nav>
                     </div>
 
-                    {/* Overdue checklist items table */}
-                    <div className="mt-8 pt-4 border-t border-gray-100">
-                      <div className="rounded-lg border border-gray-100 p-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="text-sm font-semibold text-gray-700">
-                            Overdue Checklist Items Details
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={overdueDeptFilter}
-                              onChange={(e) => setOverdueDeptFilter(e.target.value)}
-                              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                            >
-                              <option value="all">All Departments</option>
-                              {checklistDepartments.map((dept) => (
-                                <option key={dept} value={dept}>
-                                  {dept}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                        <div className="overflow-x-auto max-h-72">
-                          <table className="min-w-full text-xs">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-3 py-2 text-left text-gray-700">#</th>
-                                <th className="px-3 py-2 text-left text-gray-700">Department</th>
-                                <th className="px-3 py-2 text-left text-gray-700">Question</th>
-                                <th className="px-3 py-2 text-left text-gray-700">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {filteredOverdueItems.length > 0 ? (
-                                filteredOverdueItems.map((item: any, idx: number) => {
-                                  const deptName =
-                                    item.section ||
-                                    item.departmentName ||
-                                    item.deptName ||
-                                    item.department ||
-                                    '—';
-                                  const question =
-                                    item.questionTextSnapshot ||
-                                    item.questionText ||
-                                    item.title ||
-                                    '—';
-                                  const status = item.status || '—';
+                    
 
-                                  return (
-                                    <tr
-                                      key={item.auditChecklistItemId || item.itemId || idx}
-                                      className="hover:bg-gray-50"
-                                    >
-                                      <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
-                                      <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
-                                      <td className="px-3 py-2">
-                                        <span className="line-clamp-2">{question}</span>
-                                      </td>
-                                      <td className="px-3 py-2 whitespace-nowrap">
-                                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 border border-red-200">
-                                          {status}
-                                        </span>
+                    {/* TAB 2: No Findings (Compliant items only) */}
+                    {summaryTab === 'nofindings' && (
+                      <>
+                        <div className="mt-4">
+                          <div className="rounded-lg border border-gray-100 p-4">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="text-sm font-semibold text-gray-700">
+                                Compliant Checklist Items
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={nofindingsDeptFilter}
+                                  onChange={(e) => setNofindingsDeptFilter(e.target.value)}
+                                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                >
+                                  <option value="all">All Departments</option>
+                                  {checklistDepartments.map((dept) => (
+                                    <option key={dept} value={dept}>
+                                      {dept}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="overflow-x-auto max-h-72">
+                              <table className="min-w-full text-xs">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left text-gray-700">#</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Department</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {compliantItemsOnly.length > 0 ? (
+                                    compliantItemsOnly.map((item: any, idx: number) => {
+                                      const deptName =
+                                        item.section ||
+                                        item.departmentName ||
+                                        item.deptName ||
+                                        item.department ||
+                                        '—';
+                                      const question =
+                                        item.questionTextSnapshot ||
+                                        item.questionText ||
+                                        item.title ||
+                                        '—';
+                                      const status = item.status || '—';
+                                      const statusColorClass = getStatusColor(status);
+                                      return (
+                                        <tr
+                                          key={item.auditChecklistItemId || item.itemId || idx}
+                                          className="hover:bg-gray-50"
+                                        >
+                                          <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
+                                          <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
+                                          <td className="px-3 py-2">
+                                            <span className="line-clamp-2">{question}</span>
+                                          </td>
+                                          <td className="px-3 py-2 whitespace-nowrap">
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
+                                              {status}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })
+                                  ) : (
+                                    <tr>
+                                      <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                                        No compliant checklist items.
                                       </td>
                                     </tr>
-                                  );
-                                })
-                              ) : (
-                                <tr>
-                                  <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
-                                    No overdue checklist items.
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Compliant checklist items table */}
-                    <div className="mt-8 pt-4 border-t border-gray-100">
-                      <div className="rounded-lg border border-gray-100 p-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="text-sm font-semibold text-gray-700">
-                            Compliant Checklist Items Details
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={compliantStatusFilter}
-                              onChange={(e) => setCompliantStatusFilter(e.target.value as 'all' | 'compliant' | 'noncompliant')}
-                              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                            >
-                              <option value="all">All Status</option>
-                              <option value="compliant">Compliant</option>
-                              <option value="noncompliant">Non-Compliant</option>
-                            </select>
-                            <select
-                              value={compliantDeptFilter}
-                              onChange={(e) => setCompliantDeptFilter(e.target.value)}
-                              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                            >
-                              <option value="all">All Departments</option>
-                              {checklistDepartments.map((dept) => (
-                                <option key={dept} value={dept}>
-                                  {dept}
-                                </option>
-                              ))}
-                            </select>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         </div>
-                        <div className="overflow-x-auto max-h-72">
-                          <table className="min-w-full text-xs">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-3 py-2 text-left text-gray-700">#</th>
-                                <th className="px-3 py-2 text-left text-gray-700">Department</th>
-                                <th className="px-3 py-2 text-left text-gray-700">Question</th>
-                                <th className="px-3 py-2 text-left text-gray-700">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {filteredCompliantItems.length > 0 ? (
-                                filteredCompliantItems.map((item: any, idx: number) => {
-                                  const deptName =
-                                    item.section ||
-                                    item.departmentName ||
-                                    item.deptName ||
-                                    item.department ||
-                                    '—';
-                                  const question =
-                                    item.questionTextSnapshot ||
-                                    item.questionText ||
-                                    item.title ||
-                                    '—';
-                                  const status = item.status || '—';
+                      </>
+                    )}
 
-                                  // Determine status color
-                                  const statusLower = String(status).toLowerCase();
-                                  const isCompliantStatus = statusLower === 'compliant' || statusLower.includes('compliant');
-                                  const isNonCompliantStatus = statusLower === 'noncompliant' || statusLower.includes('noncompliant') || statusLower === 'non-compliant' || statusLower.includes('non-compliant');
-                                  const statusColorClass = isCompliantStatus 
-                                    ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                    : isNonCompliantStatus
-                                    ? 'bg-amber-100 text-amber-700 border-amber-200'
-                                    : 'bg-gray-100 text-gray-700 border-gray-200';
+                    {/* TAB 3: Checklist items (Overdue + Active + Return) */}
+                    {summaryTab === 'checklistitems' && (
+                      <>
+                        <div className="mt-4">
+                          <div className="rounded-lg border border-gray-100 p-4">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="text-sm font-semibold text-gray-700">
+                                Overdue, Active & Return Checklist Items
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={checklistitemsStatusFilter}
+                                  onChange={(e) => setChecklistitemsStatusFilter(e.target.value as 'all' | 'overdue' | 'active' | 'return')}
+                                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                >
+                                  <option value="all">All Status</option>
+                                  <option value="overdue">Overdue</option>
+                                  <option value="active">Active</option>
+                                  <option value="return">Return</option>
+                                </select>
+                                <select
+                                  value={checklistitemsDeptFilter}
+                                  onChange={(e) => setChecklistitemsDeptFilter(e.target.value)}
+                                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                >
+                                  <option value="all">All Departments</option>
+                                  {checklistDepartments.map((dept) => (
+                                    <option key={dept} value={dept}>
+                                      {dept}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="overflow-x-auto max-h-72">
+                              <table className="min-w-full text-xs">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left text-gray-700">#</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Department</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Status</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Due date</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Notes</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {overdueAndActiveItems.length > 0 ? (
+                                    overdueAndActiveItems.map((item: any, idx: number) => {
+                                      const deptName =
+                                        item.section ||
+                                        item.departmentName ||
+                                        item.deptName ||
+                                        item.department ||
+                                        '—';
+                                      const question =
+                                        item.questionTextSnapshot ||
+                                        item.questionText ||
+                                        item.title ||
+                                        '—';
+                                      const status = item.status || '—';
+                                      const dueDate = item.dueDate || item.dueDateSnapshot || null;
+                                      const notes = item.comment || item.notes || item.reason || item.response || '—';
+                                      const statusColorClass = getStatusColor(status);
 
-                                  return (
-                                    <tr
-                                      key={item.auditChecklistItemId || item.itemId || idx}
-                                      className="hover:bg-gray-50"
-                                    >
-                                      <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
-                                      <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
-                                      <td className="px-3 py-2">
-                                        <span className="line-clamp-2">{question}</span>
-                                      </td>
-                                      <td className="px-3 py-2 whitespace-nowrap">
-                                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
-                                          {status}
-                                        </span>
+                                      return (
+                                        <tr
+                                          key={item.auditChecklistItemId || item.itemId || idx}
+                                          className="hover:bg-gray-50"
+                                        >
+                                          <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
+                                          <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
+                                          <td className="px-3 py-2">
+                                            <span className="line-clamp-2">{question}</span>
+                                          </td>
+                                          <td className="px-3 py-2 whitespace-nowrap">
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
+                                              {status}
+                                            </span>
+                                          </td>
+                                          <td className="px-3 py-2 whitespace-nowrap">
+                                            {dueDate ? new Date(dueDate).toLocaleDateString() : '—'}
+                                          </td>
+                                          <td className="px-3 py-2">
+                                            <span className="line-clamp-2 text-xs text-gray-700">{notes}</span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })
+                                  ) : (
+                                    <tr>
+                                      <td colSpan={6} className="px-3 py-4 text-center text-gray-500">
+                                        No overdue or active checklist items.
                                       </td>
                                     </tr>
-                                  );
-                                })
-                              ) : (
-                                <tr>
-                                  <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
-                                    No compliant checklist items.
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      </>
+                    )}
                   </>
                 ) : null}
               </div>

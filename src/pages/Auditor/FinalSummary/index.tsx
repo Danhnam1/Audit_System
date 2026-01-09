@@ -5,7 +5,7 @@ import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsAct
 import { getDepartments } from "../../../api/departments";
 import { getAuditTeam } from "../../../api/auditTeam";
 import { getAdminUsers } from "../../../api/adminUsers";
-import { submitFinalReport, getReportRequestByAuditId } from "../../../api/reportRequest";
+import { submitFinalReport, getReportRequestFromFinalSubmit } from "../../../api/reportRequest";
 import { getAuditCriteria } from "../../../api/auditCriteria";
 import { getChecklistTemplates } from "../../../api/checklists";
 import { unwrap } from "../../../utils/normalize";
@@ -274,7 +274,8 @@ export default function AuditorFinalSummaryPage() {
     const loadRR = async () => {
       setLoadingReportRequest(true);
       try {
-        const rr = await getReportRequestByAuditId(selectedAuditId);
+        // Use getReportRequestFromFinalSubmit to only get status from submitFinalReport API
+        const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
         setReportRequest(rr || null);
       } catch (err) {
         console.error('Failed to load report request:', err);
@@ -648,7 +649,8 @@ export default function AuditorFinalSummaryPage() {
       // Reload report request to update status
       if (selectedAuditId) {
         try {
-          const rr = await getReportRequestByAuditId(selectedAuditId);
+          // Use getReportRequestFromFinalSubmit to only get status from submitFinalReport API
+          const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
           setReportRequest(rr || null);
         } catch (err) {
           console.error('Failed to reload report request:', err);

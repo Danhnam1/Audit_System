@@ -3,10 +3,10 @@ import { PageHeader } from '../../../components';
 import { useAuth } from '../../../contexts';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { getStatusColor } from '../../../constants';
+import { getStatusColor, getSeverityColor } from '../../../constants';
 import { StatCard, BarChartCard, PieChartCard } from '../../../components';
 import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
-import { getReportRequestByAuditId, getAllReportRequests, type ViewReportRequest } from '../../../api/reportRequest';
+import { getAllReportRequests, getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../../api/reportRequest';
 import { getDepartments } from '../../../api/departments';
 import { getAuditSchedules } from '../../../api/auditSchedule';
 import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlanHelpers';
@@ -612,7 +612,8 @@ const SQAStaffReports = () => {
             const auditId = String(audit.auditId || audit.id || audit.$id || '').trim();
             if (auditId) {
               try {
-                const reportRequest = await getReportRequestByAuditId(auditId);
+                // Use getReportRequestFromSubmitAudit to only get status from submitAudit API
+                const reportRequest = await getReportRequestFromSubmitAudit(auditId);
                 if (reportRequest) {
                   // Check if this audit was recently updated (within last 5 seconds)
                   const recentUpdate = recentlyUpdatedStatusesRef.current.get(auditId);
@@ -1492,8 +1493,10 @@ const SQAStaffReports = () => {
                     <td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(audit.status)}`}>{audit.status}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       {(() => {
-                        const reportRequest = allReportRequests.find(r => r.auditId === audit.auditId);
-                        const reportStatus = reportRequest?.status || 'Not Submitted';
+                        // Use reportRequests state (filtered by getReportRequestByAuditId which returns LATEST)
+                        // instead of allReportRequests.find() which returns FIRST match
+                        const reportRequest = reportRequests[audit.auditId];
+                        const reportStatus = reportRequest?.status || 'Not Submit';
                         const statusColorClass = getStatusColor(reportStatus);
                         return (
                           <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColorClass}`}>
@@ -1972,13 +1975,7 @@ const SQAStaffReports = () => {
                                   {(f.deptId != null ? resolveDeptName(String(f.deptId), departments) : '—') || '—'}
                                 </td>
                                 <td className="px-3 py-2">
-                                  <span
-                                    className="px-2 py-0.5 rounded-full text-xs font-medium border"
-                                    style={{
-                                      borderColor: '#e5e7eb',
-                                      color: severityColor(String(f.severity)),
-                                    }}
-                                  >
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getSeverityColor(f?.severity || '')}`}>
                                     {f.severity || '—'}
                                   </span>
                                 </td>
