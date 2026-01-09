@@ -51,6 +51,7 @@ interface SubmissionContext {
   setConflictData: (data: any) => void;
   setShowConflictModal: (show: boolean) => void;
   setFilteredCriteria: (criteria: any[]) => void;
+  checklistTemplates?: any[];
 }
 
 interface SubmissionResult {
@@ -68,7 +69,8 @@ export const validatePlanSubmission = (
   formState: FormState,
   scheduleErrors: Record<string, string>,
   validatePlanPeriod: (from: string, to: string, showToast?: boolean) => boolean,
-  ownerOptions: any[]
+  ownerOptions: any[],
+  checklistTemplates: any[] = []
 ): { isValid: boolean; step?: number } => {
   // Title validation
   if (!formState.title.trim()) {
@@ -90,6 +92,31 @@ export const validatePlanSubmission = (
   if (!formState.selectedTemplateIds.length) {
     toast.warning("Please select at least one Checklist Template (Step 3).");
     return { isValid: false, step: 3 };
+  }
+
+  // Department-level template validation: each department must have at least one template
+  if (formState.level === "department" && formState.selectedDeptIds.length > 0) {
+    const selectedTemplates = checklistTemplates.filter((tpl: any) =>
+      formState.selectedTemplateIds.includes(String(tpl.templateId || tpl.id || tpl.$id))
+    );
+
+    const selectedDeptIdsSet = new Set(formState.selectedDeptIds.map(id => String(id).trim()));
+    const deptIdsWithTemplates = new Set<string>();
+
+    selectedTemplates.forEach((tpl: any) => {
+      const tplDeptId = tpl.deptId;
+      if (tplDeptId != null && tplDeptId !== undefined) {
+        deptIdsWithTemplates.add(String(tplDeptId).trim());
+      }
+    });
+
+    // Check if all selected departments have at least one template
+    const missingDepts = Array.from(selectedDeptIdsSet).filter(deptId => !deptIdsWithTemplates.has(deptId));
+    
+    if (missingDepts.length > 0) {
+      toast.warning(`Please select at least one Checklist Template for each selected department (Step 3).`);
+      return { isValid: false, step: 3 };
+    }
   }
 
   // Department validation
@@ -589,6 +616,7 @@ export const submitAuditPlan = async (
     setConflictData,
     setShowConflictModal,
     setFilteredCriteria,
+    checklistTemplates,
   } = context;
 
   // Step 1: Validate form
@@ -596,7 +624,8 @@ export const submitAuditPlan = async (
     formState,
     scheduleErrors,
     validatePlanPeriod,
-    ownerOptions
+    ownerOptions,
+    checklistTemplates || []
   );
 
   if (!validation.isValid) {

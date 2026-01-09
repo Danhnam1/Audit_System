@@ -452,11 +452,35 @@ const SQAStaffAuditPlanning = () => {
   ]);
 
   const validateStep3 = useMemo(() => {
-    return (
-      Array.isArray(formState.selectedTemplateIds) &&
-      formState.selectedTemplateIds.length > 0
-    );
-  }, [formState.selectedTemplateIds]);
+    // Basic check: must have at least one template selected
+    if (!Array.isArray(formState.selectedTemplateIds) || formState.selectedTemplateIds.length === 0) {
+      return false;
+    }
+
+    // For department level: each selected department must have at least one template
+    if (formState.level === 'department' && formState.selectedDeptIds.length > 0) {
+      const selectedTemplates = checklistTemplates.filter((tpl: any) =>
+        formState.selectedTemplateIds.includes(String(tpl.templateId || tpl.id || tpl.$id))
+      );
+
+      const selectedDeptIdsSet = new Set(formState.selectedDeptIds.map(id => String(id).trim()));
+      const deptIdsWithTemplates = new Set<string>();
+
+      selectedTemplates.forEach((tpl: any) => {
+        const tplDeptId = tpl.deptId;
+        if (tplDeptId != null && tplDeptId !== undefined) {
+          deptIdsWithTemplates.add(String(tplDeptId).trim());
+        }
+      });
+
+      // Check if all selected departments have at least one template
+      const missingDepts = Array.from(selectedDeptIdsSet).filter(deptId => !deptIdsWithTemplates.has(deptId));
+      
+      return missingDepts.length === 0;
+    }
+
+    return true;
+  }, [formState.selectedTemplateIds, formState.level, formState.selectedDeptIds, checklistTemplates]);
 
   const validateStep4 = useMemo(() => {
     // Lead Auditor = current user (auto-set), only need at least 1 other auditor
@@ -553,6 +577,7 @@ const SQAStaffAuditPlanning = () => {
         setConflictData,
         setShowConflictModal,
         setFilteredCriteria,
+        checklistTemplates,
       });
 
       if (!result.success) {

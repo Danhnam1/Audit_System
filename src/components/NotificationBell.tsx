@@ -33,14 +33,14 @@ export const NotificationBell: React.FC = () => {
     // Filter by status
     if (statusFilter !== 'All') {
       filtered = items.filter((n: any) => {
-        const isRead = n.isRead || n.readAt;
-        
-        if (statusFilter === 'Unread') {
-          return !isRead;
-        } else {
-          // statusFilter === 'Read'
-          return isRead;
-        }
+      const isRead = n.isRead || n.readAt;
+      
+      if (statusFilter === 'Unread') {
+        return !isRead;
+      } else {
+        // statusFilter === 'Read'
+        return isRead;
+      }
       });
     }
     

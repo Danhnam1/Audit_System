@@ -31,21 +31,29 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
   switch (normalizedRole) {
     case 'admin':
       return [
-        // { icon: <DashboardIcon />, label: 'Dashboard', path: '/admin' },
-        { icon: <DepartmentIcon />, label: 'Department Management', path: '/admin/departments' },
-        { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
-        { icon: <QualityIcon />, label: 'Criteria Management', path: '/admin/criteria' },
-        { icon: <ClipboardCheckIcon />, label: 'Checklist Management', path: '/admin/checklists' },
-        { icon: <ShieldIcon />, label: 'Sensitive Area Management', path: '/admin/sensitive-areas' },
-        { icon: <ArchiveIcon />, label: 'Archived History', path: '/admin/archived-history' },
-        { icon: <QualityIcon />, label: 'Pass Threshold', path: '/admin/pass-threshold' },
-
-        { icon: <ClockIcon />, label: 'Setting Demo', path: '/admin/setting-demo' },
-
-        // { icon: <AuditIcon />, label: 'Audit Logs', path: '/admin/audit-logs' },
-        // { icon: <ReportsIcon />, label: 'Reports', path: '/admin/reports' },
-        // { icon: <DatabaseIcon />, label: 'Database', path: '/admin/database' },
-        // { icon: <SettingsIcon />, label: 'Settings', path: '/admin/settings' },
+        {
+          label: 'Management',
+          children: [
+            { icon: <DepartmentIcon />, label: 'Department Management', path: '/admin/departments' },
+            { icon: <UsersIcon />, label: 'User Management', path: '/admin/users' },
+            { icon: <QualityIcon />, label: 'Criteria Management', path: '/admin/criteria' },
+            { icon: <ClipboardCheckIcon />, label: 'Checklist Management', path: '/admin/checklists' },
+            { icon: <ShieldIcon />, label: 'Sensitive Area Management', path: '/admin/sensitive-areas' },
+          ],
+        },
+        {
+          label: 'Settings',
+          children: [
+            { icon: <QualityIcon />, label: 'Pass Threshold', path: '/admin/pass-threshold' },
+            { icon: <ClockIcon />, label: 'Setting Demo', path: '/admin/setting-demo' },
+          ],
+        },
+        {
+          label: 'History',
+          children: [
+            { icon: <ArchiveIcon />, label: 'Archived History', path: '/admin/archived-history' },
+          ],
+        },
       ];
 
     case 'auditor':
@@ -84,12 +92,32 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
 
     case 'auditeeowner':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: `${ROUTES.AUDITEE_OWNER}/dashboard` },
-        { icon: <AuditIcon />, label: 'Audit Plans', path: `${ROUTES.AUDITEE_OWNER}/audit-plans` },
-        { icon: <ReportsIcon />, label: 'Findings Management', path: `${ROUTES.AUDITEE_OWNER}/findings` },
-        { icon: <QualityIcon />, label: 'CAPA Owner Management', path: `${ROUTES.AUDITEE_OWNER}/capa-management` },
-        { icon: <DocumentIcon />, label: 'My Witnessed', path: `${ROUTES.AUDITEE_OWNER}/my-witnessed` },
-        { icon: <ShieldIcon />, label: 'Scan QR Code', path: `${ROUTES.AUDITEE_OWNER}/audit-schedule` },
+        {
+          label: 'Main',
+          children: [
+            { icon: <DashboardIcon />, label: 'Dashboard', path: `${ROUTES.AUDITEE_OWNER}/dashboard` },
+          ],
+        },
+        {
+          label: 'Audit Management',
+          children: [
+            { icon: <AuditIcon />, label: 'Audit Plans', path: `${ROUTES.AUDITEE_OWNER}/audit-plans` },
+            { icon: <ReportsIcon />, label: 'Findings Management', path: `${ROUTES.AUDITEE_OWNER}/findings` },
+          ],
+        },
+        {
+          label: 'Tasks',
+          children: [
+            { icon: <QualityIcon />, label: 'CAPA Owner Management', path: `${ROUTES.AUDITEE_OWNER}/capa-management` },
+            { icon: <DocumentIcon />, label: 'My Witnessed', path: `${ROUTES.AUDITEE_OWNER}/my-witnessed` },
+          ],
+        },
+        {
+          label: 'Access',
+          children: [
+            { icon: <ShieldIcon />, label: 'Scan QR Code', path: `${ROUTES.AUDITEE_OWNER}/audit-schedule` },
+          ],
+        },
       ];
 
     case 'capaowner':
@@ -102,26 +130,58 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
 
     case 'director':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: '/director/dashboard' },
-        { icon: <AuditIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
-        { icon: <ClockIcon />, label: 'Extension Requests', path: '/director/extension-requests' },
-        { icon: <ArchiveIcon />, label: 'Archived History', path: '/director/archived-history' },
-        // Review final audit summary reports and evaluate audit effectiveness (no approve/reject buttons)
-        { icon: <DocumentIcon />, label: 'Final Summary & Effectiveness', path: '/director/final-summary' },
-        { icon: <ReportsIcon />, label: 'Result History', path: '/director/result-history' },
-        // { icon: <AuditIcon />, label: 'Review Audit Results', path: '/director/review-results' },
-        // { icon: <ReportsIcon />, label: 'Summary Report', path: '/director/summary-report' },
+        {
+          label: 'Main',
+          children: [
+            { icon: <DashboardIcon />, label: 'Dashboard', path: '/director/dashboard' },
+          ],
+        },
+        {
+          label: 'Audit Management',
+          children: [
+            { icon: <AuditIcon />, label: 'Review Audit Plans', path: '/director/review-plans' },
+            { icon: <ClockIcon />, label: 'Extension Requests', path: '/director/extension-requests' },
+          ],
+        },
+        {
+          label: 'Reports & History',
+          children: [
+            { icon: <DocumentIcon />, label: 'Final Summary & Effectiveness', path: '/director/final-summary' },
+            { icon: <ReportsIcon />, label: 'Result History', path: '/director/result-history' },
+            { icon: <ArchiveIcon />, label: 'Archived History', path: '/director/archived-history' },
+          ],
+        },
       ];
     case 'leadauditor':
       return [
-        { icon: <DashboardIcon />, label: 'Dashboard', path: `${ROUTES.LEAD_AUDITOR}/dashboard` },
-        { icon: <AuditIcon />, label: 'Audit Planning', path: '/lead-auditor/auditplanning' },
-        { icon: <AuditIcon />, label: 'Assignments', path: '/auditor/audit-assignment' },
-        { icon: <ClockIcon />, label: 'Request Management', path: '/lead-auditor/request-management' },
-        { icon: <DocumentIcon />, label: 'Review Reports', path: '/lead-auditor/lead-reports' },
-        { icon: <ClipboardCheckIcon />, label: 'Action Review', path: '/lead-auditor/action-review' },
-        { icon: <DocumentIcon />, label: 'Final Summary Review ', path: '/lead-auditor/final-summary-review' },
-        { icon: <ArchiveIcon />, label: 'Archived History', path: '/lead-auditor/archived-history' },
+        {
+          label: 'Main',
+          children: [
+            { icon: <DashboardIcon />, label: 'Dashboard', path: `${ROUTES.LEAD_AUDITOR}/dashboard` },
+          ],
+        },
+        {
+          label: 'Audit Management',
+          children: [
+            { icon: <AuditIcon />, label: 'Audit Planning', path: '/lead-auditor/auditplanning' },
+            { icon: <AuditIcon />, label: 'Assignments', path: '/auditor/audit-assignment' },
+            { icon: <ClockIcon />, label: 'Request Management', path: '/lead-auditor/request-management' },
+          ],
+        },
+        {
+          label: 'Review & Reports',
+          children: [
+            { icon: <DocumentIcon />, label: 'Review Reports', path: '/lead-auditor/lead-reports' },
+            { icon: <ClipboardCheckIcon />, label: 'Action Review', path: '/lead-auditor/action-review' },
+            { icon: <DocumentIcon />, label: 'Final Summary Review', path: '/lead-auditor/final-summary-review' },
+          ],
+        },
+        {
+          label: 'History',
+          children: [
+            { icon: <ArchiveIcon />, label: 'Archived History', path: '/lead-auditor/archived-history' },
+          ],
+        },
       ];
 
     default:

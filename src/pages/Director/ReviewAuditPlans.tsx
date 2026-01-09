@@ -29,14 +29,16 @@ interface AuditPlan {
   status: string; // backend can return PendingDirectorApproval | PendingReview | Approved | Rejected
   objectives: string[];
   auditTeam: string[];
+  project?: string;
+  scopeDepartments?: Array<{ deptId: string | number; deptName?: string }>;
 }
 
 const ReviewAuditPlans = () => {
   const [filter, setFilter] = useState<'All' | 'Pending Review' | 'Approved' | 'Rejected'>('Pending Review');
   const [searchQuery, setSearchQuery] = useState<string>('');
-
- 
-  
+  const [filterDepartment, setFilterDepartment] = useState<string>('');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
 
   const [auditPlans, setAuditPlans] = useState<AuditPlan[]>([]);
   const [selectedDetails, setSelectedDetails] = useState<any | null>(null);
@@ -66,6 +68,41 @@ const ReviewAuditPlans = () => {
         if (filter === 'Rejected') return s === 'rejected';
         return false;
       });
+
+    // Then filter by department
+    if (filterDepartment) {
+      statusFiltered = statusFiltered.filter((plan) => {
+        const planDept = String(plan.department || '').toLowerCase();
+        // Find department name from departments list
+        const selectedDept = departments.find((d) => String(d.deptId) === filterDepartment);
+        if (!selectedDept) return false;
+        const deptName = String(selectedDept.name || '').toLowerCase();
+        // Check if department name appears in plan.department (which may contain multiple departments)
+        return planDept.includes(deptName);
+      });
+    }
+
+    // Then filter by date
+    if (dateFrom) {
+      statusFiltered = statusFiltered.filter((plan) => {
+        if (!plan.startDate) return false;
+        const planDate = new Date(plan.startDate);
+        const fromDate = new Date(dateFrom);
+        fromDate.setHours(0, 0, 0, 0);
+        planDate.setHours(0, 0, 0, 0);
+        return planDate >= fromDate;
+      });
+    }
+
+    if (dateTo) {
+      statusFiltered = statusFiltered.filter((plan) => {
+        if (!plan.startDate) return false;
+        const planDate = new Date(plan.startDate);
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        return planDate <= toDate;
+      });
+    }
 
     // Then filter by search query
     if (searchQuery) {
@@ -164,6 +201,7 @@ const ReviewAuditPlans = () => {
             : p.auditTeams && Array.isArray(p.auditTeams?.values)
               ? p.auditTeams.values.map((t: any) => t.fullName || t.name)
               : [],
+          project: p.project || p.Project || '',
         };
       });
 
@@ -291,6 +329,7 @@ const ReviewAuditPlans = () => {
               : p.auditTeams && Array.isArray(p.auditTeams?.values)
                 ? p.auditTeams.values.map((t: any) => t.fullName || t.name)
                 : [],
+            project: p.project || p.Project || '',
           };
         });
 
@@ -537,25 +576,64 @@ const ReviewAuditPlans = () => {
 
         {/* Search Bar and Status Tabs */}
         <div className="animate-slideUp animate-delay-200 bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden mb-6">
-          {/* Search Bar */}
+          {/* Search Bar and Filters */}
           <div className="px-6 py-4 border-b border-primary-100">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Search</label>
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by title, submitted by, or scope..."
-                className="w-full px-4 py-2.5 pl-10 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
-              />
-              <svg
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              {/* Search Bar */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by title, submitted by, or scope..."
+                  className="w-full px-4 py-2.5 pl-10 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
+                />
+                <svg
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+
+              {/* Department Filter */}
+              <div>
+                <select
+                  value={filterDepartment}
+                  onChange={(e) => setFilterDepartment(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
+                >
+                  <option value="">All Departments</option>
+                  {departments.map((dept) => (
+                    <option key={dept.deptId} value={String(dept.deptId)}>
+                      {dept.name || dept.deptId}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {/* Date Filters */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Date From</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Date To</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-shadow"
+                />
+              </div>
             </div>
           </div>
 
