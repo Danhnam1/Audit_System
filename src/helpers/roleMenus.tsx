@@ -12,6 +12,8 @@ import {
   DepartmentIcon,
   ShieldIcon,
   ClockIcon,
+  SettingsIcon,
+  RequestIcon,
 } from '../layouts/icons';
 import { HiOutlineUpload } from 'react-icons/hi';
 
@@ -44,7 +46,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
         {
           label: 'Settings',
           children: [
-            { icon: <QualityIcon />, label: 'Pass Threshold', path: '/admin/pass-threshold' },
+            { icon: <SettingsIcon />, label: 'Pass Threshold', path: '/admin/pass-threshold' },
             { icon: <ClockIcon />, label: 'Setting Demo', path: '/admin/setting-demo' },
           ],
         },
@@ -164,14 +166,14 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
           label: 'Audit Management',
           children: [
             { icon: <AuditIcon />, label: 'Audit Planning', path: '/lead-auditor/auditplanning' },
-            { icon: <AuditIcon />, label: 'Assignments', path: '/auditor/audit-assignment' },
-            { icon: <ClockIcon />, label: 'Request Management', path: '/lead-auditor/request-management' },
+            { icon: <UsersIcon />, label: 'Assignments', path: '/auditor/audit-assignment' },
+            { icon: <RequestIcon />, label: 'Request Management', path: '/lead-auditor/request-management' },
           ],
         },
         {
           label: 'Review & Reports',
           children: [
-            { icon: <DocumentIcon />, label: 'Review Reports', path: '/lead-auditor/lead-reports' },
+            { icon: <ReportsIcon />, label: 'Review Reports', path: '/lead-auditor/lead-reports' },
             { icon: <ClipboardCheckIcon />, label: 'Action Review', path: '/lead-auditor/action-review' },
             { icon: <DocumentIcon />, label: 'Final Summary Review', path: '/lead-auditor/final-summary-review' },
           ],

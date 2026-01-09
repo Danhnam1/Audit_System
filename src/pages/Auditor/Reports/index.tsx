@@ -1496,7 +1496,7 @@ const SQAStaffReports = () => {
                         // Use reportRequests state (filtered by getReportRequestByAuditId which returns LATEST)
                         // instead of allReportRequests.find() which returns FIRST match
                         const reportRequest = reportRequests[audit.auditId];
-                        const reportStatus = reportRequest?.status || 'Not Submit';
+                        const reportStatus = reportRequest?.status || 'Not Submitted';
                         const statusColorClass = getStatusColor(reportStatus);
                         return (
                           <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${statusColorClass}`}>

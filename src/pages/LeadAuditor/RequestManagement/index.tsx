@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MainLayout } from '../../../layouts';
+import { PageHeader } from '../../../components';
 import { getAllAuditAssignmentRequests, approveAuditAssignmentRequest, rejectAuditAssignmentRequest } from '../../../api/auditAssignments';
 import { toast } from 'react-toastify';
 
@@ -146,12 +147,11 @@ const LeadAuditorRequestManagement = () => {
 
   return (
     <MainLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl shadow-lg p-6 text-white">
-          <h1 className="text-3xl font-bold mb-2">Request Management</h1>
-          <p className="text-blue-100">View and manage audit assignment requests</p>
-        </div>
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-6">
+        <PageHeader
+          title="Request Management"
+          subtitle="View and manage audit assignment requests"
+        />
 
         {/* Filter and Stats */}
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4">

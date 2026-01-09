@@ -27,6 +27,8 @@ export const STATUS_COLORS = {
   // Pending/Waiting States - Very light primary/sky tone
   'Pending': 'bg-sky-100 text-sky-700',
   'Submitted': 'bg-sky-100 text-sky-700',
+  'Not Submit': 'bg-gray-200 text-gray-600',
+  'Not Submitted': 'bg-gray-200 text-gray-600',
   // Director/Lead review specific pending states
   'PendingDirectorApproval': 'bg-sky-200 text-sky-800',
   'Pending Director Approval': 'bg-sky-200 text-sky-800',

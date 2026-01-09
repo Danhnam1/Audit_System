@@ -172,26 +172,26 @@ export default function DirectorExtensionRequestsPage() {
         />
 
         {loading ? (
-          <div className="bg-white border border-primary-200 rounded-lg p-8 flex items-center justify-center gap-3 text-sm text-primary-700">
+          <div className="bg-white border border-primary-100 rounded-xl shadow-md p-8 flex items-center justify-center gap-3 text-sm text-primary-700">
             <div className="h-5 w-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
             <span>Loading extension requests...</span>
           </div>
         ) : requests.length === 0 ? (
-          <div className="bg-white border border-dashed border-gray-300 rounded-lg p-8 text-center text-sm text-gray-500">
+          <div className="bg-white border border-dashed border-gray-300 rounded-xl shadow-sm p-8 text-center text-sm text-gray-500">
             No pending extension requests at this time.
           </div>
         ) : (
-          <div className="bg-white border border-primary-200 rounded-xl shadow-sm">
-            <div className="px-4 py-3 border-b border-primary-300 bg-gradient-primary rounded-t-lg">
+          <div className="bg-white border border-primary-100 rounded-xl shadow-md">
+            <div className="px-6 py-4 border-b border-primary-100 bg-primary-600 rounded-t-xl">
               <h2 className="text-sm font-semibold text-white uppercase">
                 Pending Extension Requests ({requests.length})
               </h2>
             </div>
-            <div className="p-4 space-y-4">
+            <div className="p-6 space-y-4">
               {requests.map((request) => (
                 <div
                   key={request.requestId}
-                  className="border border-primary-200 rounded-lg p-4 bg-primary-50/30 hover:bg-primary-50/50 transition-colors"
+                  className="border border-primary-100 rounded-lg p-4 bg-primary-50 hover:bg-primary-100/50 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">

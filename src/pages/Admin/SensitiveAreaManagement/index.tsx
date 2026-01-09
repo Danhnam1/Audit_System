@@ -10,7 +10,8 @@ import {
   deleteDepartmentSensitiveArea,
   type DepartmentSensitiveAreaDto,
 } from '../../../api/departmentSensitiveAreas';
-import { FaShieldAlt, FaPlus, FaEdit, FaTrash, FaTimes, FaCheck, FaSearch, FaFilter, FaChevronDown } from 'react-icons/fa';
+import { FaShieldAlt, FaPlus, FaEdit, FaTrash, FaTimes, FaCheck, FaSearch, FaChevronDown } from 'react-icons/fa';
+import { PageHeader, StatCard } from '../../../components';
 
 /**
  * Page for Admin to manage sensitive areas master data for each department
@@ -19,23 +20,22 @@ import { FaShieldAlt, FaPlus, FaEdit, FaTrash, FaTimes, FaCheck, FaSearch, FaFil
 const SensitiveAreaManagement = () => {
   const { user } = useAuth();
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
-  // Grouped by deptId: Map<deptId, { deptId, deptName, areas: Array<{id, sensitiveArea, level, defaultNotes}> }>
+  // Grouped by deptId: Map<deptId, { deptId, deptName, areas: Array<{id, sensitiveArea, defaultNotes}> }>
   const [departmentSensitiveAreas, setDepartmentSensitiveAreas] = useState<Map<string, {
     deptId: number | string;
     deptName: string;
-    areas: Array<{ id?: number | string; sensitiveArea: string; level?: string; defaultNotes?: string }>;
+    areas: Array<{ id?: number | string; sensitiveArea: string; defaultNotes?: string }>;
   }>>(new Map());
   const [loading, setLoading] = useState(false);
   const [newAreaInput, setNewAreaInput] = useState<Map<string, string>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterLevel, setFilterLevel] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [filterHasArea, setFilterHasArea] = useState<'all' | 'has' | 'no'>('all');
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingData, setEditingData] = useState<{ deptId: string; data: DepartmentSensitiveAreaDto | null } | null>(null);
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [notesModalContent, setNotesModalContent] = useState<{ deptName: string; areas: Array<{ area: string; notes: string }> } | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteModalContent, setDeleteModalContent] = useState<{ deptId: string; deptName: string; areas: Array<{ id?: number | string; sensitiveArea: string; level?: string }> } | null>(null);
+  const [deleteModalContent, setDeleteModalContent] = useState<{ deptId: string; deptName: string; areas: Array<{ id?: number | string; sensitiveArea: string }> } | null>(null);
 
   useEffect(() => {
     loadData();
@@ -60,7 +60,7 @@ const SensitiveAreaManagement = () => {
         const dataMap = new Map<string, {
           deptId: number | string;
           deptName: string;
-          areas: Array<{ id?: number | string; sensitiveArea: string; level?: string; defaultNotes?: string }>;
+          areas: Array<{ id?: number | string; sensitiveArea: string; defaultNotes?: string }>;
         }>();
         
         if (Array.isArray(sensitiveData) && sensitiveData.length > 0) {
@@ -81,7 +81,6 @@ const SensitiveAreaManagement = () => {
               const areaData = {
                 id: item.id,
                 sensitiveArea: item.sensitiveArea.trim(), // Trim whitespace
-                level: item.level || '',
                 defaultNotes: item.defaultNotes || '',
               };
               
@@ -137,14 +136,14 @@ const SensitiveAreaManagement = () => {
       // Add new area (without id - will be created on save)
       const updated = {
         ...current,
-        areas: [...current.areas, { sensitiveArea: input, level: '', defaultNotes: '' }],
+        areas: [...current.areas, { sensitiveArea: input, defaultNotes: '' }],
       };
       setDepartmentSensitiveAreas(new Map(departmentSensitiveAreas.set(deptId, updated)));
     } else {
       const newDept = {
         deptId: Number(deptId),
         deptName: dept?.name || deptId,
-        areas: [{ sensitiveArea: input, level: '', defaultNotes: '' }],
+        areas: [{ sensitiveArea: input, defaultNotes: '' }],
       };
       setDepartmentSensitiveAreas(new Map(departmentSensitiveAreas.set(deptId, newDept)));
     }
@@ -200,7 +199,7 @@ const SensitiveAreaManagement = () => {
           return await updateDepartmentSensitiveArea(area.id, {
             deptId: data.deptId,
             sensitiveArea: area.sensitiveArea,
-            level: area.level || '',
+            level: '',
             defaultNotes: area.defaultNotes || '',
           });
         } else {
@@ -208,7 +207,7 @@ const SensitiveAreaManagement = () => {
           return await createDepartmentSensitiveArea({
             deptId: data.deptId,
             sensitiveArea: area.sensitiveArea,
-            level: area.level || '',
+            level: '',
             defaultNotes: area.defaultNotes || '',
           });
         }
@@ -317,15 +316,6 @@ const SensitiveAreaManagement = () => {
     }
   };
 
-  const getDeptLevel = (deptId: string): 'high' | 'medium' | 'low' | 'none' => {
-    const config = departmentSensitiveAreas.get(deptId);
-    if (!config || !config.areas || config.areas.length === 0) return 'none';
-    const levels = config.areas.map((a) => String(a.level || '').toLowerCase());
-    if (levels.some((l) => l.includes('high'))) return 'high';
-    if (levels.some((l) => l.includes('medium'))) return 'medium';
-    if (levels.some((l) => l.includes('low'))) return 'low';
-    return 'none';
-  };
 
   // Filter and search departments
   const filteredDepartments = useMemo(() => {
@@ -340,15 +330,6 @@ const SensitiveAreaManagement = () => {
       );
     }
 
-    // Filter by level (High/Medium/Low)
-    if (filterLevel !== 'all') {
-      filtered = filtered.filter((dept: { deptId: number | string; name: string }) => {
-        const deptId = String(dept.deptId);
-        const level = getDeptLevel(deptId);
-        return level === filterLevel;
-      });
-    }
-
     // Filter by has area (có khu vực hay không)
     if (filterHasArea !== 'all') {
       filtered = filtered.filter((dept: { deptId: number | string; name: string }) => {
@@ -360,25 +341,16 @@ const SensitiveAreaManagement = () => {
     }
 
     return filtered;
-  }, [departments, searchQuery, filterLevel, filterHasArea, departmentSensitiveAreas]);
+  }, [departments, searchQuery, filterHasArea, departmentSensitiveAreas]);
 
   // Statistics
   const stats = useMemo(() => {
     // Total areas: count all sensitive areas across all departments
     let totalAreas = 0;
-    let highLevel = 0;
-    let mediumLevel = 0;
-    let lowLevel = 0;
     
     departmentSensitiveAreas.forEach((config) => {
       if (config.areas && Array.isArray(config.areas)) {
         totalAreas += config.areas.length;
-        config.areas.forEach(area => {
-          const level = (area.level || '').toLowerCase();
-          if (level.includes('high')) highLevel++;
-          else if (level.includes('medium')) mediumLevel++;
-          else lowLevel++;
-        });
       }
     });
 
@@ -388,162 +360,115 @@ const SensitiveAreaManagement = () => {
       return config && config.areas && config.areas.length > 0;
     }).length;
     const unconfigured = departments.length - configured;
-    return { totalAreas, highLevel, mediumLevel, lowLevel, configured, unconfigured };
+    return { totalAreas, configured, unconfigured };
   }, [departments, departmentSensitiveAreas]);
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
   return (
     <MainLayout user={layoutUser}>
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-6 pb-10 pt-8 space-y-6">
-          {/* Header */}
-          <div className="rounded-xl border border-primary-100 bg-white shadow-sm px-6 py-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-xs uppercase tracking-[0.25em] text-gray-500 font-semibold">Admin · Safety</p>
-                <h1 className="text-3xl font-bold text-gray-900">Restricted Area Management</h1>
-                
-              </div>
-             
-            </div>
-          </div>
+      <div className="px-4 sm:px-6 lg:px-8 pb-6 space-y-6">
+        <PageHeader
+          title="Sensitive Area Management"
+          subtitle="Manage sensitive areas master data for each department"
+        />
 
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-primary-50 flex items-center justify-center">
-                <FaShieldAlt className="w-6 h-6 text-primary-600" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{stats.totalAreas}</div>
-                <div className="text-xs text-gray-500">Total Areas</div>
-              </div>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-red-50 flex items-center justify-center">
-                <FaShieldAlt className="w-6 h-6 text-red-600" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{stats.highLevel}</div>
-                <div className="text-xs text-gray-500">High Level</div>
-              </div>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-amber-50 flex items-center justify-center">
-                <FaShieldAlt className="w-6 h-6 text-amber-600" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{stats.mediumLevel}</div>
-                <div className="text-xs text-gray-500">Medium Level</div>
-              </div>
-            </div>
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm p-4 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center">
-                <FaShieldAlt className="w-6 h-6 text-emerald-600" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-gray-900">{stats.lowLevel}</div>
-                <div className="text-xs text-gray-500">Low Level</div>
-              </div>
-            </div>
-          </div>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard
+            title="Total Areas"
+            value={stats.totalAreas}
+            icon={<FaShieldAlt className="w-8 h-8 text-primary-600" />}
+            variant="primary"
+          />
+          <StatCard
+            title="Configured Departments"
+            value={stats.configured}
+            icon={<FaShieldAlt className="w-8 h-8 text-primary-700" />}
+            variant="primary-light"
+          />
+          <StatCard
+            title="Unconfigured Departments"
+            value={stats.unconfigured}
+            icon={<FaShieldAlt className="w-8 h-8 text-primary-700" />}
+            variant="primary-light"
+          />
+        </div>
 
-          {/* Search and Filter Bar */}
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm px-5 py-4 space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-              <div className="col-span-1 md:col-span-2 relative">
-                <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search area, room, building or department..."
-                  className="w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
-                />
-              </div>
-              <div className="relative">
-                <FaFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 z-10" />
-                <select
-                  value={filterLevel}
-                  onChange={(e) => setFilterLevel(e.target.value as 'all' | 'high' | 'medium' | 'low')}
-                  className="w-full pl-10 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white appearance-none cursor-pointer"
-                >
-                  <option value="all">All Levels</option>
-                  <option value="high">High Level</option>
-                  <option value="medium">Medium Level</option>
-                  <option value="low">Low Level</option>
-                </select>
-                <FaChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5 pointer-events-none" />
-              </div>
-              <div className="relative">
-                <select
-                  value={filterHasArea}
-                  onChange={(e) => setFilterHasArea(e.target.value as 'all' | 'has' | 'no')}
-                  className="w-full pl-4 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white appearance-none cursor-pointer"
-                >
-                  <option value="all">All</option>
-                  <option value="has">Has Area</option>
-                  <option value="no">No Area</option>
-                </select>
-                <FaChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5 pointer-events-none" />
-              </div>
+        {/* Search and Filter Bar */}
+        <div className="bg-white rounded-xl border border-primary-100 shadow-md p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="col-span-1 md:col-span-2 relative">
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search area, room, building or department..."
+                className="w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white"
+              />
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-gray-500">
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-50 border border-gray-200">Departments: {departments.length}</span>
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-50 border border-gray-200">Configured: {stats.configured}</span>
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-50 border border-gray-200">Unconfigured: {stats.unconfigured}</span>
+            <div className="relative">
+              <select
+                value={filterHasArea}
+                onChange={(e) => setFilterHasArea(e.target.value as 'all' | 'has' | 'no')}
+                className="w-full pl-4 pr-8 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white appearance-none cursor-pointer"
+              >
+                <option value="all">All</option>
+                <option value="has">Has Area</option>
+                <option value="no">No Area</option>
+              </select>
+              <FaChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-3.5 h-3.5 pointer-events-none" />
             </div>
           </div>
+        </div>
 
         {/* Table */}
         {loading && !departmentSensitiveAreas.size ? (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-lg border border-gray-200">
+          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-primary-100 shadow-md">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-600 border-t-transparent"></div>
             <p className="mt-5 text-sm font-medium text-gray-600">Loading...</p>
           </div>
         ) : filteredDepartments.length === 0 ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+          <div className="bg-white rounded-xl border border-primary-100 shadow-md p-12 text-center">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-100 mb-4">
               <FaSearch className="w-10 h-10 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Not Found</h3>
             <p className="text-sm text-gray-600">
-              {searchQuery || filterLevel !== 'all' || filterHasArea !== 'all'
+              {searchQuery || filterHasArea !== 'all'
                 ? 'Try adjusting your search or filter criteria.'
                 : 'No data available.'}
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full table-fixed">
-                <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+              <table className="w-full">
+                <thead className="bg-gray-100">
                   <tr>
-                    <th className="w-[20%] px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Department</th>
-                    <th className="w-[25%] px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Area</th>
-                    <th className="w-[15%] px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Level</th>
-                    <th className="w-[25%] px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Notes</th>
-                    <th className="w-[15%] px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Action</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black">Department</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black">Area</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black">Notes</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-black">Action</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-slate-100">
+                <tbody className="bg-white divide-y divide-gray-100">
                   {filteredDepartments.map((dept: { deptId: number | string; name: string }) => {
                     const deptId = String(dept.deptId);
                     const sensitiveData = departmentSensitiveAreas.get(deptId);
                     const hasConfig = sensitiveData && sensitiveData.areas && sensitiveData.areas.length > 0;
-                    const level = getDeptLevel(deptId);
                     
                     return (
-                      <tr key={deptId} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-4 text-sm font-semibold text-slate-900">{dept.name}</td>
-                        <td className="px-4 py-4">
+                      <tr key={deptId} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-900">{dept.name}</td>
+                        <td className="px-6 py-4">
                           <div className="flex flex-wrap gap-1.5">
                             {hasConfig && sensitiveData.areas.length > 0 ? (
                               sensitiveData.areas.map((area, idx) => (
                                 <span
                                   key={idx}
-                                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200"
+                                  className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-gray-700 bg-gray-50 border border-gray-200"
                                 >
                                   {area.sensitiveArea}
                                 </span>
@@ -553,27 +478,7 @@ const SensitiveAreaManagement = () => {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-4">
-                          {level === 'high' && (
-                            <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                              High
-                            </span>
-                          )}
-                          {level === 'medium' && (
-                            <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                              Medium
-                            </span>
-                          )}
-                          {level === 'low' && (
-                            <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                              Low
-                            </span>
-                          )}
-                          {level === 'none' && (
-                            <span className="text-xs text-slate-400">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4">
+                        <td className="px-6 py-4">
                           {hasConfig && sensitiveData.areas.length > 0 ? (
                             (() => {
                               // Check if any area has notes
@@ -610,7 +515,7 @@ const SensitiveAreaManagement = () => {
                             <span className="text-xs text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => handleEdit(deptId)}
@@ -635,12 +540,6 @@ const SensitiveAreaManagement = () => {
                   })}
                 </tbody>
               </table>
-            </div>
-            {/* Footer */}
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
-              <p className="text-sm text-gray-600">
-                Showing {filteredDepartments.length} / {departments.length} areas
-              </p>
             </div>
           </div>
         )}
@@ -735,30 +634,6 @@ const SensitiveAreaManagement = () => {
                               placeholder="e.g., Airside Ramp, Secure Server Room"
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                             />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-700 mb-1">
-                              Level
-                            </label>
-                            <select
-                              value={area.level || ''}
-                              onChange={(e) => {
-                                const currentData = departmentSensitiveAreas.get(editingData.deptId);
-                                if (currentData) {
-                                  const updated = {
-                                    ...currentData,
-                                    areas: currentData.areas.map((a, i) => i === idx ? { ...a, level: e.target.value } : a),
-                                  };
-                                  setDepartmentSensitiveAreas(new Map(departmentSensitiveAreas.set(editingData.deptId, updated)));
-                                }
-                              }}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                            >
-                              <option value="">Select level</option>
-                              <option value="High">High</option>
-                              <option value="Medium">Medium</option>
-                              <option value="Low">Low</option>
-                            </select>
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -863,9 +738,6 @@ const SensitiveAreaManagement = () => {
                       >
                         <div className="flex-1">
                           <p className="text-sm font-medium text-gray-900">{area.sensitiveArea || `Area #${idx + 1}`}</p>
-                          {area.level && (
-                            <p className="text-xs text-gray-500 mt-1">Level: {area.level}</p>
-                          )}
                           {!area.id && (
                             <p className="text-xs text-amber-600 mt-1">(Not saved yet - will be removed from list)</p>
                           )}
@@ -955,7 +827,6 @@ const SensitiveAreaManagement = () => {
             </div>
           </div>
         )}
-        </div>
       </div>
     </MainLayout>
   );
