@@ -161,7 +161,8 @@ export const createFinding = async (payload: CreateFindingPayload): Promise<Find
 
 // Update finding
 export const updateFinding = async (findingId: string, payload: Partial<CreateFindingPayload>): Promise<Finding> => {
-  return apiClient.put(`/Findings/${findingId}`, payload) as any;
+  const pascalPayload = toPascalCase(payload);
+  return apiClient.put(`/Findings/${findingId}`, pascalPayload) as any;
 };
 
 // Delete finding

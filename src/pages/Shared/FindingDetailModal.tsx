@@ -25,7 +25,9 @@ const FindingDetailModal = ({
   if (!isOpen || !finding) return null;
 
   const isReturned = finding && String(finding?.status || '').toLowerCase() === 'return';
-  const attachments = unwrapValues(finding?.attachments);
+  // Filter out inactive attachments
+  const allAttachments = unwrapValues(finding?.attachments);
+  const attachments = allAttachments.filter((att: any) => (att.status || '').toLowerCase() !== 'inactive');
 
   return createPortal(
     <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 animate-fadeIn">

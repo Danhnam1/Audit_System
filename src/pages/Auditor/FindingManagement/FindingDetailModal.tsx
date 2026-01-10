@@ -295,7 +295,9 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const loadAttachments = async () => {
     try {
       const data = await getAttachments('finding', findingId);
-      setAttachments(data);
+      // Filter out inactive attachments
+      const activeAttachments = (data || []).filter(att => (att.status || '').toLowerCase() !== 'inactive');
+      setAttachments(activeAttachments);
     } catch (err: any) {
       console.error('Error loading attachments:', err);
       // Don't show error for attachments, just log it
@@ -799,13 +801,13 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                 </div>
 
                 {/* Attachments */}
-                {attachments.length > 0 && (
+                {attachments.filter(att => (att.status || '').toLowerCase() !== 'inactive').length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-3">
-                      Attachments ({attachments.length})
+                      Attachments ({attachments.filter(att => (att.status || '').toLowerCase() !== 'inactive').length})
                     </label>
                     <div className="space-y-3">
-                      {attachments.map((attachment) => {
+                      {attachments.filter(att => (att.status || '').toLowerCase() !== 'inactive').map((attachment) => {
                         const isImage = attachment.contentType?.startsWith('image/');
                         const imageUrl = attachment.filePath ? `${attachment.filePath}` : '';
                         

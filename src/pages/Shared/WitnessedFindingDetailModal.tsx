@@ -102,7 +102,9 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
     setLoadingAttachments(true);
     try {
       const data = await getAttachments('finding', findingId);
-      setAttachments(data);
+      // Filter out inactive attachments
+      const activeAttachments = (data || []).filter(att => (att.status || '').toLowerCase() !== 'inactive');
+      setAttachments(activeAttachments);
     } catch (err: any) {
       console.error('Error loading attachments:', err);
     } finally {

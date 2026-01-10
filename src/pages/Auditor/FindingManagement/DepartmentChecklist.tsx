@@ -123,6 +123,8 @@ const DepartmentChecklist = () => {
   const [itemToDelete, setItemToDelete] = useState<ChecklistItem | null>(null);
   const [deletingItem, setDeletingItem] = useState(false);
 
+  // Track deleted attachments for deferred deletion
+  const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<string[]>([]);
 
   const getStatusBadgeColor = (status: string) => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
@@ -502,8 +504,10 @@ const DepartmentChecklist = () => {
         (rootCauses || []).map(async (rc) => {
           const actions = await getActionsByRootCause(rc.rootCauseId);
           actionsMap[String(rc.rootCauseId)] = actions || [];
+          console.log(`Loaded ${(actions || []).length} actions for root cause ${rc.rootCauseId}`);
         })
       );
+      console.log('Final editActionsMap to be set:', actionsMap);
       setEditActionsMap(actionsMap);
 
       try {
@@ -528,6 +532,7 @@ const DepartmentChecklist = () => {
   const updateActionInline = async (
     actionId: string,
     payload: Partial<{
+      findingId: string;
       title: string;
       description: string;
       status: string;
@@ -536,6 +541,7 @@ const DepartmentChecklist = () => {
       assignedTo: string;
       assignedDeptId: number;
       reviewFeedback: string;
+      rootCauseId: string | number;
     }>
   ) => {
     const toPascal = (obj: any): any => {
@@ -554,6 +560,12 @@ const DepartmentChecklist = () => {
 
   // Handle edit finding submit
   const handleEditFindingSubmit = async () => {
+    console.log('========== EDIT FINDING SUBMIT START ==========');
+    console.log('editingFinding:', editingFinding);
+    console.log('editFormData:', editFormData);
+    console.log('editRootCauses:', editRootCauses);
+    console.log('editActionsMap:', editActionsMap);
+    
     if (!editingFinding) return;
 
     // Validate
@@ -573,66 +585,41 @@ const DepartmentChecklist = () => {
       toast.error('Deadline is required');
       return;
     }
-    if (!editFormData.externalAuditorName.trim()) {
-      toast.error('External auditor name is required');
-      return;
-    }
+    // Make external auditor name optional for now
+    // if (!editFormData.externalAuditorName.trim()) {
+    //   toast.error('External auditor name is required');
+    //   return;
+    // }
 
+    console.log('Validation passed! Proceeding with submit...');
     setSubmittingEdit(true);
     try {
-      const payload = {
-        title: editFormData.title.trim(),
-        description: editFormData.description.trim(),
-        severity: editFormData.severity,
-        deadline: new Date(editFormData.deadline).toISOString(),
-        // Keep other fields from original finding
-        auditId: editingFinding.auditId,
-        auditItemId: editingFinding.auditItemId,
-        deptId: editingFinding.deptId || 0,
-        status: editingFinding.status,
-        rootCauseId: editingFinding.rootCauseId || null,
-        reviewerId: editingFinding.reviewerId || null,
-        source: editingFinding.source || '',
-        externalAuditorName: editFormData.externalAuditorName.trim(),
-      };
-
-      await updateFinding(editingFinding.findingId, payload);
-
-      // Update root causes (basic fields)
-      if (editRootCauses.length > 0) {
-        await Promise.all(
-          editRootCauses.map(async (rc) => {
-            const dto = {
-              name: rc.name,
-              description: rc.description,
-              status: (rc as any).status,
-              findingId: editingFinding.findingId,
-            } as any;
-            try {
-              await updateRootCause(rc.rootCauseId, dto);
-            } catch (err: any) {
-              console.warn('Failed to update root cause', rc.rootCauseId, err);
-            }
-          })
-        );
-      }
-
-      // Update/create actions for each root cause
+      // ===== STEP 1: Handle root causes FIRST (create/update/delete) =====
+      console.log('===== STEP 1: Processing root causes =====');
       const tempIdMap: Record<string, number> = {};
-      // First handle root causes: create new, update existing, delete removed
       const rootCausePromises: Promise<void>[] = [];
       editRootCauses.forEach((rc: any) => {
         const isTemp = String(rc.rootCauseId || '').startsWith('temp-');
         if (isTemp) {
-        const dto = {
+          // Create new root cause - include all required fields
+          const dto: any = {
             findingId: editingFinding.findingId,
             name: rc.name || '',
             description: rc.description || '',
             status: rc.status || 'Pending',
-          category: rc.category ?? null,
-          proposedAction: rc.proposedAction ?? '',
-          reasonReject: rc.reasonReject ?? null,
+            deptId: editingFinding.deptId, // Required field
+            category: rc.category || '', // Required field - use empty string if not provided
+            reasonReject: rc.reasonReject || '', // Required field - use empty string if not provided
           };
+          
+          // Add optional fields if provided
+          if (rc.proposedAction) {
+            dto.proposedAction = rc.proposedAction;
+          }
+          if (rc.reviewBy) {
+            dto.reviewBy = rc.reviewBy;
+          }
+          
           rootCausePromises.push(
             (async () => {
               try {
@@ -647,15 +634,26 @@ const DepartmentChecklist = () => {
             })()
           );
         } else {
-        const dto = {
-            name: rc.name,
-            description: rc.description,
-            status: rc.status,
+          // Update existing root cause - include all required fields including rootCauseId
+          const dto: any = {
+            rootCauseId: rc.rootCauseId, // Include the ID in the DTO
+            name: rc.name || '',
+            description: rc.description || '',
+            status: rc.status || 'Pending',
             findingId: editingFinding.findingId,
-          category: rc.category ?? null,
-          proposedAction: rc.proposedAction ?? '',
-          reasonReject: rc.reasonReject ?? null,
-          } as any;
+            deptId: editingFinding.deptId, // Required field
+            category: rc.category || '', // Required field - use empty string if not provided
+            reasonReject: rc.reasonReject || '', // Required field - use empty string if not provided
+          };
+          
+          // Add optional fields if provided
+          if (rc.proposedAction) {
+            dto.proposedAction = rc.proposedAction;
+          }
+          if (rc.reviewBy) {
+            dto.reviewBy = rc.reviewBy;
+          }
+          
           rootCausePromises.push(
             (async () => {
               try {
@@ -682,11 +680,54 @@ const DepartmentChecklist = () => {
       });
 
       await Promise.all(rootCausePromises);
+      console.log('✓ STEP 1 completed. tempIdMap:', tempIdMap);
 
+      // ===== STEP 2: Determine primary rootCauseId (existing or newly created) =====
+      console.log('===== STEP 2: Determining primary rootCauseId =====');
+      const firstExistingRc = (editRootCauses || []).find((rc: any) => !String(rc.rootCauseId || '').startsWith('temp-'));
+      const firstCreatedRcId = Object.values(tempIdMap)[0];
+      const primaryRootCauseId = firstExistingRc?.rootCauseId || firstCreatedRcId || editingFinding.rootCauseId || null;
+      console.log('Primary rootCauseId:', primaryRootCauseId);
+
+      // ===== STEP 3: Update finding with all info (including valid rootCauseId) =====
+      console.log('===== STEP 3: Updating finding =====');
+      // Backend API schema - ONLY include these fields:
+      const findingPayload: any = {
+        title: editFormData.title.trim(),
+        description: editFormData.description.trim(),
+        severity: editFormData.severity,
+        deptId: editingFinding.deptId,
+        status: editingFinding.status || 'Open',
+        deadline: editFormData.deadline ? new Date(editFormData.deadline).toISOString() : null,
+        auditItemId: editingFinding.auditItemId,
+        externalAuditorName: editFormData.externalAuditorName?.trim() || '',
+        source: '', // Always empty string as per user requirement
+      };
+
+      // witnessId is optional - only include if exists
+      if (editingFinding.witnessId) {
+        findingPayload.witnessId = editingFinding.witnessId;
+      }
+
+      // reviewerId should be empty/null as per user requirement
+      // Do not include reviewerId in payload
+
+      console.log('Updating finding with payload:', findingPayload);
+      await updateFinding(editingFinding.findingId, findingPayload);
+      console.log('✓ STEP 3 completed - Finding updated successfully');
+
+      // ===== STEP 4: Update/create actions for each root cause =====
+      console.log('STEP 4: Processing actions. editActionsMap:', editActionsMap);
+      console.log('tempIdMap for resolving root cause IDs:', tempIdMap);
+      
       const actionUpdatePromises: Promise<void>[] = [];
       Object.keys(editActionsMap).forEach((rcIdStr) => {
+        // Resolve temp root cause ID to real ID if it was just created
         const resolvedRcId = tempIdMap[rcIdStr] ?? rcIdStr;
         const actions = editActionsMap[rcIdStr] || [];
+        
+        console.log(`Processing actions for RC key="${rcIdStr}", resolved to "${resolvedRcId}", count=${actions.length}`);
+        
         actions.forEach((action) => {
           const isNew = action.actionId?.startsWith('temp-');
           const payload: any = {
@@ -695,56 +736,78 @@ const DepartmentChecklist = () => {
             status: action.status || 'Draft',
             progressPercent: Number.isFinite(action.progressPercent) ? action.progressPercent : 0,
             dueDate: action.dueDate || editingFinding.deadline || new Date().toISOString(),
-            assignedTo: action.assignedTo,
-            assignedDeptId: action.assignedDeptId || editingFinding.deptId || 0,
+            assignedTo: action.assignedTo || null,
+            assignedDeptId: action.assignedDeptId || editingFinding.deptId,
             reviewFeedback: (action as any).reviewFeedback ?? null,
           };
 
           if (isNew) {
-            const dto = {
+            // Create new action - use resolved root cause ID
+            console.log(`Creating NEW action for RC ${resolvedRcId}:`, { actionId: action.actionId, description: action.description });
+            const dto: any = {
               findingId: editingFinding.findingId,
-              title: payload.title,
               description: payload.description,
               progressPercent: payload.progressPercent ?? 0,
-              dueDate: payload.dueDate || editingFinding.deadline || new Date().toISOString(),
-              assignedDeptId: payload.assignedDeptId || editingFinding.deptId || 0,
-              assignedTo: payload.assignedTo,
-              rootCauseId: resolvedRcId,
-              reviewFeedback: payload.reviewFeedback,
+              dueDate: payload.dueDate,
+              assignedDeptId: payload.assignedDeptId,
             };
+            
+            // Only include optional fields if they have valid values
+            if (payload.title) dto.title = payload.title;
+            // Only include assignedTo if it's a non-empty string (valid GUID)
+            if (payload.assignedTo && payload.assignedTo.trim() !== '') dto.assignedTo = payload.assignedTo;
+            // ReviewFeedback is required by backend - always include it (empty string if not provided)
+            dto.reviewFeedback = payload.reviewFeedback || '';
+            // Add rootCauseId - convert to string if it's a number from root cause creation
+            if (resolvedRcId) {
+              dto.rootCauseId = String(resolvedRcId);
+            }
+            
+            console.log('POST /api/Action payload:', dto);
             actionUpdatePromises.push(
-              createAction(dto).then(() => {}).catch((err: any) => {
-                console.warn('Failed to create action for RC', resolvedRcId, err);
+              createAction(dto).then(() => {
+                console.log('✓ Created action for root cause', resolvedRcId);
+              }).catch((err: any) => {
+                console.error('✗ Failed to create action for RC', resolvedRcId, err);
               })
             );
           } else {
+            // Update existing action - include findingId and rootCauseId
+            console.log(`Updating EXISTING action ${action.actionId} for RC ${resolvedRcId}`);
+            const updatePayload = {
+              ...payload,
+              findingId: editingFinding.findingId,
+              rootCauseId: resolvedRcId, // Use resolved root cause ID
+            };
             actionUpdatePromises.push(
-              updateActionInline(action.actionId, payload).catch((err: any) => {
-                console.warn('Failed to update action', action.actionId, err);
+              updateActionInline(action.actionId, updatePayload).catch((err: any) => {
+                console.warn('✗ Failed to update action', action.actionId, err);
               })
             );
           }
         });
       });
       await Promise.all(actionUpdatePromises);
+      console.log('✓ STEP 4 completed - All actions processed');
 
-      // Ensure finding has a primary rootCauseId (take first existing or newly created)
-      const firstExistingRc = (editRootCauses || []).find((rc: any) => !String(rc.rootCauseId || '').startsWith('temp-'));
-      const firstCreatedRcId = Object.values(tempIdMap)[0];
-      const primaryRootCauseId = firstExistingRc?.rootCauseId || firstCreatedRcId || editingFinding.rootCauseId || null;
-      if (primaryRootCauseId && primaryRootCauseId !== editingFinding.rootCauseId) {
-        try {
-          await updateFinding(editingFinding.findingId, {
-            ...payload,
-            rootCauseId: primaryRootCauseId,
-          } as any);
-        } catch (err) {
-          console.warn('Failed to update finding with primary rootCauseId', err);
-        }
+      // ===== STEP 5: Process attachments (delete + upload) =====
+      console.log('===== STEP 5: Processing attachments =====');
+      
+      // Delete tracked attachments first
+      if (deletedAttachmentIds.length > 0) {
+        console.log(`Deleting ${deletedAttachmentIds.length} attachments:`, deletedAttachmentIds);
+        const deletePromises = deletedAttachmentIds.map((id) =>
+          deleteAttachment(id)
+            .then(() => console.log(`✓ Deleted attachment ${id}`))
+            .catch((err) => console.warn(`✗ Failed to delete attachment ${id}`, err))
+        );
+        await Promise.all(deletePromises);
+        setDeletedAttachmentIds([]); // Clear after deletion
       }
-
-      // Upload new attachments (if any)
+      
+      // Upload new attachments
       if (newEditFiles.length > 0) {
+        console.log(`Uploading ${newEditFiles.length} new attachments`);
         const uploadPromises = newEditFiles.map((file) =>
           uploadAttachment({
             entityType: 'Finding',
@@ -761,10 +824,12 @@ const DepartmentChecklist = () => {
         setNewEditFiles([]);
       }
 
+      console.log('✓ All steps completed successfully!');
       toast.success('Finding updated successfully');
       setShowEditFindingModal(false);
       setEditingFinding(null);
       setDeletedRootCauseIds([]);
+      setDeletedAttachmentIds([]);
 
       // Reload findings to update the map
       const reloadFindings = async () => {
@@ -842,7 +907,11 @@ const DepartmentChecklist = () => {
       };
       await reloadFindings();
     } catch (err: any) {
-      console.error('Error updating finding:', err);
+      console.error('========== ERROR in handleEditFindingSubmit ==========');
+      console.error('Error object:', err);
+      console.error('Error message:', err?.message);
+      console.error('Error response:', err?.response);
+      console.error('Error response data:', err?.response?.data);
       toast.error(err?.response?.data?.message || err?.message || 'Failed to update finding');
     } finally {
       setSubmittingEdit(false);
@@ -2658,6 +2727,7 @@ const DepartmentChecklist = () => {
             onClick={() => {
               setShowEditFindingModal(false);
               setEditingFinding(null);
+              setDeletedAttachmentIds([]);
             }}
           />
           <div className="flex min-h-full items-center justify-center p-4">
@@ -2672,6 +2742,7 @@ const DepartmentChecklist = () => {
                   onClick={() => {
                     setShowEditFindingModal(false);
                     setEditingFinding(null);
+                    setDeletedAttachmentIds([]);
                   }}
                   className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
                 >
@@ -2887,10 +2958,15 @@ const DepartmentChecklist = () => {
                                     assignedTo: '',
                                     rootCauseId: rc.rootCauseId,
                                   };
-                                  setEditActionsMap(prev => ({
-                                    ...prev,
-                                    [rcKey]: [...(prev[rcKey] || []), newAction],
-                                  }));
+                                  console.log(`Adding new action ${tempId} to root cause ${rcKey}:`, newAction);
+                                  setEditActionsMap(prev => {
+                                    const updated = {
+                                      ...prev,
+                                      [rcKey]: [...(prev[rcKey] || []), newAction],
+                                    };
+                                    console.log('Updated editActionsMap after adding action:', updated);
+                                    return updated;
+                                  });
                                 }}
                                 className="px-3 py-1 text-[11px] bg-primary-600 text-white rounded hover:bg-primary-700"
                               >
@@ -2978,16 +3054,13 @@ const DepartmentChecklist = () => {
                             </div>
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={async () => {
-                                  try {
-                                    await deleteAttachment(att.attachmentId);
-                                    toast.success('Attachment removed');
-                                    const refreshed = await getAttachments('Finding', editingFinding?.findingId || '');
-                                  setEditAttachments(filterActiveAttachments(Array.isArray(refreshed) ? refreshed : []));
-                                  } catch (err: any) {
-                                    console.error('Failed to remove attachment', err);
-                                    toast.error('Remove attachment failed');
-                                  }
+                                onClick={() => {
+                                  // Track for deletion on submit
+                                  setDeletedAttachmentIds(prev => [...prev, att.attachmentId]);
+                                  // Remove from UI immediately
+                                  setEditAttachments(prev => prev.filter(a => a.attachmentId !== att.attachmentId));
+                                  toast.success('Attachment marked for removal');
+                                  console.log(`Marked attachment ${att.attachmentId} for deletion`);
                                 }}
                                 className="px-2 py-1 text-[11px] text-red-600 border border-red-200 rounded hover:bg-red-50"
                               >

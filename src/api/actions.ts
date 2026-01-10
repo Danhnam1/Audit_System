@@ -17,12 +17,14 @@ export interface CreateActionDto {
   findingId: string;
   title?: string | null;
   description: string;
+  assignedBy?: string | null;
   assignedTo?: string | null;
   assignedDeptId: number;
   progressPercent: number;
   dueDate: string;
-  reviewFeedback?: string;
-  rootCauseId?: number; // Link to root cause
+  reviewFeedback?: string | null;
+  rootCauseId?: string | null; // Link to root cause (GUID string, not number)
+  closedAt?: string | null;
 }
 
 export interface Action {
@@ -44,7 +46,27 @@ export interface Action {
 
 // Create a new action
 export const createAction = async (dto: CreateActionDto): Promise<Action> => {
-  const pascalDto = toPascalCase(dto);
+  // Remove null/undefined optional fields to avoid backend validation errors
+  const cleanDto: any = {
+    findingId: dto.findingId,
+    description: dto.description,
+    assignedDeptId: dto.assignedDeptId,
+    progressPercent: dto.progressPercent ?? 0,
+    dueDate: dto.dueDate,
+  };
+  
+  // Only include optional fields if they have valid values
+  if (dto.title) cleanDto.title = dto.title;
+  if (dto.assignedBy) cleanDto.assignedBy = dto.assignedBy;
+  // Only include assignedTo if it's a non-empty string (valid GUID)
+  if (dto.assignedTo && dto.assignedTo.trim() !== '') cleanDto.assignedTo = dto.assignedTo;
+  if (dto.rootCauseId) cleanDto.rootCauseId = dto.rootCauseId;
+  // ReviewFeedback is required by backend - always include it (empty string if not provided)
+  cleanDto.reviewFeedback = dto.reviewFeedback || '';
+  if (dto.closedAt) cleanDto.closedAt = dto.closedAt;
+  
+  const pascalDto = toPascalCase(cleanDto);
+  console.log('POST /Action cleaned payload:', pascalDto);
   const res = await apiClient.post('/Action', pascalDto) as any;
   return res;
 };

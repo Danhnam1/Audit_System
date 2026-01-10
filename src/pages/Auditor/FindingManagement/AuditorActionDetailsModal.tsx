@@ -300,13 +300,15 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
                 </div>
 
                 {/* Attachments */}
-                {attachments.length > 0 && (
+                {attachments.filter(att => att.status?.toLowerCase() !== 'inactive').length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-3">
-                      Attachments ({attachments.length})
+                      Attachments ({attachments.filter(att => att.status?.toLowerCase() !== 'inactive').length})
                     </label>
                     <div className="space-y-3">
-                      {[...attachments].sort((a, b) => {
+                      {[...attachments]
+                        .filter(att => att.status?.toLowerCase() !== 'inactive')
+                        .sort((a, b) => {
                         // Sort: Rejected attachments first, then others
                         const aIsRejected = a.status?.toLowerCase() === 'rejected';
                         const bIsRejected = b.status?.toLowerCase() === 'rejected';
