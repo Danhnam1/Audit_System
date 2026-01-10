@@ -319,8 +319,6 @@ const lastCalculatedAuditRef = useRef<string>("");
     loadEffectiveness();
   }, [selectedAuditId]);
 
-  const audit = detail?.audit ?? {};
-
   const unwrapArray = <T,>(value: any): T[] => {
     if (Array.isArray(value)) return value as T[];
     return unwrap<T>(value);
@@ -328,7 +326,6 @@ const lastCalculatedAuditRef = useRef<string>("");
 
   const schedulesArr = detail ? unwrapArray<any>(detail.schedules) : [];
   const scopeDepartmentsArr = detail ? unwrapArray<any>(detail.scopeDepartments) : [];
-  const criteriaArr = detail ? unwrapArray<any>(detail.auditCriteriaMap) : [];
   const checklistArr = detail ? unwrapArray<any>(detail.auditChecklistTemplateMap) : [];
   const teamsArr = detail ? unwrapArray<any>(detail.teams) : [];
   
@@ -360,18 +357,6 @@ const lastCalculatedAuditRef = useRef<string>("");
     [departments]
   );
 
-  const getUserName = useCallback(
-    (userId: string | number | null | undefined) => {
-      if (userId == null) return "N/A";
-      const match = adminUsers.find(
-        (u: any) =>
-          String(u.userId || u.$id || u.id) === String(userId) ||
-          String(u.userId || u.$id || u.id).toLowerCase() === String(userId).toLowerCase()
-      );
-      return match?.fullName || match?.email || String(userId);
-    },
-    [adminUsers]
-  );
 
   const getCriteriaName = useCallback(
     (criteriaId: string | null | undefined) => {
@@ -457,18 +442,23 @@ const lastCalculatedAuditRef = useRef<string>("");
   }, [deptFilter, actionsArr, findingsByIdMap]);
 
   // Use counts from filtered lists
-  const findingsCount = filteredFindingsArr.length;
-  const openFindingsFiltered = filteredFindingsArr.filter((f: any) => {
-    const st = String(f?.status || '').toLowerCase();
-    return !st.includes('closed') && !st.includes('complete');
-  }).length;
-  const closedFindingsFiltered = filteredFindingsArr.filter((f: any) => {
-    const st = String(f?.status || '').toLowerCase();
-    return st.includes('closed') || st.includes('complete');
-  }).length;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const _findingsCount = filteredFindingsArr.length;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const _openFindingsFiltered = filteredFindingsArr.filter((f: any) => {
+  //   const st = String(f?.status || '').toLowerCase();
+  //   return !st.includes('closed') && !st.includes('complete');
+  // }).length;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const _closedFindingsFiltered = filteredFindingsArr.filter((f: any) => {
+  //   const st = String(f?.status || '').toLowerCase();
+  //   return st.includes('closed') || st.includes('complete');
+  // }).length;
 
-  const actionsCount = filteredActionsArr.length;
-  const completedActionsFiltered = filteredActionsArr.filter(isActionCompleted).length;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const _actionsCount = filteredActionsArr.length;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const _completedActionsFiltered = filteredActionsArr.filter(isActionCompleted).length;
   const overdueActionsFiltered = filteredActionsArr.filter((a: any) => {
     if (isActionCompleted(a)) return false;
     if (!a?.dueDate) return false;
@@ -490,47 +480,6 @@ const lastCalculatedAuditRef = useRef<string>("");
     });
     return map;
   }, [actionsArr]);
-
-  const isFindingResolved = (relatedActions: any[]) => {
-    if (!relatedActions || !relatedActions.length) return false;
-    return relatedActions.some(isActionCompleted);
-  };
-
-  const isFindingOverdue = (f: any, relatedActions: any[]) => {
-    const resolved = isFindingResolved(relatedActions);
-    if (resolved) return false;
-    if (!f?.deadline) return false;
-    const dl = new Date(f.deadline);
-    if (isNaN(dl.getTime())) return false;
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    dl.setHours(0,0,0,0);
-    return dl < today;
-  };
-
-  const findingsDepartmentAgg = useMemo(() => {
-    const agg: Record<string, { deptId: string; total: number; resolved: number; overdue: number }> = {};
-    const source = filteredFindingsArr;
-    source.forEach((f: any) => {
-      const dept = f?.deptId != null ? String(f.deptId) : 'N/A';
-      if (!agg[dept]) agg[dept] = { deptId: dept, total: 0, resolved: 0, overdue: 0 };
-      const related = actionsByFindingMap.get(String(f.findingId || '')) || [];
-      const resolved = isFindingResolved(related);
-      const overdue = isFindingOverdue(f, related);
-      agg[dept].total += 1;
-      if (resolved) agg[dept].resolved += 1;
-      if (overdue) agg[dept].overdue += 1;
-    });
-    return Object.values(agg);
-  }, [filteredFindingsArr, actionsByFindingMap]);
-
-  const period = useMemo(() => {
-    const from = audit.startDate ? new Date(audit.startDate).toLocaleDateString() : "";
-    const to = audit.endDate ? new Date(audit.endDate).toLocaleDateString() : "";
-    if (!from && !to) return "";
-    if (from && to) return `${from} – ${to}`;
-    return from || to;
-  }, [audit.startDate, audit.endDate]);
 
   const findingsSeverityChartData = useMemo(() => {
     if (!findingsActionsSummary) return [];

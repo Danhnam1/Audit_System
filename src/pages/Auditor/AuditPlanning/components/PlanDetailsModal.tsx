@@ -62,7 +62,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   selectedPlanDetails,
   templatesForPlan = [],
   onClose,
-  onEdit,
+  onEdit: _onEdit,
   onDelete,
   onSubmitToLead,
   onForwardToDirector,
@@ -98,26 +98,26 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   if (!showModal || !selectedPlanDetails) return null;
 
   // Check if current user is Lead Auditor of THIS specific plan
-  const isLeadAuditor = React.useMemo(() => {
-    if (!currentUserId || !auditTeamsForPlan.length) return false;
+  // const isLeadAuditor = React.useMemo(() => {
+  //   if (!currentUserId || !auditTeamsForPlan.length) return false;
     
-    const currentAuditId = selectedPlanDetails.auditId || selectedPlanDetails.id;
-    if (!currentAuditId) return false;
+  //   const currentAuditId = selectedPlanDetails.auditId || selectedPlanDetails.id;
+  //   if (!currentAuditId) return false;
     
-    // Check if user has isLead: true in THIS plan's audit team
-    const isLead = auditTeamsForPlan.some((m: any) => {
-      const teamAuditId = String(m?.auditId || '').trim();
-      const teamUserId = String(m?.userId || '').trim();
-      const userIdMatch = teamUserId === String(currentUserId).trim() || 
-                         teamUserId.toLowerCase() === String(currentUserId).trim().toLowerCase();
-      const auditIdMatch = teamAuditId === String(currentAuditId).trim() ||
-                          teamAuditId.toLowerCase() === String(currentAuditId).trim().toLowerCase();
-      const isLeadMatch = m?.isLead === true;
-      return userIdMatch && auditIdMatch && isLeadMatch;
-    });
+  //   // Check if user has isLead: true in THIS plan's audit team
+  //   const isLead = auditTeamsForPlan.some((m: any) => {
+  //     const teamAuditId = String(m?.auditId || '').trim();
+  //     const teamUserId = String(m?.userId || '').trim();
+  //     const userIdMatch = teamUserId === String(currentUserId).trim() || 
+  //                        teamUserId.toLowerCase() === String(currentUserId).trim().toLowerCase();
+  //     const auditIdMatch = teamAuditId === String(currentAuditId).trim() ||
+  //                         teamAuditId.toLowerCase() === String(currentAuditId).trim().toLowerCase();
+  //     const isLeadMatch = m?.isLead === true;
+  //     return userIdMatch && auditIdMatch && isLeadMatch;
+  //   });
     
-    return isLead;
-  }, [currentUserId, auditTeamsForPlan, selectedPlanDetails.auditId, selectedPlanDetails.id]);
+  //   return isLead;
+  // }, [currentUserId, auditTeamsForPlan, selectedPlanDetails.auditId, selectedPlanDetails.id]);
 
   // Check if current user is the plan creator
   const isCreator = React.useMemo(() => {

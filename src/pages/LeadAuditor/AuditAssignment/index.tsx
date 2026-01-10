@@ -772,37 +772,6 @@ export default function AuditAssignment() {
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  // Helper function to check if audit is time-constrained
-  const isTimeConstrained = (audit: Audit): boolean => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    
-    // Check if endDate is within 30 days or has passed
-    if (audit.endDate) {
-      const endDate = new Date(audit.endDate);
-      endDate.setHours(0, 0, 0, 0);
-      const daysUntilEnd = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Time-constrained if end date is within 30 days or has passed
-      if (daysUntilEnd <= 30) {
-        return true;
-      }
-    }
-    
-    // Check if startDate is within 7 days
-    if (audit.startDate) {
-      const startDate = new Date(audit.startDate);
-      startDate.setHours(0, 0, 0, 0);
-      const daysUntilStart = Math.ceil((startDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Time-constrained if start date is within 7 days
-      if (daysUntilStart >= 0 && daysUntilStart <= 7) {
-        return true;
-      }
-    }
-    
-    return false;
-  };
 
   // Check if audit is pending (audits with status "Approved")
   const isPendingAudit = (audit: Audit): boolean => {

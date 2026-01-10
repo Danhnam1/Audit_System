@@ -64,9 +64,6 @@ const SQAStaffReports = () => {
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [auditChecklistItems, setAuditChecklistItems] = useState<any[] | null>(null);
   const [summaryTab, setSummaryTab] = useState<'finding' | 'nofindings' | 'checklistitems'>('finding');
-  const [overdueDeptFilter, setOverdueDeptFilter] = useState<string>('all');
-  const [compliantStatusFilter, setCompliantStatusFilter] = useState<'all' | 'compliant' | 'noncompliant'>('all');
-  const [compliantDeptFilter, setCompliantDeptFilter] = useState<string>('all');
   // Filters for No Findings tab
   const [nofindingsDeptFilter, setNofindingsDeptFilter] = useState<string>('all');
   // Filters for Checklist items tab
@@ -76,8 +73,8 @@ const SQAStaffReports = () => {
   const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
   // Attachments modal state
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
-  const [selectedAttachments, setSelectedAttachments] = useState<any[]>([]);
-  const [selectedFindingTitle, setSelectedFindingTitle] = useState<string>('');
+  const [selectedAttachments, _setSelectedAttachments] = useState<any[]>([]);
+  const [selectedFindingTitle, _setSelectedFindingTitle] = useState<string>('');
   // Finding detail modal state
   const [showFindingModal, setShowFindingModal] = useState(false);
   const [selectedFinding, setSelectedFinding] = useState<any | null>(null);
@@ -123,70 +120,6 @@ const SQAStaffReports = () => {
     });
   }, [summary]);
 
-  // Checklist overview (overdue + compliant) for selected audit
-  // NOTE: Backend checklist items không có deptId, nên dùng "section" như phòng ban logic.
-  const checklistOverview = useMemo(() => {
-    if (!auditChecklistItems || auditChecklistItems.length === 0) {
-      return {
-        totalOverdue: 0,
-        totalCompliant: 0,
-        overdueByDept: [] as Array<{ deptId: string; deptName: string; overdue: number; compliant: number }>,
-        overdueItems: [] as any[],
-      };
-    }
-
-    const byDeptMap = new Map<string, { deptId: string; overdue: number; compliant: number }>();
-    const overdueItems: any[] = [];
-    const compliantItems: any[] = [];
-    let totalOverdue = 0;
-    let totalCompliant = 0;
-
-    auditChecklistItems.forEach((item: any) => {
-      const rawStatus = String(item.status || '').toLowerCase();
-      const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
-      const isCompliant = rawStatus === 'compliant' || rawStatus.includes('compliant');
-
-      // Use section (e.g. "Flight Operations") as logical department key/label
-      const sectionRaw =
-        item.section ||
-        item.departmentName ||
-        item.deptName ||
-        item.department ||
-        '';
-      const key = String(sectionRaw || '—').trim();
-
-      if (!byDeptMap.has(key)) {
-        byDeptMap.set(key, { deptId: key, overdue: 0, compliant: 0 });
-      }
-      const agg = byDeptMap.get(key)!;
-
-      if (isOverdue) {
-        agg.overdue += 1;
-        totalOverdue += 1;
-        overdueItems.push(item);
-      }
-      if (isCompliant) {
-        agg.compliant += 1;
-        totalCompliant += 1;
-        compliantItems.push(item);
-      }
-    });
-
-    const overdueByDept = Array.from(byDeptMap.values()).map((row) => ({
-      deptId: row.deptId,
-      deptName: row.deptId || '—', // section label
-      overdue: row.overdue,
-      compliant: row.compliant,
-    }));
-
-    return {
-      totalOverdue,
-      totalCompliant,
-      overdueByDept,
-      overdueItems,
-      compliantItems,
-    };
-  }, [auditChecklistItems]);
 
   // Get unique departments from checklist items
   const checklistDepartments = useMemo(() => {
@@ -272,66 +205,68 @@ const SQAStaffReports = () => {
   }, [auditChecklistItems, checklistitemsStatusFilter, checklistitemsDeptFilter]);
 
   // Filtered overdue items
-  const filteredOverdueItems = useMemo(() => {
-    if (!checklistOverview.overdueItems) return [];
-    let filtered = [...checklistOverview.overdueItems];
-    if (overdueDeptFilter !== 'all') {
-      filtered = filtered.filter((item: any) => {
-        const deptName =
-          item.section ||
-          item.departmentName ||
-          item.deptName ||
-          item.department ||
-          '';
-        return String(deptName).trim() === overdueDeptFilter;
-      });
-    }
-    return filtered;
-  }, [checklistOverview.overdueItems, overdueDeptFilter]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const _filteredOverdueItems = useMemo(() => {
+  //   if (!checklistOverview.overdueItems) return [];
+  //   let filtered = [...checklistOverview.overdueItems];
+  //   if (overdueDeptFilter !== 'all') {
+  //     filtered = filtered.filter((item: any) => {
+  //       const deptName =
+  //         item.section ||
+  //         item.departmentName ||
+  //         item.deptName ||
+  //         item.department ||
+  //         '';
+  //       return String(deptName).trim() === overdueDeptFilter;
+  //     });
+  //   }
+  //   return filtered;
+  // }, [checklistOverview.overdueItems, overdueDeptFilter]);
 
   // Filtered compliant items (includes both compliant and non-compliant)
-  const filteredCompliantItems = useMemo(() => {
-    if (!auditChecklistItems) return [];
-    let filtered: any[] = [];
-    
-    // Get all items that are either compliant or non-compliant (not overdue)
-    auditChecklistItems.forEach((item: any) => {
-      const rawStatus = String(item.status || '').toLowerCase();
-      const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
-      
-      // Check noncompliant first (because "noncompliant" contains "compliant")
-      const isNonCompliant = rawStatus === 'noncompliant' || rawStatus === 'non-compliant' || rawStatus.includes('noncompliant') || rawStatus.includes('non-compliant');
-      // Then check compliant (exact match or contains, but not if it's noncompliant)
-      const isCompliant = !isNonCompliant && (rawStatus === 'compliant' || rawStatus.includes('compliant'));
-      
-      if (!isOverdue) {
-        // Include both compliant and non-compliant (but not overdue)
-        // Also include Return status items when filter is 'all'
-        if (compliantStatusFilter === 'all') {
-          filtered.push(item); // Includes Return and all other non-overdue statuses
-        } else if (compliantStatusFilter === 'compliant' && isCompliant) {
-          filtered.push(item);
-        } else if (compliantStatusFilter === 'noncompliant' && isNonCompliant) {
-          filtered.push(item);
-        }
-        // Note: Return items are included when filter is 'all'
-      }
-    });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // const _filteredCompliantItems = useMemo(() => {
+  //   if (!auditChecklistItems) return [];
+  //   let filtered: any[] = [];
+  //   
+  //   // Get all items that are either compliant or non-compliant (not overdue)
+  //   auditChecklistItems.forEach((item: any) => {
+  //     const rawStatus = String(item.status || '').toLowerCase();
+  //     const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
+  //     
+  //     // Check noncompliant first (because "noncompliant" contains "compliant")
+  //     const isNonCompliant = rawStatus === 'noncompliant' || rawStatus === 'non-compliant' || rawStatus.includes('noncompliant') || rawStatus.includes('non-compliant');
+  //     // Then check compliant (exact match or contains, but not if it's noncompliant)
+  //     const isCompliant = !isNonCompliant && (rawStatus === 'compliant' || rawStatus.includes('compliant'));
+  //     
+  //     if (!isOverdue) {
+  //       // Include both compliant and non-compliant (but not overdue)
+  //       // Also include Return status items when filter is 'all'
+  //       if (compliantStatusFilter === 'all') {
+  //         filtered.push(item); // Includes Return and all other non-overdue statuses
+  //       } else if (compliantStatusFilter === 'compliant' && isCompliant) {
+  //         filtered.push(item);
+  //       } else if (compliantStatusFilter === 'noncompliant' && isNonCompliant) {
+  //         filtered.push(item);
+  //       }
+  //       // Note: Return items are included when filter is 'all'
+  //     }
+  //   });
 
-    // Filter by department
-    if (compliantDeptFilter !== 'all') {
-      filtered = filtered.filter((item: any) => {
-        const deptName =
-          item.section ||
-          item.departmentName ||
-          item.deptName ||
-          item.department ||
-          '';
-        return String(deptName).trim() === compliantDeptFilter;
-      });
-    }
-    return filtered;
-  }, [auditChecklistItems, compliantStatusFilter, compliantDeptFilter]);
+  //   // Filter by department
+  //   if (compliantDeptFilter !== 'all') {
+  //     filtered = filtered.filter((item: any) => {
+  //       const deptName =
+  //         item.section ||
+  //         item.departmentName ||
+  //         item.deptName ||
+  //         item.department ||
+  //         '';
+  //       return String(deptName).trim() === compliantDeptFilter;
+  //     });
+  //   }
+  //   return filtered;
+  // }, [auditChecklistItems, compliantStatusFilter, compliantDeptFilter]);
 
   // Chuẩn hóa id (tránh lệch hoa/thường, khoảng trắng)
   const normalizeId = (id: string | number | null | undefined) =>
@@ -2188,8 +2123,6 @@ const SQAStaffReports = () => {
                                 item.title ||
                                 '—';
                               const status = item.status || '—';
-                              const dueDate = item.dueDate || item.dueDateSnapshot || null;
-                              const notes = item.comment || item.notes || item.reason || item.response || '—';
                               const statusColorClass = getStatusColor(status);
 
                               return (

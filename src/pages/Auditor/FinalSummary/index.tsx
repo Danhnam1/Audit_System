@@ -384,18 +384,6 @@ export default function AuditorFinalSummaryPage() {
     [departments]
   );
 
-  const getUserName = useCallback(
-    (userId: string | number | null | undefined) => {
-      if (userId == null) return "N/A";
-      const match = adminUsers.find(
-        (u: any) =>
-          String(u.userId || u.$id || u.id) === String(userId) ||
-          String(u.userId || u.$id || u.id).toLowerCase() === String(userId).toLowerCase()
-      );
-      return match?.fullName || match?.email || String(userId);
-    },
-    [adminUsers]
-  );
 
   const getCriteriaName = useCallback(
     (criteriaId: string | null | undefined) => {

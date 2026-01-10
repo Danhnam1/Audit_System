@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
 import { approvePlan, getAuditPlanById, rejectPlanContent, getSensitiveDepartments } from '../../api/audits';
 import { normalizePlanDetails, unwrap } from '../../utils/normalize';
@@ -14,7 +13,7 @@ import { getChecklistTemplates } from '../../api/checklists';
 import { getAuditSchedules } from '../../api/auditSchedule';
 import { getAuditTeam } from '../../api/auditTeam';
 import { MainLayout } from '../../layouts';
-import { StatCard, Button } from '../../components';
+import { StatCard } from '../../components';
 
 interface AuditPlan {
   id: string; // use string to preserve GUIDs
@@ -118,7 +117,7 @@ const ReviewAuditPlans = () => {
     return statusFiltered;
   })();
 
-  const [processingIdStr, setProcessingIdStr] = useState<string | null>(null);
+  const [_processingIdStr, setProcessingIdStr] = useState<string | null>(null);
 
   // Function to clear all filters
   const clearFilters = () => {
@@ -137,113 +136,6 @@ const ReviewAuditPlans = () => {
     return s === 'pendingdirectorapproval' || s === 'pending director approval';
   };
 
-  // Function to reload plans
-  const reloadPlans = async () => {
-    try {
-      const [plansRes, deptRes, critRes, usersRes, templatesRes] = await Promise.all([
-        getPlansWithDepartments(),
-        getDepartments(),
-        getAuditCriteria(),
-        getAdminUsers(),
-        getChecklistTemplates(),
-      ]);
-
-      // Build departments map for id->name lookup
-      const deptList = Array.isArray(deptRes)
-        ? deptRes.map((d: any) => ({ deptId: d.deptId ?? d.$id ?? d.id, name: d.name || d.code || '—' }))
-        : [];
-      const deptMap = deptList.reduce((acc: any, d: any) => {
-        const name = d.name || d.deptName || d.code || String(d.deptId ?? d.$id ?? d.id ?? '');
-        const keys = [d.deptId, d.$id, d.id, Number(d.deptId)].filter((k) => k !== undefined && k !== null);
-        keys.forEach((k: any) => (acc[String(k)] = name));
-        return acc;
-      }, {} as Record<string, string>);
-
-      const usersArr = Array.isArray(usersRes) ? usersRes : [];
-      const userMap = usersArr.reduce((acc: any, u: any) => {
-        const keys = [u.userId, u.id, u.$id, u.email, u.fullName]
-          .filter(Boolean)
-          .map((k: any) => String(k).toLowerCase());
-        keys.forEach((k: string) => (acc[k] = u));
-        return acc;
-      }, {} as any);
-
-      const plansList = Array.isArray(plansRes) ? plansRes : [];
-      const mapped: AuditPlan[] = plansList.map((p: any) => {
-        const scopeArr = unwrap(p.scopeDepartments || p.scope || p.scopeDepartment);
-        const deptNames = (scopeArr || [])
-          .map((d: any) => d.deptName || deptMap[String(d.deptId ?? d.id ?? d.$id ?? d.departmentId)] || d.name)
-          .filter(Boolean);
-
-        let department = deptNames.length ? deptNames.join(', ') : '—';
-        if (department === '—' && p.department) {
-          department = deptMap[String(p.department)] || String(p.department);
-        }
-
-        // Resolve submitter similarly to Lead Auditor page
-        let createdByUser = p.createdByUser;
-        if (createdByUser && typeof createdByUser === 'string') {
-          const lu = userMap[String(createdByUser).toLowerCase()];
-          createdByUser = lu || { fullName: createdByUser };
-        }
-        if (!createdByUser) {
-          const candidate = p.createdBy || p.submittedBy || p.submittedByUser || p.ownerId || p.createdByUserId;
-          if (candidate) {
-            const lu = userMap[String(candidate).toLowerCase()];
-            createdByUser = lu || { fullName: String(candidate) };
-          }
-        }
-        let submittedBy = (createdByUser && createdByUser.fullName) || p.submittedBy || p.createdBy || 'Unknown';
-
-        return {
-          id: String(p.auditId ?? p.id ?? p.$id ?? ''),
-          planId: String(p.auditId ?? p.id ?? p.$id ?? ''),
-          title: p.title || p.name || 'Untitled',
-          department,
-          scope: p.scope || '—',
-          startDate: p.startDate || p.periodFrom || '',
-          endDate: p.endDate || p.periodTo || '',
-          submittedBy,
-          submittedDate: p.createdAt || p.submittedAt || '',
-          status: String(p.status || p.auditStatus || 'Pending Review') as any,
-          objectives: p.objective ? [String(p.objective)] : Array.isArray(p.objectives) ? p.objectives : [],
-          auditTeam: Array.isArray(p.auditTeams)
-            ? p.auditTeams.map((t: any) => t.fullName || t.name || String(t))
-            : p.auditTeams && Array.isArray(p.auditTeams?.values)
-              ? p.auditTeams.values.map((t: any) => t.fullName || t.name)
-              : [],
-          project: p.project || p.Project || '',
-        };
-      });
-
-      // Keep plans visible after actions: include PendingDirectorApproval + Approved + InProgress + Rejected
-      const directorRelevant = mapped.filter((m) => {
-        const s = String(m.status || '').toLowerCase();
-        return (
-          s === 'pendingdirectorapproval' ||
-          s === 'pending director approval' ||
-          s === 'approved' ||
-          s === 'approve' ||
-          s === 'inprogress' ||
-          s === 'in progress' ||
-          s === 'rejected'
-        );
-      });
-
-      setAuditPlans(directorRelevant);
-      setDepartments(deptList);
-      setCriteriaList(Array.isArray(critRes) ? critRes : []);
-      setChecklistTemplates(Array.isArray(templatesRes) ? templatesRes : []);
-      const owners = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditee'));
-      const auditors = usersArr.filter((u: any) => String(u.roleName || '').toLowerCase().includes('auditor'));
-      setOwnerOptions(owners);
-      setAuditorOptions(auditors);
-      // Refresh audit teams after loading plans to ensure we have latest team assignments
-      await fetchAuditTeams();
-    } catch (err) {
-      console.error('Failed to reload plans', err);
-    }
-  };
 
   // Load audit teams - needs to be refreshed when plans change
   const fetchAuditTeams = async () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { getAuditTeam } from '../api/auditTeam';
 import { getDepartments } from '../api/departments';
 import { getAuditCriteria } from '../api/auditCriteria';
@@ -12,7 +12,7 @@ interface UseAuditPlanDataProps {
   user?: any;
 }
 
-export const useAuditPlanData = ({ userIdFromToken, user }: UseAuditPlanDataProps) => {
+export const useAuditPlanData = (_props: UseAuditPlanDataProps) => {
   // Data fetching states
   const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<any[]>([]);

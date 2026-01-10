@@ -63,7 +63,7 @@ export const MainLayout = ({
   
   
   // Check if auditor has permission to create plans
-  const [hasPlanPermission, setHasPlanPermission] = useState<boolean | null>(null);
+  const [_hasPlanPermission, setHasPlanPermission] = useState<boolean | null>(null);
   
   useEffect(() => {
     const checkPermission = async () => {

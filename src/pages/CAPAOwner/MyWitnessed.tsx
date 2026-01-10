@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
-import { getMyWitnessedFindings, type Finding, witnessConfirmFinding, witnessDisagreeFinding } from '../../api/findings';
-import { toast } from 'react-toastify';
+import { getMyWitnessedFindings, type Finding } from '../../api/findings';
 
 interface FindingWithAudit extends Finding {
   auditTitle?: string;
@@ -25,12 +24,6 @@ const CAPAOwnerMyWitnessed = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [groupedAudits, setGroupedAudits] = useState<GroupedAudit[]>([]);
-  
-  // Rejection modal state
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [selectedFindingForReject, setSelectedFindingForReject] = useState<FindingWithAudit | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [submittingReject, setSubmittingReject] = useState(false);
   
   // Filter state - default to 'All' to see all witnessed findings
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -129,58 +122,6 @@ const CAPAOwnerMyWitnessed = () => {
     }
   };
 
-  const handleConfirmWitness = async (finding: FindingWithAudit) => {
-    try {
-      await witnessConfirmFinding(finding.findingId);
-      toast.success('Finding confirmed successfully!');
-      
-      // Reload findings
-      const updatedFindings = await getMyWitnessedFindings();
-      const findingsWithAudit = updatedFindings.map((f) => ({
-        ...f,
-        auditTitle: f.audit?.title || 'N/A',
-        auditType: f.audit?.type || 'N/A',
-      }));
-      setFindings(findingsWithAudit);
-    } catch (err: any) {
-      console.error('Error confirming witness:', err);
-      toast.error(err?.message || 'Failed to confirm finding');
-    }
-  };
-
-  const handleRejectWitness = async () => {
-    if (!selectedFindingForReject) return;
-    
-    if (!rejectReason.trim()) {
-      toast.error('Please provide a reason for rejection');
-      return;
-    }
-
-    setSubmittingReject(true);
-    try {
-      await witnessDisagreeFinding(selectedFindingForReject.findingId, rejectReason.trim());
-      toast.success('Finding rejected successfully. Auditor will be notified.');
-      
-      // Reload findings
-      const updatedFindings = await getMyWitnessedFindings();
-      const findingsWithAudit = updatedFindings.map((f) => ({
-        ...f,
-        auditTitle: f.audit?.title || 'N/A',
-        auditType: f.audit?.type || 'N/A',
-      }));
-      setFindings(findingsWithAudit);
-      
-      // Close modal
-      setShowRejectModal(false);
-      setSelectedFindingForReject(null);
-      setRejectReason('');
-    } catch (err: any) {
-      console.error('Error rejecting witness:', err);
-      toast.error(err?.message || 'Failed to reject finding');
-    } finally {
-      setSubmittingReject(false);
-    }
-  };
 
   return (
     <MainLayout>

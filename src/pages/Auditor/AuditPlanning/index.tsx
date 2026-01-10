@@ -101,7 +101,7 @@ const SQAStaffAuditPlanning = () => {
 
   // Original selected auditors from plan (when editing) - kept for future edit functionality
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [originalSelectedAuditorIds, setOriginalSelectedAuditorIds] = useState<
+  const [_originalSelectedAuditorIds, setOriginalSelectedAuditorIds] = useState<
     string[]
   >([]);
 
