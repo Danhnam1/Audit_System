@@ -95,21 +95,39 @@ const FindingsProgress = () => {
 
   // Get display status for finding - override "Closed" if not all actions are closed
   // Keep "Received" if there's at least one action not approved or verified
-  // If all actions are "completed", show "Closed"
+  // If all actions are "completed", show "Completed"
   const getDisplayStatus = (finding: Finding): string => {
     const originalStatus = finding.status || '';
     const statusLower = originalStatus.toLowerCase();
     const actions = findingActionsMap[finding.findingId] || [];
 
-    // First, check if all actions are completed - if so, always show "Closed"
+    // If no actions loaded, trust the finding status
+    if (actions.length === 0) {
+      if (statusLower === 'closed') return 'Closed';
+      return originalStatus || 'N/A';
+    }
+
+    // If finding itself is Closed, keep it Closed
+    if (statusLower === 'closed') {
+      return 'Closed';
+    }
+
+    // First, check if all actions are completed - if so, always show "Completed"
     if (actions.length > 0) {
       const allCompleted = actions.every(a => {
-        const actionStatus = a.status?.toLowerCase() || '';
-        return actionStatus === 'completed';
+        const actionStatus = (a.status || '').toLowerCase().trim();
+        const progressVal = Number(a.progressPercent);
+        const isDone =
+          actionStatus === 'completed' ||
+          actionStatus === 'complete' ||
+          actionStatus === 'closed' ||
+          actionStatus === 'done' ||
+          (!Number.isNaN(progressVal) && progressVal >= 100);
+        return isDone;
       });
       
       if (allCompleted) {
-        return 'Closed';
+        return 'Completed';
       }
     }
 
@@ -468,6 +486,7 @@ const FindingsProgress = () => {
       const statusLower = (finding.status || '').toLowerCase().trim();
       return statusLower !== 'archived' && statusLower !== 'witnessdisagreed';
     });
+    console.log('filtered', filtered);
 
     // Apply search filter
     if (searchQuery.trim()) {
@@ -1439,6 +1458,7 @@ const FindingsProgress = () => {
                           const isAssigned = submittedRootCauseIds.has(rcId);
                           const assignedData = assignedRootCauseData[rcId];
                           const actions = rootCause.actions || [];
+                          const proposals = actions.length > 0 ? [actions[0]] : [];
 
                           return (
                             <div key={rootCause.rootCauseId} className={`border rounded-lg ${isAssigned ? 'border-green-300 bg-green-50' : 'border-gray-300 bg-white'}`}>
@@ -1462,35 +1482,35 @@ const FindingsProgress = () => {
                                 </div>
                               </div>
 
-                              {/* Remediation Proposals */}
+                              {/* Remediation Proposals (show only first proposal per root cause) */}
                               <div className="px-4 py-3">
-                                {actions.length === 0 ? (
+                                {proposals.length === 0 ? (
                                   <p className="text-xs text-gray-500 italic py-2">No remediation proposals yet</p>
                                 ) : (
                                   <div className="space-y-2">
-                                    <p className="text-xs font-semibold text-gray-700">Remediation Proposals: {actions.length}</p>
-                                    {actions.map((action: any) => (
-                                      <div key={action.actionId} className="border border-gray-200 rounded p-2 bg-gray-50">
-                                        <div className="flex items-start justify-between gap-2">
-                                          <p className="text-xs font-medium text-gray-900 flex-1">{action.title}</p>
-                                          <span className={`px-2 py-0.5 text-xs rounded flex-shrink-0 ${
-                                            action.status === 'Approved' ? 'bg-green-100 text-green-700' :
-                                            action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700' :
-                                            action.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                            'bg-gray-100 text-gray-700'
-                                          }`}>
-                                            {action.status || 'Pending'}
-                                          </span>
+                                    <p className="text-xs font-semibold text-gray-700">Remediation Proposal (1)</p>
+                                    {proposals.map((action: any, idx: number) => (
+                                        <div key={action.actionId || idx} className="border border-gray-200 rounded p-2 bg-gray-50">
+                                          <div className="flex items-start justify-between gap-2">
+                                            <p className="text-xs font-medium text-gray-900 flex-1">{action.title}</p>
+                                            <span className={`px-2 py-0.5 text-xs rounded flex-shrink-0 ${
+                                              action.status === 'Approved' ? 'bg-green-100 text-green-700' :
+                                              action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700' :
+                                              action.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                              'bg-gray-100 text-gray-700'
+                                            }`}>
+                                              {action.status || 'Pending'}
+                                            </span>
+                                          </div>
+                                          {action.description && (
+                                            <p className="text-xs text-gray-600 mt-1">{action.description}</p>
+                                          )}
+                                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                            <span>Progress: {action.progressPercent || 0}%</span>
+                                            <span>•</span>
+                                            <span>Due: {formatDate(action.dueDate)}</span>
+                                          </div>
                                         </div>
-                                        {action.description && (
-                                          <p className="text-xs text-gray-600 mt-1">{action.description}</p>
-                                        )}
-                                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                                          <span>Progress: {action.progressPercent || 0}%</span>
-                                          <span>•</span>
-                                          <span>Due: {formatDate(action.dueDate)}</span>
-                                        </div>
-                                      </div>
                                     ))}
                                   </div>
                                 )}

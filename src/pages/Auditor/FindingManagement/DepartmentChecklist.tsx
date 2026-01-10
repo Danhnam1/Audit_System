@@ -17,7 +17,7 @@ import CompliantModal from './CompliantModal';
 import CompliantDetailsViewer from './CompliantDetailsViewer';
 import FindingDetailModal from './FindingDetailModal';
 import { toast } from 'react-toastify';
-import { getActionsByFinding, type Action } from '../../../api/actions';
+import { getActionsByFinding, getActionsByRootCause, createAction, type Action } from '../../../api/actions';
 
 // import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
@@ -29,6 +29,8 @@ import { getAccessGrants, verifyCode} from '../../../api/accessGrant';
 import useAuthStore, { useUserId } from '../../../store/useAuthStore';
 import apiClient from '../../../api/client';
 // import { getStatusColor } from '../../../constants';
+import { getRootCausesByFinding, updateRootCause, createRootCause, deleteRootCause } from '../../../api/rootCauses';
+import { getAttachments, uploadAttachment, deleteAttachment, type Attachment } from '../../../api/attachments';
 
 
 // Helper function to unwrap array from API response
@@ -85,6 +87,7 @@ const DepartmentChecklist = () => {
     description: '',
     severity: '',
     deadline: '',
+    externalAuditorName: '',
   });
   const [loadingFinding, setLoadingFinding] = useState(false);
   const [submittingEdit, setSubmittingEdit] = useState(false);
@@ -153,6 +156,13 @@ const DepartmentChecklist = () => {
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [selectedActionFindingId, setSelectedActionFindingId] = useState<string | null>(null);
   const [showActionDetailsModal, setShowActionDetailsModal] = useState(false);
+  const [editRootCauses, setEditRootCauses] = useState<any[]>([]);
+  const [editActionsMap, setEditActionsMap] = useState<Record<string, Action[]>>({});
+  const [editAttachments, setEditAttachments] = useState<Attachment[]>([]);
+  const [loadingEditExtras, setLoadingEditExtras] = useState(false);
+  const [newEditFiles, setNewEditFiles] = useState<File[]>([]);
+  const generateTempId = () => `temp-${Math.random().toString(36).slice(2, 9)}`;
+  const [deletedRootCauseIds, setDeletedRootCauseIds] = useState<string[]>([]);
 
   // QR Scan & Verify Code state
   const [qrScanned, setQrScanned] = useState<boolean>(false);
@@ -477,6 +487,71 @@ const DepartmentChecklist = () => {
     }
   };
 
+  const filterActiveAttachments = (items: Attachment[]) =>
+    (items || []).filter(att => (att.status || '').toLowerCase() !== 'inactive');
+
+  // Load root causes, actions, and attachments for edit modal
+  const loadEditFindingExtras = async (findingId: string) => {
+    setLoadingEditExtras(true);
+    try {
+      const rootCauses = await getRootCausesByFinding(findingId);
+      setEditRootCauses(rootCauses || []);
+
+      const actionsMap: Record<string, Action[]> = {};
+      await Promise.all(
+        (rootCauses || []).map(async (rc) => {
+          const actions = await getActionsByRootCause(rc.rootCauseId);
+          actionsMap[String(rc.rootCauseId)] = actions || [];
+        })
+      );
+      setEditActionsMap(actionsMap);
+
+      try {
+        const attachments = await getAttachments('Finding', findingId);
+        setEditAttachments(filterActiveAttachments(Array.isArray(attachments) ? attachments : []));
+        setNewEditFiles([]);
+      } catch (err) {
+        console.warn('Failed to load attachments for edit:', err);
+        setEditAttachments([]);
+      }
+    } catch (err) {
+      console.error('Error loading edit extras:', err);
+      setEditRootCauses([]);
+      setEditActionsMap({});
+      setEditAttachments([]);
+    } finally {
+      setLoadingEditExtras(false);
+    }
+  };
+
+  // Helper: update action with PascalCase payload
+  const updateActionInline = async (
+    actionId: string,
+    payload: Partial<{
+      title: string;
+      description: string;
+      status: string;
+      progressPercent: number;
+      dueDate: string;
+      assignedTo: string;
+      assignedDeptId: number;
+      reviewFeedback: string;
+    }>
+  ) => {
+    const toPascal = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      if (Array.isArray(obj)) return obj.map(toPascal);
+      if (typeof obj !== 'object') return obj;
+      return Object.keys(obj).reduce((acc, key) => {
+        const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
+        acc[pascalKey] = toPascal(obj[key]);
+        return acc;
+      }, {} as any);
+    };
+    const dto = toPascal(payload);
+    await apiClient.put(`/Action/${actionId}`, dto);
+  };
+
   // Handle edit finding submit
   const handleEditFindingSubmit = async () => {
     if (!editingFinding) return;
@@ -498,6 +573,10 @@ const DepartmentChecklist = () => {
       toast.error('Deadline is required');
       return;
     }
+    if (!editFormData.externalAuditorName.trim()) {
+      toast.error('External auditor name is required');
+      return;
+    }
 
     setSubmittingEdit(true);
     try {
@@ -514,13 +593,178 @@ const DepartmentChecklist = () => {
         rootCauseId: editingFinding.rootCauseId || null,
         reviewerId: editingFinding.reviewerId || null,
         source: editingFinding.source || '',
-        externalAuditorName: editingFinding.externalAuditorName || null,
+        externalAuditorName: editFormData.externalAuditorName.trim(),
       };
 
       await updateFinding(editingFinding.findingId, payload);
+
+      // Update root causes (basic fields)
+      if (editRootCauses.length > 0) {
+        await Promise.all(
+          editRootCauses.map(async (rc) => {
+            const dto = {
+              name: rc.name,
+              description: rc.description,
+              status: (rc as any).status,
+              findingId: editingFinding.findingId,
+            } as any;
+            try {
+              await updateRootCause(rc.rootCauseId, dto);
+            } catch (err: any) {
+              console.warn('Failed to update root cause', rc.rootCauseId, err);
+            }
+          })
+        );
+      }
+
+      // Update/create actions for each root cause
+      const tempIdMap: Record<string, number> = {};
+      // First handle root causes: create new, update existing, delete removed
+      const rootCausePromises: Promise<void>[] = [];
+      editRootCauses.forEach((rc: any) => {
+        const isTemp = String(rc.rootCauseId || '').startsWith('temp-');
+        if (isTemp) {
+        const dto = {
+            findingId: editingFinding.findingId,
+            name: rc.name || '',
+            description: rc.description || '',
+            status: rc.status || 'Pending',
+          category: rc.category ?? null,
+          proposedAction: rc.proposedAction ?? '',
+          reasonReject: rc.reasonReject ?? null,
+          };
+          rootCausePromises.push(
+            (async () => {
+              try {
+                const created: any = await createRootCause(dto);
+                const newId = created?.rootCauseId || created?.id || created?.$id;
+                if (newId) {
+                  tempIdMap[String(rc.rootCauseId)] = Number(newId);
+                }
+              } catch (err: any) {
+                console.warn('Failed to create root cause', rc, err);
+              }
+            })()
+          );
+        } else {
+        const dto = {
+            name: rc.name,
+            description: rc.description,
+            status: rc.status,
+            findingId: editingFinding.findingId,
+          category: rc.category ?? null,
+          proposedAction: rc.proposedAction ?? '',
+          reasonReject: rc.reasonReject ?? null,
+          } as any;
+          rootCausePromises.push(
+            (async () => {
+              try {
+                await updateRootCause(rc.rootCauseId, dto);
+              } catch (err: any) {
+                console.warn('Failed to update root cause', rc.rootCauseId, err);
+              }
+            })()
+          );
+        }
+      });
+
+      // Delete removed root causes
+      deletedRootCauseIds.forEach((id) => {
+        rootCausePromises.push(
+          (async () => {
+            try {
+              await deleteRootCause(id as any);
+            } catch (err: any) {
+              console.warn('Failed to delete root cause', id, err);
+            }
+          })()
+        );
+      });
+
+      await Promise.all(rootCausePromises);
+
+      const actionUpdatePromises: Promise<void>[] = [];
+      Object.keys(editActionsMap).forEach((rcIdStr) => {
+        const resolvedRcId = tempIdMap[rcIdStr] ?? rcIdStr;
+        const actions = editActionsMap[rcIdStr] || [];
+        actions.forEach((action) => {
+          const isNew = action.actionId?.startsWith('temp-');
+          const payload: any = {
+            title: action.title || action.description || 'Proposal',
+            description: action.description || action.title || 'No description',
+            status: action.status || 'Draft',
+            progressPercent: Number.isFinite(action.progressPercent) ? action.progressPercent : 0,
+            dueDate: action.dueDate || editingFinding.deadline || new Date().toISOString(),
+            assignedTo: action.assignedTo,
+            assignedDeptId: action.assignedDeptId || editingFinding.deptId || 0,
+            reviewFeedback: (action as any).reviewFeedback ?? null,
+          };
+
+          if (isNew) {
+            const dto = {
+              findingId: editingFinding.findingId,
+              title: payload.title,
+              description: payload.description,
+              progressPercent: payload.progressPercent ?? 0,
+              dueDate: payload.dueDate || editingFinding.deadline || new Date().toISOString(),
+              assignedDeptId: payload.assignedDeptId || editingFinding.deptId || 0,
+              assignedTo: payload.assignedTo,
+              rootCauseId: resolvedRcId,
+              reviewFeedback: payload.reviewFeedback,
+            };
+            actionUpdatePromises.push(
+              createAction(dto).then(() => {}).catch((err: any) => {
+                console.warn('Failed to create action for RC', resolvedRcId, err);
+              })
+            );
+          } else {
+            actionUpdatePromises.push(
+              updateActionInline(action.actionId, payload).catch((err: any) => {
+                console.warn('Failed to update action', action.actionId, err);
+              })
+            );
+          }
+        });
+      });
+      await Promise.all(actionUpdatePromises);
+
+      // Ensure finding has a primary rootCauseId (take first existing or newly created)
+      const firstExistingRc = (editRootCauses || []).find((rc: any) => !String(rc.rootCauseId || '').startsWith('temp-'));
+      const firstCreatedRcId = Object.values(tempIdMap)[0];
+      const primaryRootCauseId = firstExistingRc?.rootCauseId || firstCreatedRcId || editingFinding.rootCauseId || null;
+      if (primaryRootCauseId && primaryRootCauseId !== editingFinding.rootCauseId) {
+        try {
+          await updateFinding(editingFinding.findingId, {
+            ...payload,
+            rootCauseId: primaryRootCauseId,
+          } as any);
+        } catch (err) {
+          console.warn('Failed to update finding with primary rootCauseId', err);
+        }
+      }
+
+      // Upload new attachments (if any)
+      if (newEditFiles.length > 0) {
+        const uploadPromises = newEditFiles.map((file) =>
+          uploadAttachment({
+            entityType: 'Finding',
+            entityId: editingFinding.findingId,
+            status: 'Active',
+            file,
+          }).catch((err) => {
+            console.warn('Failed to upload attachment', err);
+          })
+        );
+        await Promise.all(uploadPromises);
+        const refreshed = await getAttachments('Finding', editingFinding.findingId);
+        setEditAttachments(filterActiveAttachments(Array.isArray(refreshed) ? refreshed : []));
+        setNewEditFiles([]);
+      }
+
       toast.success('Finding updated successfully');
       setShowEditFindingModal(false);
       setEditingFinding(null);
+      setDeletedRootCauseIds([]);
 
       // Reload findings to update the map
       const reloadFindings = async () => {
@@ -1574,28 +1818,30 @@ const DepartmentChecklist = () => {
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     const findingId = findingsMap[item.auditItemId];
-                                    if (findingId) {
-                                      setLoadingFinding(true);
-                                      try {
-                                        const finding = await getFindingById(findingId);
-                                        setEditingFinding(finding);
-                                        setEditFormData({
-                                          title: finding.title || '',
-                                          description: finding.description || '',
-                                          severity: finding.severity || '',
-                                          deadline: finding.deadline ? new Date(finding.deadline).toISOString().split('T')[0] : '',
-                                        });
-                                        setShowEditFindingModal(true);
-                                        // Load severities for dropdown
-                                        await loadSeverities();
-                                      } catch (err: any) {
-                                        console.error('Error loading finding:', err);
-                                        toast.error('Failed to load finding details');
-                                      } finally {
-                                        setLoadingFinding(false);
-                                      }
-                                    } else {
+                                    if (!findingId) {
                                       toast.warning('Finding not found for this item');
+                                      return;
+                                    }
+
+                                    setLoadingFinding(true);
+                                    try {
+                                      const finding = await getFindingById(findingId);
+                                      setEditingFinding(finding);
+                                      setEditFormData({
+                                        title: finding.title || '',
+                                        description: finding.description || '',
+                                        severity: finding.severity || '',
+                                        deadline: finding.deadline ? new Date(finding.deadline).toISOString().split('T')[0] : '',
+                                      externalAuditorName: finding.externalAuditorName || '',
+                                      });
+                                      setShowEditFindingModal(true);
+                                      await loadSeverities();
+                                      await loadEditFindingExtras(findingId);
+                                    } catch (err: any) {
+                                      console.error('Error loading finding:', err);
+                                      toast.error('Failed to load finding details');
+                                    } finally {
+                                      setLoadingFinding(false);
                                     }
                                   }}
                                   disabled={loadingFinding}
@@ -2502,6 +2748,293 @@ const DepartmentChecklist = () => {
                     onChange={(e) => setEditFormData(prev => ({ ...prev, deadline: e.target.value }))}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   />
+                </div>
+
+                {/* External Auditor Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    External Auditor Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editFormData.externalAuditorName}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, externalAuditorName: e.target.value }))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    placeholder="Enter external auditor name"
+                  />
+                </div>
+
+                {/* Root Causes & Actions */}
+                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">Root Causes</p>
+                      <p className="text-xs text-gray-500">Add / edit / remove root causes & actions</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {loadingEditExtras && (
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-500"></div>
+                          Loading...
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          const tempId = generateTempId();
+                          const newRc: any = {
+                            rootCauseId: tempId,
+                            name: '',
+                            description: '',
+                            status: 'Pending',
+                            category: '',
+                            proposedAction: '',
+                          };
+                          setEditRootCauses(prev => [...prev, newRc]);
+                          setEditActionsMap(prev => ({
+                            ...prev,
+                            [tempId]: [],
+                          }));
+                        }}
+                        className="px-3 py-1 text-[11px] bg-primary-600 text-white rounded hover:bg-primary-700"
+                      >
+                        Add root cause
+                      </button>
+                    </div>
+                  </div>
+
+                  {editRootCauses.length === 0 && !loadingEditExtras && (
+                    <p className="text-xs text-gray-500 italic">No root causes loaded.</p>
+                  )}
+
+                  <div className="space-y-4">
+                    {editRootCauses.map((rc, idx) => {
+                      const rcKey = String(rc.rootCauseId);
+                      return (
+                        <div key={rc.rootCauseId} className="border border-gray-200 rounded-lg bg-white p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs font-semibold text-gray-700">#{idx + 1}</div>
+                        
+                            <button
+                              onClick={() => {
+                                const isTemp = String(rc.rootCauseId || '').startsWith('temp-');
+                                if (isTemp) {
+                                  setEditRootCauses(prev => prev.filter(r => r.rootCauseId !== rc.rootCauseId));
+                                  setEditActionsMap(prev => {
+                                    const next = { ...prev };
+                                    delete next[String(rc.rootCauseId)];
+                                    return next;
+                                  });
+                                } else {
+                                  setDeletedRootCauseIds(prev => [...prev, String(rc.rootCauseId)]);
+                                  setEditRootCauses(prev => prev.filter(r => r.rootCauseId !== rc.rootCauseId));
+                                  setEditActionsMap(prev => {
+                                    const next = { ...prev };
+                                    delete next[String(rc.rootCauseId)];
+                                    return next;
+                                  });
+                                }
+                              }}
+                              className="px-2 py-1 text-[11px] text-red-600 border border-red-200 rounded hover:bg-red-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <div className="mt-2">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
+                            <input
+                              type="text"
+                              value={rc.name || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setEditRootCauses(prev =>
+                                  prev.map(item => item.rootCauseId === rc.rootCauseId ? { ...item, name: val } : item)
+                                );
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-orange-500 text-sm"
+                            />
+                          </div>
+                          <div className="mt-2">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                            <textarea
+                              rows={3}
+                              value={rc.description || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setEditRootCauses(prev =>
+                                  prev.map(item => item.rootCauseId === rc.rootCauseId ? { ...item, description: val } : item)
+                                );
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-1 focus:ring-orange-500 text-sm resize-none"
+                            />
+                          </div>
+
+                          {/* Actions (editable) */}
+                          <div className="mt-3">
+                            <p className="text-xs font-semibold text-gray-700 mb-1">Proposed actions</p>
+                            <div className="flex justify-end mb-2">
+                              <button
+                                onClick={() => {
+                                  const tempId = generateTempId();
+                                  const newAction: Action = {
+                                    actionId: tempId,
+                                    findingId: editingFinding?.findingId || '',
+                                    title: '',
+                                    description: '',
+                                    status: 'Draft',
+                                    progressPercent: 0,
+                                    dueDate: editingFinding?.deadline || '',
+                                    assignedDeptId: editingFinding?.deptId || 0,
+                                    assignedTo: '',
+                                    rootCauseId: rc.rootCauseId,
+                                  };
+                                  setEditActionsMap(prev => ({
+                                    ...prev,
+                                    [rcKey]: [...(prev[rcKey] || []), newAction],
+                                  }));
+                                }}
+                                className="px-3 py-1 text-[11px] bg-primary-600 text-white rounded hover:bg-primary-700"
+                              >
+                                Add action
+                              </button>
+                            </div>
+                            {editActionsMap[rcKey]?.length ? (
+                              <div className="space-y-2">
+                                {editActionsMap[rcKey].map((action) => (
+                                  <div key={action.actionId} className="border border-gray-200 rounded p-2 bg-gray-50">
+                                    <div className="mt-2">
+                                      {/* <label className="block text-[11px] font-semibold text-gray-700">Description</label> */}
+                                      <textarea
+                                        rows={3}
+                                        value={action.description || ''}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setEditActionsMap(prev => {
+                                            const next = { ...prev };
+                                            next[rcKey] = (prev[rcKey] || []).map(a => a.actionId === action.actionId ? { ...a, description: val } : a);
+                                            return next;
+                                          });
+                                        }}
+                                        placeholder="Enter proposed action / remediation description"
+                                        className="w-full px-2 py-2 border border-gray-300 rounded text-sm resize-none"
+                                      />
+                                    </div>
+                                    <div className="mt-2 flex justify-end">
+                                      <button
+                                        onClick={() => {
+                                          setEditActionsMap(prev => {
+                                            const next = { ...prev };
+                                            next[rcKey] = (prev[rcKey] || []).filter(a => a.actionId !== action.actionId);
+                                            return next;
+                                          });
+                                        }}
+                                        className="px-2 py-1 text-[11px] text-red-600 border border-red-200 rounded hover:bg-red-50"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-gray-500 italic">No actions for this root cause.</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Attachments */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-semibold text-gray-800">Attachments</p>
+                    {loadingEditExtras && (
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-500"></div>
+                        Loading...
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    {editAttachments.length === 0 && !loadingEditExtras ? (
+                      <p className="text-xs text-gray-500 italic">No attachments.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {editAttachments.map((att) => (
+                          <li key={att.attachmentId} className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                              <a
+                                href={att.filePath || att.blobPath || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="hover:underline truncate text-blue-700"
+                              >
+                                {att.fileName || att.blobPath || 'Attachment'}
+                              </a>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await deleteAttachment(att.attachmentId);
+                                    toast.success('Attachment removed');
+                                    const refreshed = await getAttachments('Finding', editingFinding?.findingId || '');
+                                  setEditAttachments(filterActiveAttachments(Array.isArray(refreshed) ? refreshed : []));
+                                  } catch (err: any) {
+                                    console.error('Failed to remove attachment', err);
+                                    toast.error('Remove attachment failed');
+                                  }
+                                }}
+                                className="px-2 py-1 text-[11px] text-red-600 border border-red-200 rounded hover:bg-red-50"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {/* Upload new files */}
+                    <div className="pt-2 border-t border-gray-200">
+                      <label className="text-xs font-semibold text-gray-700">Add new attachment(s)</label>
+                      <input
+                        type="file"
+                        multiple
+                        className="mt-1 text-xs"
+                        onChange={(e) => {
+                          const files = e.target.files ? Array.from(e.target.files) : [];
+                          setNewEditFiles(prev => [...prev, ...files]);
+                        }}
+                      />
+                      {newEditFiles.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <p className="text-[11px] text-gray-600">
+                            {newEditFiles.length} file(s) ready to upload on save:
+                          </p>
+                          <ul className="space-y-1">
+                            {newEditFiles.map((f, idx) => (
+                              <li key={idx} className="flex items-center justify-between text-[11px] bg-gray-50 border border-gray-200 rounded px-2 py-1">
+                                <span className="truncate">{f.name}</span>
+                                <button
+                                  onClick={() => {
+                                    setNewEditFiles(prev => prev.filter((_, i) => i !== idx));
+                                  }}
+                                  className="text-red-600 hover:text-red-800"
+                                >
+                                  Remove
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 

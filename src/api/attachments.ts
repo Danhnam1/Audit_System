@@ -103,3 +103,17 @@ export const getAttachments = async (entityType: string, entityId: string): Prom
 export const updateAttachmentStatus = async (attachmentId: string, status: string): Promise<void> => {
   await apiClient.put(`/admin/AdminAttachment/${attachmentId}/status`, { status });
 };
+
+// Generic update attachment (e.g., archive/delete or change status)
+export const updateAttachment = async (attachmentId: string, payload: Partial<{ status: string; isArchived: boolean; retentionUntil: string }>) => {
+  const dto: any = {};
+  if (payload.status !== undefined) dto.Status = payload.status;
+  if (payload.isArchived !== undefined) dto.IsArchived = payload.isArchived;
+  if (payload.retentionUntil !== undefined) dto.RetentionUntil = payload.retentionUntil;
+  await apiClient.put(`/admin/AdminAttachment/${attachmentId}`, dto);
+};
+
+// Hard delete attachment (if backend supports)
+export const deleteAttachment = async (attachmentId: string): Promise<void> => {
+  await apiClient.delete(`/admin/AdminAttachment/${attachmentId}`);
+};

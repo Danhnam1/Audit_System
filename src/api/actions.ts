@@ -137,3 +137,19 @@ export const getActionsByRootCause = async (rootCauseId: number): Promise<Action
   }
 };
 
+// Update action (generic put)
+export const updateAction = async (
+  actionId: string,
+  payload: Partial<{
+    title: string;
+    description: string;
+    status: string;
+    progressPercent: number;
+    dueDate: string;
+    assignedTo: string;
+    assignedDeptId: number;
+  }>
+): Promise<void> => {
+  const pascalPayload = toPascalCase(payload);
+  await apiClient.put(`/Action/${actionId}`, pascalPayload);
+};

@@ -147,6 +147,21 @@ export const getRootCauseLogs = async (entityId: string): Promise<RootCauseLog[]
   }
 };
 
+// Get all root causes by finding ID
+export const getRootCausesByFinding = async (findingId: string): Promise<RootCause[]> => {
+  try {
+    const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
+    const data = res?.data || res;
+    if (Array.isArray(data?.$values)) return data.$values;
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.values)) return data.values;
+    return [];
+  } catch (err) {
+    console.error('Error getting root causes by finding ID:', err);
+    return [];
+  }
+};
+
 // Remediation Proposal APIs
 export const getRemediationProposalsByRootCause = async (rootCauseId: number): Promise<RemediationProposal[]> => {
   try {

@@ -1081,28 +1081,42 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   </div>
                                 )}
                                 
-                                {/* Remediation Proposals (Actions) */}
-                                {rc.actions && rc.actions.length > 0 && (
-                                  <div className="mt-4 pl-10">
-                                    <h5 className="text-xs font-semibold text-gray-700 mb-2 uppercase">Proposed solutions ({rc.actions.length})</h5>
-                                    <div className="space-y-2">
-                                      {rc.actions.map((action: Action) => (
+                                {/* Remediation Proposals (show only one, skip rejected) */}
+                                {(() => {
+                                  const proposals = (rc.actions || []).filter((a: Action) => {
+                                    const st = (a.status || '').toLowerCase();
+                                    return st !== 'rejected' && st !== 'leadrejected' && st !== 'return';
+                                  });
+                                  if (proposals.length === 0) return null;
+                                  const action = proposals[0];
+                                  return (
+                                    <div className="mt-4 pl-10">
+                                      <h5 className="text-xs font-semibold text-gray-700 mb-2 uppercase">
+                                        Proposed solution (1)
+                                      </h5>
+                                      <div className="space-y-2">
                                         <div
                                           key={action.actionId}
                                           className="bg-blue-50 border border-blue-200 rounded-lg p-3 hover:bg-blue-100 transition-colors"
                                         >
-                                      
                                           {action.description && (
                                             <p className="text-xs text-gray-700 mb-2">{action.description}</p>
                                           )}
                                           <div className="flex flex-wrap gap-3 text-xs text-gray-600">
-                                          
                                             {action.dueDate && (
                                               <span className="flex items-center gap-1">
                                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                                 </svg>
                                                 Due: {formatDate(action.dueDate)}
+                                              </span>
+                                            )}
+                                            {typeof action.progressPercent === 'number' && (
+                                              <span className="flex items-center gap-1">
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                </svg>
+                                                {action.progressPercent}% progress
                                               </span>
                                             )}
                                           </div>
@@ -1113,10 +1127,10 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                             </div>
                                           )}
                                         </div>
-                                      ))}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  );
+                                })()}
                                 
                                 {/* History - Inline Display - Only show if there are logs with actual changes */}
                                 {(() => {

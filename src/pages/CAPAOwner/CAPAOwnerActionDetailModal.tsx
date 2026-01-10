@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getActionById, type Action } from '../../api/actions';
+import { getActionById, getActionsByRootCause, type Action } from '../../api/actions';
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById, type AdminUserDto } from '../../api/adminUsers';
 import { getRootCauseById, type RootCause } from '../../api/rootCauses';
@@ -23,6 +23,7 @@ const CAPAOwnerActionDetailModal = ({
   const [assignedToUser, setAssignedToUser] = useState<AdminUserDto | null>(null);
   const [rootCause, setRootCause] = useState<RootCause | null>(null);
   const [loadingRootCause, setLoadingRootCause] = useState(false);
+  const [rootCauseActions, setRootCauseActions] = useState<Action[]>([]);
   const [showResponsiblePersonModal, setShowResponsiblePersonModal] = useState(false);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ const CAPAOwnerActionDetailModal = ({
       setAttachments([]);
       setError(null);
       setRootCause(null);
+      setRootCauseActions([]);
     }
   }, [isOpen, actionId]);
 
@@ -73,9 +75,17 @@ const CAPAOwnerActionDetailModal = ({
     try {
       const data = await getRootCauseById(rootCauseId);
       setRootCause(data);
+      try {
+        const actions = await getActionsByRootCause(rootCauseId);
+        setRootCauseActions(actions || []);
+      } catch (err) {
+        console.warn('Error loading actions by root cause', err);
+        setRootCauseActions([]);
+      }
     } catch (err: any) {
       console.error('Error loading root cause:', err);
       setRootCause(null);
+      setRootCauseActions([]);
     } finally {
       setLoadingRootCause(false);
     }
@@ -302,32 +312,112 @@ const CAPAOwnerActionDetailModal = ({
                   if (!hasRootCauseFromApi && !legacyRootCauseName) return null;
                   
                   return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                          Root Cause Name
-                        </label>
-                        <input
-                          type="text"
-                          value={loadingRootCause ? 'Loading...' : (rootCause?.name || legacyRootCauseName || 'N/A')}
-                          readOnly
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
-                        />
-                      </div>
-                      {((rootCause?.description || legacyRootCauseDesc) && !loadingRootCause) && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="md:col-span-2">
                           <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                            Root Cause Description
+                            Root Cause Name
                           </label>
-                          <textarea
-                            value={rootCause?.description || legacyRootCauseDesc || ''}
+                          <input
+                            type="text"
+                            value={loadingRootCause ? 'Loading...' : (rootCause?.name || legacyRootCauseName || 'N/A')}
                             readOnly
-                            rows={4}
-                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium resize-none"
+                            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
                           />
                         </div>
-                      )}
-                    </div>
+                        {((rootCause?.description || legacyRootCauseDesc) && !loadingRootCause) && (
+                          <div className="md:col-span-2">
+                            <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                              Root Cause Description
+                            </label>
+                            <textarea
+                              value={rootCause?.description || legacyRootCauseDesc || ''}
+                              readOnly
+                              rows={4}
+                              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium resize-none"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Remediation Proposals (Actions for this Root Cause) */}
+                      <div className="space-y-3">
+                        {(() => {
+                          const visibleRootCauseActions =
+                            rootCauseActions.filter(a => !actionId || a.actionId === actionId);
+                          const proposals =
+                            visibleRootCauseActions.length > 0 ? visibleRootCauseActions : rootCauseActions;
+                          const count = proposals.length;
+                          return (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                                  Remediation Proposals
+                                </h3>
+                                <span className="text-xs text-gray-500">
+                                  {count} action{count !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              {count === 0 ? (
+                                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-600">
+                                  No proposals linked to this root cause.
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {proposals.map((rcAction, idx) => {
+                                    const statusLower = (rcAction.status || '').toLowerCase();
+                                    const statusColor =
+                                      statusLower === 'completed' || statusLower === 'approved'
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        : statusLower === 'verified'
+                                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                        : statusLower === 'inprogress' || statusLower === 'in progress'
+                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                        : 'bg-gray-50 text-gray-700 border-gray-200';
+                                    return (
+                                      <div
+                                        key={rcAction.actionId || idx}
+                                        className="border rounded-lg p-3 bg-white shadow-sm"
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-gray-900">{rcAction.title || 'Untitled action'}</p>
+                                            {rcAction.description && (
+                                              <p className="text-xs text-gray-600 mt-1 line-clamp-2">{rcAction.description}</p>
+                                            )}
+                                            <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 flex-wrap">
+                                              {rcAction.dueDate && (
+                                                <span className="flex items-center gap-1">
+                                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                  </svg>
+                                                  Due: {formatDate(rcAction.dueDate)}
+                                                </span>
+                                              )}
+                                              {typeof rcAction.progressPercent === 'number' && (
+                                                <span className="flex items-center gap-1">
+                                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                  </svg>
+                                                  {rcAction.progressPercent}% progress
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <span className={`px-2 py-1 rounded-full text-[11px] font-semibold border whitespace-nowrap ${statusColor}`}>
+                                            {rcAction.status || 'N/A'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </>
                   );
                 })()}
 
