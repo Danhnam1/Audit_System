@@ -199,7 +199,7 @@ const SensitiveAreaManagement = () => {
           return await updateDepartmentSensitiveArea(area.id, {
             deptId: data.deptId,
             sensitiveArea: area.sensitiveArea,
-            level: '',
+            level: 'string',
             defaultNotes: area.defaultNotes || '',
           });
         } else {
@@ -207,7 +207,7 @@ const SensitiveAreaManagement = () => {
           return await createDepartmentSensitiveArea({
             deptId: data.deptId,
             sensitiveArea: area.sensitiveArea,
-            level: '',
+            level: 'string',
             defaultNotes: area.defaultNotes || '',
           });
         }

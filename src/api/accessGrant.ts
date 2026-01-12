@@ -122,9 +122,11 @@ export const scanAccessGrant = async (request: ScanAccessGrantRequest): Promise<
 
 // Verify code (POST endpoint)
 export const verifyCode = async (request: VerifyCodeRequest): Promise<VerifyCodeResponse> => {
-  // Convert to PascalCase for .NET API
-  const pascalRequest = toPascalCase(request);
-  const res: any = await apiClient.post('/AccessGrant/verify-code', pascalRequest);
+  // Send camelCase directly (backend accepts case-insensitive JSON by default)
+  // Debug: log request to compare with Swagger
+  console.log('verifyCode request:', JSON.stringify(request, null, 2));
+  const res: any = await apiClient.post('/AccessGrant/verify-code', request);
+  console.log('verifyCode response:', JSON.stringify(res, null, 2));
   return res?.data || res;
 };
 

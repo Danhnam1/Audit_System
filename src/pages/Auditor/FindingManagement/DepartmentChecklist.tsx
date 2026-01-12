@@ -271,15 +271,43 @@ const DepartmentChecklist = () => {
           auditorId: scannerUserId,
         });
 
+        console.log('getAccessGrants response:', {
+          scannerUserId,
+          grantsCount: grants?.length,
+          grants: grants?.map(g => ({
+            qrToken: g.qrToken,
+            auditorId: g.auditorId,
+            status: g.status,
+            verifyCode: g.verifyCode
+          }))
+        });
+
         if (grants && grants.length > 0) {
           // QR has been issued, check if it's been scanned
-          // For now, we'll show verify code modal if grants exist
-          // In a real scenario, you might want to check scan status via API
-          const activeGrant = grants.find(g => g.status === 'Active');
+          // Filter by auditorId to ensure we get the correct grant for current user
+          // Double-check auditorId matches to prevent getting wrong user's grant
+          const activeGrant = grants.find(g => 
+            g.status === 'Active' && 
+            String(g.auditorId) === String(scannerUserId)
+          );
           if (activeGrant) {
+            console.log('Found active grant for current user:', {
+              qrToken: activeGrant.qrToken,
+              auditorId: activeGrant.auditorId,
+              scannerUserId: scannerUserId,
+              verifyCode: activeGrant.verifyCode
+            });
             setQrToken(activeGrant.qrToken);
             setShowVerifyCodeModal(true);
           } else {
+            console.warn('No active grant found for current user', {
+              scannerUserId,
+              availableGrants: grants.map(g => ({
+                qrToken: g.qrToken,
+                auditorId: g.auditorId,
+                status: g.status
+              }))
+            });
             // No active grant, show QR scan required message
             setShowQrScanModal(true);
           }

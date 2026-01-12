@@ -179,7 +179,7 @@ export const createDepartmentSensitiveArea = async (dto: DepartmentSensitiveArea
   const res: any = await apiClient.post('/DepartmentSensitiveArea', {
     deptId: Number(dto.deptId),
     sensitiveArea: dto.sensitiveArea,
-    level: dto.level || '',
+    level: dto.level || 'string',
     defaultNotes: dto.defaultNotes || '',
   });
   return res?.data || res;
@@ -197,7 +197,7 @@ export const updateDepartmentSensitiveArea = async (
   const res: any = await apiClient.put(`/DepartmentSensitiveArea/${id}`, {
     deptId: Number(dto.deptId),
     sensitiveArea: dto.sensitiveArea,
-    level: dto.level || '',
+    level: dto.level || 'string',
     defaultNotes: dto.defaultNotes || '',
   });
   return res?.data || res;
