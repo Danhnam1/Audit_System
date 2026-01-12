@@ -5,7 +5,7 @@ import { getMyWitnessedFindings, witnessConfirmFinding, witnessDisagreeFinding, 
 import { getSeverityColor } from '../../constants/statusColors';
 import WitnessedFindingDetailModal from '../Shared/WitnessedFindingDetailModal';
 import { toast } from 'react-toastify';
-import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
+import { getUserFriendlyErrorMessage } from '../../utils/errorMessages';
 
 interface FindingWithAudit extends Finding {
   auditTitle?: string;

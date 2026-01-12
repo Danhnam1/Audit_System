@@ -6,7 +6,7 @@ import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { useDeptId } from '../../store/useAuthStore';
 import { toast } from 'react-toastify';
-import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
+import { getUserFriendlyErrorMessage } from '../../utils/errorMessages';
 import { fetchAuditSummaries, type AuditSummary } from '../../utils/auditSummary';
 import { getAuditPlanById } from '../../api/audits';
 import { getDepartments } from '../../api/departments';

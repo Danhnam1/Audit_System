@@ -6,7 +6,7 @@ import { getActionsByFinding, approveActionWithFeedback, rejectAction, type Acti
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { toast } from 'react-toastify';
-import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
+import { getUserFriendlyErrorMessage } from '../../utils/errorMessages';
 import { fetchAuditSummary, type AuditSummary } from '../../utils/auditSummary';
 
 interface ActionWithAttachments extends Action {
