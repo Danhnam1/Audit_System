@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
 import { MainLayout } from '../../../layouts';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { useAuth } from '../../../contexts';
 import { getAuditSummary, approveAuditReport, rejectAuditReport, getAuditFullDetail } from '../../../api/audits';
 import { returnFinding } from '../../../api/findings';
@@ -765,8 +766,7 @@ const AuditorLeadReports = () => {
       await reload();
     } catch (err: any) {
       console.error('Approve failed', err);
-      const errorMessage = err?.response?.data?.message || err?.message || String(err);
-      toast.error('Approve failed: ' + errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to approve audit report. Please try again.'));
     } finally {
       setActionLoading('');
     }
@@ -808,8 +808,7 @@ const AuditorLeadReports = () => {
       await reload();
     } catch (err: any) {
       console.error('Reject failed', err);
-      const errorMessage = err?.response?.data?.message || err?.message || String(err);
-      toast.error('Reject failed: ' + errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject audit report. Please try again.'));
     } finally {
       setActionLoading('');
     }
@@ -1401,8 +1400,7 @@ const AuditorLeadReports = () => {
       setRevisionRequests(requests);
     } catch (err: any) {
       console.error('Request extension failed', err);
-      const errorMessage = err?.response?.data?.message || err?.message || String(err);
-      toast.error('Failed to request extension: ' + errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to request extension. Please try again.'));
     } finally {
       setExtensionLoading(false);
     }
@@ -2282,7 +2280,7 @@ const AuditorLeadReports = () => {
                         }, 1000);
                       } catch (error: any) {
                         console.error('Failed to return finding:', error);
-                        toast.error(error?.response?.data?.message || error?.message || 'Failed to return finding.');
+                        toast.error(getUserFriendlyErrorMessage(error, 'Failed to return finding. Please try again.'));
                       } finally {
                         setActionLoading('');
                       }

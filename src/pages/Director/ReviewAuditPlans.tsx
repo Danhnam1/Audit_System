@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { approvePlan, getAuditPlanById, rejectPlanContent, getSensitiveDepartments } from '../../api/audits';
+import { getUserFriendlyErrorMessage } from '../../utils/errorMessages';
 import { normalizePlanDetails, unwrap } from '../../utils/normalize';
 import { getDepartments } from '../../api/departments';
 import { getAuditCriteria } from '../../api/auditCriteria';
@@ -375,8 +376,7 @@ const ReviewAuditPlans = () => {
       await refreshPlansOnly();
     } catch (err: any) {
       console.error('Failed to reject plan', err);
-      const errorMessage = err?.response?.data?.message || err?.message || String(err);
-      toast.error('Reject failed: ' + errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject plan. Please try again.'));
       throw err; // Re-throw to let PlanDetailsModal handle the error
     }
   };
@@ -812,8 +812,7 @@ const ReviewAuditPlans = () => {
                 await refreshPlansOnly();
               } catch (err: any) {
                 console.error('Failed to approve plan', err);
-                const errorMessage = err?.response?.data?.message || err?.message || String(err);
-                toast.error('Failed to approve plan: ' + errorMessage);
+                toast.error(getUserFriendlyErrorMessage(err, 'Failed to approve plan. Please try again.'));
               } finally {
                 setProcessingIdStr(null);
               }
@@ -824,8 +823,7 @@ const ReviewAuditPlans = () => {
                 setSelectedDetails(null);
               } catch (err: any) {
                 console.error('Failed to reject plan', err);
-                const errorMessage = err?.response?.data?.message || err?.message || String(err);
-                toast.error('Failed to reject plan: ' + errorMessage);
+                toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject plan. Please try again.'));
               }
             } : undefined}
             approveButtonText="Approve"

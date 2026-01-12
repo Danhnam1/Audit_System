@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { MainLayout } from '../../../layouts';
 import { useUserId } from '../../../store/useAuthStore';
 import { apiClient } from '../../../hooks/axios';
@@ -432,7 +433,7 @@ export default function LeadFinalReview() {
       if (selectedAudit) await loadFindingsForAudit(selectedAudit);
     } catch (err: any) {
       console.error('Failed to process action', err);
-      toast.error(err?.response?.data?.message || 'Unable to process action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Unable to process action. Please try again.'));
     } finally {
       setProcessingAction(false);
     }

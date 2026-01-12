@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { approveFindingAction, returnFindingAction } from '../../../api/findings';
 
@@ -45,7 +46,7 @@ export default function AuditorActionReviewModal({
       
       onClose();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to approve action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to approve action. Please try again.'));
     } finally {
       setProcessing(false);
     }
@@ -72,7 +73,7 @@ export default function AuditorActionReviewModal({
       
       onClose();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to return action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to return action. Please try again.'));
     } finally {
       setProcessing(false);
     }

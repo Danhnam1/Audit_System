@@ -31,6 +31,7 @@ import apiClient from '../../../api/client';
 // import { getStatusColor } from '../../../constants';
 import { getRootCausesByFinding, updateRootCause, createRootCause, deleteRootCause } from '../../../api/rootCauses';
 import { getAttachments, uploadAttachment, deleteAttachment, type Attachment } from '../../../api/attachments';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 
 
 // Helper function to unwrap array from API response
@@ -144,8 +145,8 @@ const DepartmentChecklist = () => {
   const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> actions
   // Control visibility of action UI (View Actions, modal)
   const showActionsUI = true;
-  // Hide quick proposal buttons (mark compliant / non-compliant)
-  const showProposalButtons = false;
+  // Show quick proposal buttons (mark compliant / non-compliant)
+  const showProposalButtons = true;
   // Hide Active actions inside the modal (only show non-active)
   const visibleActions = (findingActions || []).filter(a => (a.status || '').toLowerCase() !== 'active');
   
@@ -940,7 +941,7 @@ const DepartmentChecklist = () => {
       console.error('Error message:', err?.message);
       console.error('Error response:', err?.response);
       console.error('Error response data:', err?.response?.data);
-      toast.error(err?.response?.data?.message || err?.message || 'Failed to update finding');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to update finding. Please try again.'));
     } finally {
       setSubmittingEdit(false);
     }
@@ -1042,7 +1043,7 @@ const DepartmentChecklist = () => {
       }
     } catch (err: any) {
       console.error('Error updating checklist item:', err);
-      toast.error(err?.response?.data?.message || err?.message || 'Failed to update checklist item');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to update checklist item. Please try again.'));
     } finally {
       setSubmittingEditItem(false);
     }
@@ -1124,7 +1125,7 @@ const DepartmentChecklist = () => {
       }
     } catch (err: any) {
       console.error('Error deleting checklist item:', err);
-      toast.error(err?.response?.data?.message || err?.message || 'Failed to delete checklist item');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to delete checklist item. Please try again.'));
     } finally {
       setDeletingItem(false);
     }
@@ -1238,7 +1239,7 @@ const DepartmentChecklist = () => {
       toast.success('Item marked as compliant successfully');
     } catch (err: any) {
       console.error('Error marking item as compliant:', err);
-      toast.error(err?.message || 'Failed to mark item as compliant');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to mark item as compliant. Please try again.'));
     } finally {
       setUpdatingItemId(null);
       setItemToMarkCompliant(null);
@@ -1331,7 +1332,7 @@ const DepartmentChecklist = () => {
         }
       } catch (err: any) {
         console.error('Error loading checklist items:', err);
-        const errorMessage = err?.message || 'Failed to load checklist items';
+        const errorMessage = getUserFriendlyErrorMessage(err, 'Failed to load checklist items. Please refresh the page.');
         setError(errorMessage);
         toast.error(errorMessage);
       } finally {
@@ -1432,7 +1433,7 @@ const DepartmentChecklist = () => {
       }
     } catch (err: any) {
       console.error('Error loading my findings:', err);
-      toast.error('Failed to load findings');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to load findings. Please refresh the page.'));
     } finally {
       setLoadingFindings(false);
     }
@@ -1592,7 +1593,7 @@ const DepartmentChecklist = () => {
       setFindingActions(Array.isArray(actions) ? actions : []);
     } catch (err: any) {
       console.error('Error loading actions:', err);
-      toast.error('Failed to load actions');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to load actions. Please refresh the page.'));
       setFindingActions([]);
     } finally {
       setLoadingActions(false);
@@ -1628,7 +1629,7 @@ const DepartmentChecklist = () => {
       }
     } catch (error: any) {
       console.error('Failed to verify code:', error);
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to verify code');
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to verify code. Please check the code and try again.'));
     } finally {
       setVerifying(false);
     }
@@ -2731,7 +2732,7 @@ const DepartmentChecklist = () => {
                       }
                     } catch (err: any) {
                       console.error('Error creating checklist item:', err);
-                      toast.error(err?.message || 'Failed to create checklist item');
+                      toast.error(getUserFriendlyErrorMessage(err, 'Failed to create checklist item. Please try again.'));
                     } finally {
                       setSubmittingItem(false);
                     }

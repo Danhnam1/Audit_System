@@ -12,6 +12,7 @@ import {
 } from '../../../api/departmentSensitiveAreas';
 import { FaShieldAlt, FaPlus, FaEdit, FaTrash, FaTimes, FaCheck, FaSearch, FaChevronDown } from 'react-icons/fa';
 import { PageHeader, StatCard } from '../../../components';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 
 /**
  * Page for Admin to manage sensitive areas master data for each department
@@ -108,7 +109,7 @@ const SensitiveAreaManagement = () => {
           setDepartmentSensitiveAreas(new Map()); // Initialize empty map - no data yet
         } else {
           console.error('[SensitiveAreaManagement] Error loading sensitive areas:', sensitiveErr);
-          toast.error('Failed to load sensitive areas: ' + (sensitiveErr?.response?.data?.message || sensitiveErr?.message || 'Unknown error'));
+          toast.error(getUserFriendlyErrorMessage(sensitiveErr, 'Failed to load sensitive areas. Please refresh the page.'));
           setDepartmentSensitiveAreas(new Map());
         }
       }
@@ -222,8 +223,7 @@ const SensitiveAreaManagement = () => {
       setEditingData(null);
     } catch (error: any) {
       console.error('[SensitiveAreaManagement] Failed to save sensitive areas:', error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to save sensitive areas';
-      toast.error(errorMessage);
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to save sensitive areas. Please try again.'));
       // Reload data to get latest state
       try {
         await loadData();
@@ -272,8 +272,7 @@ const SensitiveAreaManagement = () => {
       }
     } catch (error: any) {
       console.error('Failed to delete sensitive area', error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to delete sensitive area';
-      toast.error(errorMessage);
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to delete sensitive area. Please try again.'));
       // Reload data to get latest state
       try {
         await loadData();
@@ -303,8 +302,7 @@ const SensitiveAreaManagement = () => {
       setDeleteModalContent(null);
     } catch (error: any) {
       console.error('Failed to delete all sensitive areas', error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to delete sensitive areas';
-      toast.error(errorMessage);
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to delete sensitive areas. Please try again.'));
       // Reload data to get latest state
       try {
         await loadData();

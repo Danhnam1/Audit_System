@@ -36,6 +36,7 @@ import {
 } from '../../../api/checklists';
 import { getDepartments } from '../../../api/departments';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 
 const AdminChecklistManagement = () => {
   const { user } = useAuth();
@@ -174,8 +175,7 @@ const AdminChecklistManagement = () => {
       toast.success('Checklist template created successfully!');
       await fetchTemplates();
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || String(err);
-      toast.error('Failed to create template: ' + errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to create template. Please try again.'));
     } finally {
       setCreating(false);
     }
@@ -230,8 +230,7 @@ const AdminChecklistManagement = () => {
       toast.success('Checklist template updated successfully!');
       await fetchTemplates();
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || String(err);
-      toast.error('Failed to update template: ' + errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to update template. Please try again.'));
     } finally {
       setUpdating(false);
     }
@@ -259,8 +258,7 @@ const AdminChecklistManagement = () => {
       closeDeleteModal();
       toast.success('Checklist template deleted successfully!');
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.message || err?.message || String(err);
-      toast.error('Failed to delete template: ' + errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to delete template. Please try again.'));
     }
   };
 

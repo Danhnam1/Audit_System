@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts';
 import { PageHeader, Button } from '../../../components';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import {
   getPendingRevisionRequestsForDirector,
   approveAuditPlanRevisionRequest,
@@ -124,8 +125,7 @@ export default function DirectorExtensionRequestsPage() {
       }
     } catch (error: any) {
       console.error('Failed to approve request:', error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to approve request';
-      toast.error(errorMessage);
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to approve request. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -144,8 +144,7 @@ export default function DirectorExtensionRequestsPage() {
       await loadRequests();
     } catch (error: any) {
       console.error('Failed to reject request:', error);
-      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to reject request';
-      toast.error(errorMessage);
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to reject request. Please try again.'));
     } finally {
       setSubmitting(false);
     }

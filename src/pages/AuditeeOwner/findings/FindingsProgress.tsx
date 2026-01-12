@@ -11,6 +11,7 @@ import apiClient from '../../../api/client';
 import { Pagination } from '../../../components';
 import AuditeeActionReviewModal from './AuditeeActionReviewModal';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { getStatusColor, getSeverityColor } from '../../../constants';
 
 const FindingsProgress = () => {
@@ -756,8 +757,7 @@ const FindingsProgress = () => {
       }
     } catch (err: any) {
       console.error('Error creating action:', err);
-      const errorMsg = err.response?.data?.message || err.message || 'Failed to create action';
-      toast.error(errorMsg);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to create action. Please try again.'));
     } finally {
       setSubmittingAssign(false);
     }
@@ -1165,7 +1165,7 @@ const FindingsProgress = () => {
                                       }
                                     } catch (err: any) {
                                       console.error('Error resubmitting action:', err);
-                                      toast.error(err?.message || 'Failed to redo action');
+                                      toast.error(getUserFriendlyErrorMessage(err, 'Failed to redo action. Please try again.'));
                                     }
                                   }}
                                   className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95"
@@ -1240,7 +1240,7 @@ const FindingsProgress = () => {
                                           }
                                         } catch (err: any) {
                                           console.error('Error loading actions:', err);
-                                          toast.error(err?.message || 'Failed to load actions');
+                                          toast.error(getUserFriendlyErrorMessage(err, 'Failed to load actions. Please refresh the page.'));
                                         }
                                       }}
                                       className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors active:scale-95"

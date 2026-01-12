@@ -3,6 +3,7 @@ import { MainLayout } from '../../../layouts';
 import { PageHeader } from '../../../components';
 import { getAllAuditAssignmentRequests, approveAuditAssignmentRequest, rejectAuditAssignmentRequest } from '../../../api/auditAssignments';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 
 interface AuditAssignmentRequest {
   requestId: string;
@@ -135,7 +136,7 @@ const LeadAuditorRequestManagement = () => {
       await loadRequests(); // Reload requests
     } catch (error: any) {
       console.error('Failed to reject request:', error);
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to reject request');
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to reject request. Please try again.'));
     } finally {
       setActionLoading(null);
     }

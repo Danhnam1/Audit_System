@@ -5,6 +5,7 @@ import { getMyWitnessedFindings, witnessConfirmFinding, witnessDisagreeFinding, 
 import { getSeverityColor } from '../../constants/statusColors';
 import WitnessedFindingDetailModal from '../Shared/WitnessedFindingDetailModal';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 
 interface FindingWithAudit extends Finding {
   auditTitle?: string;
@@ -108,7 +109,7 @@ const CAPAOwnerWitnessedAuditFindings = () => {
         }, 500);
       } catch (err: any) {
         console.error('Error confirming witness:', err);
-        toast.error(err?.message || 'Failed to confirm finding');
+        toast.error(getUserFriendlyErrorMessage(err, 'Failed to confirm finding. Please try again.'));
       } finally {
         setSubmittingAction(false);
       }
@@ -161,7 +162,7 @@ const CAPAOwnerWitnessedAuditFindings = () => {
       setRejectReason('');
     } catch (err: any) {
       console.error('Error rejecting witness:', err);
-      toast.error(err?.message || 'Failed to reject finding');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject finding. Please try again.'));
     } finally {
       setSubmittingAction(false);
     }

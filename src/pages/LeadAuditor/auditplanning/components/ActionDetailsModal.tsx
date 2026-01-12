@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { getActionById, type Action } from '../../../../api/actions';
 import { getAttachments, type Attachment } from '../../../../api/attachments';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../../utils/errorMessages';
 
 interface ActionDetailsModalProps {
   isOpen: boolean;
@@ -32,7 +33,7 @@ const ActionDetailsModal = ({ isOpen, onClose, actionId }: ActionDetailsModalPro
       setAttachments(Array.isArray(attachmentsData) ? attachmentsData : []);
     } catch (err: any) {
       console.error('Failed to load action details', err);
-      toast.error('Failed to load action details: ' + (err?.message || 'Unknown error'));
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to load action details. Please refresh the page.'));
     } finally {
       setLoading(false);
     }

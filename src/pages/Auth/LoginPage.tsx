@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import authService from '../../hooks/auth'
 import useAuthStore from '../../store/useAuthStore'
 import Background from '../../../public/images/backgorundlogin.jpg'
+import { getUserFriendlyErrorMessage } from '../../utils/errorMessages'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -78,12 +79,8 @@ export default function LoginPage() {
       console.error('Error response:', resp)
       console.error('Error message:', msg)
       console.error('==================')
-      const serverMsg = resp?.data?.message || resp?.data || msg
-      setError(
-        typeof serverMsg === 'string'
-          ? serverMsg
-          : 'Login failed. Please check your email and password.'
-      )
+      const errorMessage = getUserFriendlyErrorMessage(err, 'Invalid email or password. Please check your credentials and try again.')
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
     }

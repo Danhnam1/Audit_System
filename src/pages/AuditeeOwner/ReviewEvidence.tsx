@@ -6,6 +6,7 @@ import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { useDeptId } from '../../store/useAuthStore';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { fetchAuditSummaries, type AuditSummary } from '../../utils/auditSummary';
 import { getAuditPlanById } from '../../api/audits';
 import { getDepartments } from '../../api/departments';
@@ -419,7 +420,7 @@ const ReviewEvidence = () => {
       // Use useEffect to watch for findings changes and update modal
     } catch (err: any) {
       console.error('Failed to process action', err);
-      toast.error(err?.response?.data?.message || 'Unable to process action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Unable to process action. Please try again.'));
     } finally {
       setProcessingActionId(null);
     }

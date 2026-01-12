@@ -5,6 +5,7 @@ import { getUserById } from '../../api/adminUsers';
 import { getDepartmentById } from '../../api/departments';
 import { getSeverityColor } from '../../constants/statusColors';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../utils/errorMessages';
 
 interface WitnessedFindingDetailModalProps {
   isOpen: boolean;
@@ -157,7 +158,7 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
       await loadFinding();
     } catch (err: any) {
       console.error('Error rejecting witness:', err);
-      toast.error(err?.message || 'Failed to reject finding');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject finding. Please try again.'));
     } finally {
       setSubmittingReject(false);
     }

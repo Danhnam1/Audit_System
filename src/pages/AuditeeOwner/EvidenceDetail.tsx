@@ -6,6 +6,7 @@ import { getActionsByFinding, approveActionWithFeedback, rejectAction, type Acti
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { fetchAuditSummary, type AuditSummary } from '../../utils/auditSummary';
 
 interface ActionWithAttachments extends Action {
@@ -104,7 +105,7 @@ const EvidenceDetail = () => {
       await fetchData();
     } catch (err: any) {
       console.error('Failed to approve action', err);
-      toast.error(err?.response?.data?.message || 'Unable to approve action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Unable to approve action. Please try again.'));
     } finally {
       setProcessingActionId(null);
     }
@@ -128,7 +129,7 @@ const EvidenceDetail = () => {
       await fetchData();
     } catch (err: any) {
       console.error('Failed to reject action', err);
-      toast.error(err?.response?.data?.message || 'Unable to reject action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Unable to reject action. Please try again.'));
     } finally {
       setProcessingActionId(null);
     }

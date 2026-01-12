@@ -539,7 +539,7 @@ const AuditorSchedule = () => {
       setAssignments(assignmentsData);
     } catch (error: any) {
       console.error('Failed to update actual audit date:', error);
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to update actual audit date');
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to update actual audit date. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -680,7 +680,7 @@ const AuditorSchedule = () => {
       setAssignments(assignmentsData);
     } catch (error: any) {
       console.error('Failed to reject assignment:', error);
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to reject assignment');
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to reject assignment. Please try again.'));
     } finally {
       setSubmitting(false);
     }

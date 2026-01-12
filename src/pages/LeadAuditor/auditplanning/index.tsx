@@ -33,6 +33,7 @@ import { FilterBar } from './components/FilterBar';
 import { PlanTable } from './components/PlanTable';
 import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 
 // Lead Auditor sees plans in review / execution flow, including rejected states:
 // - PendingReview            : waiting Lead review (submitted by Auditor)
@@ -652,7 +653,7 @@ const LeadAuditorAuditPlanning = () => {
                   setSelectedPlanDetails(null);
                 } catch (err: any) {
                   console.error('Failed to forward plan to Director', err);
-                  toast.error('Failed to forward plan: ' + (err?.response?.data?.message || err?.message || String(err)));
+                  toast.error(getUserFriendlyErrorMessage(err, 'Failed to forward plan. Please try again.'));
                 }
               } : undefined}
               onRejectPlan={canReview ? async (auditId: string, comment?: string) => {
@@ -664,7 +665,7 @@ const LeadAuditorAuditPlanning = () => {
                   setSelectedPlanDetails(null);
                 } catch (err: any) {
                   console.error('Failed to reject plan', err);
-                  toast.error('Failed to reject plan: ' + (err?.response?.data?.message || err?.message || String(err)));
+                  toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject plan. Please try again.'));
                 }
               } : undefined}
               onApprove={canReview ? async (auditId: string, comment?: string) => {

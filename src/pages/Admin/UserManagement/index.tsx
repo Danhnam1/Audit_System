@@ -7,6 +7,7 @@ import { apiClient } from '../../../hooks/axios';
 import { getDepartments } from '../../../api/departments';
 import { bulkRegisterUsers } from '../../../api/adminUsers';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { validateRequired, validateEmail, validatePassword, validateSelected, SPECIAL_CHAR_REGEX } from '../../../helpers/formValidation';
 
 interface CreateUserForm {
@@ -297,7 +298,7 @@ const AdminUserManagement = () => {
       setFilterStatus('Active')
     } catch (err: any) {
       console.error('Delete user failed', err)
-      toast.error(err?.message || 'Failed to delete user.')
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to delete user. Please try again.'))
     }
   }
 

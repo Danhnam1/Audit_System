@@ -9,6 +9,7 @@ import {
   type ServiceName 
 } from '../../../api/backgroundServiceConfig';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 
 const AdminSettingDemo = () => {
   const { user } = useAuth();
@@ -99,7 +100,7 @@ const AdminSettingDemo = () => {
       }
     } catch (error: any) {
       console.error('Error fetching current time:', error);
-      toast.error(error?.response?.data?.message || 'Failed to fetch current time');
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to fetch current time. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -133,7 +134,7 @@ const AdminSettingDemo = () => {
       }
     } catch (error: any) {
       console.error('Error setting time:', error);
-      toast.error(error?.response?.data?.message || 'Failed to set time');
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to set time. Please try again.'));
     } finally {
       setSettingTime(false);
     }
@@ -163,7 +164,7 @@ const AdminSettingDemo = () => {
       }
     } catch (error: any) {
       console.error('Error resetting time:', error);
-      toast.error(error?.response?.data?.message || 'Failed to reset time');
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to reset time. Please try again.'));
     } finally {
       setResettingTime(false);
     }

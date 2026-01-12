@@ -14,6 +14,7 @@ import { getUserById } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import { DataTable } from '../../../components/DataTable';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { Pagination } from '../../../components/Pagination';
 import { QRCodeSVG } from 'qrcode.react';
 import { getStatusColor } from '../../../constants';
@@ -740,7 +741,7 @@ export default function AuditAssignment() {
         setDepartments(deptList);
       }
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to assign auditors. Please try again.');
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to assign auditors. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -2763,7 +2764,7 @@ export default function AuditAssignment() {
                     }
                   } catch (err: any) {
                     console.error('Failed to approve request:', err);
-                    toast.error(err?.response?.data?.message || err?.message || 'Failed to approve request');
+                    toast.error(getUserFriendlyErrorMessage(err, 'Failed to approve request. Please try again.'));
                   } finally {
                     setProcessingRequest(false);
                   }

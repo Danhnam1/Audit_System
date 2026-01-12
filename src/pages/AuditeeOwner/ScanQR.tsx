@@ -9,6 +9,7 @@ import { getAuditPlanById } from '../../api/audits';
 import { toast } from 'react-toastify';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useNavigate } from 'react-router-dom';
+import { getUserFriendlyErrorMessage } from '../../utils/errorMessages';
 
 export default function ScanQR() {
   const { user } = useAuth();
@@ -321,7 +322,9 @@ export default function ScanQR() {
       if (reason.toLowerCase().includes('expired')) {
         toast.error('QR code has expired. Please request a new QR code from the auditor.');
       } else {
-        toast.error(reason || 'Failed to scan QR code');
+        // Use getUserFriendlyErrorMessage for API errors, but keep custom messages for QR-specific errors
+        const errorMessage = getUserFriendlyErrorMessage(error, 'Failed to scan QR code. Please check the QR code and try again.');
+        toast.error(errorMessage);
       }
       
       setScanResult({
@@ -404,7 +407,7 @@ export default function ScanQR() {
       }
     } catch (error: any) {
       console.error('Failed to verify code:', error);
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to verify code');
+      toast.error(getUserFriendlyErrorMessage(error, 'Failed to verify code. Please check the code and try again.'));
     } finally {
       setVerifying(false);
     }

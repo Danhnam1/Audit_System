@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../api/findings';
 import { updateActionProgressPercent } from '../../../api/actions';
@@ -68,7 +69,7 @@ export default function LeadAuditorActionReviewModal({
       
       onClose();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to approve action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to approve action. Please try again.'));
     } finally {
       setProcessing(false);
     }
@@ -102,7 +103,7 @@ export default function LeadAuditorActionReviewModal({
       
       onClose();
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Failed to reject action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject action. Please try again.'));
     } finally {
       setProcessing(false);
     }

@@ -19,6 +19,7 @@ import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
 import FindingDetailModal from '../../Shared/FindingDetailModal';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 
 const SQAStaffReports = () => {
   const { user } = useAuth();
@@ -1094,35 +1095,7 @@ const SQAStaffReports = () => {
       await reloadReports();
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
-      
-      // Extract error message from various possible formats
-      let errorMessage = 'Failed to submit to Lead Auditor';
-      
-      if (err?.response?.data) {
-        const data = err.response.data;
-        if (typeof data === 'string') {
-          errorMessage = data;
-        } else if (data?.message) {
-          errorMessage = data.message;
-        } else if (data?.Message) {
-          errorMessage = data.Message;
-        } else if (data?.error) {
-          errorMessage = data.error;
-        } else if (data?.Error) {
-          errorMessage = data.Error;
-        }
-      } else if (err?.message) {
-        errorMessage = err.message;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      }
-      
-      // Special handling for "ReportRequest not found" error
-      if (errorMessage.toLowerCase().includes('reportrequest not found')) {
-        errorMessage = 'ReportRequest not found. Please contact administrator or try again.';
-      }
-      
-      toast.error(errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to submit to Lead Auditor. Please try again.'));
     } finally {
       setSubmitLoading(false);
     }
@@ -1192,8 +1165,7 @@ const SQAStaffReports = () => {
       setUploadedAudits(prev => new Set(prev).add(auditId));
     } catch (err) {
       console.error('Upload signed report failed', err);
-      const errorMessage = 'Upload failed. Please try again.';
-      toast.error(errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Upload failed. Please try again.'));
     } finally {
       setUploadLoading(prev => ({ ...prev, [auditId]: false }));
     }

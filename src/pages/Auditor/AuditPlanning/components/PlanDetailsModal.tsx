@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
 import { getCriteriaForAudit } from '../../../../api/auditCriteriaMap';
+import { getUserFriendlyErrorMessage } from '../../../../utils/errorMessages';
 import { getAuditCriterionById } from '../../../../api/auditCriteria';
 import { getAuditSchedules } from '../../../../api/auditSchedule';
 import { getAuditorsByAuditId } from '../../../../api/auditTeam';
@@ -1344,8 +1345,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   onClose();
                 } catch (err) {
                   console.error('Failed to submit to lead auditor', err);
-                  const errorMessage = (err as any)?.response?.data?.message || (err as any)?.message || String(err);
-                  toast.error('Failed to submit to Lead Auditor: ' + errorMessage);
+                  toast.error(getUserFriendlyErrorMessage(err, 'Failed to submit to Lead Auditor. Please try again.'));
                 } finally {
                   setIsProcessingSubmit(false);
                 }
@@ -1399,8 +1399,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   onClose();
                 } catch (err) {
                   console.error('Delete failed', err);
-                  const errorMessage = (err as any)?.response?.data?.message || (err as any)?.message || String(err);
-                  toast.error('Failed to delete plan: ' + errorMessage);
+                  toast.error(getUserFriendlyErrorMessage(err, 'Failed to delete plan. Please try again.'));
                 }
               }}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
@@ -1459,8 +1458,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   onClose();
                 } catch (err) {
                   console.error('Forward to director failed', err);
-                  const errorMessage = (err as any)?.response?.data?.message || (err as any)?.message || String(err);
-                  toast.error('Failed to forward to Director: ' + errorMessage);
+                  toast.error(getUserFriendlyErrorMessage(err, 'Failed to forward to Director. Please try again.'));
                 } finally {
                   setIsProcessingForward(false);
                 }
@@ -1543,11 +1541,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   onClose();
                 } catch (err) {
                   console.error('Reject failed', err);
-                  const errorMessage =
-                    (err as any)?.response?.data?.message ||
-                    (err as any)?.message ||
-                    String(err);
-                  toast.error('Failed to reject plan: ' + errorMessage);
+                  toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject plan. Please try again.'));
                 } finally {
                   setIsProcessingReject(false);
                 }

@@ -3,6 +3,7 @@ import { getActionById, updateActionProgressPercent, type Action } from '../../.
 import { getAttachments, updateAttachmentStatus, type Attachment } from '../../../api/attachments';
 import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../api/findings';
 import { toast } from 'react-toastify';
+import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 
 interface LeadAuditorActionDetailsModalProps {
   isOpen: boolean;
@@ -139,7 +140,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
       onClose();
     } catch (err: any) {
       console.error('Failed to approve action', err);
-      toast.error(err?.response?.data?.message || 'Failed to approve action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to approve action. Please try again.'));
     } finally {
       setProcessing(false);
     }
@@ -178,7 +179,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
       onClose();
     } catch (err: any) {
       console.error('Failed to reject action', err);
-      toast.error(err?.response?.data?.message || 'Failed to reject action');
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject action. Please try again.'));
     } finally {
       setProcessing(false);
     }

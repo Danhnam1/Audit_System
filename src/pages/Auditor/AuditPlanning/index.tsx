@@ -28,6 +28,7 @@ import {
   getDepartmentName,
 } from "../../../helpers/auditPlanHelpers";
 import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from "../../../constants";
+import { getUserFriendlyErrorMessage } from "../../../utils/errorMessages";
 import { toast } from "react-toastify";
 
 // Import components
@@ -628,18 +629,7 @@ const SQAStaffAuditPlanning = () => {
       const serverMsg =
         err?.response?.data || err?.response || err?.message || err;
       console.error("Create audit failed", err, serverMsg);
-      let errorMessage = "Failed to create audit plan.";
-      try {
-        if (typeof serverMsg === "object") {
-          errorMessage =
-            serverMsg?.message || JSON.stringify(serverMsg, null, 2);
-        } else {
-          errorMessage = String(serverMsg) || err?.message || String(err);
-        }
-      } catch (e) {
-        errorMessage = err?.message || String(err);
-      }
-      toast.error(errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to create audit plan. Please try again.'));
     } finally {
       setIsSubmittingPlan(false);
     }
@@ -661,10 +651,8 @@ const SQAStaffAuditPlanning = () => {
       planDetails.closeDetailsModal();
     } catch (err: any) {
       console.error("Failed to submit to Lead Auditor", err);
-      const errorMessage =
-        err?.response?.data?.message || err?.message || String(err);
-      toast.error(`Failed to submit plan: ${errorMessage}`);
-      throw new Error(errorMessage);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to submit to Lead Auditor. Please try again.'));
+      throw new Error(getUserFriendlyErrorMessage(err, 'Failed to submit plan. Please try again.'));
     }
   };
 
@@ -950,9 +938,7 @@ const SQAStaffAuditPlanning = () => {
       formState.setShowForm(true);
     } catch (err: any) {
       console.error("Failed to load plan for editing", err);
-      const errorMessage =
-        err?.response?.data?.message || err?.message || String(err);
-      toast.error(`Failed to load plan: ${errorMessage}`);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to load plan. Please refresh the page.'));
     }
   };
 
@@ -982,9 +968,7 @@ const SQAStaffAuditPlanning = () => {
       planDetails.closeDetailsModal();
     } catch (err: any) {
       console.error("Failed to delete plan", err);
-      const errorMessage =
-        err?.response?.data?.message || err?.message || String(err);
-      toast.error(`Failed to delete plan: ${errorMessage}`);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to delete plan. Please try again.'));
     }
   };
 
