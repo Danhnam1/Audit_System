@@ -2353,7 +2353,7 @@ const DepartmentChecklist = () => {
                 ) : (
                   <div className="space-y-4">
                     {visibleActions.length === 0 && (
-                      <div className="text-center py-8 text-gray-500">Không có hành động đang mở.</div>
+                      <div className="text-center py-8 text-gray-500">No actions found for this finding</div>
                     )}
                     {visibleActions.map((action) => (
                       <div

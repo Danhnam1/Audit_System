@@ -677,8 +677,8 @@ export default function AuditorFinalSummaryPage() {
   const alreadySubmitted = Boolean(
     reportRequest?.status && 
     (reportRequest.status === 'PendingFirstApproval' || 
-     reportRequest.status === 'PendingSecondApproval' || 
-     reportRequest.status === 'Approved')
+     reportRequest.status === 'PendingSecondApproval' )
+    //  reportRequest.status === 'Approved')
   );
   const canSubmit = selectedAuditId && 
     !loadingReportRequest && 

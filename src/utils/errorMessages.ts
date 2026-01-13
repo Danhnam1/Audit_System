@@ -72,9 +72,23 @@ export const getUserFriendlyErrorMessage = (error: any, defaultMessage: string =
   }
   
   if (statusCode === 401) {
-    if (errorMsgLower.includes('login') || errorMsgLower.includes('authentication')) {
+    // Check for login/credential errors (wrong password, invalid credentials, etc.)
+    // These errors indicate a login attempt failure, not an expired session
+    const isLoginError = 
+      errorMsgLower.includes('login') || 
+      errorMsgLower.includes('authentication') ||
+      errorMsgLower.includes('password') ||
+      errorMsgLower.includes('credentials') ||
+      errorMsgLower.includes('invalid credentials') ||
+      errorMsgLower.includes('incorrect password') ||
+      errorMsgLower.includes('wrong password') ||
+      errorMsgLower.includes('login failed') ||
+      (errorMsgLower.includes('unauthorized') && (errorMsgLower.includes('user') || errorMsgLower.includes('email')));
+    
+    if (isLoginError) {
       return 'Invalid email or password. Please check your credentials and try again.';
     }
+    // Default for 401: session expired (e.g., expired token, missing token)
     return 'Your session has expired. Please log in again.';
   }
   

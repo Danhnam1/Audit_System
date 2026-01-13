@@ -796,7 +796,7 @@ const [findingTime, setFindingTime] = useState(() => {
                     const maxDeadlineStr = maxDeadline.toISOString().split('T')[0];
                     return (
                       <p className="mt-1 text-xs text-gray-500">
-                        Deadline must be between {fieldworkStartDate.toISOString().split('T')[0]} (Fieldwork Start) and {maxDeadlineStr} 
+                        Deadline must be between {fieldworkStartDate.toISOString().split('T')[0]} (Fieldwork Start) and {maxDeadlineStr} (Evidence Due)
                       </p>
                     );
                   })()}
