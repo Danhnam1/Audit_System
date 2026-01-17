@@ -1246,7 +1246,7 @@ const SQAStaffAuditPlanning = () => {
                       !validateStep1 && (
                         <div className="mt-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
                           <p className="text-sm font-medium text-red-800">
-                            ⚠️ Validation Error
+                          You need to select the time again.
                           </p>
                           {(() => {
                             const fromDate = new Date(formState.periodFrom);
@@ -1386,7 +1386,7 @@ const SQAStaffAuditPlanning = () => {
                       {!validateStep4 && (
                         <div className="mt-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
                           <p className="text-sm font-medium text-red-800">
-                            ⚠️ Validation Error
+                            You need to select the time again.
                           </p>
                           <p className="text-sm text-red-700 mt-1">
                             Please select at least 1 auditor (excluding the Lead Auditor).

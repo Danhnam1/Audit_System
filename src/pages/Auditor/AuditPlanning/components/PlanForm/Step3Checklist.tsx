@@ -28,16 +28,89 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
 }) => {
   const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
   const [usedTemplateIds, setUsedTemplateIds] = useState<Set<string>>(new Set());
+  const [deptFilterId, setDeptFilterId] = useState<string>('all');
+
+  // Match Admin behavior: only hide templates when isActive === false
+  const activeChecklistTemplates = useMemo(() => {
+    return (checklistTemplates || []).filter(
+      (template: any) => template?.isActive !== false && template?.IsActive !== false
+    );
+  }, [checklistTemplates]);
+
+  const deptNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    (departments || []).forEach((d) => {
+      if (d?.deptId == null) return;
+      map.set(String(d.deptId), d.name);
+    });
+    return map;
+  }, [departments]);
+
+  const templateDeptIds = useMemo(() => {
+    const ids = new Set<string>();
+    (activeChecklistTemplates || []).forEach((t: any) => {
+      if (t?.deptId == null) return;
+      ids.add(String(t.deptId).trim());
+    });
+    return Array.from(ids);
+  }, [activeChecklistTemplates]);
+
+  const hasGeneralTemplates = useMemo(() => {
+    return (activeChecklistTemplates || []).some((t: any) => t?.deptId == null);
+  }, [activeChecklistTemplates]);
+
+  const deptFilterOptions = useMemo(() => {
+    // Department level: filter options should follow selected departments (Step 2)
+    if (level === 'department' && selectedDeptIds.length > 0) {
+      const ids = selectedDeptIds.map((id) => String(id).trim());
+      return ids;
+    }
+
+    // Academy (Entire Aviation Academy) or no depts selected: derive from templates
+    return templateDeptIds;
+  }, [level, selectedDeptIds, templateDeptIds]);
+
+  // Keep department filter valid when selected departments change
+  useEffect(() => {
+    if (deptFilterId === 'all') return;
+
+    // In department level, only allow filtering by selected departments
+    if (level === 'department') {
+      // "General" doesn't apply at department level (general templates are already excluded there)
+      if (deptFilterId === '__general__') {
+        setDeptFilterId('all');
+        return;
+      }
+
+      if (selectedDeptIds.length > 0) {
+        const selectedSet = new Set((selectedDeptIds || []).map((id) => String(id).trim()));
+        if (!selectedSet.has(String(deptFilterId).trim())) {
+          setDeptFilterId('all');
+        }
+      }
+    } else {
+      // In academy level, keep filter if it's still present in templates
+      if (deptFilterId !== '__general__') {
+        const availableSet = new Set((templateDeptIds || []).map((id) => String(id).trim()));
+        if (!availableSet.has(String(deptFilterId).trim())) {
+          setDeptFilterId('all');
+        }
+      } else if (!hasGeneralTemplates) {
+        setDeptFilterId('all');
+      }
+    }
+  }, [level, selectedDeptIds, deptFilterId]);
+
   const templateDeptMap = useMemo(() => {
     const map: Record<string, string | undefined> = {};
-    (checklistTemplates || []).forEach((tpl: any) => {
+    (activeChecklistTemplates || []).forEach((tpl: any) => {
       const id = String(tpl.templateId || tpl.id || tpl.$id || '');
       if (!id) return;
       const deptId = tpl.deptId != null ? String(tpl.deptId) : undefined;
       map[id] = deptId;
     });
     return map;
-  }, [checklistTemplates]);
+  }, [activeChecklistTemplates]);
 
   // Load used templates for selected departments (không filter theo thời gian, chỉ filter theo department)
   useEffect(() => {
@@ -129,7 +202,7 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
       return [];
     }
 
-    const selectedTemplates = checklistTemplates.filter((tpl: any) =>
+    const selectedTemplates = activeChecklistTemplates.filter((tpl: any) =>
       selectedTemplateIds.includes(String(tpl.templateId || tpl.id || tpl.$id))
     );
 
@@ -148,19 +221,19 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
       const dept = departments.find(d => String(d.deptId) === deptId);
       return dept?.name || deptId;
     });
-  }, [level, selectedDeptIds, selectedTemplateIds, checklistTemplates, departments]);
+  }, [level, selectedDeptIds, selectedTemplateIds, activeChecklistTemplates, departments]);
 
   // Filter templates based on selected departments AND exclude used templates
   const filteredTemplates = useMemo(() => {
-    let templates = checklistTemplates;
+    let templates = activeChecklistTemplates;
 
     // First filter by department
     if (level === 'academy') {
       // For academy level, show all templates
-      templates = checklistTemplates;
+      templates = activeChecklistTemplates;
     } else if (selectedDeptIds.length === 0) {
       // If no departments selected, show only templates without deptId (general templates)
-      templates = checklistTemplates.filter((template: any) => 
+      templates = activeChecklistTemplates.filter((template: any) => 
         template.deptId == null || template.deptId === undefined
       );
     } else {
@@ -168,7 +241,7 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
       const selectedDeptIdsSet = new Set(selectedDeptIds.map(id => String(id).trim()));
 
       // When departments are selected, ONLY show templates that belong to those departments
-      templates = checklistTemplates.filter((template: any) => {
+      templates = activeChecklistTemplates.filter((template: any) => {
         const templateDeptId = template.deptId;
         
         // If template has no deptId (general template), exclude it when specific departments are selected
@@ -211,7 +284,17 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
     }
 
     return templates;
-  }, [checklistTemplates, level, selectedDeptIds, usedTemplateIds]);
+  }, [activeChecklistTemplates, level, selectedDeptIds, usedTemplateIds]);
+
+  // Apply UI department filter (narrowing within already-scope-filtered templates)
+  const visibleTemplates = useMemo(() => {
+    if (!deptFilterId || deptFilterId === 'all') return filteredTemplates;
+    if (deptFilterId === '__general__') {
+      return (filteredTemplates || []).filter((t: any) => t?.deptId == null);
+    }
+    const filterStr = String(deptFilterId).trim();
+    return (filteredTemplates || []).filter((t: any) => String(t?.deptId ?? '').trim() === filterStr);
+  }, [filteredTemplates, level, deptFilterId]);
 
   const handleTemplateClick = (templateId: string) => {
     const normalizedId = String(templateId);
@@ -263,8 +346,7 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
           </p>
           {level === 'department' && selectedDeptIds.length > 0 && usedTemplateIds.size > 0 && (
             <p className="text-xs text-gray-500 mb-2">
-              Chỉ hiển thị những checklist template chưa được chọn của phòng này.
-            </p>
+Only display checklist templates that have not been selected for this room.            </p>
           )}
           {missingTemplateDepts.length > 0 && (
             <div className="mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -274,13 +356,41 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
               </p>
             </div>
           )}
+          {/* Department filter (UI-only) */}
+          {(deptFilterOptions.length > 0 || hasGeneralTemplates) && (
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-600">Filter by department:</span>
+                <select
+                  value={deptFilterId}
+                  onChange={(e) => setDeptFilterId(e.target.value)}
+                  className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+                >
+                  <option value="all">All</option>
+                  {hasGeneralTemplates && level !== 'department' && (
+                    <option value="__general__">General</option>
+                  )}
+                  {deptFilterOptions.map((idStr) => {
+                    const id = String(idStr);
+                    const name = deptNameById.get(id) || id;
+                    return (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <span className="text-xs text-gray-500">
+                Showing {visibleTemplates.length} / {filteredTemplates.length}
+              </span>
+            </div>
+          )}
           {/* Select All / Clear All for currently visible templates */}
-          {filteredTemplates.length > 0 && level !== 'department' && (
+          {visibleTemplates.length > 0 && level !== 'department' && (
             <div className="mb-2 flex items-center justify-end">
               {(() => {
-                const allIds = filteredTemplates.map((t: any) =>
-                  String(t.templateId || t.id || t.$id)
-                );
+                const allIds = visibleTemplates.map((t: any) => String(t.templateId || t.id || t.$id));
                 const allSelected =
                   allIds.length > 0 &&
                   allIds.every((id) => selectedTemplateIds.includes(id));
@@ -312,15 +422,17 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
             </div>
           )}
           <div className="space-y-2 max-h-96 overflow-y-auto">
-            {filteredTemplates.length === 0 ? (
+            {visibleTemplates.length === 0 ? (
               <p className="text-sm text-gray-500">
                 {level === 'department' && selectedDeptIds.length === 0
                   ? 'Please select departments in Step 2 to see available templates.'
                   : 'No templates available for the selected departments.'}
               </p>
             ) : (
-              filteredTemplates.map((template: any) => {
-                const templateId = template.templateId;
+              visibleTemplates.map((template: any) => {
+                const templateId = String(template.templateId || template.id || template.$id || '');
+                const deptId = template.deptId != null ? String(template.deptId) : '';
+                const deptName = deptId ? (deptNameById.get(deptId) || deptId) : '';
                 const normalizedId = String(templateId);
                 const isSelected = selectedTemplateIds.includes(normalizedId);
                 const isExpanded = expandedTemplateId === String(templateId);
@@ -336,9 +448,16 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <h4 className="text-sm font-semibold text-gray-900">
-                          {template.title || template.name || 'Untitled Template'}
-                        </h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-semibold text-gray-900">
+                            {template.title || template.name || 'Untitled Template'}
+                          </h4>
+                          {deptName && (
+                            <span className="px-2 py-0.5 text-[11px] bg-gray-100 text-gray-700 rounded border border-gray-200">
+                              {deptName}
+                            </span>
+                          )}
+                        </div>
                         {isExpanded && template.description && (
                           <p className="text-xs text-gray-600 mt-2">{template.description}</p>
                         )}

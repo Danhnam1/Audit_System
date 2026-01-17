@@ -132,7 +132,7 @@ const otherAudits = auditId
                 conflicts.audits.push({
                   auditId: String(audit.auditId || audit.id),
                   title: audit.title || 'Unknown',
-startDate: audit.startDate || audit.periodFrom || '',
+                  startDate: audit.startDate || audit.periodFrom || '',
                   endDate: audit.endDate || audit.periodTo || '',
                   scope: auditCriteriaIds,
                 });
@@ -165,15 +165,15 @@ startDate: audit.startDate || audit.periodFrom || '',
     if (hasConflict) {
       // Rule 1: Trùng phòng ban + trùng scope → WARNING (không reject, chỉ cảnh báo)
       if (hasScopeOverlap) {
-        warnings.push(`⚠️ Có ${conflicts.audits.length} audit plan(s) kiểm định phòng ban đó.`);
-        warnings.push('💡 Hãy chọn tiêu chuẩn kiểm định khác với cuộc kiểm định đó.');
+        warnings.push(`There are ${conflicts.audits.length} audit plans for that department.`);
+        warnings.push('Please select a different audit criteria from those audits.');
         requiresApproval = false; // Không reject, chỉ warning
       }
       
       // Rule 2: Trùng time + trùng phòng ban nhưng KHÁC scope → WARNING (cho phép)
       if (!hasScopeOverlap && conflicts.audits.length > 0) {
-        warnings.push('⚠️ Trùng phòng ban trong cùng thời gian nhưng khác scope.');
-        warnings.push('ℹ️ Cho phép tạo audit. Nếu cần, vui lòng có justification hoặc Director approval.');
+        warnings.push('Same department but different scope in the same time.');
+        warnings.push(' Allow creating audit. If needed, please provide justification or Director approval.');
         // Không cần approval nếu khác scope
         requiresApproval = false;
       }
@@ -182,8 +182,8 @@ startDate: audit.startDate || audit.periodFrom || '',
     return {
       isValid: true,
       message: hasConflict 
-        ? 'Có conflicts nhưng đáp ứng điều kiện cho phép.'
-        : 'Không có conflicts.',
+        ? 'There are conflicts but meet the conditions for approval.'
+        : 'There are no conflicts.',
       warnings,
       requiresApproval,
       conflicts: hasConflict ? conflicts : undefined,
@@ -355,7 +355,7 @@ export const validateBeforeCreateAudit = async (
       requiresApproval = true;
       if (deptValidation.isValid) {
         // Valid but requires approval → warning
-        warnings.push('⚠️ Audit này cần Director/Management approval do có conflicts.');
+        warnings.push('This audit needs Director/Management approval due to conflicts.');
       }
     }
   }
