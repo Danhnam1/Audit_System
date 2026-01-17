@@ -2566,7 +2566,7 @@ const SQAStaffReports = () => {
               setSelectedFinding(null);
             }}
             finding={selectedFinding}
-            showReturnAction={false}
+            //showReturnAction={false}
             rootCauses={selectedFinding?.findingId ? rootCausesMap[selectedFinding.findingId] || [] : []}
             loadingRootCauses={selectedFinding?.findingId ? loadingRootCauses[selectedFinding.findingId] || false : false}
           />
