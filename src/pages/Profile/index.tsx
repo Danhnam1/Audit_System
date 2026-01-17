@@ -46,6 +46,16 @@ export default function Profile() {
       const avatar = (userData as any)?.avatarUrl || (userData as any)?.avatar || null;
       setAvatarUrl(avatar);
       setAvatarPreview(avatar);
+
+      // Sync auth store so header avatar stays updated across navigation
+      if (authUser) {
+        setUser({
+          ...authUser,
+          fullName: name,
+          role: userData?.roleName || authUser?.role,
+          avatarUrl: avatar,
+        });
+      }
       
       // Load department name
       if (userData?.deptId) {
@@ -152,17 +162,25 @@ export default function Profile() {
     setSaving(true);
     try {
       await updateUserProfile(userId, editedFullName.trim(), selectedAvatarFile || undefined);
-      
+
+      // Re-fetch to get persisted avatar URL from backend
+      const refreshed = await getUserById(userId);
+      const refreshedAvatar =
+        (refreshed as any)?.avatarUrl || (refreshed as any)?.avatar || avatarPreview || null;
+      const refreshedName = refreshed?.fullName || editedFullName.trim();
+
       // Update local state
-      setFullName(editedFullName.trim());
-      setAvatarUrl(avatarPreview);
-      
+      setFullName(refreshedName);
+      setAvatarUrl(refreshedAvatar);
+      setAvatarPreview(refreshedAvatar);
+
       // Update auth store
       if (authUser) {
         setUser({
           ...authUser,
-          fullName: editedFullName.trim(),
-          avatarUrl: avatarPreview || null,
+          fullName: refreshedName,
+          role: refreshed?.roleName || authUser?.role,
+          avatarUrl: refreshedAvatar,
         });
       }
       

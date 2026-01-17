@@ -180,6 +180,18 @@ export const getAuditChartBar = async (auditId: string): Promise<any> => {
   return apiClient.get(`/Audits/${auditId}/chart/bar`) as any;
 };
 
+// Get severity summary for a specific department in an audit
+// Swagger: GET /api/Audits/{auditId}/departments/{departmentId}/severity-summary
+export const getDepartmentSeveritySummary = async (auditId: string, departmentId: number | string): Promise<any> => {
+  if (!auditId) {
+    throw new Error('auditId is required to load department severity summary');
+  }
+  if (!departmentId && departmentId !== 0) {
+    throw new Error('departmentId is required to load department severity summary');
+  }
+  return apiClient.get(`/Audits/${encodeURIComponent(auditId)}/departments/${encodeURIComponent(departmentId)}/severity-summary`) as any;
+};
+
 // Summary of findings for an audit
 export const getAuditSummary = async (auditId: string): Promise<any> => {
   return apiClient.get(`/Audits/Summary/${auditId}`) as any;
@@ -365,6 +377,7 @@ export default {
   getAuditChartLine,
   getAuditChartPie,
   getAuditChartBar,
+  getDepartmentSeveritySummary,
   getAuditSummary,
   getAuditFullDetail,
   exportAuditPdf,

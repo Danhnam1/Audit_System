@@ -2427,7 +2427,7 @@ export default function AuditAssignment() {
                           <p className={`text-xs mt-1 ${auditHasEnded ? 'text-amber-800' : 'text-blue-800'}`}>
                               {qrValidityFrom && qrValidityTo ? (
                                 <>
-                                  QR codes will be valid from <strong>Evidence Due ({qrValidityFrom.toLocaleDateString()})</strong>.
+                                  QR codes will be valid from <strong>Fieldwork Start ({qrValidityFrom.toLocaleDateString()})</strong>.
                                 </>
                               ) : (
                                 <>

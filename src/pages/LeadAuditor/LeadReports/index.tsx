@@ -53,7 +53,7 @@ const AuditorLeadReports = () => {
   const lastAuditIdRef = useRef<string>('');
   const [selectedFindingId, setSelectedFindingId] = useState<string>('');
   const [showFindingModal, setShowFindingModal] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string>('');
+  const [actionLoading, setActionLoading] = useState<string>(''); // Format: "auditId:approve" or "auditId:reject"
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'approved'>('all');
   const [reportSearch, setReportSearch] = useState<string>('');
@@ -751,7 +751,7 @@ const AuditorLeadReports = () => {
       return;
     }
     
-    setActionLoading(approveAuditId);
+    setActionLoading(`${approveAuditId}:approve`);
     setActionMsg(null);
     try {
       await approveAuditReport(approveAuditId);
@@ -778,7 +778,7 @@ const AuditorLeadReports = () => {
       toast.error('Please enter a reason for rejection.');
       return;
     }
-    setActionLoading(rejectAuditId);
+    setActionLoading(`${rejectAuditId}:reject`);
     setActionMsg(null);
     try {
       // Include schedule and team changes in rejection note if any
@@ -2019,11 +2019,11 @@ const AuditorLeadReports = () => {
                     variant="success"
                     size="md"
                     onClick={handleApprove}
-                    disabled={actionLoading === approveAuditId}
-                    isLoading={actionLoading === approveAuditId}
+                    disabled={actionLoading === `${approveAuditId}:approve`}
+                    isLoading={actionLoading === `${approveAuditId}:approve`}
                     className="rounded-md font-semibold shadow-sm"
                   >
-                    {actionLoading === approveAuditId ? 'Approving...' : 'Approve'}
+                    {actionLoading === `${approveAuditId}:approve` ? 'Approving...' : 'Approve'}
                   </Button>
                 </div>
               </div>
@@ -2070,11 +2070,11 @@ const AuditorLeadReports = () => {
                     variant="danger"
                     size="md"
                     onClick={handleReject}
-                    disabled={actionLoading === rejectAuditId}
-                    isLoading={actionLoading === rejectAuditId}
+                    disabled={actionLoading === `${rejectAuditId}:reject`}
+                    isLoading={actionLoading === `${rejectAuditId}:reject`}
                     className="rounded-md font-semibold shadow-sm"
                   >
-                    {actionLoading === rejectAuditId ? 'Rejecting...' : 'Reject'}
+                    {actionLoading === `${rejectAuditId}:reject` ? 'Rejecting...' : 'Reject'}
                   </Button>
                 </div>
               </div>
@@ -2265,7 +2265,7 @@ const AuditorLeadReports = () => {
                       if (!returningFindingId) return;
                       
                       try {
-                        setActionLoading(returningFindingId);
+                        setActionLoading(`${returningFindingId}:return`);
                         await returnFinding(returningFindingId, returnFindingNote.trim());
                         
                         toast.success('Finding returned successfully.');
@@ -2285,10 +2285,10 @@ const AuditorLeadReports = () => {
                         setActionLoading('');
                       }
                     }}
-                    disabled={!returnFindingNote.trim() || actionLoading === returningFindingId}
+                    disabled={!returnFindingNote.trim() || actionLoading === `${returningFindingId}:return`}
                     className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center gap-2"
                   >
-                    {actionLoading === returningFindingId ? (
+                    {actionLoading === `${returningFindingId}:return` ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                         Returning...

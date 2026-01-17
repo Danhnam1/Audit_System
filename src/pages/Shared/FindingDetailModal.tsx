@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { getSeverityColor } from '../../constants/statusColors';
 
 interface FindingDetailModalProps {
   isOpen: boolean;
@@ -99,7 +100,7 @@ const FindingDetailModal = ({
                     </svg>
                     <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Severity</label>
                   </div>
-                  <span className={`inline-block px-3 py-1.5 rounded-lg text-xs font-bold ${String(finding?.severity||'').toLowerCase().includes('major') ? 'bg-amber-100 text-amber-800 border border-amber-200' : String(finding?.severity||'').toLowerCase().includes('minor') ? 'bg-blue-100 text-blue-800 border border-blue-200' : 'bg-gray-100 text-gray-800 border border-gray-200'}`}>
+                  <span className={`inline-block px-3 py-1.5 rounded-lg text-xs font-bold border ${getSeverityColor(finding?.severity || '')}`}>
                     {finding?.severity || '—'}
                   </span>
                 </div>

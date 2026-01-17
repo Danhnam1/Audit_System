@@ -3,9 +3,11 @@ import { PageHeader } from '../../../components';
 import { useAuth } from '../../../contexts';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { getStatusColor, getSeverityColor } from '../../../constants';
-import { StatCard, BarChartCard, PieChartCard } from '../../../components';
-import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote } from '../../../api/audits';
+import { getStatusColor, getSeverityColor, getSeverityChartColor } from '../../../constants';
+import { StatCard, BarChartCard } from '../../../components';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import type { PieLabelRenderProps } from 'recharts';
+import { getAuditPlans, getAuditChartLine, getAuditChartPie, getAuditChartBar, getAuditSummary, exportAuditPdf, submitAudit, getAuditReportNote, getDepartmentSeveritySummary } from '../../../api/audits';
 import { getAllReportRequests, getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../../api/reportRequest';
 import { getDepartments } from '../../../api/departments';
 import { getAuditSchedules } from '../../../api/auditSchedule';
@@ -44,6 +46,7 @@ const SQAStaffReports = () => {
   const [rejectSchedules, setRejectSchedules] = useState<any[]>([]);
   const [loadingRejectSchedules, setLoadingRejectSchedules] = useState(false);
   const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
+  const [exportedAudits, setExportedAudits] = useState<Set<string>>(new Set());
   const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [leadAuditorNames, setLeadAuditorNames] = useState<Record<string, string>>({}); // auditId -> Lead Auditor name
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
@@ -70,6 +73,10 @@ const SQAStaffReports = () => {
   // Filters for Checklist items tab
   const [checklistitemsStatusFilter, setChecklistitemsStatusFilter] = useState<'all' | 'overdue' | 'active' | 'return'>('all');
   const [checklistitemsDeptFilter, setChecklistitemsDeptFilter] = useState<string>('all');
+  // Severity chart department filter
+  const [severityDeptFilter, setSeverityDeptFilter] = useState<string>('all');
+  const [deptSeverityData, setDeptSeverityData] = useState<Array<{ name: string; value: number; color: string }>>([]);
+  const [loadingSeverityDept, setLoadingSeverityDept] = useState(false);
   // Track recently updated audit statuses to prevent overwriting during reload
   const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
   // Attachments modal state
@@ -324,13 +331,50 @@ const SQAStaffReports = () => {
     })).filter(m => m.items.length > 0);
   }, [monthsFindings, search, findingFilters, departments]);
 
-  // Severity colors
+  // Severity colors - use centralized color mapping from constants
   const severityColor = (sev: string) => {
-    const k = String(sev || '').toLowerCase();
-    if (k.includes('critical') || k.includes('high')) return '#ef4444';
-    if (k.includes('major') || k.includes('medium')) return '#f59e0b';
-    return '#3b82f6'; // minor/low default
+    return getSeverityChartColor(String(sev || ''));
   };
+
+  // Get departments available in current audit (from barData + summary)
+  const departmentsInAudit = useMemo(() => {
+    const deptMap = new Map<string, string>();
+    
+    // Source 1: From barData (findings by department chart)
+    if (barData && barData.length > 0) {
+      barData.forEach((item: any) => {
+        const deptName = item.department || '';
+        if (!deptName || deptName === '—') return;
+        
+        // Try to find matching department ID from departments list
+        const dept = departments.find(d => d.name === deptName);
+        if (dept && dept.deptId) {
+          deptMap.set(String(dept.deptId), deptName);
+        }
+      });
+    }
+    
+    // Source 2: From summary.byDepartment (backup if barData is empty)
+    if (deptMap.size === 0 && deptRows && deptRows.length > 0) {
+      deptRows.forEach((row: any) => {
+        const deptId = row.deptId;
+        const deptName = row.deptName || (deptId != null ? resolveDeptName(String(deptId), departments) : '');
+        if (deptId != null && deptName) {
+          deptMap.set(String(deptId), deptName);
+        }
+      });
+    }
+    
+    return Array.from(deptMap.entries()).map(([id, name]) => ({ deptId: id, name }));
+  }, [barData, departments, deptRows]);
+
+  // Choose which pie data to display (all or filtered by department)
+  const displayedPieData = useMemo(() => {
+    if (severityDeptFilter === 'all') {
+      return pieData; // Show all departments
+    }
+    return deptSeverityData; // Show specific department
+  }, [severityDeptFilter, pieData, deptSeverityData]);
 
   // Small internal component for KPI cards in the summary modal
   const SummaryCard = ({
@@ -794,6 +838,10 @@ const SQAStaffReports = () => {
     const loadCharts = async () => {
       if (!selectedAuditId) return;
       setLoadingCharts(true);
+      // Reset department filter when audit changes
+      setSeverityDeptFilter('all');
+      setDeptSeverityData([]);
+      
       try {
         const [lineRes, pieRes, barRes] = await Promise.all([
           getAuditChartLine(selectedAuditId),
@@ -834,6 +882,58 @@ const SQAStaffReports = () => {
     };
     loadCharts();
   }, [selectedAuditId]);
+
+  // Load department severity data when filter changes
+  useEffect(() => {
+    const loadDepartmentSeverity = async () => {
+      if (!selectedAuditId || severityDeptFilter === 'all') {
+        // Reset to all departments data
+        setDeptSeverityData([]);
+        return;
+      }
+
+      setLoadingSeverityDept(true);
+      try {
+        const deptId = Number(severityDeptFilter);
+        if (isNaN(deptId)) {
+          setDeptSeverityData([]);
+          return;
+        }
+
+        const res = await getDepartmentSeveritySummary(selectedAuditId, deptId);
+        const data = res?.data || res;
+        
+        // Transform API response to chart format
+          // API returns: { departmentId: 8, severityCounts: { major: 1, medium: 2, minor: 1 } }
+        const chartData: Array<{ name: string; value: number; color: string }> = [];
+        
+        if (data) {
+          // Extract severityCounts object (nested structure from API)
+          const counts = data.severityCounts || data.SeverityCounts || data;
+          
+          // Try multiple field name variations
+          const major = counts?.major || counts?.Major || counts?.findingMajor || 0;
+          const medium = counts?.medium || counts?.Medium || counts?.findingMedium || 0;
+          const minor = counts?.minor || counts?.Minor || counts?.findingMinor || 0;
+          
+          // Only add severity levels with value > 0 to avoid label overlap
+          if (major > 0) chartData.push({ name: 'Major', value: major, color: severityColor('Major') });
+          if (medium > 0) chartData.push({ name: 'Medium', value: medium, color: severityColor('Medium') });
+          if (minor > 0) chartData.push({ name: 'Minor', value: minor, color: severityColor('Minor') });
+        }
+        
+        setDeptSeverityData(chartData);
+      } catch (err) {
+        console.error('Failed to load department severity summary:', err);
+        setDeptSeverityData([]);
+        toast.error('Failed to load department severity data');
+      } finally {
+        setLoadingSeverityDept(false);
+      }
+    };
+
+    loadDepartmentSeverity();
+  }, [selectedAuditId, severityDeptFilter]);
 
   // Sync selectedAuditIdRef with selectedAuditId state
   useEffect(() => {
@@ -1103,16 +1203,25 @@ const SQAStaffReports = () => {
 
   const onClickUpload = (auditIdRaw: string) => {
     const auditId = normalizeId(auditIdRaw);
+    
     // Check if already uploaded
     if (uploadedAudits.has(auditId)) {
       toast.error('This report has already been uploaded. It cannot be uploaded again.');
       return;
     }
+    
+    // Check if exported first (new validation)
+    if (!exportedAudits.has(auditId)) {
+      toast.error('Please export the report first before uploading.');
+      return;
+    }
+    
     // Check if currently uploading
     if (uploadLoading[auditId]) {
       toast.error('Upload is already in progress. Please wait.');
       return;
     }
+    
     fileInputRefs.current[auditId]?.click();
   };
 
@@ -1120,6 +1229,13 @@ const SQAStaffReports = () => {
     const auditId = normalizeId(auditIdRaw);
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || !auditId) {
+      e.target.value = '';
+      return;
+    }
+    
+    // Validate: Check if exported first
+    if (!exportedAudits.has(auditId)) {
+      toast.error('Please export the report first before uploading.');
       e.target.value = '';
       return;
     }
@@ -1172,6 +1288,7 @@ const SQAStaffReports = () => {
   };
 
   const handleExportPdfForRow = async (auditId: string, title: string) => {
+    const auditIdNorm = normalizeId(auditId);
     try {
       const blob = await exportAuditPdf(auditId);
       const url = window.URL.createObjectURL(blob);
@@ -1182,9 +1299,13 @@ const SQAStaffReports = () => {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      
+      // Track that this audit has been exported
+      setExportedAudits(prev => new Set(prev).add(auditIdNorm));
+      toast.success('Report exported successfully');
     } catch (err) {
       console.error('Export PDF failed', err);
-      alert('Export PDF failed. Please try again.');
+      toast.error('Export PDF failed. Please try again.');
     }
   };
 
@@ -1342,23 +1463,71 @@ const SQAStaffReports = () => {
 
         {audits.length > 0 && selectedAuditId ? (
           <>
-            {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6"> */}
-              {/* <LineChartCard
-                title="Findings (Monthly)"
-                data={lineData}
-                xAxisKey="month"
-                lines={[{ dataKey: 'count', stroke: '#0369a1', name: 'Findings' }]}
-              /> */}
-              <PieChartCard title="Severity of Findings" data={pieData} />
-              <BarChartCard
-              title="Number of Findings by Department "
+            {/* Severity Chart with Department Filter */}
+            <div className="bg-white rounded-xl border border-primary-100 shadow-md p-6 animate-slideUp animate-delay-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-primary-600">Severity of Findings</h3>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600">Department:</label>
+                  <select
+                    value={severityDeptFilter}
+                    onChange={(e) => {
+                      setSeverityDeptFilter(e.target.value);
+                    }}
+                    disabled={loadingSeverityDept}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="all">All Departments</option>
+                    {departmentsInAudit.map((dept) => (
+                      <option key={dept.deptId} value={dept.deptId}>
+                        {dept.name}
+                      </option>
+                    ))}
+                  </select>
+                  {loadingSeverityDept && (
+                    <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin"></div>
+                  )}
+                </div>
+              </div>
+              {displayedPieData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={displayedPieData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={(entry: PieLabelRenderProps) => {
+                        const name = (entry && entry.name) ? String(entry.name) : '';
+                        const value = typeof entry?.value === 'number' ? entry.value : 0;
+                        const total = displayedPieData.reduce((sum, item) => sum + item.value, 0);
+                        return `${name}: ${total > 0 ? ((value / total) * 100).toFixed(0) : 0}%`;
+                      }}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {displayedPieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[300px] text-sm text-gray-500">
+                  No severity data available{severityDeptFilter !== 'all' ? ' for this department' : ''}
+                </div>
+              )}
+            </div>
+
+            {/* Bar Chart - Findings by Department */}
+            <BarChartCard
+              title="Number of Findings by Department"
               data={barData}
               xAxisKey="department"
               bars={[{ dataKey: 'count', fill: '#0369a1', name: 'Findings' }]}
             />
-            {/* </div> */}
-
-            
           </>
         ) : audits.length === 0 ? (
           <div className="bg-yellow-50 border border-yellow-100 text-yellow-700 text-sm rounded-xl px-4 py-3">
@@ -1438,16 +1607,34 @@ const SQAStaffReports = () => {
                           const auditIdStr = String(audit.auditId);
                           const auditIdNorm = normalizeId(auditIdStr);
                           const approved = isReportApproved(auditIdStr);
-                          const disableExport = !approved;
+                          const hasExported = exportedAudits.has(auditIdNorm);
+                          const hasUploaded = uploadedAudits.has(auditIdNorm);
+                          
+                          // Disable export if: not approved OR already uploaded
+                          const disableExport = !approved || hasUploaded;
+                          
+                          // Disable upload if: not approved OR not exported yet OR already uploaded OR currently uploading
                           const disableUpload =
                             !approved ||
-                            uploadedAudits.has(auditIdNorm) ||
+                            !hasExported ||
+                            hasUploaded ||
                             uploadLoading[auditIdNorm];
-                          const tooltip = approved
-                            ? uploadedAudits.has(auditIdNorm)
-                              ? 'Already uploaded'
-                              : 'Upload signed report'
-                            : 'Export / Upload are available only after the report request is approved.';
+                          
+                          // Tooltip messages
+                          const exportTooltip = !approved
+                            ? 'Export is available only after the report request is approved'
+                            : hasUploaded
+                              ? 'Cannot export - report already uploaded'
+                              : 'Export PDF report';
+                          
+                          const uploadTooltip = !approved
+                            ? 'Upload is available only after the report request is approved'
+                            : !hasExported
+                              ? 'Please export the report first before uploading'
+                              : hasUploaded
+                                ? 'Already uploaded'
+                                : 'Upload signed report';
+                          
                           return (
                             <>
                               <button
@@ -1455,6 +1642,10 @@ const SQAStaffReports = () => {
                                   e.stopPropagation();
                                   if (!approved) {
                                     toast.error('Cannot export. Report request must be approved by Lead Auditor.');
+                                    return;
+                                  }
+                                  if (hasUploaded) {
+                                    toast.error('Cannot export. Report has already been uploaded.');
                                     return;
                                   }
                                   handleExportPdfForRow(auditIdStr, audit.title);
@@ -1465,7 +1656,7 @@ const SQAStaffReports = () => {
                                     ? 'text-gray-400 cursor-not-allowed'
                                     : 'text-green-600 hover:text-green-700 hover:bg-green-50'
                                 }`}
-                                title={approved ? 'Export PDF' : tooltip}
+                                title={exportTooltip}
                                 aria-label="Export PDF"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1479,6 +1670,10 @@ const SQAStaffReports = () => {
                                     toast.error('Cannot upload. Report request must be approved by Lead Auditor.');
                                     return;
                                   }
+                                  if (!hasExported) {
+                                    toast.error('Please export the report first before uploading.');
+                                    return;
+                                  }
                                   onClickUpload(auditIdStr);
                                 }}
                                 disabled={disableUpload}
@@ -1487,7 +1682,7 @@ const SQAStaffReports = () => {
                                     ? 'text-gray-400 cursor-not-allowed'
                                     : 'text-purple-600 hover:text-purple-700 hover:bg-purple-50'
                                 }`}
-                                title={tooltip}
+                                title={uploadTooltip}
                                 aria-label="Upload Signed Report"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

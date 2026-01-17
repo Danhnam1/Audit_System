@@ -82,7 +82,7 @@ export const PRIORITY_COLORS = {
   'Low': 'bg-sky-200 text-sky-800',
 } as const;
 
-// Severity color mapping for findings
+// Severity color mapping for findings (badges/pills)
 export const SEVERITY_COLORS = {
   'Critical': 'bg-red-100 text-red-800',
   'Major': 'bg-orange-100 text-orange-800',
@@ -92,6 +92,22 @@ export const SEVERITY_COLORS = {
   'Medium': 'bg-yellow-100 text-yellow-800',
   'High': 'bg-red-100 text-red-800',
 } as const;
+
+// Severity color mapping for charts (hex colors for recharts)
+export const SEVERITY_CHART_COLORS = {
+  'Critical': '#dc2626',  // red-600 - Most severe
+  'Major': '#ea580c',     // orange-600 - High severity
+  'Medium': '#f59e0b',    // amber-500 - Medium severity
+  'Minor': '#10b981',     // emerald-500 - Low severity
+  'Low': '#10b981',       // emerald-500 - Low severity
+  'High': '#dc2626',      // red-600 - High severity
+  'Observation': '#3b82f6', // blue-500 - Informational
+} as const;
+
+// Helper function to get severity chart color
+export const getSeverityChartColor = (severity: string): string => {
+  return SEVERITY_CHART_COLORS[severity as keyof typeof SEVERITY_CHART_COLORS] || '#6b7280'; // gray-500 default
+};
 
 // Helper function to get status color
 export const getStatusColor = (status: string): string => {

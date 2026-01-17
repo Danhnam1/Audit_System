@@ -36,7 +36,7 @@ export const DocumentsSection = ({
                       {d.title || d.documentType || "Document"}
                     </p>
                     <p className="text-[11px] text-gray-500 mt-0.5">
-                      Type: {d.documentType || "N/A"} · Final: {String(d.isFinalVersion ?? false)}
+                      Type: {d.documentType || "N/A"} 
                     </p>
                     {d.contentType && (
                       <p className="text-[10px] text-gray-400 mt-0.5">{d.contentType}</p>

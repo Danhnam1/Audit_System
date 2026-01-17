@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
+import { DataTable } from "../../../components/DataTable";
 import {
   getAuditFullDetail,
   getAuditPlans,
@@ -13,63 +15,18 @@ import { getAdminUsers } from "../../../api/adminUsers";
 import { getAuditCriteria } from "../../../api/auditCriteria";
 import { getChecklistTemplates } from "../../../api/checklists";
 import {
-  approveFinalReport,
-  getReportRequestByAuditId,
   getAllReportRequests,
 } from "../../../api/reportRequest";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
 import { PlanDetailsModal } from "../../Auditor/AuditPlanning/components/PlanDetailsModal";
-import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from "../../../constants";
+import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor, getSeverityChartColor } from "../../../constants";
 import {
   FindingsTable,
   OverdueActionsTable,
   ChartsSection,
   DocumentsSection,
 } from "../../Shared/FinalReport";
-
-const StageBar = ({ current }: { current: number }) => {
-  const steps = [
-    "Auditor submits final summary",
-    "Lead Auditor submits to Director",
-    "Director receives & calculates",
-  ];
-
-  return (
-    <div className="mb-4">
-      <div className="relative flex items-center justify-between">
-        <div className="absolute top-1/2 -translate-y-1/2 left-6 right-6 h-1.5 bg-primary-300 z-0 rounded-full" />
-        {steps.map((label, idx) => {
-          const step = idx + 1;
-          const isCompleted = step < current;
-          const isCurrent = step === current;
-          const circleClass = isCompleted
-            ? "bg-primary-500 text-white border-2 border-primary-500 shadow-md"
-            : isCurrent
-            ? "bg-white text-primary-700 border-2 border-primary-500 ring-2 ring-primary-200 shadow-lg"
-            : "bg-gray-100 text-gray-700 border-2 border-gray-400";
-
-          return (
-            <div key={label} className="flex flex-col items-center flex-1">
-              <div
-                className={`w-12 h-12 rounded-full border flex items-center justify-center text-base font-extrabold z-10 transition-all ${circleClass}`}
-              >
-                {isCompleted ? (
-                  <span className="text-lg">✓</span>
-                ) : (
-                  <span className="text-lg">{step}</span>
-                )}
-              </div>
-              <p className="mt-2 text-[12px] text-center text-gray-700 leading-tight px-1 font-medium">
-                {label}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
 
 type FullDetailResponse = {
   audit?: {
@@ -95,14 +52,16 @@ type FullDetailResponse = {
 
 export default function LeadAuditorFinalSummaryReviewPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { auditId: auditIdFromUrl } = useParams<{ auditId?: string }>();
   const layoutUser = user
     ? { name: user.fullName, avatar: undefined }
     : undefined;
 
   const [audits, setAudits] = useState<
-    Array<{ auditId: string; title: string }>
+    Array<{ auditId: string; title: string; type: string; startDate: string; endDate: string; scope: string; status?: string }>
   >([]);
-  const [selectedAuditId, setSelectedAuditId] = useState<string>("");
+  const [selectedAuditId, setSelectedAuditId] = useState<string>(auditIdFromUrl || "");
   const [loadingAudits, setLoadingAudits] = useState(false);
 
   const [detail, setDetail] = useState<FullDetailResponse | null>(null);
@@ -130,18 +89,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
 
   const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
-  const [showCommentsModal, setShowCommentsModal] = useState(false);
-
-  const [reportRequest, setReportRequest] = useState<{
-    status?: string;
-    reportRequestId?: string;
-    note?: string;
-  } | null>(null);
-  const [loadingReportRequest, setLoadingReportRequest] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  const [comments, setComments] = useState("");
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Load list of audits for dropdown - only show audits with submitted report requests
   useEffect(() => {
@@ -150,7 +97,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       try {
         const [
           plansRes,
-          ,
+          
           usersRes,
           deptsRes,
           criteriaRes,
@@ -183,16 +130,14 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         const templatesArr = Array.isArray(templatesRes) ? templatesRes : [];
         setChecklistTemplates(templatesArr);
 
-        // Filter report requests: Lead Auditor should see audits with:
-        // - PendingFirstApproval (submitted by Auditor, waiting for Lead Auditor to send to Director)
-        // - PendingSecondApproval (already sent to Director, but Lead Auditor can still view)
+        // Filter report requests: Lead Auditor should see all submitted audits
+        // No status filtering needed - once Auditor submits, Lead can view it
         const relevantReportRequests = Array.isArray(reportRequestsRes)
           ? reportRequestsRes.filter((rr: any) => {
-              const status = String(rr.status || "").trim();
-              return (
-                status === "PendingFirstApproval" ||
-                status === "PendingSecondApproval"
-              );
+              const status = String(rr.status || "").trim().toLowerCase();
+              // Show Pending (newly submitted), Approved, or any other status
+              // Exclude only if explicitly empty or invalid
+              return status && status !== '' && status !== 'null' && status !== 'undefined';
             })
           : [];
 
@@ -206,6 +151,28 @@ export default function LeadAuditorFinalSummaryReviewPage() {
             auditStatusMap.set(auditIdStr, status);
           }
         });
+
+        // Helper to format date
+        const formatDate = (dateStr: string | null | undefined): string => {
+          if (!dateStr) return "—";
+          try {
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return "—";
+            return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          } catch {
+            return "—";
+          }
+        };
+
+        // Helper to format scope
+        const formatScope = (scope: string | null | undefined): string => {
+          if (!scope) return "—";
+          const scopeLower = String(scope).toLowerCase().trim();
+          if (scopeLower.includes('entire') || scopeLower.includes('academy')) {
+            return "Entire Aviation Academy";
+          }
+          return "Department";
+        };
 
         // Filter audits to only include those with relevant report requests
         const filteredAudits = (Array.isArray(plans) ? plans : [])
@@ -222,6 +189,10 @@ export default function LeadAuditorFinalSummaryReviewPage() {
             return {
               auditId: auditId,
               title: title,
+              type: a.type || a.auditType || "—",
+              startDate: formatDate(a.startDate || a.periodFrom),
+              endDate: formatDate(a.endDate || a.periodTo),
+              scope: formatScope(a.scope),
               status: status,
             };
           })
@@ -235,7 +206,16 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       }
     };
     loadAudits();
-  }, [refreshTrigger]);
+  }, []); // Only load once on mount
+
+  // Sync selectedAuditId with URL param
+  useEffect(() => {
+    if (auditIdFromUrl && auditIdFromUrl !== selectedAuditId) {
+      setSelectedAuditId(auditIdFromUrl);
+    } else if (!auditIdFromUrl && selectedAuditId) {
+      setSelectedAuditId("");
+    }
+  }, [auditIdFromUrl]);
 
   // Load all 3 APIs when user selects an audit
   useEffect(() => {
@@ -243,7 +223,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       setDetail(null);
       setSummaryData(null);
       setFindingsActionsSummary(null);
-      setReportRequest(null);
       return;
     }
 
@@ -279,29 +258,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       }
     };
 
-    const loadReportRequest = async () => {
-      setLoadingReportRequest(true);
-      try {
-        const rr = await getReportRequestByAuditId(selectedAuditId);
-        if (rr) {
-          setReportRequest({
-            status: rr.status,
-            reportRequestId: rr.reportRequestId,
-            note: rr.note,
-          });
-        } else {
-          setReportRequest(null);
-        }
-      } catch (error) {
-        console.error("Failed to load report request:", error);
-        setReportRequest(null);
-      } finally {
-        setLoadingReportRequest(false);
-      }
-    };
-
     loadAllData();
-    loadReportRequest();
   }, [selectedAuditId]);
 
   
@@ -531,17 +488,17 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       {
         name: "Major",
         value: findingsActionsSummary.findingMajor || 0,
-        color: "#ef4444",
+        color: getSeverityChartColor('Major'),
       },
       {
         name: "Medium",
         value: findingsActionsSummary.findingMedium || 0,
-        color: "#f59e0b",
+        color: getSeverityChartColor('Medium'),
       },
       {
         name: "Minor",
         value: findingsActionsSummary.findingMinor || 0,
-        color: "#10b981",
+        color: getSeverityChartColor('Minor'),
       },
     ];
   }, [findingsActionsSummary]);
@@ -702,93 +659,8 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     }
   };
 
-  const handleSendToDirector = () => {
-    if (!reportRequest?.reportRequestId) {
-      alert("No report request found.");
-      return;
-    }
-    setShowCommentsModal(true);
-  };
-
-  const handleSubmitComments = async () => {
-    if (!reportRequest?.reportRequestId) {
-      alert("No report request found.");
-      return;
-    }
-
-    if (
-      !window.confirm(
-        "Are you sure you want to send this report to Director for final approval?"
-      )
-    ) {
-      return;
-    }
-
-    setSubmitting(true);
-    setShowCommentsModal(false);
-    try {
-      await approveFinalReport(reportRequest.reportRequestId, comments || "");
-
-      // Reload report request to get updated status
-      setTimeout(async () => {
-        try {
-          const rr = await getReportRequestByAuditId(selectedAuditId);
-          if (rr) {
-            setReportRequest({
-              status: rr.status,
-              reportRequestId: rr.reportRequestId,
-              note: rr.note,
-            });
-          }
-        } catch (error) {
-          console.error("Failed to reload report request:", error);
-        }
-      }, 500);
-
-      // Show success message
-      alert(
-        "Report sent to Director successfully! The audit has been forwarded and will no longer appear in your pending list."
-      );
-
-      // Clear comments
-      setComments("");
-
-      // Delay refresh to allow user to see the success state
-      // Don't clear selectedAuditId immediately - let user see the result
-      setTimeout(() => {
-        setRefreshTrigger((prev) => prev + 1);
-        // Optionally clear selection after a delay, or let user manually clear it
-        // setSelectedAuditId("");
-      }, 2000);
-    } catch (error: any) {
-      console.error("Failed to send report to Director:", error);
-      const errorMessage =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Failed to send report to Director. Please try again.";
-      alert(errorMessage);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const isPendingApproval = reportRequest?.status === "PendingFirstApproval";
-
-  // Calculate current step based on report request status
-  const getCurrentStep = useMemo(() => {
-    if (!selectedAuditId || !reportRequest?.status) {
-      return 1; // No report request yet
-    }
-    const status = String(reportRequest.status || "").trim();
-    if (status === "PendingFirstApproval") {
-      return 2; // Waiting for Lead Auditor to send to Director
-    }
-    if (status === "PendingSecondApproval") {
-      return 3; // Already sent to Director
-    }
-    // If status is something else, show step 2 (Lead Auditor's step)
-    return 2;
-  }, [selectedAuditId, reportRequest?.status]);
+  // Note: Lead Auditor no longer needs to submit to Director
+  // Auditor's submission is now visible to both Lead Auditor and Director immediately
 
   return (
     <MainLayout user={layoutUser}>
@@ -797,81 +669,97 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           title="Final Summary Review"
           subtitle={headerSubtitle}
           rightContent={
-            <div className="flex flex-col items-start gap-2 md:items-end">
-              <div className="flex flex-col items-start gap-1 md:items-end">
-                <label className="text-xs font-semibold uppercase tracking-wide text-gray-700">
-                  Audit
-                </label>
-                <select
-                  value={selectedAuditId}
-                  onChange={(e) => setSelectedAuditId(e.target.value)}
-                  className="min-w-[260px] px-3 py-1.5 border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-slate-900"
-                  disabled={submitting}
+            selectedAuditId && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/lead-auditor/final-summary-review')}
+                  className="px-3 py-1.5 border border-gray-300 text-gray-700 text-xs font-semibold rounded-md hover:bg-gray-50 transition-colors"
                 >
-                  <option value="">
-                    {loadingAudits ? "Loading audits..." : "Select audit..."}
-                  </option>
-                  {audits.map((a) => (
-                    <option key={a.auditId} value={a.auditId}>
-                      {a.title}
-                    </option>
-                  ))}
-                  {/* Keep selected audit in dropdown even if it's no longer in filtered list (e.g., after submission) */}
-                  {selectedAuditId &&
-                    !audits.find((a) => a.auditId === selectedAuditId) &&
-                    detail?.audit?.title && (
-                      <option value={selectedAuditId} disabled>
-                        {detail.audit.title
-                          .replace(/\s*(true|false)\s*$/i, "")
-                          .trim()}
-                      </option>
-                    )}
-                </select>
+                  Back to List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAuditDetailModal(true)}
+                  className="px-3 py-1.5 border border-primary-600 text-primary-700 text-xs font-semibold rounded-md hover:bg-primary-50 transition-colors"
+                >
+                  View audit details
+                </button>
               </div>
-              {selectedAuditId && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowAuditDetailModal(true)}
-                    className="px-3 py-1.5 border border-primary-600 text-primary-700 text-xs font-semibold rounded-md hover:bg-primary-50 transition-colors"
-                  >
-                    View audit details
-                  </button>
-                  {loadingReportRequest ? (
-                    <div className="text-xs text-gray-500">
-                      Checking status...
-                    </div>
-                  ) : (
-                    isPendingApproval && (
-                      <button
-                        onClick={handleSendToDirector}
-                        disabled={submitting}
-                        className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                      >
-                        {submitting ? (
-                          <>
-                            <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          "Send to Director"
-                        )}
-                      </button>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
+            )
           }
         />
 
-        <StageBar current={getCurrentStep} />
-
         <section className="pb-2">
           {!selectedAuditId ? (
-            <div className="bg-white border border-dashed border-gray-300 rounded-lg p-8 text-center text-sm text-gray-500">
-              Choose an audit from the dropdown above to review its final
-              summary report.
+            <div className="bg-white border border-primary-200 rounded-lg shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Select an Audit</h3>
+                <p className="text-sm text-gray-500 mt-1">Choose an audit from the table below to review its final summary report.</p>
+              </div>
+              <DataTable
+                columns={[
+                  {
+                    key: "title",
+                    header: "TITLE",
+                    render: (row) => (
+                      <div
+                        onClick={() => navigate(`/lead-auditor/final-summary-review/${row.auditId}`)}
+                        className="cursor-pointer hover:text-primary-600 font-medium"
+                      >
+                        {row.title}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "type",
+                    header: "TYPE",
+                    accessor: "type",
+                    cellClassName: "text-gray-600",
+                  },
+                  {
+                    key: "startDate",
+                    header: "START DATE",
+                    accessor: "startDate",
+                    cellClassName: "text-gray-600",
+                  },
+                  {
+                    key: "endDate",
+                    header: "END DATE",
+                    accessor: "endDate",
+                    cellClassName: "text-gray-600",
+                  },
+                  {
+                    key: "scope",
+                    header: "SCOPE",
+                    accessor: "scope",
+                    cellClassName: "text-gray-600",
+                  },
+                  {
+                    key: "action",
+                    header: "ACTION",
+                    align: "center",
+                    render: (row) => (
+                      <button
+                        onClick={() => navigate(`/lead-auditor/final-summary-review/${row.auditId}`)}
+                        className="px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-md hover:bg-primary-700 transition-colors"
+                      >
+                        View
+                      </button>
+                    ),
+                  },
+                ]}
+                data={audits}
+                loading={loadingAudits}
+                loadingMessage="Loading audits..."
+                emptyState="No audits available."
+                rowKey={(row) => row.auditId}
+                getRowClassName={() => "border-b border-gray-100 transition-colors hover:bg-primary-50 cursor-pointer"}
+                bodyClassName=""
+              />
+              <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+                Click on an audit row to review its final summary report.
+              </div>
             </div>
           ) : loadingDetail ||
             loadingSummary ||
@@ -895,7 +783,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                       { id: "findings", label: "Findings" },
                       { id: "overdueActions", label: "Overdue Actions" },
                       { id: "charts", label: "Charts" },
-                      { id: "documents", label: "Documents" }
+                      { id: "documents", label: "History Upload" }
                     ].map((tab) => (
                       <button
                         key={tab.id}
@@ -995,79 +883,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         </section>
 
         {/* Comments Modal */}
-        {showCommentsModal && (
-          <div className="fixed inset-0 z-[12000] flex items-center justify-center p-4">
-            <div
-              className="fixed inset-0 bg-black/50"
-              onClick={() => setShowCommentsModal(false)}
-            />
-            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl border border-gray-200">
-              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Add Comments
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    Optional comments before sending to Director
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowCommentsModal(false)}
-                  className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 hover:text-gray-700"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div className="p-5">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Comments (Optional)
-                </label>
-                <textarea
-                  rows={6}
-                  value={comments}
-                  onChange={(e) => setComments(e.target.value)}
-                  className="block w-full border-gray-700 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  placeholder="Add any comments before sending to Director (optional)..."
-                />
-              </div>
-              <div className="px-5 py-4 border-t border-gray-200 flex items-center justify-end gap-3">
-                <button
-                  onClick={() => setShowCommentsModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSubmitComments}
-                  disabled={submitting}
-                  className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                >
-                  {submitting ? (
-                    <>
-                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    "Send to Director"
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {showAuditDetailModal && planDetailsForModal && (
           <PlanDetailsModal
             showModal={showAuditDetailModal}

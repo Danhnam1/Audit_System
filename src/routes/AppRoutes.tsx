@@ -335,7 +335,7 @@ export function AppRoutes() {
                 }
             />
             <Route
-                path="/auditor/final-summary"
+                path="/auditor/final-summary/:auditId?"
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
                         <AuditorFinalSummaryPage />
@@ -655,7 +655,7 @@ export function AppRoutes() {
                 }
             />
             <Route
-                path="/director/final-summary"
+                path="/director/final-summary/:auditId?"
                 element={
                     <ProtectedRoute allowedRoles={["Director"]}>
                         <DirectorFinalSummaryPage />
@@ -743,7 +743,7 @@ export function AppRoutes() {
                 }
             />
             <Route
-                path="/lead-auditor/final-summary-review"
+                path="/lead-auditor/final-summary-review/:auditId?"
                 element={
                     <ProtectedRoute allowedRoles={["Lead Auditor"]}>
                         <LeadAuditorFinalSummaryReviewPage />

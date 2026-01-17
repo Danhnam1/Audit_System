@@ -1,14 +1,44 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useRef, useEffect } from "react";
-import useAuthStore from "../store/useAuthStore";
+import useAuthStore, { useUserId } from "../store/useAuthStore";
 import { NotificationBell } from "./NotificationBell";
+import { getUserById } from "../api/adminUsers";
 
 export const Navigation = () => {
-  const { token, user, logout } = useAuthStore();
+  const { token, user, logout, setUser } = useAuthStore();
+  const userId = useUserId();
   const navigate = useNavigate();
   const isAuthenticated = !!token;
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+
+  // Load avatar URL from backend when header mounts (if not already loaded)
+  useEffect(() => {
+    const loadAvatarUrl = async () => {
+      // Only load if we have userId and user exists but avatarUrl is missing
+      if (!userId || !user || user.avatarUrl) {
+        return;
+      }
+
+      try {
+        const userData = await getUserById(userId);
+        const avatarUrl = (userData as any)?.avatarUrl || (userData as any)?.avatar || null;
+        
+        if (avatarUrl && user) {
+          // Update authStore with avatar URL
+          setUser({
+            ...user,
+            avatarUrl,
+          });
+        }
+      } catch (error) {
+        // Silently fail - avatar will show fallback initial
+        console.warn('[Header] Failed to load avatar URL:', error);
+      }
+    };
+
+    loadAvatarUrl();
+  }, [userId, user?.avatarUrl]); // Re-run if userId changes or avatarUrl becomes available
 
   // Close dropdown when clicking outside
   useEffect(() => {

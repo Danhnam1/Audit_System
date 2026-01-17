@@ -1063,7 +1063,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 return (
                   <div className="mb-6">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Auditors <span className="text-red-500">*</span>
+                      Auditors 
                     </label>
                     <div className="space-y-2">
                       {auditors.map((member: any, idx: number) => {

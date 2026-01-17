@@ -171,8 +171,8 @@ const AuditReportsTable: React.FC<Props> = ({
                               variant="success"
                               size="sm"
                               onClick={() => onApprove(r.auditId)}
-                              disabled={actionLoading === r.auditId}
-                              isLoading={actionLoading === r.auditId}
+                              disabled={actionLoading === `${r.auditId}:approve` || actionLoading === `${r.auditId}:reject`}
+                              isLoading={actionLoading === `${r.auditId}:approve`}
                               className="text-xs rounded-md font-semibold shadow-sm"
                               leftIcon={
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -180,14 +180,14 @@ const AuditReportsTable: React.FC<Props> = ({
                                 </svg>
                               }
                             >
-                              {actionLoading === r.auditId ? 'Approving...' : 'Approve'}
+                              {actionLoading === `${r.auditId}:approve` ? 'Approving...' : 'Approve'}
                             </Button>
                             <Button
                               variant="danger"
                               size="sm"
                               onClick={() => onReject(r.auditId)}
-                              disabled={actionLoading === r.auditId}
-                              isLoading={actionLoading === r.auditId}
+                              disabled={actionLoading === `${r.auditId}:approve` || actionLoading === `${r.auditId}:reject`}
+                              isLoading={actionLoading === `${r.auditId}:reject`}
                               className="text-xs rounded-md font-semibold shadow-sm"
                               leftIcon={
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -195,7 +195,7 @@ const AuditReportsTable: React.FC<Props> = ({
                                 </svg>
                               }
                             >
-                              {actionLoading === r.auditId ? 'Rejecting...' : 'Reject'}
+                              {actionLoading === `${r.auditId}:reject` ? 'Rejecting...' : 'Reject'}
                             </Button>
                           </>
                         ) : null;

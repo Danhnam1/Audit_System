@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
+import { DataTable } from "../../../components/DataTable";
 import { getAuditFullDetail, getAuditPlans, getAuditSummary, getAuditFindingsActionsSummary } from "../../../api/audits";
 import { getDepartments } from "../../../api/departments";
 import { getAuditTeam } from "../../../api/auditTeam";
@@ -11,49 +13,8 @@ import { getChecklistTemplates } from "../../../api/checklists";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
 import { PlanDetailsModal } from "../AuditPlanning/components/PlanDetailsModal";
-import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from "../../../constants";
+import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor, getSeverityChartColor } from "../../../constants";
 import { FindingsTable, OverdueActionsTable, ChartsSection, DocumentsSection } from "../../Shared/FinalReport";
-
-const StageBar = ({ current }: { current: number }) => {
-  const steps = [
-    'Auditor submits final summary',
-    'Lead Auditor submits to Director',
-    'Director receives & calculates',
-  ];
-
-  return (
-    <div className="mb-4">
-      <div className="relative flex items-center justify-between">
-        <div className="absolute top-1/2 -translate-y-1/2 left-6 right-6 h-1.5 bg-primary-300 z-0 rounded-full" />
-        {steps.map((label, idx) => {
-          const step = idx + 1;
-          const isCompleted = step < current;
-          const isCurrent = step === current;
-          const circleClass = isCompleted
-            ? 'bg-primary-500 text-white border-2 border-primary-500 shadow-md'
-            : isCurrent
-              ? 'bg-white text-primary-700 border-2 border-primary-500 ring-2 ring-primary-200 shadow-lg'
-              : 'bg-gray-100 text-gray-700 border-2 border-gray-400';
-
-          return (
-            <div key={label} className="flex flex-col items-center flex-1">
-              <div
-                className={`w-12 h-12 rounded-full border flex items-center justify-center text-base font-extrabold z-10 transition-all ${circleClass}`}
-              >
-                {isCompleted ? (
-                  <span className="text-lg">✓</span>
-                ) : (
-                  <span className="text-lg">{step}</span>
-                )}
-              </div>
-              <p className="mt-2 text-[12px] text-center text-gray-700 leading-tight px-1 font-medium">{label}</p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
 
 type FullDetailResponse = {
   audit?: {
@@ -79,10 +40,12 @@ type FullDetailResponse = {
 
 export default function AuditorFinalSummaryPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { auditId: auditIdFromUrl } = useParams<{ auditId?: string }>();
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const [audits, setAudits] = useState<Array<{ auditId: string; title: string }>>([]);
-  const [selectedAuditId, setSelectedAuditId] = useState<string>("");
+  const [audits, setAudits] = useState<Array<{ auditId: string; title: string; type: string; startDate: string; endDate: string; scope: string }>>([]);
+  const [selectedAuditId, setSelectedAuditId] = useState<string>(auditIdFromUrl || "");
   const [loadingAudits, setLoadingAudits] = useState(false);
 
   const [detail, setDetail] = useState<FullDetailResponse | null>(null);
@@ -199,6 +162,28 @@ export default function AuditorFinalSummaryPage() {
           });
         }
 
+        // Helper to format date
+        const formatDate = (dateStr: string | null | undefined): string => {
+          if (!dateStr) return "—";
+          try {
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return "—";
+            return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          } catch {
+            return "—";
+          }
+        };
+
+        // Helper to format scope
+        const formatScope = (scope: string | null | undefined): string => {
+          if (!scope) return "—";
+          const scopeLower = String(scope).toLowerCase().trim();
+          if (scopeLower.includes('entire') || scopeLower.includes('academy')) {
+            return "Entire Aviation Academy";
+          }
+          return "Department";
+        };
+
         const filtered = (Array.isArray(plans) ? plans : [])
           .filter((a: any) => {
             const auditId = a?.auditId || a?.id || a?.$id;
@@ -210,6 +195,10 @@ export default function AuditorFinalSummaryPage() {
           .map((a: any) => ({
             auditId: a.auditId || a.id || "",
             title: a.title || a.auditTitle || "Untitled audit",
+            type: a.type || a.auditType || "—",
+            startDate: formatDate(a.startDate || a.periodFrom),
+            endDate: formatDate(a.endDate || a.periodTo),
+            scope: formatScope(a.scope),
           }))
           .filter((x: any) => x.auditId);
 
@@ -220,6 +209,16 @@ export default function AuditorFinalSummaryPage() {
     };
     loadAudits();
   }, []);
+
+  // Sync selectedAuditId with URL param
+  useEffect(() => {
+    if (auditIdFromUrl && auditIdFromUrl !== selectedAuditId) {
+      setSelectedAuditId(auditIdFromUrl);
+    } else if (!auditIdFromUrl && selectedAuditId) {
+      // If URL param is removed but we still have selectedAuditId, clear it
+      setSelectedAuditId("");
+    }
+  }, [auditIdFromUrl]);
 
   // Load all 3 APIs when user selects an audit
   useEffect(() => {
@@ -495,9 +494,9 @@ export default function AuditorFinalSummaryPage() {
   const findingsSeverityChartData = useMemo(() => {
     if (!findingsActionsSummary) return [];
     return [
-      { name: 'Major', value: findingsActionsSummary.findingMajor || 0, color: '#ef4444' },
-      { name: 'Medium', value: findingsActionsSummary.findingMedium || 0, color: '#f59e0b' },
-      { name: 'Minor', value: findingsActionsSummary.findingMinor || 0, color: '#10b981' },
+      { name: 'Major', value: findingsActionsSummary.findingMajor || 0, color: getSeverityChartColor('Major') },
+      { name: 'Medium', value: findingsActionsSummary.findingMedium || 0, color: getSeverityChartColor('Medium') },
+      { name: 'Minor', value: findingsActionsSummary.findingMinor || 0, color: getSeverityChartColor('Minor') },
     ];
   }, [findingsActionsSummary]);
   
@@ -685,22 +684,6 @@ export default function AuditorFinalSummaryPage() {
     !submitting &&
     !alreadySubmitted;
 
-  // Calculate current step based on report request status
-  const getCurrentStep = useMemo(() => {
-    if (!selectedAuditId || !reportRequest?.status) {
-      return 1; // No report request yet, still at step 1
-    }
-    const status = String(reportRequest.status || '').trim();
-    if (status === 'PendingFirstApproval') {
-      return 2; // Submitted, waiting for Lead Auditor
-    }
-    if (status === 'PendingSecondApproval') {
-      return 3; // Lead Auditor approved, waiting for Director
-    }
-    // If status is something else (Approved, Rejected, etc.), show the last step
-    return 3;
-  }, [selectedAuditId, reportRequest?.status]);
-
   return (
     <MainLayout user={layoutUser}>
       <div className="px-4 sm:px-6 lg:px-8 pb-8 space-y-6">
@@ -708,65 +691,120 @@ export default function AuditorFinalSummaryPage() {
           title="Prepare Final Audit Summary Report"
           subtitle={headerSubtitle}
           rightContent={
-            <div className="flex flex-col items-start gap-2 md:items-end">
-              <div className="flex flex-col items-start gap-1 md:items-end">
-                <label className="text-xs font-semibold uppercase tracking-wide text-gray-700">Audit</label>
-                <select
-                  value={selectedAuditId}
-                  onChange={e => setSelectedAuditId(e.target.value)}
-                  className="min-w-[260px] px-3 py-1.5 border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-slate-900"
-                  disabled={submitting}
+            selectedAuditId && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/auditor/final-summary')}
+                  className="px-3 py-1.5 border border-gray-300 text-gray-700 text-xs font-semibold rounded-md hover:bg-gray-50 transition-colors"
                 >
-                  <option value="">{loadingAudits ? "Loading audits..." : "Select audit..."}</option>
-                  {audits.map(a => (
-                    <option key={a.auditId} value={a.auditId}>
-                      {a.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {selectedAuditId && (
-                <div className="flex items-center gap-2">
+                  Back to List
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAuditDetailModal(true)}
+                  className="px-3 py-1.5 border border-primary-600 text-primary-700 text-xs font-semibold rounded-md hover:bg-primary-50 transition-colors"
+                >
+                  View audit details
+                </button>
+                {loadingReportRequest ? (
+                  <div className="text-xs text-gray-500">Checking status...</div>
+                ) : (
                   <button
-                    type="button"
-                    onClick={() => setShowAuditDetailModal(true)}
-                    className="px-3 py-1.5 border border-primary-600 text-primary-700 text-xs font-semibold rounded-md hover:bg-primary-50 transition-colors"
+                    onClick={handleSubmitReport}
+                    disabled={!canSubmit || submitting || alreadySubmitted}
+                    className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                   >
-                    View audit details
+                    {submitting ? (
+                      <>
+                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Submitting...
+                      </>
+                    ) : alreadySubmitted ? (
+                      "Submitted"
+                    ) : (
+                      "Submit to Lead Auditor"
+                    )}
                   </button>
-                  {loadingReportRequest ? (
-                    <div className="text-xs text-gray-500">Checking status...</div>
-                  ) : (
-                    <button
-                      onClick={handleSubmitReport}
-                      disabled={!canSubmit || submitting || alreadySubmitted}
-                      className="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-                    >
-                      {submitting ? (
-                        <>
-                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          Submitting...
-                        </>
-                      ) : alreadySubmitted ? (
-                        "Submitted"
-                      ) : (
-                        "Submit to Lead Auditor"
-                      )}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )
           }
         />
-
-        <StageBar current={getCurrentStep} />
 
         {/* Content */}
         <section className="pb-2">
           {!selectedAuditId ? (
-            <div className="bg-white border border-dashed border-gray-300 rounded-lg p-8 text-center text-sm text-gray-500">
-              Choose an audit from the dropdown above to load its full-detail information.
+            <div className="bg-white border border-primary-200 rounded-lg shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Select an Audit</h3>
+                <p className="text-sm text-gray-500 mt-1">Choose an audit from the table below to view its final summary report.</p>
+              </div>
+              <DataTable
+                columns={[
+                  {
+                    key: "title",
+                    header: "TITLE",
+                    render: (row) => (
+                      <div
+                        onClick={() => navigate(`/auditor/final-summary/${row.auditId}`)}
+                        className="cursor-pointer hover:text-primary-600 font-medium"
+                      >
+                        {row.title}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "type",
+                    header: "TYPE",
+                    accessor: "type",
+                    cellClassName: "text-gray-600",
+                  },
+                  {
+                    key: "startDate",
+                    header: "START DATE",
+                    accessor: "startDate",
+                    cellClassName: "text-gray-600",
+                  },
+                  {
+                    key: "endDate",
+                    header: "END DATE",
+                    accessor: "endDate",
+                    cellClassName: "text-gray-600",
+                  },
+                  {
+                    key: "scope",
+                    header: "SCOPE",
+                    accessor: "scope",
+                    cellClassName: "text-gray-600",
+                  },
+                  {
+                    key: "action",
+                    header: "ACTION",
+                    align: "center",
+                    render: (row) => (
+                      <button
+                        onClick={() => navigate(`/auditor/final-summary/${row.auditId}`)}
+                        className="px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-md hover:bg-primary-700 transition-colors"
+                      >
+                        View
+                      </button>
+                    ),
+                  },
+                ]}
+                data={audits}
+                loading={loadingAudits}
+                loadingMessage="Loading audits..."
+                emptyState="No audits available."
+                rowKey={(row) => row.auditId}
+                getRowClassName={() => {
+                  return "border-b border-gray-100 transition-colors hover:bg-primary-50 cursor-pointer";
+                }}
+                bodyClassName=""
+              />
+              <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+                Click on an audit row to view its final summary report.
+              </div>
             </div>
           ) : (loadingDetail || loadingSummary || loadingFindingsActionsSummary) ? (
             <div className="bg-white border border-primary-200 rounded-lg p-8 flex items-center justify-center gap-3 text-sm text-primary-700">
@@ -787,7 +825,7 @@ export default function AuditorFinalSummaryPage() {
                       { id: "findings", label: "Findings" },
                       { id: "overdueActions", label: "Overdue Actions" },
                       { id: "charts", label: "Charts" },
-                      { id: "documents", label: "Documents" }
+                      { id: "documents", label: "History Upload" }
                     ].map((tab) => (
                           <button
                         key={tab.id}
