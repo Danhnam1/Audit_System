@@ -53,6 +53,7 @@ const CreateFindingModal = ({
   const [deadline, setDeadline] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [witnesses, setWitnesses] = useState<string>(''); // Single witness selection
+  const [previewImage, setPreviewImage] = useState<string | null>(null); // For image preview modal
   
   // Department users for witnesses dropdown
   const [departmentUsers, setDepartmentUsers] = useState<AdminUserDto[]>([]);
@@ -300,6 +301,16 @@ const [findingTime, setFindingTime] = useState(() => {
     if (errors.files) {
       setErrors(prev => ({ ...prev, files: undefined }));
     }
+  };
+
+  // Helper function to check if file is an image
+  const isImageFile = (file: File) => {
+    return file.type.startsWith('image/');
+  };
+
+  // Get preview URL for image
+  const getImagePreviewUrl = (file: File) => {
+    return URL.createObjectURL(file);
   };
 
   const validateForm = (): boolean => {
@@ -903,7 +914,7 @@ const [findingTime, setFindingTime] = useState(() => {
               {/* Finding Date - Read-only, auto-filled */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date of Finding <span className="text-red-500">*</span>
+                  Date of Finding 
                 </label>
                 <input
                   type="date"
@@ -930,7 +941,7 @@ const [findingTime, setFindingTime] = useState(() => {
             {/* Department - Read-only, auto-filled */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Department <span className="text-red-500">*</span>
+                Department 
               </label>
               <input
                 type="text"
@@ -1123,21 +1134,44 @@ const [findingTime, setFindingTime] = useState(() => {
                 <p className="mt-1 text-sm text-red-600">{errors.files}</p>
               )}
               
-              {/* File List */}
+              {/* File List with Image Previews */}
               {files.length > 0 && (
-                <div className="mt-3 space-y-2">
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {files.map((file, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
                     >
-                      <span className="text-sm text-gray-700 truncate flex-1">{file.name}</span>
+                      {/* Image Preview or File Icon */}
+                      {isImageFile(file) ? (
+                        <img
+                          src={getImagePreviewUrl(file)}
+                          alt={file.name}
+                          className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setPreviewImage(getImagePreviewUrl(file))}
+                        />
+                      ) : (
+                        <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
+                          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                      )}
+                      
+                      {/* File Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-700 truncate">{file.name}</p>
+                        <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(2)} KB</p>
+                      </div>
+                      
+                      {/* Remove Button */}
                       <button
                         type="button"
                         onClick={() => removeFile(index)}
-                        className="ml-2 p-1 text-red-600 hover:bg-red-50 rounded"
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                        title="Remove file"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       </button>
@@ -1175,6 +1209,31 @@ const [findingTime, setFindingTime] = useState(() => {
           </form>
         </div>
       </div>
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[70] bg-black bg-opacity-90 flex items-center justify-center p-4"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="relative max-w-7xl max-h-full">
+            <button
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-4 right-4 p-2 bg-white rounded-full hover:bg-gray-100 transition-colors z-10"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <img
+              src={previewImage}
+              alt="Preview"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Modal for Cancel */}
       {showCancelConfirmModal && (

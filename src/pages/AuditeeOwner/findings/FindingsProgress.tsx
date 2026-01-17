@@ -1464,19 +1464,43 @@ const FindingsProgress = () => {
                             <div key={rootCause.rootCauseId} className={`border rounded-lg ${isAssigned ? 'border-green-300 bg-green-50' : 'border-gray-300 bg-white'}`}>
                               {/* Root Cause Header */}
                               <div className="px-4 py-3 border-b border-gray-200">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="text-xs font-bold text-gray-600">#{index + 1}</span>
-                                      <h3 className="text-sm font-semibold text-gray-900">{rootCause.name}</h3>
-                                      {isAssigned && (
-                                        <span className="px-2 py-0.5 text-xs font-medium bg-green-600 text-white rounded">
-                                          ✓ Assigned
-                                        </span>
-                                      )}
+                                <div className="flex items-start gap-3">
+                                  {/* Number Badge */}
+                                  <div className="flex-shrink-0">
+                                    <span className="inline-flex items-center justify-center w-6 h-6 bg-gray-200 text-gray-700 text-xs font-bold rounded">
+                                      #{index + 1}
+                                    </span>
+                                  </div>
+
+                                  {/* Content */}
+                                  <div className="flex-1 min-w-0 space-y-3">
+                                    {/* Title Section */}
+                                    <div>
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                                          Title
+                                        </label>
+                                        {isAssigned && (
+                                          <span className="px-2 py-0.5 text-xs font-medium bg-green-600 text-white rounded">
+                                            ✓ Assigned
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-sm font-semibold text-gray-900 break-words leading-snug whitespace-pre-wrap">
+                                        {rootCause.name}
+                                      </p>
                                     </div>
+
+                                    {/* Description Section */}
                                     {rootCause.description && (
-                                      <p className="text-xs text-gray-600">{rootCause.description}</p>
+                                      <div>
+                                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                                          Description
+                                        </label>
+                                        <p className="text-xs text-gray-600 break-words leading-relaxed whitespace-pre-wrap">
+                                          {rootCause.description}
+                                        </p>
+                                      </div>
                                     )}
                                   </div>
                                 </div>
@@ -1487,28 +1511,28 @@ const FindingsProgress = () => {
                                 {proposals.length === 0 ? (
                                   <p className="text-xs text-gray-500 italic py-2">No remediation proposals yet</p>
                                 ) : (
-                                  <div className="space-y-2">
-                                    <p className="text-xs font-semibold text-gray-700">Remediation Proposal (1)</p>
+                                  <div className="space-y-3">
+                                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Remediation Proposal (1)</p>
                                     {proposals.map((action: any, idx: number) => (
-                                        <div key={action.actionId || idx} className="border border-gray-200 rounded p-2 bg-gray-50">
-                                          <div className="flex items-start justify-between gap-2">
-                                            <p className="text-xs font-medium text-gray-900 flex-1">{action.title}</p>
-                                            <span className={`px-2 py-0.5 text-xs rounded flex-shrink-0 ${
-                                              action.status === 'Approved' ? 'bg-green-100 text-green-700' :
-                                              action.status === 'Reviewed' ? 'bg-blue-100 text-blue-700' :
-                                              action.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                              'bg-gray-100 text-gray-700'
-                                            }`}>
-                                              {action.status || 'Pending'}
-                                            </span>
-                                          </div>
+                                        <div key={action.actionId || idx} className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
+                                          {/* Title Section */}
+                                        
+
+                                          {/* Description Section */}
                                           {action.description && (
-                                            <p className="text-xs text-gray-600 mt-1">{action.description}</p>
+                                            <div>
+                                             
+                                              <p className="text-xs text-gray-600 break-words leading-relaxed whitespace-pre-wrap">
+                                                {action.description}
+                                              </p>
+                                            </div>
                                           )}
-                                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                                            <span>Progress: {action.progressPercent || 0}%</span>
+
+                                          {/* Progress and Due Date */}
+                                          <div className="flex items-center gap-3 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                                            <span className="font-medium">Progress: {action.progressPercent || 0}%</span>
                                             <span>•</span>
-                                            <span>Due: {formatDate(action.dueDate)}</span>
+                                            <span className="font-medium">Due: {formatDate(action.dueDate)}</span>
                                           </div>
                                         </div>
                                     ))}
@@ -1586,17 +1610,34 @@ const FindingsProgress = () => {
                 {/* Header */}
                 <div className="bg-primary-600 px-4 py-3 rounded-t-xl">
                   <h3 className="text-base font-semibold text-white">Assign CAPA Owner</h3>
-                  <p className="text-sm text-primary-100 mt-0.5">{selectedRootCause.name}</p>
                 </div>
 
                 {/* Body */}
-                <div className="p-4 space-y-3">
+                <div className="p-4 space-y-4">
                   {/* Root Cause Info */}
-                  {selectedRootCause.description && (
-                    <div className="bg-gray-50 border rounded p-2">
-                      <p className="text-xs text-gray-600">{selectedRootCause.description}</p>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+                    {/* Title */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                        Root Cause Title
+                      </label>
+                      <p className="text-sm font-semibold text-gray-900 break-words leading-snug whitespace-pre-wrap">
+                        {selectedRootCause.name}
+                      </p>
                     </div>
-                  )}
+
+                    {/* Description */}
+                    {selectedRootCause.description && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                          Description
+                        </label>
+                        <p className="text-xs text-gray-600 break-words leading-relaxed whitespace-pre-wrap">
+                          {selectedRootCause.description}
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                   {/* CAPA Owner Selection */}
                   <div>
@@ -2026,26 +2067,44 @@ const FindingsProgress = () => {
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="bg-gray-100 px-4 py-3 border-b rounded-t-xl flex items-center justify-between">
-                  <h3 className="text-base font-semibold text-gray-900">{selectedDescription.name}</h3>
+                <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 rounded-t-xl flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-white">
+                    {selectedDescription.category || 'Details'}
+                  </h3>
                   <button
                     onClick={() => {
                       setShowDescriptionModal(false);
                       setSelectedDescription(null);
                     }}
-                    className="p-1.5 hover:bg-gray-200 rounded"
+                    className="p-1.5 hover:bg-blue-800 rounded transition-colors"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
 
                 {/* Body */}
-                <div className="p-4">
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                    {selectedDescription.description}
-                  </p>
+                <div className="p-6 space-y-4">
+                  {/* Title Section */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      Title
+                    </label>
+                    <p className="text-sm font-semibold text-gray-900 break-words leading-snug whitespace-pre-wrap">
+                      {selectedDescription.name}
+                    </p>
+                  </div>
+
+                  {/* Description Section */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      Description
+                    </label>
+                    <p className="text-sm text-gray-700 break-words leading-relaxed whitespace-pre-wrap">
+                      {selectedDescription.description}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Footer */}

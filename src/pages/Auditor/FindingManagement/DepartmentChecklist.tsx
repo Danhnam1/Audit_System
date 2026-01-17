@@ -72,7 +72,7 @@ const DepartmentChecklist = () => {
   const [showCompliantModal, setShowCompliantModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
-  const [findingsMap, setFindingsMap] = useState<Record<string, string>>({}); // auditItemId -> findingId
+  const [findingsMap, setFindingsMap] = useState<Record<string, { findingId: string; status?: string }>>({}); // auditItemId -> { findingId, status }
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [itemToMarkCompliant, setItemToMarkCompliant] = useState<ChecklistItem | null>(null);
   const [showCompliantDetailsViewer, setShowCompliantDetailsViewer] = useState(false);
@@ -413,7 +413,8 @@ const DepartmentChecklist = () => {
     }
     
     // Also check finding status if there's a finding associated with this item
-    const findingId = findingsMap[item.auditItemId];
+    const findingData = findingsMap[item.auditItemId];
+    const findingId = findingData?.findingId;
     if (findingId && myFindings.length > 0) {
       // Try to get finding status from myFindings
       const finding = myFindings.find(f => f.findingId === findingId);
@@ -428,29 +429,9 @@ const DepartmentChecklist = () => {
     return false;
   };
 
-  // Load findings to map auditItemId to findingId
-  useEffect(() => {
-    const loadFindings = async () => {
-      try {
-        const findingsResponse = await getFindings();
-        // Unwrap the response to handle $values or values arrays
-        const findingsArray = unwrap(findingsResponse);
-
-        // Create map: auditItemId -> findingId
-        const map: Record<string, string> = {};
-        findingsArray.forEach((finding: any) => {
-          if (finding.auditItemId && finding.findingId) {
-            map[finding.auditItemId] = finding.findingId;
-          }
-        });
-        setFindingsMap(map);
-      } catch (err: any) {
-        console.error('Error loading findings:', err);
-        toast.warning('Failed to load findings');
-      }
-    };
-    loadFindings();
-  }, []);
+  // NOTE: findingsMap is now loaded in the main fetchData function (before checklist items)
+  // to ensure status colors are available when items render
+  // This useEffect is removed to prevent race condition
 
   // Load root cause status for findings (to show indicators for pending reviews)
   const loadRootCauseStatus = async () => {
@@ -494,9 +475,9 @@ const DepartmentChecklist = () => {
 
   // Handle view finding details
   const handleViewFinding = (item: ChecklistItem) => {
-    const findingId = findingsMap[item.auditItemId];
-    if (findingId) {
-      setSelectedFindingId(findingId);
+    const findingData = findingsMap[item.auditItemId];
+    if (findingData?.findingId) {
+      setSelectedFindingId(findingData.findingId);
       setShowDetailModal(true);
     } else {
       console.warn('Finding not found for auditItemId:', item.auditItemId);
@@ -863,12 +844,32 @@ const DepartmentChecklist = () => {
       // Reload findings to update the map
       const reloadFindings = async () => {
         try {
-          const findingsResponse = await getFindings();
-          const findingsArray = unwrap(findingsResponse);
-          const map: Record<string, string> = {};
-          findingsArray.forEach((finding: any) => {
+          let allMyFindings = await getMyFindings();
+          
+          // Fallback to getFindings if empty
+          if (allMyFindings.length === 0) {
+            const allFindings = await getFindings();
+            allMyFindings = unwrap(allFindings);
+          }
+          
+          // Filter by current audit and department
+          const relevantFindings = allMyFindings.filter((finding: any) => {
+            const findingAuditId = finding.audit?.auditId || finding.auditId || '';
+            const findingDeptId = finding.deptId || null;
+            
+            const auditMatch = !auditId || String(findingAuditId) === String(auditId);
+            const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
+            
+            return auditMatch && deptMatch;
+          });
+          
+          const map: Record<string, { findingId: string; status?: string }> = {};
+          relevantFindings.forEach((finding: any) => {
             if (finding.auditItemId && finding.findingId) {
-              map[finding.auditItemId] = finding.findingId;
+              map[finding.auditItemId] = {
+                findingId: finding.findingId,
+                status: finding.status
+              };
             }
           });
           setFindingsMap(map);
@@ -1259,6 +1260,40 @@ const DepartmentChecklist = () => {
       try {
         const deptIdNum = parseInt(deptId, 10);
 
+        // Load findings map FIRST to ensure status colors are available
+        // Try getMyFindings first, fallback to getFindings if empty
+        let allMyFindings = await getMyFindings();
+        
+        // If getMyFindings returns empty, try getFindings (all findings)
+        if (allMyFindings.length === 0) {
+          const allFindings = await getFindings();
+          allMyFindings = unwrap(allFindings);
+        }
+        
+        // Filter by current audit and department
+        const relevantFindings = allMyFindings.filter((finding: any) => {
+          const findingAuditId = finding.audit?.auditId || finding.auditId || '';
+          const findingDeptId = finding.deptId || null;
+          
+          const auditMatch = !auditId || String(findingAuditId) === String(auditId);
+          const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
+          
+          return auditMatch && deptMatch;
+        });
+        
+        // Create map with filtered findings
+        const map: Record<string, { findingId: string; status?: string }> = {};
+        relevantFindings.forEach((finding: any) => {
+          if (finding.auditItemId && finding.findingId) {
+            map[finding.auditItemId] = {
+              findingId: finding.findingId,
+              status: finding.status
+            };
+          }
+        });
+        
+        setFindingsMap(map);
+
         // Load department info
         const deptData = await getDepartmentById(deptIdNum);
         setDepartmentName(deptData.name || 'Department');
@@ -1343,14 +1378,21 @@ const DepartmentChecklist = () => {
     loadData();
   }, [deptId, auditId]);
 
-  // Load my findings when action tab is active, or when auditId/deptId changes
+  // Load my findings initially for all tabs (needed for background colors in checklist tab)
+  useEffect(() => {
+    if (auditId && deptId) {
+      loadMyFindings();
+    }
+  }, [auditId, deptId]);
+
+  // Reload findings when switching to action or disagreed tab
   useEffect(() => {
     if (activeTab === 'action' && auditId && deptId) {
       loadMyFindings();
     } else if (activeTab === 'disagreed' && auditId && deptId) {
       loadDisagreedFindings();
     }
-  }, [activeTab, auditId, deptId]);
+  }, [activeTab]);
 
   // Listen for root cause updates
   useEffect(() => {
@@ -1852,10 +1894,26 @@ const DepartmentChecklist = () => {
                     )}
                     {checklistItems.map((item, index) => {
                       // Check if this item has a finding with Return status
-                      const findingId = findingsMap[item.auditItemId];
-                      const associatedFinding = findingId ? myFindings.find(f => f.findingId === findingId) : null;
-                      // Use finding status if available, otherwise use checklist item status
-                      const itemStatusToCheck = associatedFinding?.status || item.status;
+                      const findingData = findingsMap[item.auditItemId];
+                      const findingId = findingData?.findingId;
+                      
+                      // Determine which status to use for coloring
+                      // Only use finding status if it's a "meaningful" status that should affect color
+                      // Otherwise use item status
+                      let itemStatusToCheck = item.status;
+                      if (findingData?.status) {
+                        const findingStatus = (findingData.status || '').toLowerCase();
+                        // Only override with finding status if it's one of these meaningful statuses
+                        if (
+                          findingStatus === 'noncompliant' || 
+                          findingStatus.includes('non-compliant') ||
+                          findingStatus === 'return' || 
+                          findingStatus === 'returned' ||
+                          findingStatus === 'compliant'
+                        ) {
+                          itemStatusToCheck = findingData.status;
+                        }
+                      }
                       
                       return (
                         <div
@@ -1876,7 +1934,7 @@ const DepartmentChecklist = () => {
                           <div className="flex items-center justify-end sm:justify-start gap-2 sm:gap-3 flex-shrink-0">
                             {/* Edit and Delete buttons for External audit type - Only show if no finding and not compliant */}
                             {auditType?.toLowerCase() === 'external' && 
-                             !findingsMap[item.auditItemId] && 
+                             !findingsMap[item.auditItemId]?.findingId && 
                              !isCompliant(item.status) && 
                              !compliantIdMap[item.auditItemId] && (
                               <div className="flex items-center gap-2">
@@ -1915,7 +1973,8 @@ const DepartmentChecklist = () => {
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    const findingId = findingsMap[item.auditItemId];
+                                    const findingData = findingsMap[item.auditItemId];
+                                    const findingId = findingData?.findingId;
                                     if (!findingId) {
                                       toast.warning('Finding not found for this item');
                                       return;
@@ -2421,12 +2480,32 @@ const DepartmentChecklist = () => {
             // Reload findings to update the map
             const reloadFindings = async () => {
               try {
-                const findingsResponse = await getFindings();
-                const findingsArray = unwrap(findingsResponse);
-                const map: Record<string, string> = {};
-                findingsArray.forEach((finding: any) => {
+                let allMyFindings = await getMyFindings();
+                
+                // Fallback to getFindings if empty
+                if (allMyFindings.length === 0) {
+                  const allFindings = await getFindings();
+                  allMyFindings = unwrap(allFindings);
+                }
+                
+                // Filter by current audit and department
+                const relevantFindings = allMyFindings.filter((finding: any) => {
+                  const findingAuditId = finding.audit?.auditId || finding.auditId || '';
+                  const findingDeptId = finding.deptId || null;
+                  
+                  const auditMatch = !auditId || String(findingAuditId) === String(auditId);
+                  const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
+                  
+                  return auditMatch && deptMatch;
+                });
+                
+                const map: Record<string, { findingId: string; status?: string }> = {};
+                relevantFindings.forEach((finding: any) => {
                   if (finding.auditItemId && finding.findingId) {
-                    map[finding.auditItemId] = finding.findingId;
+                    map[finding.auditItemId] = {
+                      findingId: finding.findingId,
+                      status: finding.status
+                    };
                   }
                 });
                 setFindingsMap(map);

@@ -1035,51 +1035,62 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                     : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
                                 }`}
                               >
-                                <div className="flex items-start justify-between mb-2">
-                                  <div className="flex items-center gap-2 flex-1">
-                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                      isApproved 
-                                        ? 'bg-green-200' 
-                                        : 'bg-primary-100'
-                                    }`}>
-                                      {isApproved ? (
-                                        <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                      ) : (
-                                        <span className={`text-sm font-bold ${
-                                          isApproved ? 'text-green-700' : 'text-primary-700'
-                                        }`}>#{index + 1}</span>
-                                      )}
-                                    </div>
-                                    <div className="flex-1">
-                                      <h4 className={`text-base font-bold ${
-                                        isApproved ? 'text-green-900' : 'text-gray-900'
-                                      }`}>{rc.name}</h4>
-                                      {isApproved && (
-                                        <div className="flex items-center gap-2 mt-1">
-                                          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded-full border border-green-300 flex items-center gap-1">
-                                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                            </svg>
-                                            Approved
-                                          </span>
-                                         
-                                        </div>
-                                      )}
-                                    </div>
+                                <div className="flex items-start gap-3 mb-3">
+                                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                    isApproved 
+                                      ? 'bg-green-200' 
+                                      : 'bg-primary-100'
+                                  }`}>
+                                    {isApproved ? (
+                                      <svg className="w-5 h-5 text-green-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    ) : (
+                                      <span className={`text-sm font-bold ${
+                                        isApproved ? 'text-green-700' : 'text-primary-700'
+                                      }`}>#{index + 1}</span>
+                                    )}
                                   </div>
-                                
+                                  
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-start justify-between gap-2 mb-3">
+                                      <div className="flex-1 min-w-0">
+                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                                          Title
+                                        </label>
+                                        <h4 className={`text-base font-bold leading-snug break-words ${
+                                          isApproved ? 'text-green-900' : 'text-gray-900'
+                                        }`}>
+                                          {rc.name}
+                                        </h4>
+                                      </div>
+                                      {isApproved && (
+                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded-full border border-green-300 flex items-center gap-1 flex-shrink-0">
+                                          <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                          Approved
+                                        </span>
+                                      )}
+                                    </div>
+                                    
+                                    {rc.description && (
+                                      <div className="mt-3">
+                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+                                          Description
+                                        </label>
+                                        <p className="text-sm text-gray-700 leading-relaxed break-words whitespace-pre-wrap">
+                                          {rc.description}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 
-                                {rc.description && (
-                                  <p className="text-sm text-gray-700 mt-2 pl-10">{rc.description}</p>
-                                )}
-                                
                                 {rc.reasonReject && isRejected && (
-                                  <div className="mt-3 pl-10 bg-rose-50 border border-rose-200 rounded-lg p-3">
+                                  <div className="mt-3 ml-11 bg-rose-50 border border-rose-200 rounded-lg p-3">
                                     <p className="text-xs font-semibold text-rose-600 mb-1">Rejection Reason:</p>
-                                    <p className="text-sm text-rose-600">{rc.reasonReject}</p>
+                                    <p className="text-sm text-rose-600 leading-relaxed break-words whitespace-pre-wrap">{rc.reasonReject}</p>
                                   </div>
                                 )}
                                 
@@ -1092,7 +1103,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   if (proposals.length === 0) return null;
                                   const action = proposals[0];
                                   return (
-                                    <div className="mt-4 pl-10">
+                                    <div className="mt-4 ml-11">
                                       <h5 className="text-xs font-semibold text-gray-700 mb-2 uppercase">
                                         Proposed solution (1)
                                       </h5>
@@ -1102,7 +1113,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                           className="bg-blue-50 border border-blue-200 rounded-lg p-3 hover:bg-blue-100 transition-colors"
                                         >
                                           {action.description && (
-                                            <p className="text-xs text-gray-700 mb-2">{action.description}</p>
+                                            <p className="text-xs text-gray-700 mb-2 leading-relaxed break-words whitespace-pre-wrap">{action.description}</p>
                                           )}
                                           <div className="flex flex-wrap gap-3 text-xs text-gray-600">
                                             {action.dueDate && (
@@ -1125,7 +1136,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                           {action.reviewFeedback && (
                                             <div className="mt-2 pt-2 border-t border-blue-200">
                                               <p className="text-xs font-medium text-gray-700 mb-1">Review Feedback:</p>
-                                              <p className="text-xs text-gray-600">{action.reviewFeedback}</p>
+                                              <p className="text-xs text-gray-600 leading-relaxed break-words whitespace-pre-wrap">{action.reviewFeedback}</p>
                                             </div>
                                           )}
                                         </div>
@@ -1159,7 +1170,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   if (logsWithChanges.length === 0) return null;
                                   
                                   return (
-                                    <div className="mt-3 pl-10 border-l-2 border-gray-300">
+                                    <div className="mt-3 ml-11 border-l-2 border-gray-300 pl-3">
                                       <h5 className="text-xs font-semibold text-gray-600 mb-2 uppercase">History</h5>
                                       <div className="space-y-2">
                                         {logsWithChanges.map((log: any) => {
@@ -1203,10 +1214,15 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                               {changes.map((change, idx) => (
                                                 <div key={idx} className="mb-2 last:mb-0">
                                                   <span className="font-medium text-gray-700">{change.field}:</span>
-                                                  <div className="flex items-center gap-2 mt-1">
-                                                    <span className="text-gray-500">{change.oldValue || 'empty'}</span>
-                                                    <span className="text-gray-400">→</span>
-                                                    <span className="text-gray-900 font-medium">{change.newValue || 'empty'}</span>
+                                                  <div className="mt-1 space-y-1">
+                                                    <div className="bg-red-50 border border-red-200 rounded px-2 py-1">
+                                                      <span className="text-xs text-red-600 font-medium">Old: </span>
+                                                      <span className="text-xs text-gray-700 break-words">{change.oldValue || 'empty'}</span>
+                                                    </div>
+                                                    <div className="bg-green-50 border border-green-200 rounded px-2 py-1">
+                                                      <span className="text-xs text-green-600 font-medium">New: </span>
+                                                      <span className="text-xs text-gray-900 break-words">{change.newValue || 'empty'}</span>
+                                                    </div>
                                                   </div>
                                                 </div>
                                               ))}
@@ -1218,7 +1234,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   );
                                 })()}
                                 
-                                <div className="flex items-center justify-end gap-4 mt-3 pl-10">
+                                <div className="flex items-center justify-end gap-4 mt-4 ml-11">
                                   {/* Action Buttons */}
                                   <div className="flex items-center gap-2">
                                     {/* Draft Actions - Edit and Delete */}
@@ -1415,7 +1431,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="bg-purple-600 text-white p-6 rounded-t-xl">
+              <div className="bg-blue-600 text-white p-6 rounded-t-xl">
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
                     <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1433,8 +1449,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               <div className="p-8 space-y-4">
                 {/* Full Name */}
                 {createdByData.fullName && (
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-5">
-                    <label className="block text-xs font-bold text-purple-700 uppercase tracking-wide mb-2">Full Name</label>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
+                    <label className="block text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">Full Name</label>
                     <p className="text-xl font-bold text-gray-900">{createdByData.fullName}</p>
                   </div>
                 )}
@@ -1492,7 +1508,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               <div className="bg-gray-50 border-t-2 border-gray-200 px-6 py-4 rounded-b-2xl flex justify-end">
                 <button
                   onClick={() => setShowCreatedByModal(false)}
-                  className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                 >
                   Close
                 </button>
@@ -1518,7 +1534,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-5 rounded-t-2xl">
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 rounded-t-2xl">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
@@ -1542,16 +1558,16 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               {/* Body */}
               <div className="p-6 space-y-4">
                 {/* Full Name */}
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 border-2 border-purple-200 rounded-xl p-5">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-2 border-blue-200 rounded-xl p-5">
                   <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-purple-200 rounded-lg flex items-center justify-center">
-                      <svg className="w-6 h-6 text-purple-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
                     </div>
-                    <label className="text-xs font-bold text-purple-700 uppercase tracking-wide">Full Name</label>
+                    <label className="text-xs font-bold text-blue-700 uppercase tracking-wide">Full Name</label>
                   </div>
-                  <p className="text-lg font-bold text-purple-900 pl-[52px]">{witnessData.fullName || 'N/A'}</p>
+                  <p className="text-lg font-bold text-blue-900 pl-[52px]">{witnessData.fullName || 'N/A'}</p>
                 </div>
 
                 {/* Email */}
