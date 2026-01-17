@@ -18,6 +18,19 @@ export const getAuditTeam = async () => {
   return values
 }
 
+// Update audit team member by ID
+export const updateTeamMember = async (
+  id: string | number,
+  payload: {
+    userId?: string;
+    roleInTeam?: string;
+    isLead?: boolean;
+    status?: string;
+  }
+) => {
+  return apiClient.put(`/AuditTeam/${id}`, payload);
+};
+
 // Delete audit team member by ID
 export const deleteTeamMember = async (id: string | number) => {
   return apiClient.delete(`/AuditTeam/${id}`)

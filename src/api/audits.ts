@@ -72,6 +72,20 @@ export const getSensitiveDepartments = async (auditId: string): Promise<Sensitiv
   return [];
 };
 
+// Update audit scope department by ID
+export const updateAuditScopeDepartment = async (
+  id: string | number,
+  payload: {
+    deptId?: number;
+    status?: string;
+    sensitiveFlag?: boolean;
+    areas?: string;
+    departmentSensitiveAreaIds?: string[];
+  }
+): Promise<any> => {
+  return apiClient.put(`/AuditScopeDepartment/${id}`, payload) as any;
+};
+
 // Delete audit scope department by ID
 export const deleteAuditScopeDepartment = async (id: string | number): Promise<any> => {
   return apiClient.delete(`/AuditScopeDepartment/${id}`) as any;
@@ -121,10 +135,6 @@ export const updateAuditPlanFull = async (auditId: string, payload: any): Promis
   return apiClient.put(`/AuditPlan/${auditId}`, payload) as any;
 };
 
-// Complete update audit plan with all relationships (uses /Audits/{id}/complete-update endpoint)
-export const completeUpdateAuditPlan = async (auditId: string, payload: any): Promise<any> => {
-  return apiClient.put(`/Audits/${auditId}/complete-update`, payload) as any;
-};
 
 // Delete audit plan
 export const deleteAuditPlan = async (auditId: string): Promise<any> => {
@@ -372,7 +382,7 @@ export default {
   getAuditPlanById,
   updateAuditPlan,
   updateAuditPlanFull,
-  completeUpdateAuditPlan,
+  updateAuditScopeDepartment,
   deleteAuditPlan,
   getAuditChartLine,
   getAuditChartPie,

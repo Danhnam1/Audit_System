@@ -1,10 +1,10 @@
 import { toast } from "react-toastify";
-import { createAudit, completeUpdateAuditPlan, setSensitiveFlag } from "../api/audits";
+import { createAudit, updateAuditPlan, setSensitiveFlag, getAuditScopeDepartments, addAuditScopeDepartment, deleteAuditScopeDepartment } from "../api/audits";
 // import { createAuditChecklistItemsFromTemplate } from "../api/checklists";
-import { addCriterionToAudit } from "../api/auditCriteriaMap";
-import { addTeamMember } from "../api/auditTeam";
-import { addAuditSchedule } from "../api/auditSchedule";
-import { syncAuditChecklistTemplateMaps } from "../api/auditChecklistTemplateMaps";
+import { addCriterionToAudit, getCriteriaForAudit, removeCriterionFromAudit } from "../api/auditCriteriaMap";
+import { addTeamMember, deleteTeamMember, getAuditTeam } from "../api/auditTeam";
+import { addAuditSchedule, updateAuditSchedule, getAuditSchedules, deleteAuditSchedule } from "../api/auditSchedule";
+import { syncAuditChecklistTemplateMaps, getAuditChecklistTemplateMapsByAudit, deleteAuditChecklistTemplateMap, addAuditChecklistTemplateMap } from "../api/auditChecklistTemplateMaps";
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from "../constants/audit";
 import {
   validateBeforeCreateAudit,
@@ -12,7 +12,6 @@ import {
   validateDepartmentWithConditions,
 } from "../helpers/businessRulesValidation";
 import { unwrap } from "../utils/normalize";
-import { getAuditChecklistTemplateMapsByAudit } from "../api/auditChecklistTemplateMaps";
 
 interface FormState {
   title: string;
@@ -52,6 +51,7 @@ interface SubmissionContext {
   setShowConflictModal: (show: boolean) => void;
   setFilteredCriteria: (criteria: any[]) => void;
   checklistTemplates?: any[];
+  userIdFromToken?: string;
 }
 
 interface SubmissionResult {
@@ -276,11 +276,18 @@ export const checkAuditConflicts = async (
   return { hasConflict: false };
 };
 
+
 /**
  * Creates or updates the audit plan
  */
 export const createOrUpdateAuditPlan = async (
-  formState: FormState
+  formState: FormState,
+  context?: {
+    departments: Array<{ deptId: number | string; name: string }>;
+    ownerOptions: any[];
+    selectedCriteriaByDept: Map<string, Set<string>>;
+    userIdFromToken?: string;
+  }
 ): Promise<string> => {
   const basicPayload: any = {
     title: formState.title || "Untitled Plan",
@@ -301,7 +308,8 @@ export const createOrUpdateAuditPlan = async (
   }
 
   if (formState.isEditMode && formState.editingAuditId) {
-    await completeUpdateAuditPlan(formState.editingAuditId, basicPayload);
+    // Update basic audit info only
+    await updateAuditPlan(formState.editingAuditId, basicPayload);
     return formState.editingAuditId;
   } else {
     const resp = await createAudit(basicPayload);
@@ -665,8 +673,297 @@ export const submitAuditPlan = async (
     return { success: false, error: (error as Error).message };
   }
 
-  // Step 4: Post-creation tasks (only for create mode)
-  if (!formState.isEditMode) {
+  // Step 4: Update related entities
+  if (formState.isEditMode) {
+    // Edit mode: Update each entity separately
+    try {
+      // 4.1: Update Checklist Templates - Delete all then add all
+      const existingTemplates = await getAuditChecklistTemplateMapsByAudit(auditId);
+      const existingTemplateIds = existingTemplates
+        .map((m: any) => m.templateId || m.checklistTemplateId || m.template?.templateId || m.template?.id)
+        .filter((id: any) => id != null)
+        .map((id: any) => String(id).trim());
+
+      // Delete all existing templates
+      await Promise.allSettled(
+        existingTemplateIds.map((templateId: string) =>
+          deleteAuditChecklistTemplateMap(auditId, templateId)
+        )
+      );
+
+      // Add all new templates
+      const uniqueTemplateIds = Array.from(
+        new Set(formState.selectedTemplateIds.map((id) => String(id).trim()).filter(Boolean))
+      );
+      await Promise.allSettled(
+        uniqueTemplateIds.map((templateId: string) =>
+          addAuditChecklistTemplateMap({
+            auditId: String(auditId),
+            templateId: String(templateId),
+            status: 'Active',
+          })
+        )
+      );
+    } catch (templateMapErr) {
+      console.error("Failed to update checklist templates", templateMapErr);
+      toast.error("Failed to update checklist template mappings. Please retry from Step 3.");
+    }
+
+    try {
+      // 4.2: Update Departments - Delete all then add all
+      const allScopeDepts = await getAuditScopeDepartments();
+      const existingScopeDepts = (Array.isArray(allScopeDepts) ? allScopeDepts : [])
+        .filter((sd: any) => String(sd.auditId || sd.$auditId || sd.AuditId) === String(auditId))
+        .filter((sd: any) => (sd.status || sd.Status) === "Active");
+
+      // Delete all existing departments
+      await Promise.allSettled(
+        existingScopeDepts.map((scopeDept: any) => {
+          const scopeId = scopeDept.auditScopeId || scopeDept.AuditScopeId || scopeDept.id || scopeDept.$id;
+          if (scopeId) {
+            return deleteAuditScopeDepartment(scopeId);
+          }
+          return Promise.resolve();
+        })
+      );
+
+      // Determine target dept IDs
+      let targetDeptIds: string[] = [];
+      if (formState.level === "academy" || formState.level.toLowerCase() === "academy") {
+        targetDeptIds = departments.map((d) => String(d.deptId));
+      } else if (formState.selectedDeptIds.length > 0) {
+        targetDeptIds = formState.selectedDeptIds;
+      }
+
+      // Add all new departments
+      const successfulDepts = await Promise.allSettled(
+        targetDeptIds.map((deptIdStr) => addAuditScopeDepartment(auditId, Number(deptIdStr)))
+      ).then((results) =>
+        results
+          .filter((r) => r.status === "fulfilled")
+          .map((r) => (r as PromiseFulfilledResult<any>).value)
+          .filter(Boolean)
+      );
+
+      // Set sensitive flags for all departments
+      if (successfulDepts.length > 0) {
+        await setSensitiveFlagsForDepartments(auditId, formState, successfulDepts, departments);
+      }
+    } catch (scopeErr) {
+      console.error("Update departments failed", scopeErr);
+      toast.error("Failed to update departments. Please try again.");
+    }
+
+    try {
+      // 4.2.1: Update Criteria - Delete all then add all
+      const existingCriteria = await getCriteriaForAudit(auditId);
+      const existingCriteriaIds = (Array.isArray(existingCriteria) ? existingCriteria : [])
+        .map((c: any) => c.criteriaId || c.id || c)
+        .filter((id: any) => id != null)
+        .map((id: any) => String(id).trim());
+
+      // Delete all existing criteria
+      await Promise.allSettled(
+        existingCriteriaIds.map((criteriaId: string) =>
+          removeCriterionFromAudit(auditId, criteriaId)
+        )
+      );
+
+      // Add all new criteria from selectedCriteriaIds
+      const uniqueCriteriaIds = Array.from(
+        new Set(formState.selectedCriteriaIds.map((id) => String(id).trim()).filter(Boolean))
+      );
+      await Promise.allSettled(
+        uniqueCriteriaIds.map((criteriaId: string) =>
+          addCriterionToAudit(auditId, criteriaId)
+        )
+      );
+    } catch (criteriaErr) {
+      console.error("Update criteria failed", criteriaErr);
+      toast.error("Failed to update criteria. Please try again.");
+    }
+
+    try {
+      // 4.3: Update Team & Responsibilities - Delete all then add all
+      const allTeams = await getAuditTeam();
+      const existingTeams = (Array.isArray(allTeams) ? allTeams : []).filter(
+        (t: any) => String(t.auditId || t.$auditId) === String(auditId)
+      );
+
+      // Delete all existing teams
+      await Promise.allSettled(
+        existingTeams.map((t: any) => {
+          const teamId = t.auditTeamId || t.AuditTeamId || t.id;
+          return teamId ? deleteTeamMember(teamId) : Promise.resolve();
+        })
+      );
+
+      // Build target team members
+      const targetTeamMembers: Array<{ userId: string; roleInTeam: string; isLead: boolean }> = [];
+      const auditorSet = new Set<string>(formState.selectedAuditorIds);
+      const leadAuditorId = formState.selectedLeadId || "";
+      if (leadAuditorId) auditorSet.add(leadAuditorId);
+
+      auditorSet.forEach((uid) => {
+        targetTeamMembers.push({
+          userId: uid,
+          roleInTeam: "Auditor",
+          isLead: uid === leadAuditorId,
+        });
+      });
+
+      // Add AuditeeOwners
+      if (formState.level === "academy" || formState.level.toLowerCase() === "academy") {
+        const uniqueOwnerIds = Array.from(
+          new Set(ownerOptions.map((o: any) => String(o.userId)).filter(Boolean))
+        );
+        uniqueOwnerIds.forEach((uid) => {
+          targetTeamMembers.push({
+            userId: uid,
+            roleInTeam: "AuditeeOwner",
+            isLead: false,
+          });
+        });
+      } else {
+        const ownersForDepts = ownerOptions.filter((o: any) =>
+          formState.selectedDeptIds.includes(String(o.deptId ?? ""))
+        );
+        ownersForDepts.forEach((owner: any) => {
+          if (owner.userId) {
+            targetTeamMembers.push({
+              userId: String(owner.userId),
+              roleInTeam: "AuditeeOwner",
+              isLead: false,
+            });
+          }
+        });
+      }
+
+      // Add all new team members
+      await Promise.allSettled(
+        targetTeamMembers.map((member) =>
+          addTeamMember({
+            auditId,
+            userId: member.userId,
+            roleInTeam: member.roleInTeam,
+            isLead: member.isLead,
+          })
+        )
+      );
+    } catch (teamErr) {
+      console.error("Update team failed", teamErr);
+      toast.error("Failed to update team members. Please try again.");
+    }
+
+    try {
+      // 4.4: Update Schedule
+      const existingSchedules = await getAuditSchedules(auditId);
+      const schedulePairs = [
+        { name: MILESTONE_NAMES.KICKOFF, date: formState.kickoffMeeting },
+        { name: MILESTONE_NAMES.FIELDWORK, date: formState.fieldworkStart },
+        { name: MILESTONE_NAMES.EVIDENCE, date: formState.evidenceDue },
+        { name: MILESTONE_NAMES.CAPA, date: formState.capaDue },
+        { name: MILESTONE_NAMES.DRAFT, date: formState.draftReportDue },
+      ].filter((pair) => pair.date);
+
+      const existingSchedulesArray = Array.isArray(existingSchedules) ? existingSchedules : [];
+      const existingSchedulesMap = new Map(
+        existingSchedulesArray.map((s: any) => [
+          s.milestoneName || s.MilestoneName,
+          s,
+        ])
+      );
+
+      // Update or add schedules
+      const scheduleResults = await Promise.allSettled(
+        schedulePairs.map(async (pair) => {
+          const existing = existingSchedulesMap.get(pair.name);
+          if (existing) {
+            const scheduleId = existing.scheduleId || existing.ScheduleId || existing.id;
+            if (scheduleId) {
+              const result = await updateAuditSchedule(scheduleId, {
+                milestoneName: pair.name,
+                dueDate: new Date(pair.date!).toISOString(),
+                notes: "",
+                status: SCHEDULE_STATUS.PLANNED,
+              });
+              console.log(`[Update Schedule] Updated ${pair.name} (${scheduleId}):`, result);
+              return result;
+            }
+          } else {
+            const result = await addAuditSchedule({
+              auditId,
+              milestoneName: pair.name,
+              dueDate: new Date(pair.date!).toISOString(),
+              status: SCHEDULE_STATUS.PLANNED,
+              notes: "",
+            });
+            console.log(`[Update Schedule] Added ${pair.name}:`, result);
+            return result;
+          }
+        })
+      );
+
+      // Check for failures
+      const scheduleFailures = scheduleResults.filter((r) => r.status === "rejected");
+      if (scheduleFailures.length > 0) {
+        console.error("[Update Schedule] Some schedules failed:", scheduleFailures);
+        scheduleFailures.forEach((failure) => {
+          console.error("[Update Schedule] Failure:", failure);
+        });
+      }
+
+      // Delete schedules that are no longer in the form
+      const targetMilestoneNames = new Set(schedulePairs.map((p) => p.name));
+      const toDeleteSchedules = existingSchedulesArray.filter(
+        (s: any) => !targetMilestoneNames.has(s.milestoneName || s.MilestoneName)
+      );
+      if (toDeleteSchedules.length > 0) {
+        const deleteResults = await Promise.allSettled(
+          toDeleteSchedules.map((s: any) => {
+            const scheduleId = s.scheduleId || s.ScheduleId || s.id;
+            return scheduleId ? deleteAuditSchedule(scheduleId) : Promise.resolve();
+          })
+        );
+        const deleteFailures = deleteResults.filter((r) => r.status === "rejected");
+        if (deleteFailures.length > 0) {
+          console.error("[Update Schedule] Some schedule deletions failed:", deleteFailures);
+        }
+      }
+
+      // Trigger refresh in modal by dispatching event and updating localStorage
+      // Do this after all schedule operations complete
+      // Add a small delay to ensure database has committed the changes
+      setTimeout(() => {
+        try {
+          console.log(`[Update Schedule] Dispatching refresh event for auditId: ${auditId}`);
+          const event = new CustomEvent('auditPlanUpdated', {
+            detail: { auditId },
+            bubbles: true,
+            cancelable: true,
+          });
+          window.dispatchEvent(event);
+          document.dispatchEvent(event);
+          
+          // Also update localStorage for cross-tab communication
+          localStorage.setItem(
+            'auditPlanUpdated',
+            JSON.stringify({
+              auditId,
+              _timestamp: Date.now(),
+            })
+          );
+          console.log(`[Update Schedule] Refresh event dispatched and localStorage updated`);
+        } catch (eventErr) {
+          console.error('[Update Schedule] Failed to dispatch refresh event', eventErr);
+        }
+      }, 500); // 500ms delay to ensure database commit
+    } catch (scheduleErr) {
+      console.error("Update schedules failed", scheduleErr);
+      toast.error("Failed to update schedules. Please try again.");
+    }
+  } else {
+    // Create mode: Post-creation tasks
     try {
       // Sync templates
       await syncAuditChecklistTemplateMaps({

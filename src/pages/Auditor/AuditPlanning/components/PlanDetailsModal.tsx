@@ -6,6 +6,7 @@ import { getUserFriendlyErrorMessage } from '../../../../utils/errorMessages';
 import { getAuditCriterionById } from '../../../../api/auditCriteria';
 import { getAuditSchedules } from '../../../../api/auditSchedule';
 import { getAuditorsByAuditId } from '../../../../api/auditTeam';
+import { getAuditScopeDepartments } from '../../../../api/audits';
 import { unwrap } from '../../../../utils/normalize';
 import { useAuth } from '../../../../contexts';
 import { Button } from '../../../../components';
@@ -198,9 +199,10 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   const [sharedCriteria, setSharedCriteria] = useState<any[]>([]);
   const [loadingCriteria, setLoadingCriteria] = useState(false);
   
-  // State for schedules and teams to allow refresh
+  // State for schedules, teams, and scope departments to allow refresh
   const [refreshedSchedules, setRefreshedSchedules] = useState<any[]>([]);
   const [refreshedTeams, setRefreshedTeams] = useState<any[]>([]);
+  const [refreshedScopeDepartments, setRefreshedScopeDepartments] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [hasLoadedRefreshedData, setHasLoadedRefreshedData] = useState(false);
   
@@ -275,12 +277,13 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     loadSharedCriteria();
   }, [showModal, selectedPlanDetails]);
 
-  // Reload schedules and teams when modal opens or refreshKey changes
+  // Reload schedules, teams, and scope departments when modal opens or refreshKey changes
   useEffect(() => {
-    const reloadSchedulesAndTeams = async () => {
+    const reloadSchedulesTeamsAndDepartments = async () => {
       if (!showModal || !selectedPlanDetails) {
         setRefreshedSchedules([]);
         setRefreshedTeams([]);
+        setRefreshedScopeDepartments([]);
         setHasLoadedRefreshedData(false);
         return;
       }
@@ -289,40 +292,52 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       if (!auditId) {
         setRefreshedSchedules([]);
         setRefreshedTeams([]);
+        setRefreshedScopeDepartments([]);
         setHasLoadedRefreshedData(false);
         return;
       }
 
       try {
-        const [schedulesRes, teamsRes] = await Promise.all([
+        console.log(`[PlanDetailsModal] Reloading data for auditId: ${auditId}, refreshKey: ${refreshKey}`);
+        const [schedulesRes, teamsRes, scopeDeptsRes] = await Promise.all([
           getAuditSchedules(String(auditId)),
           getAuditorsByAuditId(String(auditId)),
+          getAuditScopeDepartments(),
         ]);
 
         const schedules = unwrap(schedulesRes) || [];
         const teams = unwrap(teamsRes) || [];
+        const allScopeDepts = unwrap(scopeDeptsRes) || [];
 
         const schedulesArray = Array.isArray(schedules) ? schedules : [];
         const teamsArray = Array.isArray(teams) ? teams : [];
-
-     
         
+        console.log(`[PlanDetailsModal] Loaded ${schedulesArray.length} schedules, ${teamsArray.length} teams`);
+        
+        // Filter scope departments by auditId and only Active status
+        const scopeDeptsArray = (Array.isArray(allScopeDepts) ? allScopeDepts : [])
+          .filter((sd: any) => String(sd.auditId || sd.$auditId || sd.AuditId) === String(auditId))
+          .filter((sd: any) => (sd.status || sd.Status) === "Active");
+
         // Force state update to trigger re-render by creating new array references
         setRefreshedSchedules([...schedulesArray]); // Create new array reference
         setRefreshedTeams([...teamsArray]); // Create new array reference
+        setRefreshedScopeDepartments([...scopeDeptsArray]); // Create new array reference
         setHasLoadedRefreshedData(true); // Mark that we've loaded refreshed data
         
+        console.log(`[PlanDetailsModal] State updated with refreshed data`);
       } catch (error) {
-        console.error('PlanDetailsModal: Failed to reload schedules and teams:', error);
+        console.error('PlanDetailsModal: Failed to reload schedules, teams, and departments:', error);
         // Fallback to original data
         setRefreshedSchedules([]);
         setRefreshedTeams([]);
+        setRefreshedScopeDepartments([]);
         setHasLoadedRefreshedData(false);
       }
     };
 
     // Always reload when modal opens or refreshKey changes
-    reloadSchedulesAndTeams();
+    reloadSchedulesTeamsAndDepartments();
   }, [showModal, selectedPlanDetails?.auditId, selectedPlanDetails?.id, refreshKey]);
 
   // Poll for changes when modal is open (fallback mechanism)
@@ -395,13 +410,14 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       const customEvent = e as CustomEvent;
       const updatedAuditId = customEvent.detail?.auditId;
       
-    
+      console.log(`[PlanDetailsModal] Received auditPlanUpdated event. Updated auditId: ${updatedAuditId}, Current auditId: ${auditId}`);
       
       // Compare with case-insensitive string comparison
       if (updatedAuditId && String(updatedAuditId).toLowerCase().trim() === String(auditId).toLowerCase().trim()) {
+        console.log(`[PlanDetailsModal] Audit IDs match, triggering refresh`);
         handleRefresh();
       } else {
-     
+        console.log(`[PlanDetailsModal] Audit IDs do not match, skipping refresh`);
       }
     };
 
@@ -792,18 +808,28 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Scope Departments */}
-          {!hideSections.includes('scopeDepartments') && selectedPlanDetails.scopeDepartments?.values?.length > 0 && (
-            <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
-              <div className="flex items-center gap-3 mb-5 pb-3 border-b border-gray-200">
+          {(() => {
+            // Use refreshed data if available, otherwise fallback to original prop data
+            const scopeDeptsToDisplay = hasLoadedRefreshedData
+              ? refreshedScopeDepartments
+              : (selectedPlanDetails.scopeDepartments?.values || []);
+            
+            if (hideSections.includes('scopeDepartments') || scopeDeptsToDisplay.length === 0) {
+              return null;
+            }
+            
+            return (
+              <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
+                <div className="flex items-center gap-3 mb-5 pb-3 border-b border-gray-200">
+                  
+                  <h3 className="text-lg font-bold text-gray-900">Departments</h3>
+                  <span className="ml-auto text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                    {scopeDeptsToDisplay.length} dept{scopeDeptsToDisplay.length > 1 ? 's' : ''}
+                  </span>
+                </div>
                 
-                <h3 className="text-lg font-bold text-gray-900">Departments</h3>
-                <span className="ml-auto text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                  {selectedPlanDetails.scopeDepartments.values.length} dept{selectedPlanDetails.scopeDepartments.values.length > 1 ? 's' : ''}
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {selectedPlanDetails.scopeDepartments.values.map((dept: any, idx: number) => {
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {scopeDeptsToDisplay.map((dept: any, idx: number) => {
                 const deptName = dept.deptName || getDepartmentName(dept.deptId);
                 const deptId = Number(dept.deptId);
                 const deptHead = ownerOptions.find(
@@ -877,7 +903,8 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               })}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* Standards Section */}
           {!hideSections.includes('standards') && (

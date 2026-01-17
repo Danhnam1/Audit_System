@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import useAuthStore from '../../../store/useAuthStore';
+import { useUserId } from '../../../store/useAuthStore';
 import { getDepartments } from '../../../api/departments';
 import { getAuditPlans, getAuditScopeDepartments, getAuditPlanById } from '../../../api/audits';
 import { unwrap, normalizePlanDetails } from '../../../utils/normalize';
 import { getDepartmentName, getCriterionName } from '../../../helpers/auditPlanHelpers';
-import { getAdminUsers } from '../../../api/adminUsers';
+import { getAdminUsers, getUserById } from '../../../api/adminUsers';
 import { getAuditCriteria } from '../../../api/auditCriteria';
 import { getChecklistTemplates } from '../../../api/checklists';
 import { getStatusColor, getBadgeVariant } from '../../../constants';
@@ -15,7 +15,6 @@ import { Button, Pagination } from '../../../components';
 
 const AuditPlans = () => {
 	const { user: layoutCtxUser } = useAuth();
-	const { user: storeUser } = useAuthStore();
 	const layoutUser = layoutCtxUser ? { name: layoutCtxUser.fullName, avatar: undefined } : undefined;
 
 	const [plans, setPlans] = useState<any[]>([]);
@@ -35,7 +34,7 @@ const AuditPlans = () => {
 	const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
 	const [dateTo, setDateTo] = useState<string>('');
 
-	const myDeptId = storeUser?.deptId ?? (storeUser as any)?.departmentId ?? (storeUser as any)?.deptCode;
+	const userId = useUserId();
 
 	useEffect(() => {
 		const load = async () => {
@@ -64,23 +63,19 @@ const AuditPlans = () => {
 				setOwnerOptions(owners);
 				setAuditorOptions(auditors);
 
-				// Resolve effective department id for current user
-				let effDeptId: string | number | null | undefined = myDeptId as any;
-				if (effDeptId == null) {
-					const users = Array.isArray(usersRes) ? usersRes : [];
-					const me = users.find((u: any) => {
-						const targets = [storeUser?.email, (storeUser as any)?.userId, storeUser?.fullName]
-							.filter(Boolean)
-							.map((v: any) => String(v).toLowerCase());
-						const keys = [u.email, u.userId, u.fullName].filter(Boolean).map((v: any) => String(v).toLowerCase());
-						return targets.some((t: string) => keys.includes(t));
-					});
-					effDeptId = me?.deptId ?? null;
+				// Get user's deptId from getUserById API (same as Profile page)
+				let effDeptId: string | number | null = null;
+				if (userId) {
+					try {
+						const userData = await getUserById(userId);
+						effDeptId = userData?.deptId ?? null;
+					} catch (err) {
+						console.warn('Failed to get user by ID:', err);
+					}
 				}
-				setEffectiveDeptId(effDeptId ?? null);
+				setEffectiveDeptId(effDeptId);
 
-				// If user has a department, filter auditIds directly by deptId
-				const myIdStr = effDeptId != null ? String(effDeptId) : undefined;
+				// Build scope mapping for all audits (used in filteredPlans)
 				const normalizedScopes = (Array.isArray(scopesList) ? scopesList : []).map((sd: any) => ({
 					auditId: String(sd.auditId ?? sd.auditPlanId ?? ''),
 					deptId: String(sd.deptId ?? ''),
@@ -92,19 +87,26 @@ const AuditPlans = () => {
 					return acc;
 				}, {} as Record<string, Array<{deptId: string; deptName?: string}>>);
 
-				let list: any[] = Array.isArray(plansList) ? plansList : [];
-				if (myIdStr) {
-					const allowedAuditIds = new Set(
-						normalizedScopes.filter((s: any) => s.deptId === myIdStr).map((s: any) => s.auditId)
+				const publishedPlans = (Array.isArray(plansList) ? plansList : []).filter((p: any) => p?.isPublished === true);
+				
+				// Filter by user's deptId if available
+				let filteredList = publishedPlans;
+				if (effDeptId != null) {
+					const userDeptIdStr = String(effDeptId);
+					const matchingAuditIds = new Set(
+						normalizedScopes
+							.filter((s: any) => String(s.deptId) === userDeptIdStr)
+							.map((s: any) => s.auditId)
 					);
-					list = list.filter((p: any) => allowedAuditIds.has(String(p.auditId || p.id || p.$id)));
+					
+					filteredList = publishedPlans.filter((p: any) => {
+						const auditId = String(p.auditId || p.id || p.$id || '');
+						const scope = String(p.scope || '').toLowerCase();
+						return scope === 'academy' || matchingAuditIds.has(auditId);
+					});
 				}
 
-				// Only keep published plans by backend boolean flag
-				list = list.filter((p: any) => p?.isPublished === true);
-
-				// attach scopeDepartments for display
-				const withScopes = list.map((p: any) => {
+				const withScopes = filteredList.map((p: any) => {
 					const id = String(p.auditId || p.id || p.$id || '');
 					return {
 						...p,
@@ -123,31 +125,15 @@ const AuditPlans = () => {
 	}, []);
 
 	const filteredPlans = useMemo(() => {
-		if (effectiveDeptId == null) return [];
-		const myIdStr = String(effectiveDeptId);
-		const matchesDept = (plan: any) => {
-			const normIds = Array.isArray(plan?.normalizedDeptIds) ? plan.normalizedDeptIds.map((x: any) => String(x)) : [];
-			if (normIds.includes(myIdStr)) return true;
-			const scopes = Array.isArray(plan?.scopeDepartments) ? plan.scopeDepartments : (plan?.scopeDepartments?.values || []);
-			const scopeIds = (scopes || []).map((sd: any) => String(sd?.deptId ?? sd?.id ?? sd?.$id ?? sd?.departmentId ?? sd?.deptCode ?? '')).filter(Boolean);
-			const planLevelIds = [plan?.department, plan?.deptId, plan?.departmentId, plan?.deptCode]
-				.map((v: any) => (v != null ? String(v) : ''))
-				.filter(Boolean);
-			return [...normIds, ...scopeIds, ...planLevelIds].some((id) => id === myIdStr);
-		};
-		const isPublished = (p: any) => p?.isPublished === true;
-		let result = (plans || []).filter(matchesDept).filter(isPublished);
+		let result = plans || [];
 		
-		// Apply search filter
 		if (searchTerm) {
 			const searchLower = searchTerm.toLowerCase();
-			result = result.filter((plan: any) => {
-				const title = (plan.title || '').toLowerCase();
-				return title.includes(searchLower);
-			});
+			result = result.filter((plan: any) => 
+				(plan.title || '').toLowerCase().includes(searchLower)
+			);
 		}
 		
-		// Apply date filter
 		if (dateFrom) {
 			result = result.filter((plan: any) => {
 				if (!plan.startDate) return false;
@@ -170,7 +156,7 @@ const AuditPlans = () => {
 		}
 		
 		return result;
-	}, [plans, effectiveDeptId, searchTerm, dateFrom, dateTo]);
+	}, [plans, searchTerm, dateFrom, dateTo]);
 
 	const totalPages = Math.ceil(filteredPlans.length / itemsPerPage);
 

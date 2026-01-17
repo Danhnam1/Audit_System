@@ -80,12 +80,16 @@ export const loadPlanDetailsForEdit = async (
     };
   }
 
-  // Normalize dates
+  // Normalize dates - use local date format to avoid timezone shift
   if (details.startDate) {
     try {
       const startDateObj = new Date(details.startDate);
       if (!isNaN(startDateObj.getTime())) {
-        details.startDate = startDateObj.toISOString().split('T')[0];
+        // Use local date format to avoid timezone shift (YYYY-MM-DD)
+        const year = startDateObj.getFullYear();
+        const month = String(startDateObj.getMonth() + 1).padStart(2, '0');
+        const day = String(startDateObj.getDate()).padStart(2, '0');
+        details.startDate = `${year}-${month}-${day}`;
       }
     } catch (e) {
       console.warn('[loadPlanDetailsForEdit] Failed to parse startDate:', details.startDate);
@@ -96,7 +100,11 @@ export const loadPlanDetailsForEdit = async (
     try {
       const endDateObj = new Date(details.endDate);
       if (!isNaN(endDateObj.getTime())) {
-        details.endDate = endDateObj.toISOString().split('T')[0];
+        // Use local date format to avoid timezone shift (YYYY-MM-DD)
+        const year = endDateObj.getFullYear();
+        const month = String(endDateObj.getMonth() + 1).padStart(2, '0');
+        const day = String(endDateObj.getDate()).padStart(2, '0');
+        details.endDate = `${year}-${month}-${day}`;
       }
     } catch (e) {
       console.warn('[loadPlanDetailsForEdit] Failed to parse endDate:', details.endDate);

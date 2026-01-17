@@ -579,6 +579,7 @@ const SQAStaffAuditPlanning = () => {
         setShowConflictModal,
         setFilteredCriteria,
         checklistTemplates,
+        userIdFromToken: userIdFromToken || undefined,
       });
 
       if (!result.success) {
@@ -724,16 +725,25 @@ const SQAStaffAuditPlanning = () => {
 
       if (detailsWithId.startDate) {
         try {
-          const startDate = new Date(detailsWithId.startDate);
-          if (!isNaN(startDate.getTime())) {
-            periodFrom = startDate.toISOString().split("T")[0];
-          } else if (
-            typeof detailsWithId.startDate === "string" &&
-            detailsWithId.startDate.includes("T")
-          ) {
-            periodFrom = detailsWithId.startDate.split("T")[0];
-          } else if (typeof detailsWithId.startDate === "string") {
+          // If already in YYYY-MM-DD format, use directly
+          if (typeof detailsWithId.startDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(detailsWithId.startDate)) {
             periodFrom = detailsWithId.startDate;
+          } else {
+            const startDate = new Date(detailsWithId.startDate);
+            if (!isNaN(startDate.getTime())) {
+              // Use local date format to avoid timezone shift (YYYY-MM-DD)
+              const year = startDate.getFullYear();
+              const month = String(startDate.getMonth() + 1).padStart(2, '0');
+              const day = String(startDate.getDate()).padStart(2, '0');
+              periodFrom = `${year}-${month}-${day}`;
+            } else if (
+              typeof detailsWithId.startDate === "string" &&
+              detailsWithId.startDate.includes("T")
+            ) {
+              periodFrom = detailsWithId.startDate.split("T")[0];
+            } else if (typeof detailsWithId.startDate === "string") {
+              periodFrom = detailsWithId.startDate;
+            }
           }
         } catch (e) {
           console.warn("Failed to parse startDate:", detailsWithId.startDate);
@@ -746,16 +756,25 @@ const SQAStaffAuditPlanning = () => {
 
       if (detailsWithId.endDate) {
         try {
-          const endDate = new Date(detailsWithId.endDate);
-          if (!isNaN(endDate.getTime())) {
-            periodTo = endDate.toISOString().split("T")[0];
-          } else if (
-            typeof detailsWithId.endDate === "string" &&
-            detailsWithId.endDate.includes("T")
-          ) {
-            periodTo = detailsWithId.endDate.split("T")[0];
-          } else if (typeof detailsWithId.endDate === "string") {
+          // If already in YYYY-MM-DD format, use directly
+          if (typeof detailsWithId.endDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(detailsWithId.endDate)) {
             periodTo = detailsWithId.endDate;
+          } else {
+            const endDate = new Date(detailsWithId.endDate);
+            if (!isNaN(endDate.getTime())) {
+              // Use local date format to avoid timezone shift (YYYY-MM-DD)
+              const year = endDate.getFullYear();
+              const month = String(endDate.getMonth() + 1).padStart(2, '0');
+              const day = String(endDate.getDate()).padStart(2, '0');
+              periodTo = `${year}-${month}-${day}`;
+            } else if (
+              typeof detailsWithId.endDate === "string" &&
+              detailsWithId.endDate.includes("T")
+            ) {
+              periodTo = detailsWithId.endDate.split("T")[0];
+            } else if (typeof detailsWithId.endDate === "string") {
+              periodTo = detailsWithId.endDate;
+            }
           }
         } catch (e) {
           console.warn("Failed to parse endDate:", detailsWithId.endDate);
@@ -786,7 +805,8 @@ const SQAStaffAuditPlanning = () => {
       formState.setGoal(objective);
       formState.setPeriodFrom(periodFrom);
       formState.setPeriodTo(periodTo);
-      formState.setLevel(scope === "Academy" ? "academy" : "department");
+      const levelValue = scope === "Academy" ? "academy" : "department";
+      formState.setLevel(levelValue);
 
       // Load departments
       const scopeDepts = unwrap(detailsWithId.scopeDepartments);
@@ -794,6 +814,11 @@ const SQAStaffAuditPlanning = () => {
         String(sd.deptId || sd.id || sd)
       );
       formState.setSelectedDeptIds(deptIds);
+
+      // Ensure sensitive areas are loaded after departments are set
+      // This ensures SensitiveAreaForm can properly display the areas
+      // The sensitive areas were already loaded above, but we need to ensure
+      // the component re-renders with the correct data
 
       // Load criteria
       const criteriaList = unwrap(detailsWithId.criteria);
@@ -846,12 +871,18 @@ const SQAStaffAuditPlanning = () => {
         formState.setSelectedTemplateIds([]);
       }
 
-      // Load team
+      // Load team - ensure we only get teams for this specific audit
       const teams = unwrap(detailsWithId.auditTeams);
-      const leadAuditor = teams.find(
+      // Filter teams to ensure they belong to this audit (safety check)
+      const teamsForThisAudit = teams.filter((t: any) => {
+        const teamAuditId = String(t.auditId || t.$auditId || t.AuditId || '');
+        return teamAuditId === String(auditId);
+      });
+      
+      const leadAuditor = teamsForThisAudit.find(
         (t: any) => t.isLead === true || t.isLeadAuditor === true
       );
-      const auditors = teams
+      const auditors = teamsForThisAudit
         .filter((t: any) => {
           const role = String(t.roleInTeam || "")
             .toLowerCase()

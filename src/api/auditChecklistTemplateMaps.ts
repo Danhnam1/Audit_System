@@ -42,6 +42,24 @@ export const getAuditChecklistTemplateMapsByAudit = async (
   return all.filter((m) => String(m.auditId || '').trim().toLowerCase() === targetId);
 };
 
+// Update one mapping using composite key
+export const updateAuditChecklistTemplateMap = async (
+  auditId: string,
+  templateId: string,
+  payload: {
+    assignedBy?: string;
+    status?: string;
+  }
+) => {
+  if (!auditId || !templateId) return;
+  return apiClient.put(
+    `/AuditChecklistTemplateMaps/${encodeURIComponent(String(auditId))}/${encodeURIComponent(
+      String(templateId)
+    )}`,
+    payload
+  );
+};
+
 // Delete one mapping using composite key
 export const deleteAuditChecklistTemplateMap = async (auditId: string, templateId: string) => {
   if (!auditId || !templateId) return;

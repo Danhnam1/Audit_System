@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
 import { DataTable } from "../../../components/DataTable";
+import { Pagination } from "../../../components/Pagination";
 import {
   getAuditFullDetail,
   getAuditPlans,
@@ -63,6 +64,8 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   >([]);
   const [selectedAuditId, setSelectedAuditId] = useState<string>(auditIdFromUrl || "");
   const [loadingAudits, setLoadingAudits] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const [detail, setDetail] = useState<FullDetailResponse | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -662,6 +665,19 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   // Note: Lead Auditor no longer needs to submit to Director
   // Auditor's submission is now visible to both Lead Auditor and Director immediately
 
+  // Pagination logic
+  const totalPages = Math.ceil(audits.length / itemsPerPage);
+  const paginatedAudits = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return audits.slice(startIndex, endIndex);
+  }, [audits, currentPage]);
+
+  // Reset to page 1 when audits change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [audits.length]);
+
   return (
     <MainLayout user={layoutUser}>
       <div className="px-4 sm:px-6 lg:px-8 pb-8 space-y-6">
@@ -749,7 +765,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                     ),
                   },
                 ]}
-                data={audits}
+                data={paginatedAudits}
                 loading={loadingAudits}
                 loadingMessage="Loading audits..."
                 emptyState="No audits available."
@@ -757,6 +773,15 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                 getRowClassName={() => "border-b border-gray-100 transition-colors hover:bg-primary-50 cursor-pointer"}
                 bodyClassName=""
               />
+              {totalPages > 1 && audits.length > 0 && (
+                <div className="px-6 py-4 border-t border-gray-200 flex justify-center">
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    onPageChange={setCurrentPage}
+                  />
+                </div>
+              )}
               <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
                 Click on an audit row to review its final summary report.
               </div>
