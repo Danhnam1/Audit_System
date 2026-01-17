@@ -17,6 +17,7 @@ import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getAuditPlanRevisionRequestsByAuditId, type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
 import { getAuditChecklistItems } from '../../../api/checklists';
+import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
@@ -86,6 +87,9 @@ const SQAStaffReports = () => {
   // Finding detail modal state
   const [showFindingModal, setShowFindingModal] = useState(false);
   const [selectedFinding, setSelectedFinding] = useState<any | null>(null);
+  // Root causes map: findingId -> rootCauses[]
+  const [rootCausesMap, setRootCausesMap] = useState<Record<string, any[]>>({});
+  const [loadingRootCauses, setLoadingRootCauses] = useState<Record<string, boolean>>({});
 
   // Derived datasets for summary rendering
   const severityEntries = useMemo(() => {
@@ -2108,9 +2112,24 @@ const SQAStaffReports = () => {
                                 </td> */}
                                 <td className="px-3 py-2">
                                   <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                       setSelectedFinding(f);
                                       setShowFindingModal(true);
+                                      
+                                      // Load root causes for this finding
+                                      const findingId = f?.findingId || f?.id;
+                                      if (findingId && !rootCausesMap[findingId]) {
+                                        setLoadingRootCauses(prev => ({ ...prev, [findingId]: true }));
+                                        try {
+                                          const rootCauses = await getRootCausesByFinding(String(findingId));
+                                          setRootCausesMap(prev => ({ ...prev, [findingId]: rootCauses || [] }));
+                                        } catch (err) {
+                                          console.error('Failed to load root causes:', err);
+                                          setRootCausesMap(prev => ({ ...prev, [findingId]: [] }));
+                                        } finally {
+                                          setLoadingRootCauses(prev => ({ ...prev, [findingId]: false }));
+                                        }
+                                      }
                                     }}
                                     className="px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50 border border-primary-200 rounded-lg transition-colors flex items-center gap-1.5"
                                     title="View details"
@@ -2609,6 +2628,8 @@ const SQAStaffReports = () => {
             }}
             finding={selectedFinding}
             showReturnAction={false}
+            rootCauses={selectedFinding?.findingId ? rootCausesMap[selectedFinding.findingId] || [] : []}
+            loadingRootCauses={selectedFinding?.findingId ? loadingRootCauses[selectedFinding.findingId] || false : false}
           />
         )}
       </div>
