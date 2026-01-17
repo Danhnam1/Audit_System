@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../layouts';
 import { getMyWitnessedFindings, type Finding } from '../../api/findings';
+import { getStatusColor } from '../../constants/statusColors';
 
 interface FindingWithAudit extends Finding {
   auditTitle?: string;
@@ -76,6 +77,11 @@ const CAPAOwnerMyWitnessed = () => {
 
       if (!auditId) {
         console.warn('Finding missing auditId:', finding);
+        return;
+      }
+
+      // Skip audits with Archived status
+      if (finding.audit?.status === 'Archived') {
         return;
       }
 
@@ -226,17 +232,7 @@ const CAPAOwnerMyWitnessed = () => {
                         <span className="text-sm text-gray-700">{audit.auditType}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${
-                            audit.status === 'InProgress' || audit.status === 'In Progress'
-                              ? 'bg-blue-100 text-blue-700'
-                              : audit.status === 'Approved'
-                              ? 'bg-green-100 text-green-700'
-                              : audit.status === 'Draft'
-                              ? 'bg-yellow-100 text-yellow-700'
-                              : 'bg-gray-100 text-gray-700'
-                          }`}
-                        >
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(audit.status || '')}`}>
                           {audit.status || 'N/A'}
                         </span>
                       </td>

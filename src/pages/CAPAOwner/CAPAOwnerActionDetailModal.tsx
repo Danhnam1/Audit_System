@@ -623,7 +623,7 @@ const CAPAOwnerActionDetailModal = ({
                   </svg>
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-2xl font-bold mb-1">Responsible Person Details</h3>
+                  <h3 className="text-2xl font-bold mb-1">Responsible Personđ Details</h3>
                 </div>
               </div>
             </div>
@@ -632,8 +632,8 @@ const CAPAOwnerActionDetailModal = ({
             <div className="p-8 space-y-4">
               {/* Full Name */}
               {assignedToUser.fullName && (
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-5">
-                  <label className="block text-xs font-bold text-purple-700 uppercase tracking-wide mb-2">Full Name</label>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
+                  <label className="block text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">Full Name</label>
                   <p className="text-xl font-bold text-gray-900">{assignedToUser.fullName}</p>
                 </div>
               )}
