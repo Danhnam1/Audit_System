@@ -47,7 +47,6 @@ const SQAStaffReports = () => {
   const [rejectSchedules, setRejectSchedules] = useState<any[]>([]);
   const [loadingRejectSchedules, setLoadingRejectSchedules] = useState(false);
   const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
-  const [exportedAudits, setExportedAudits] = useState<Set<string>>(new Set());
   const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [leadAuditorNames, setLeadAuditorNames] = useState<Record<string, string>>({}); // auditId -> Lead Auditor name
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
@@ -657,22 +656,7 @@ const SQAStaffReports = () => {
       
       setAudits(filteredWithPreservedStatuses);
       
-      // Initialize file input refs for all audits
-      filtered.forEach((a: any) => {
-        const auditId = normalizeId(String(a.auditId || a.id || a.$id || ''));
-        if (auditId && !fileInputRefs.current[auditId]) {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = '.pdf,.doc,.docx';
-          input.multiple = true;
-          input.style.display = 'none';
-          input.onchange = (e: any) => {
-            onFileSelected(String(a.auditId || a.id || a.$id || ''), e);
-          };
-          document.body.appendChild(input);
-          fileInputRefs.current[auditId] = input;
-        }
-      });
+      // File input refs are created per-row in the In Progress table.
       
       // Check which audits already have uploaded documents
       const uploadedSet = new Set<string>();
@@ -1208,18 +1192,6 @@ const SQAStaffReports = () => {
   const onClickUpload = (auditIdRaw: string) => {
     const auditId = normalizeId(auditIdRaw);
     
-    // Check if already uploaded
-    if (uploadedAudits.has(auditId)) {
-      toast.error('This report has already been uploaded. It cannot be uploaded again.');
-      return;
-    }
-    
-    // Check if exported first (new validation)
-    if (!exportedAudits.has(auditId)) {
-      toast.error('Please export the report first before uploading.');
-      return;
-    }
-    
     // Check if currently uploading
     if (uploadLoading[auditId]) {
       toast.error('Upload is already in progress. Please wait.');
@@ -1237,35 +1209,6 @@ const SQAStaffReports = () => {
       return;
     }
     
-    // Validate: Check if exported first
-    if (!exportedAudits.has(auditId)) {
-      toast.error('Please export the report first before uploading.');
-      e.target.value = '';
-      return;
-    }
-    
-    // Validate: Check if already uploaded
-    if (uploadedAudits.has(auditId)) {
-      toast.error('This report has already been uploaded. It cannot be uploaded again.');
-      e.target.value = '';
-      return;
-    }
-    
-    // Double check by fetching documents (history upload)
-    try {
-      const existingDocs = await getAuditDocuments(auditIdRaw);
-      const existingArr = unwrap(existingDocs);
-      if (Array.isArray(existingArr) && existingArr.length > 0) {
-        toast.error('This report has already been uploaded. It cannot be uploaded again.');
-        e.target.value = '';
-        setUploadedAudits(prev => new Set(prev).add(auditId));
-        return;
-      }
-    } catch (err) {
-      console.error('Failed to check existing documents', err);
-      // Continue with upload if check fails
-    }
-    
     try {
       setUploadLoading(prev => ({ ...prev, [auditId]: true }));
       
@@ -1279,9 +1222,7 @@ const SQAStaffReports = () => {
       toast.success(successMessage);
       e.target.value = '';
       
-      // Mark as uploaded (UI will immediately show "Uploaded" & disable the button)
-      // Không cần reloadReports ở đây để tránh phải reload lại trang mới thấy trạng thái Uploaded
-      // và cũng tránh việc state uploadedAudits bị ghi đè bởi dữ liệu cũ từ API.
+      // Mark as uploaded (dùng cho Export: disable export sau lần upload đầu; Upload vẫn cho phép nhiều lần)
       setUploadedAudits(prev => new Set(prev).add(auditId));
     } catch (err) {
       console.error('Upload signed report failed', err);
@@ -1292,7 +1233,6 @@ const SQAStaffReports = () => {
   };
 
   const handleExportPdfForRow = async (auditId: string, title: string) => {
-    const auditIdNorm = normalizeId(auditId);
     try {
       const blob = await exportAuditPdf(auditId);
       const url = window.URL.createObjectURL(blob);
@@ -1304,8 +1244,6 @@ const SQAStaffReports = () => {
       a.remove();
       window.URL.revokeObjectURL(url);
       
-      // Track that this audit has been exported
-      setExportedAudits(prev => new Set(prev).add(auditIdNorm));
       toast.success('Report exported successfully');
     } catch (err) {
       console.error('Export PDF failed', err);
@@ -1611,17 +1549,14 @@ const SQAStaffReports = () => {
                           const auditIdStr = String(audit.auditId);
                           const auditIdNorm = normalizeId(auditIdStr);
                           const approved = isReportApproved(auditIdStr);
-                          const hasExported = exportedAudits.has(auditIdNorm);
                           const hasUploaded = uploadedAudits.has(auditIdNorm);
                           
                           // Disable export if: not approved OR already uploaded
                           const disableExport = !approved || hasUploaded;
                           
-                          // Disable upload if: not approved OR not exported yet OR already uploaded OR currently uploading
+                          // Disable upload if: not approved OR currently uploading (cho phép upload nhiều lần)
                           const disableUpload =
                             !approved ||
-                            !hasExported ||
-                            hasUploaded ||
                             uploadLoading[auditIdNorm];
                           
                           // Tooltip messages
@@ -1633,11 +1568,7 @@ const SQAStaffReports = () => {
                           
                           const uploadTooltip = !approved
                             ? 'Upload is available only after the report request is approved'
-                            : !hasExported
-                              ? 'Please export the report first before uploading'
-                              : hasUploaded
-                                ? 'Already uploaded'
-                                : 'Upload signed report';
+                            : 'Upload signed report';
                           
                           return (
                             <>
@@ -1674,10 +1605,6 @@ const SQAStaffReports = () => {
                                     toast.error('Cannot upload. Report request must be approved by Lead Auditor.');
                                     return;
                                   }
-                                  if (!hasExported) {
-                                    toast.error('Please export the report first before uploading.');
-                                    return;
-                                  }
                                   onClickUpload(auditIdStr);
                                 }}
                                 disabled={disableUpload}
@@ -1693,6 +1620,18 @@ const SQAStaffReports = () => {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                                 </svg>
                               </button>
+                              <input
+                                type="file"
+                                ref={(el) => {
+                                  if (el) fileInputRefs.current[auditIdNorm] = el;
+                                  else delete fileInputRefs.current[auditIdNorm];
+                                }}
+                                onChange={(e) => onFileSelected(auditIdStr, e)}
+                                accept=".pdf,.doc,.docx"
+                                multiple
+                                style={{ display: 'none' }}
+                                aria-hidden="true"
+                              />
                             </>
                           );
                         })()}

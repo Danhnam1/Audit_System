@@ -26,6 +26,7 @@ import EditScheduleAndTeamModal from './components/EditScheduleAndTeamModal';
 import { updateAuditSchedule, addAuditSchedule, deleteAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule';
 import { addTeamMember, deleteTeamMember } from '../../../api/auditTeam';
 import FindingDetailModal from '../../Shared/FindingDetailModal';
+import MultiSelect from '../../../components/MultiSelect';
 
 const AuditorLeadReports = () => {
   const { user } = useAuth();
@@ -60,10 +61,20 @@ const AuditorLeadReports = () => {
   const [findingsSearch, setFindingsSearch] = useState<string>('');
   const [findingsSeverity, setFindingsSeverity] = useState<string>('all');
   const [showApproveModal, setShowApproveModal] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showReturnModal, setShowReturnModal] = useState(false);
   const [approveAuditId, setApproveAuditId] = useState<string | null>(null);
-  const [rejectAuditId, setRejectAuditId] = useState<string | null>(null);
-  const [rejectNote, setRejectNote] = useState('');
+  const [returnAuditId, setReturnAuditId] = useState<string | null>(null);
+  const [returnNote, setReturnNote] = useState('');
+  // Return modal schedule and team states
+  const [returnSchedules, setReturnSchedules] = useState<any[]>([]);
+  const [returnSelectedAuditorIds, setReturnSelectedAuditorIds] = useState<string[]>([]);
+  const [returnAllUsers, setReturnAllUsers] = useState<any[]>([]);
+  const [returnInitialAuditorIds, setReturnInitialAuditorIds] = useState<Set<string>>(new Set());
+  const [returnPeriodFrom, setReturnPeriodFrom] = useState<string | undefined>(undefined);
+  const [returnPeriodTo, setReturnPeriodTo] = useState<string | undefined>(undefined);
+  const [returnLoading, setReturnLoading] = useState(false);
+  // Selected findings for return
+  const [selectedFindings, setSelectedFindings] = useState<Set<string>>(new Set());
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
   
   // Extension request states
@@ -78,8 +89,6 @@ const AuditorLeadReports = () => {
   const [showEditScheduleTeamModal, setShowEditScheduleTeamModal] = useState(false);
   const [editScheduleTeamAuditId, setEditScheduleTeamAuditId] = useState<string | null>(null);
   const [auditPeriodDates, setAuditPeriodDates] = useState<{ periodFrom?: string; periodTo?: string }>({});
-  const [scheduleChanges, setScheduleChanges] = useState<any[]>([]);
-  const [teamChanges, setTeamChanges] = useState<any[]>([]);
   // Track audits that have already edited schedule & team once (FE guard)
   const [editedScheduleTeamOnce, setEditedScheduleTeamOnce] = useState<Set<string>>(new Set());
 
@@ -683,10 +692,96 @@ const AuditorLeadReports = () => {
     setShowApproveModal(true);
   };
 
-  const openRejectModal = (auditId: string) => {
-    setRejectAuditId(auditId);
-    setRejectNote('');
-    setShowRejectModal(true);
+  const openReturnModal = async (auditId: string) => {
+    setReturnAuditId(auditId);
+    setReturnNote('');
+    setShowReturnModal(true);
+    
+    // Load schedule and team data for this audit
+    try {
+      const [schedulesRes, teamRes, usersRes] = await Promise.all([
+        getAuditSchedules(auditId),
+        getAuditorsByAuditId(auditId),
+        getAdminUsers(),
+      ]);
+
+      const schedulesData = unwrap(schedulesRes);
+      const schedulesList = Array.isArray(schedulesData) ? schedulesData : [];
+      
+      // Filter schedules: only show from Evidence Due onwards
+      const evidenceDueIndex = schedulesList.findIndex((s: any) => {
+        const name = String(s.milestoneName || '').toLowerCase().replace(/\s+/g, '');
+        return name.includes('evidencedue') || name.includes('evidence-due') || name === 'evidence due';
+      });
+      
+      const filteredSchedules = evidenceDueIndex >= 0 
+        ? schedulesList.slice(evidenceDueIndex) 
+        : schedulesList;
+      
+      // Format dates for input
+      const formatDateForInput = (dateValue: any): string => {
+        if (!dateValue) return '';
+        if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+          return dateValue;
+        }
+        if (typeof dateValue === 'string' && dateValue.includes('T')) {
+          return dateValue.split('T')[0];
+        }
+        try {
+          const date = new Date(dateValue);
+          if (isNaN(date.getTime())) return '';
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        } catch {
+          return '';
+        }
+      };
+      
+      setReturnSchedules(
+        filteredSchedules.map((s: any, idx: number) => ({
+          scheduleId: s.scheduleId || s.id || s.$id ? String(s.scheduleId || s.id || s.$id) : undefined,
+          milestoneName: s.milestoneName || s.milestone || `Schedule ${idx + 1}`,
+          dueDate: formatDateForInput(s.dueDate),
+          status: s.status || 'Active',
+          notes: s.notes || '',
+        }))
+      );
+
+      const teamData = unwrap(teamRes);
+      const users = Array.isArray(usersRes) ? usersRes : [];
+      setReturnAllUsers(users);
+
+      const teamDataArray = Array.isArray(teamData) ? teamData : [];
+      const auditorIds = teamDataArray
+        .filter((m: any) => {
+          const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+          return role !== 'auditeeowner';
+        })
+        .map((m: any) => String(m.userId || m.id || m.$id || ''))
+        .filter((id: string) => id);
+
+      setReturnSelectedAuditorIds(auditorIds);
+      setReturnInitialAuditorIds(new Set(auditorIds));
+      
+      // Get period dates
+      try {
+        const fullDetail = await getAuditFullDetail(auditId);
+        const audit = fullDetail?.audit || fullDetail?.Audit || fullDetail;
+        if (audit) {
+          const periodFrom = audit.auditPlan?.periodFrom || audit.periodFrom || audit.startDate;
+          const periodTo = audit.auditPlan?.periodTo || audit.periodTo || audit.endDate;
+          setReturnPeriodFrom(periodFrom ? formatDateForInput(periodFrom) : undefined);
+          setReturnPeriodTo(periodTo ? formatDateForInput(periodTo) : undefined);
+        }
+      } catch (err) {
+        console.error('Failed to load period dates', err);
+      }
+    } catch (err) {
+      console.error('Failed to load return modal data', err);
+      toast.error('Failed to load schedule and team data');
+    }
   };
 
   const closeApproveModal = () => {
@@ -694,10 +789,17 @@ const AuditorLeadReports = () => {
     setApproveAuditId(null);
   };
 
-  const closeRejectModal = () => {
-    setShowRejectModal(false);
-    setRejectAuditId(null);
-    setRejectNote('');
+  const closeReturnModal = () => {
+    setShowReturnModal(false);
+    setReturnAuditId(null);
+    setReturnNote('');
+    setReturnSchedules([]);
+    setReturnSelectedAuditorIds([]);
+    setReturnAllUsers([]);
+    setReturnInitialAuditorIds(new Set());
+    setReturnPeriodFrom(undefined);
+    setReturnPeriodTo(undefined);
+    // Note: Don't clear selectedFindings here - they should persist until report is returned
   };
 
   const handleApprove = async () => {
@@ -772,44 +874,185 @@ const AuditorLeadReports = () => {
     }
   };
 
-  const handleReject = async () => {
-    if (!rejectAuditId) return;
-    if (!rejectNote.trim()) {
-      toast.error('Please enter a reason for rejection.');
+  // Handle direct return (without extension - no modal needed)
+  const handleDirectReturn = async (auditId: string) => {
+    if (!auditId) return;
+    
+    // Validate: must have at least one finding selected
+    if (selectedFindings.size === 0) {
+      toast.error('Please select at least one finding to return.');
       return;
     }
-    setActionLoading(`${rejectAuditId}:reject`);
-    setActionMsg(null);
+    
+    setActionLoading(`${auditId}:return`);
     try {
-      // Include schedule and team changes in rejection note if any
-      let rejectionNote = rejectNote.trim();
-      if (scheduleChanges.length > 0 || teamChanges.length > 0) {
-        const changesNote = [
-          '\n\n--- Changes Made ---',
-          scheduleChanges.length > 0 ? `\nSchedules: ${scheduleChanges.length} updated` : '',
-          teamChanges.length > 0 ? `\nTeam Members: ${teamChanges.length} updated` : '',
-        ].filter(Boolean).join('');
-        rejectionNote += changesNote;
+      // Return selected findings
+      const returnNoteText = 'Returned findings with audit report';
+      const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
+        returnFinding(findingId, returnNoteText)
+      );
+      
+      try {
+        await Promise.all(returnFindingPromises);
+        toast.success(`Returned ${selectedFindings.size} finding(s) successfully.`);
+      } catch (err: any) {
+        console.error('Failed to return some findings', err);
+        toast.warning(`Some findings failed to return. Continuing with report return...`);
       }
       
-      await rejectAuditReport(rejectAuditId, { note: rejectionNote });
+      // Return the report with simple note
+      await rejectAuditReport(auditId, { note: `Returned with ${selectedFindings.size} finding(s)` });
       
-      toast.success('Rejected the Audit Report successfully.');
-      closeRejectModal();
-      // Clear changes after rejection
-      setScheduleChanges([]);
-      setTeamChanges([]);
+      toast.success('Returned the Audit Report successfully.');
       
-      // Wait a bit for backend to process the rejection before reloading
-      // This ensures the ReportRequest status is updated to "Returned"
+      // Clear selected findings
+      setSelectedFindings(new Set());
+      
+      // Wait a bit for backend to process
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Reload to get updated data
       await reload();
     } catch (err: any) {
-      console.error('Reject failed', err);
-      toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject audit report. Please try again.'));
+      console.error('Direct return failed', err);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to return audit report. Please try again.'));
     } finally {
+      setActionLoading('');
+    }
+  };
+
+  // Handle return with extension (opens modal to edit schedule & team)
+  const handleReturn = async () => {
+    if (!returnAuditId) return;
+    if (!returnNote.trim()) {
+      toast.error('Please enter a reason for returning.');
+      return;
+    }
+    setReturnLoading(true);
+    setActionLoading(`${returnAuditId}:return`);
+    setActionMsg(null);
+    try {
+      // Save schedule changes (from Evidence Due onwards)
+      for (const schedule of returnSchedules) {
+        const scheduleId = schedule.scheduleId ? String(schedule.scheduleId) : null;
+        
+        if (scheduleId) {
+          // Update existing schedule
+          let dueDateValue = schedule.dueDate || '';
+          if (dueDateValue && !dueDateValue.includes('T')) {
+            const dateParts = dueDateValue.split('-');
+            if (dateParts.length === 3) {
+              const year = parseInt(dateParts[0], 10);
+              const month = parseInt(dateParts[1], 10);
+              const day = parseInt(dateParts[2], 10);
+              dueDateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`;
+            }
+          }
+          
+          await updateAuditSchedule(scheduleId, {
+            milestoneName: schedule.milestoneName.trim(),
+            dueDate: dueDateValue,
+            notes: schedule.notes || '',
+            status: schedule.status || 'Active',
+          });
+        }
+      }
+
+      // Update Period To (end date) if changed
+      if (returnPeriodTo) {
+        try {
+          const fullDetail = await getAuditFullDetail(returnAuditId);
+          const audit = fullDetail?.audit || fullDetail?.Audit || fullDetail;
+          if (audit?.auditPlan?.auditPlanId) {
+            // Update audit plan periodTo
+            await getAuditPlans(); // This might trigger update, but we need proper API
+            // Note: We may need a specific API to update periodTo
+            // For now, we'll include it in the return note
+          }
+        } catch (err) {
+          console.warn('Failed to update periodTo', err);
+        }
+      }
+
+      // Add new team members (only add, cannot remove)
+      const currentTeamRes = await getAuditorsByAuditId(returnAuditId);
+      const currentTeam = unwrap(currentTeamRes) || [];
+      const currentAuditorIds = new Set(
+        currentTeam
+          .filter((m: any) => {
+            const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+            return role !== 'auditeeowner';
+          })
+          .map((m: any) => String(m.userId || m.id || m.$id || ''))
+          .filter((id: string) => id)
+      );
+
+      // Find new auditor IDs to add
+      const newAuditorIds = returnSelectedAuditorIds.filter(id => !currentAuditorIds.has(id));
+      
+      for (const userId of newAuditorIds) {
+        await addTeamMember({
+          auditId: returnAuditId,
+          userId: userId,
+          roleInTeam: 'Auditor',
+          isLead: false,
+        });
+      }
+
+      // Build return note with changes summary
+      let returnNoteText = returnNote.trim();
+      const changesNote = [
+        '\n\n--- Changes Made ---',
+        returnSchedules.length > 0 ? `\nSchedules: ${returnSchedules.length} updated (from Evidence Due onwards)` : '',
+        returnPeriodTo ? `\nPeriod To (End Date): Updated to ${returnPeriodTo}` : '',
+        newAuditorIds.length > 0 ? `\nTeam Members: ${newAuditorIds.length} new member(s) added` : '',
+      ].filter(Boolean).join('');
+      if (changesNote.trim() !== '--- Changes Made ---') {
+        returnNoteText += changesNote;
+      }
+      
+      // Return selected findings first
+      if (selectedFindings.size > 0) {
+        const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
+          returnFinding(findingId, returnNoteText || 'Returned with audit report')
+        );
+        
+        try {
+          await Promise.all(returnFindingPromises);
+          toast.success(`Returned ${selectedFindings.size} finding(s) successfully.`);
+        } catch (err: any) {
+          console.error('Failed to return some findings', err);
+          toast.warning(`Some findings failed to return. Continuing with report return...`);
+        }
+      }
+      
+      // Return the report
+      await rejectAuditReport(returnAuditId, { note: returnNoteText });
+      
+      toast.success('Returned the Audit Report successfully.');
+      closeReturnModal();
+      
+      // Clear selected findings
+      setSelectedFindings(new Set());
+      
+      // Clear return modal states
+      setReturnSchedules([]);
+      setReturnSelectedAuditorIds([]);
+      setReturnAllUsers([]);
+      setReturnInitialAuditorIds(new Set());
+      setReturnPeriodFrom(undefined);
+      setReturnPeriodTo(undefined);
+      
+      // Wait a bit for backend to process the return before reloading
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Reload to get updated data
+      await reload();
+    } catch (err: any) {
+      console.error('Return failed', err);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to return audit report. Please try again.'));
+    } finally {
+      setReturnLoading(false);
       setActionLoading('');
     }
   };
@@ -1287,9 +1530,7 @@ const AuditorLeadReports = () => {
         toast.warning(`Schedule updated successfully, but ${teamUpdateErrors.length} team member update(s) failed.`);
       }
 
-      // Store changes for potential rejection note
-      setScheduleChanges(schedules);
-      setTeamChanges(teamMembers);
+      // Changes are now handled directly in handleReturn
 
 
       // Store auditId before closing modal
@@ -1634,18 +1875,14 @@ const AuditorLeadReports = () => {
           rows={filteredRows}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
-          needsDecision={needsDecision}
           onView={(id: string) => {
             // Mở modal khi bấm View
             setSelectedAuditId(id);
             setSummaryReloadKey((k) => k + 1); // force reload summary even if same id
             setShowViewModal(true);
           }}
-          onApprove={openApproveModal}
-          onReject={openRejectModal}
           onEditScheduleAndTeam={openEditScheduleTeamModal}
-        editedScheduleTeamOnce={editedScheduleTeamOnce}
-          actionLoading={actionLoading}
+          editedScheduleTeamOnce={editedScheduleTeamOnce}
           actionMsg={actionMsg}
           getStatusColor={getStatusColor}
           reportSearch={reportSearch}
@@ -1693,15 +1930,12 @@ const AuditorLeadReports = () => {
                       className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'checklist' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                     >Checklist</button>
                   </div>
-                  {/* Request Extension Button - Only show if report is submitted and not rejected */}
+                  {/* Request Extension Button - Always show (no conditions) */}
                   {(() => {
-                    const selectedAudit = audits.find(a => String(a.auditId || a.id || a.$id) === selectedAuditId);
-                    const status = selectedAudit?.status || '';
-                    const canRequestExtension = needsDecision(status);
                     // Check if there's already a pending request
                     const hasPendingRequest = revisionRequests.some(r => r.status === 'Pending');
                     
-                    if (!canRequestExtension || hasPendingRequest) return null;
+                    if (hasPendingRequest) return null;
                     
                     return (
                       <button
@@ -1745,6 +1979,18 @@ const AuditorLeadReports = () => {
                         setSelectedAttachments(attachments);
                         setSelectedFindingTitle(findingTitle);
                         setShowAttachmentsModal(true);
+                      }}
+                      selectedFindings={selectedFindings}
+                      onSelectFinding={(findingId, isSelected) => {
+                        setSelectedFindings(prev => {
+                          const next = new Set(prev);
+                          if (isSelected) {
+                            next.add(findingId);
+                          } else {
+                            next.delete(findingId);
+                          }
+                          return next;
+                        });
                       }}
                     />
                    
@@ -1974,8 +2220,98 @@ const AuditorLeadReports = () => {
                 ) : null}
               </div>
 
-              {/* Footer */}
-              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 flex-shrink-0">
+              {/* Footer with Actions */}
+              <div className="flex items-center justify-between gap-3 p-6 border-t border-gray-200 flex-shrink-0 bg-gray-50">
+                {/* Left side - Actions */}
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    // Get current audit status
+                    const currentAudit = audits.find(a => String(a.auditId || a.id || a.$id) === selectedAuditId);
+                    const status = currentAudit?.status || currentAudit?.state || '';
+                    const statusToCheck = String(status).toLowerCase().trim().replace(/\s+/g, '');
+                    const isApproved = statusToCheck === 'approved' || statusToCheck.includes('approve');
+                    const isReturned = statusToCheck === 'returned' || statusToCheck.includes('return') || statusToCheck.includes('reject');
+                    
+                    // Check if needs decision (Pending status)
+                    const needsDecision = statusToCheck === 'pending';
+                    
+                    // Check if Director approved extension
+                    const auditRevisionRequests = revisionRequestsMap[selectedAuditId] || [];
+                    const hasApprovedExtension = auditRevisionRequests.some((req: ViewAuditPlanRevisionRequest) => {
+                      const reqStatus = String(req.status || '').trim();
+                      return reqStatus.toLowerCase() === 'approved';
+                    });
+                    
+                    // Don't show buttons if already approved or returned
+                    if (isApproved || isReturned || !needsDecision) {
+                      return null;
+                    }
+                    
+                    return (
+                      <>
+                        {/* Only show Approve if NO approved extension */}
+                        {!hasApprovedExtension && (
+                          <Button
+                            variant="success"
+                            size="md"
+                            onClick={() => {
+                              // Only open approve modal, don't close Report Details modal
+                              openApproveModal(selectedAuditId);
+                            }}
+                            disabled={actionLoading === `${selectedAuditId}:approve` || actionLoading === `${selectedAuditId}:return`}
+                            isLoading={actionLoading === `${selectedAuditId}:approve`}
+                            className="rounded-md font-semibold shadow-sm"
+                            leftIcon={
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            }
+                          >
+                            {actionLoading === `${selectedAuditId}:approve` ? 'Approving...' : 'Approve'}
+                          </Button>
+                        )}
+                        {/* Return button - always show when needs decision */}
+                        <button
+                          onClick={async () => {
+                            setShowViewModal(false);
+                            
+                            // If has approved extension → open modal to edit schedule & team
+                            if (hasApprovedExtension) {
+                              openReturnModal(selectedAuditId);
+                            } else {
+                              // No extension → return directly without modal
+                              await handleDirectReturn(selectedAuditId);
+                            }
+                          }}
+                          disabled={actionLoading === `${selectedAuditId}:approve` || actionLoading === `${selectedAuditId}:return`}
+                          className={`px-4 py-2 ${hasApprovedExtension ? 'bg-orange-700 hover:bg-orange-800 ring-2 ring-orange-300' : 'bg-orange-600 hover:bg-orange-700'} disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm flex items-center gap-2`}
+                          title={hasApprovedExtension ? 'Extension approved - You must Return to edit schedule and team' : `Return report${selectedFindings.size > 0 ? ` and ${selectedFindings.size} finding(s)` : ''}`}
+                        >
+                          {actionLoading === `${selectedAuditId}:return` ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              Returning...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              {hasApprovedExtension ? 'Return (Required)' : 'Return'}
+                              {selectedFindings.size > 0 && (
+                                <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs">
+                                  {selectedFindings.size}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+                
+                {/* Right side - Close */}
                 <button
                   onClick={() => setShowViewModal(false)}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
@@ -2032,51 +2368,180 @@ const AuditorLeadReports = () => {
           document.body
         )}
 
-        {/* Reject Confirmation Modal */}
-        {showRejectModal && rejectAuditId && createPortal(
+        {/* Return Modal with Schedule & Team Editing */}
+        {showReturnModal && returnAuditId && createPortal(
           <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
-            {/* Backdrop */}
             <div
-              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-              onClick={closeRejectModal}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+              onClick={closeReturnModal}
             />
-            
-            {/* Modal */}
-            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
-              <div className="p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Reject Audit Report
-                </h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  Please provide a reason for rejecting this audit report:
-                </p>
-                <textarea
-                  value={rejectNote}
-                  onChange={(e) => setRejectNote(e.target.value)}
-                  placeholder="Enter rejection reason (note)..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
-                  rows={4}
-                />
-                <div className="flex gap-3 justify-end mt-6">
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    onClick={closeRejectModal}
-                    className="rounded-md font-semibold shadow-sm"
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-orange-600 to-orange-700 p-6 border-b border-orange-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold text-white">Return Audit Report</h3>
+                    <p className="text-sm text-orange-100 mt-0.5">Edit schedule (from Evidence Due) and team, then return report</p>
+                  </div>
+                  <button
+                    onClick={closeReturnModal}
+                    className="flex-shrink-0 w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors flex items-center justify-center"
                   >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="md"
-                    onClick={handleReject}
-                    disabled={actionLoading === `${rejectAuditId}:reject`}
-                    isLoading={actionLoading === `${rejectAuditId}:reject`}
-                    className="rounded-md font-semibold shadow-sm"
-                  >
-                    {actionLoading === `${rejectAuditId}:reject` ? 'Rejecting...' : 'Reject'}
-                  </Button>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
+                {/* Return Note */}
+                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm mb-6">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Return Reason <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={returnNote}
+                    onChange={(e) => setReturnNote(e.target.value)}
+                    placeholder="Enter reason for returning this audit report..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
+                    rows={4}
+                  />
+                </div>
+
+                {/* Period To (End Date) */}
+                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm mb-6">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Period To (End Date) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={returnPeriodTo || ''}
+                    onChange={(e) => setReturnPeriodTo(e.target.value)}
+                    min={returnPeriodFrom}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Schedules (from Evidence Due onwards) */}
+                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm mb-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-1 h-6 bg-gradient-to-b from-orange-600 to-orange-700 rounded-full"></div>
+                    <h4 className="text-base font-bold text-gray-800">Schedules (from Evidence Due onwards)</h4>
+                  </div>
+                  <div className="space-y-3">
+                    {returnSchedules.map((schedule, index) => {
+                      const scheduleKey = schedule.scheduleId || `schedule-${index}`;
+                      return (
+                        <div key={scheduleKey} className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                          <div className="mb-3">
+                            <p className="text-sm font-semibold text-gray-700 mb-1">{schedule.milestoneName}</p>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Due Date <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="date"
+                              value={schedule.dueDate}
+                              onChange={(e) => {
+                                const updated = [...returnSchedules];
+                                updated[index] = { ...updated[index], dueDate: e.target.value };
+                                setReturnSchedules(updated);
+                              }}
+                              min={returnPeriodFrom}
+                              max={returnPeriodTo}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {returnSchedules.length === 0 && (
+                      <div className="text-center py-8 text-gray-500 text-sm">No schedules found</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Team Members (Add only, cannot remove) */}
+                <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-1 h-6 bg-gradient-to-b from-orange-600 to-orange-700 rounded-full"></div>
+                    <h4 className="text-base font-bold text-gray-800">Team Members</h4>
+                    <span className="text-xs text-gray-500">(Add only, cannot remove existing members)</span>
+                  </div>
+                  {returnAllUsers.length === 0 ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <p className="text-sm text-yellow-700">No users available</p>
+                    </div>
+                  ) : (
+                    <MultiSelect
+                      options={returnAllUsers
+                        .filter((u: any) => {
+                          const role = String(u.roleName || u.role || '').toLowerCase();
+                          return role === 'auditor' || role === 'leadauditor';
+                        })
+                        .map((u: any) => ({
+                          value: String(u.userId || u.id || u.$id),
+                          label: u.fullName || u.name || 'Unknown',
+                        }))}
+                      value={returnSelectedAuditorIds}
+                      onChange={(next) => {
+                        // Ensure all initial auditor IDs are still included (cannot remove)
+                        const nextSet = new Set(next);
+                        returnInitialAuditorIds.forEach(id => nextSet.add(id));
+                        setReturnSelectedAuditorIds(Array.from(nextSet));
+                      }}
+                      placeholder="Select auditor(s) to add..."
+                      className="w-full"
+                    />
+                  )}
+                  {returnInitialAuditorIds.size > 0 && (
+                    <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        <strong>Existing members:</strong> {Array.from(returnInitialAuditorIds).map(id => {
+                          const user = returnAllUsers.find((u: any) => String(u.userId || u.id || u.$id) === id);
+                          return user?.fullName || 'Unknown';
+                        }).join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-white">
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={closeReturnModal}
+                  className="rounded-md font-semibold shadow-sm"
+                >
+                  Cancel
+                </Button>
+                <button
+                  onClick={handleReturn}
+                  disabled={returnLoading || !returnNote.trim()}
+                  className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm flex items-center gap-2"
+                >
+                  {returnLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Returning...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Return Report
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>,
@@ -2193,12 +2658,6 @@ const AuditorLeadReports = () => {
               isOpen={showFindingModal}
               onClose={() => setShowFindingModal(false)}
               finding={selectedFinding}
-              onReturn={(findingId) => {
-                setReturningFindingId(findingId);
-                setReturnFindingNote('');
-                setShowReturnFindingModal(true);
-              }}
-              showReturnAction={true}
             />
           );
         })()}

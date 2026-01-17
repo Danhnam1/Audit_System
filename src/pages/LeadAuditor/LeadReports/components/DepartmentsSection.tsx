@@ -15,6 +15,8 @@ interface Props {
   findingsSeverity: string;
   setFindingsSeverity: (v: string) => void;
   onViewAttachments?: (attachments: any[], findingTitle: string) => void;
+  selectedFindings?: Set<string>;
+  onSelectFinding?: (findingId: string, isSelected: boolean) => void;
 }
 
 const DepartmentsSection: React.FC<Props> = ({
@@ -27,7 +29,9 @@ const DepartmentsSection: React.FC<Props> = ({
   setFindingsSearch,
   findingsSeverity,
   setFindingsSeverity,
-  onViewAttachments
+  onViewAttachments,
+  selectedFindings = new Set(),
+  onSelectFinding
 }) => {
   const filteredFindings = findings.filter((f: any) => {
     const sev = String(f?.severity || '').toLowerCase();
@@ -98,6 +102,24 @@ const DepartmentsSection: React.FC<Props> = ({
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase w-12">
+                    {onSelectFinding && (
+                      <input
+                        type="checkbox"
+                        checked={filteredFindings.length > 0 && filteredFindings.every((f: any) => {
+                          const fid = String(f?.findingId || '');
+                          return selectedFindings.has(fid);
+                        })}
+                        onChange={(e) => {
+                          filteredFindings.forEach((f: any) => {
+                            const fid = String(f?.findingId || '');
+                            onSelectFinding?.(fid, e.target.checked);
+                          });
+                        }}
+                        className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                      />
+                    )}
+                  </th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Title</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Severity</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Created</th>
@@ -112,11 +134,22 @@ const DepartmentsSection: React.FC<Props> = ({
                   const created = f?.createdAt ? new Date(f.createdAt).toLocaleDateString() : '';
                   const deadline = f?.deadline ? new Date(f.deadline).toLocaleDateString() : '';
                   const isReturned = String(f?.status || '').toLowerCase() === 'return';
+                  const isSelected = selectedFindings.has(fid);
                   return (
                     <tr 
                       key={fid} 
-                      className={`hover:bg-gray-50 ${isReturned ? 'border-l-4 border-orange-500' : ''}`}
+                      className={`hover:bg-gray-50 ${isReturned ? 'border-l-4 border-orange-500' : ''} ${isSelected ? 'bg-orange-50' : ''}`}
                     >
+                      <td className="px-4 py-2 text-sm">
+                        {onSelectFinding && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => onSelectFinding(fid, e.target.checked)}
+                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+                          />
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-sm text-gray-900 font-medium">{f?.title || '—'}</td>
                       <td className="px-4 py-2 text-sm">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getSeverityColor(f?.severity || '')}`}>{f?.severity || '—'}</span>
@@ -155,7 +188,7 @@ const DepartmentsSection: React.FC<Props> = ({
                   );
                 })}
                 {filteredFindings.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-6 text-sm text-gray-500">No findings match current filters</td></tr>
+                  <tr><td colSpan={onSelectFinding ? 7 : 6} className="px-4 py-6 text-sm text-gray-500">No findings match current filters</td></tr>
                 )}
               </tbody>
             </table>

@@ -18,13 +18,9 @@ interface Props {
   setStatusFilter: (v: 'all' | 'submitted' | 'approved') => void;
   reportSearch: string;
   setReportSearch: (v: string) => void;
-  needsDecision: (status: string) => boolean;
   onView: (auditId: string) => void;
-  onApprove: (auditId: string) => void;
-  onReject: (auditId: string) => void;
   onEditScheduleAndTeam?: (auditId: string) => void;
   editedScheduleTeamOnce?: Set<string>;
-  actionLoading: string;
   actionMsg: string | null;
   getStatusColor: (status: string) => string;
 }
@@ -35,13 +31,9 @@ const AuditReportsTable: React.FC<Props> = ({
   setStatusFilter,
   reportSearch,
   setReportSearch,
-  needsDecision,
   onView,
-  onApprove,
-  onReject,
   onEditScheduleAndTeam,
   editedScheduleTeamOnce,
-  actionLoading,
   actionMsg,
   getStatusColor
 }) => {
@@ -165,40 +157,8 @@ const AuditReportsTable: React.FC<Props> = ({
                           return null;
                         }
                         
-                        return needsDecision(r.status) ? (
-                          <>
-                            <Button
-                              variant="success"
-                              size="sm"
-                              onClick={() => onApprove(r.auditId)}
-                              disabled={actionLoading === `${r.auditId}:approve` || actionLoading === `${r.auditId}:reject`}
-                              isLoading={actionLoading === `${r.auditId}:approve`}
-                              className="text-xs rounded-md font-semibold shadow-sm"
-                              leftIcon={
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              }
-                            >
-                              {actionLoading === `${r.auditId}:approve` ? 'Approving...' : 'Approve'}
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => onReject(r.auditId)}
-                              disabled={actionLoading === `${r.auditId}:approve` || actionLoading === `${r.auditId}:reject`}
-                              isLoading={actionLoading === `${r.auditId}:reject`}
-                              className="text-xs rounded-md font-semibold shadow-sm"
-                              leftIcon={
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              }
-                            >
-                              {actionLoading === `${r.auditId}:reject` ? 'Rejecting...' : 'Reject'}
-                            </Button>
-                          </>
-                        ) : null;
+                        // Approve and Return actions are now only available in Report Details modal footer
+                        return null;
                       })()}
                     </div>
                   </td>
