@@ -3,6 +3,7 @@ import { getActionById, getActionsByRootCause, type Action } from '../../api/act
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById, type AdminUserDto } from '../../api/adminUsers';
 import { getRootCauseById, type RootCause } from '../../api/rootCauses';
+import { getStatusColor } from '../../constants/statusColors';
 
 interface CAPAOwnerActionDetailModalProps {
   isOpen: boolean;
@@ -123,31 +124,22 @@ const CAPAOwnerActionDetailModal = ({
   // Get status badge for attachment
   const getAttachmentStatusBadge = (status?: string) => {
     if (!status) return null;
-    const statusLower = status.toLowerCase();
     
-    if (statusLower === 'rejected') {
-      return (
-        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded border border-red-300 flex-shrink-0">
-          Rejected
-        </span>
-      );
-    }
-    if (statusLower === 'approved') {
-      return (
-        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-300 flex-shrink-0">
-          Approved
-        </span>
-      );
-    }
-    if (statusLower === 'open') {
-      return (
-        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded border border-blue-300 flex-shrink-0">
-          Open
-        </span>
-      );
-    }
-    // Default: show status as-is
     return (
+      <span className={`px-2 py-0.5 text-xs font-semibold rounded border flex-shrink-0 ${getStatusColor(status)}`}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+    );
+  };
+
+  // Old implementation with hardcoded colors:
+  // const getAttachmentStatusBadge = (status?: string) => {
+  //   if (!status) return null;
+  //   const statusLower = status.toLowerCase();
+  //   if (statusLower === 'rejected') return (<span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded border border-red-300 flex-shrink-0">Rejected</span>);
+  //   if (statusLower === 'approved') return (<span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-300 flex-shrink-0">Approved</span>);
+  //   if (statusLower === 'open') return (<span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded border border-blue-300 flex-shrink-0">Open</span>);
+  //   return (
       <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded border border-gray-300 flex-shrink-0">
         {status}
       </span>
@@ -365,15 +357,7 @@ const CAPAOwnerActionDetailModal = ({
                               ) : (
                                 <div className="space-y-3">
                                   {proposals.map((rcAction, idx) => {
-                                    const statusLower = (rcAction.status || '').toLowerCase();
-                                    const statusColor =
-                                      statusLower === 'completed' || statusLower === 'approved'
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        : statusLower === 'verified'
-                                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                        : statusLower === 'inprogress' || statusLower === 'in progress'
-                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                        : 'bg-gray-50 text-gray-700 border-gray-200';
+                                    const statusColor = getStatusColor(rcAction.status || '');
                                     return (
                                       <div
                                         key={rcAction.actionId || idx}

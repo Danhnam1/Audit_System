@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { updateActionStatusInProgress, updateActionStatusReviewed, updateActionProgressPercent, getActionById } from '../../api/actions';
 import { uploadAttachment, getAttachments, type Attachment } from '../../api/attachments';
+import { toast } from 'react-toastify';
 
 interface StartActionModalProps {
   isOpen: boolean;
@@ -8,6 +9,9 @@ interface StartActionModalProps {
   onSuccess: () => void;
   actionId: string;
 }
+
+// Maximum file size: 10MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB in bytes
 
 const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionModalProps) => {
   const [currentProgress, setCurrentProgress] = useState<number>(0); // Current saved progress
@@ -75,7 +79,32 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
-      setFiles((prev) => [...prev, ...newFiles]);
+      const validFiles: File[] = [];
+      const invalidFiles: string[] = [];
+      
+      newFiles.forEach(file => {
+        if (file.size > MAX_FILE_SIZE) {
+          invalidFiles.push(`${file.name} (${formatFileSize(file.size)})`);
+        } else {
+          validFiles.push(file);
+        }
+      });
+      
+      // Show error for files that exceed size limit
+      if (invalidFiles.length > 0) {
+        toast.error(
+          `The following file(s) exceed 10MB limit and were not added:\n${invalidFiles.join('\n')}`,
+          { autoClose: 5000 }
+        );
+      }
+      
+      // Add valid files
+      if (validFiles.length > 0) {
+        setFiles((prev) => [...prev, ...validFiles]);
+        if (invalidFiles.length === 0) {
+          toast.success(`${validFiles.length} file(s) added successfully`);
+        }
+      }
     }
   };
 
@@ -308,6 +337,9 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
               <label className="text-sm font-medium text-gray-700 mb-2 block">
                 Upload New Evidence {files.length > 0 && `(${files.length})`}
               </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Maximum file size: 10MB per file
+              </p>
               
               {/* Hidden file input */}
               <input

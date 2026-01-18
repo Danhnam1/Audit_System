@@ -3,6 +3,7 @@ import { useAuth } from '../../../contexts';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuditFindings } from '../../../hooks/useAuditFindings';
+import { getPriorityColor } from '../../../constants/statusColors';
 import type { ChecklistItem, ResultType } from './Components/types';
 import { getFindingSeverities, type FindingSeverity } from '../../../api/findingSeverity';
 import { getRootCauses, createRootCause, type RootCause } from '../../../api/rootCauses';
@@ -304,14 +305,18 @@ const AuditExecutionDetail = () => {
     }
   };
 
-  const getCriticalityColor = (criticality: string) => {
-    const map: Record<string, string> = {
-      'High': 'bg-red-100 text-red-800',
-      'Medium': 'bg-yellow-100 text-yellow-800',
-      'Low': 'bg-green-100 text-green-800',
-    };
-    return map[criticality] || 'bg-gray-100 text-gray-800';
-  };
+  // Using centralized getPriorityColor from statusColors.ts
+  // (Criticality is same as Priority: High/Medium/Low)
+  // Old local implementation:
+  // const getCriticalityColor = (criticality: string) => {
+  //   const map: Record<string, string> = {
+  //     'High': 'bg-red-100 text-red-800',
+  //     'Medium': 'bg-yellow-100 text-yellow-800',
+  //     'Low': 'bg-green-100 text-green-800',
+  //   };
+  //   return map[criticality] || 'bg-gray-100 text-gray-800';
+  // };
+  const getCriticalityColor = getPriorityColor;
 
 
   if (loading && checklist.length === 0) {

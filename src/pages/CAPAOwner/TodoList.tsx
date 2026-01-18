@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getPriorityColor } from '../../constants/statusColors';
 import { MainLayout } from '../../layouts';
 import { useNavigate } from 'react-router-dom';
 
@@ -84,14 +85,8 @@ const TodoList = () => {
     setNewTodo({ title: '', description: '', dueDate: '', priority: 'Medium' });
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'High': return 'bg-red-100 text-red-800';
-      case 'Medium': return 'bg-yellow-100 text-yellow-800';
-      case 'Low': return 'bg-green-100 text-green-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
+  // Using centralized getPriorityColor from statusColors.ts
+  // Old local implementation removed
 
   const pendingTodos = todos.filter(todo => !todo.completed);
   const completedTodos = todos.filter(todo => todo.completed);

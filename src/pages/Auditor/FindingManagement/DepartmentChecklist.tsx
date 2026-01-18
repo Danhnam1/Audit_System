@@ -9,7 +9,7 @@ import { getChecklistItemsByDepartment, createAuditChecklistItem,
    type UpdateAuditChecklistItemDto,
     getCompliantIdByAuditItemId } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
-import { getFindings, getMyFindings, getFindingById, updateFinding, type Finding} from '../../../api/findings';
+import { getFindings, getMyFindings, getFindingsByDepartment, getFindingById, updateFinding, type Finding} from '../../../api/findings';
 import { getFindingSeverities } from '../../../api/findingSeverity';
 import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
@@ -28,7 +28,7 @@ import ActionDetailsModal from '../../LeadAuditor/auditplanning/components/Actio
 import { getAccessGrants, verifyCode} from '../../../api/accessGrant';
 import useAuthStore, { useUserId } from '../../../store/useAuthStore';
 import apiClient from '../../../api/client';
-// import { getStatusColor } from '../../../constants';
+import { getStatusColor as getStatusColorFromConstants, getSeverityColor } from '../../../constants/statusColors';
 import { getRootCausesByFinding, updateRootCause, createRootCause, deleteRootCause } from '../../../api/rootCauses';
 import { getAttachments, uploadAttachment, deleteAttachment, type Attachment } from '../../../api/attachments';
 import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
@@ -72,7 +72,7 @@ const DepartmentChecklist = () => {
   const [showCompliantModal, setShowCompliantModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
-  const [findingsMap, setFindingsMap] = useState<Record<string, { findingId: string; status?: string }>>({}); // auditItemId -> { findingId, status }
+  const [findingsMap, setFindingsMap] = useState<Record<string, { findingId: string; status?: string; createdDate?: string }>>({}); // auditItemId -> { findingId, status, createdDate }
   const [updatingItemId, setUpdatingItemId] = useState<string | null>(null);
   const [itemToMarkCompliant, setItemToMarkCompliant] = useState<ChecklistItem | null>(null);
   const [showCompliantDetailsViewer, setShowCompliantDetailsViewer] = useState(false);
@@ -128,7 +128,7 @@ const DepartmentChecklist = () => {
   const [deletedAttachmentIds, setDeletedAttachmentIds] = useState<string[]>([]);
 
   const getStatusBadgeColor = (status: string) => {
-    return getStatusColor(status) || 'bg-gray-100 text-gray-700';
+    return getStatusColorFromConstants(status) || 'bg-gray-100 text-gray-700';
   };
   // Tab state
   const [activeTab, setActiveTab] = useState<'checklist' | 'action' | 'disagreed'>('checklist');
@@ -702,6 +702,7 @@ const DepartmentChecklist = () => {
       // ===== STEP 3: Update finding with all info (including valid rootCauseId) =====
       console.log('===== STEP 3: Updating finding =====');
       // Backend API schema - ONLY include these fields:
+      const isReturned = editingFinding.status?.toLowerCase() === 'return' || editingFinding.status?.toLowerCase() === 'returned';
       const findingPayload: any = {
         title: editFormData.title.trim(),
         description: editFormData.description.trim(),
@@ -710,7 +711,7 @@ const DepartmentChecklist = () => {
         status: editingFinding.status || 'Open',
         deadline: editFormData.deadline ? new Date(editFormData.deadline).toISOString() : null,
         auditItemId: editingFinding.auditItemId,
-        externalAuditorName: editFormData.externalAuditorName?.trim() || '',
+        externalAuditorName: isReturned ? '' : (editFormData.externalAuditorName?.trim() || ''),
         source: '', // Always empty string as per user requirement
       };
 
@@ -844,15 +845,16 @@ const DepartmentChecklist = () => {
       // Reload findings to update the map
       const reloadFindings = async () => {
         try {
-          let allMyFindings = await getMyFindings();
+          // Load all findings for this department (collaborative mode)
+          let allMyFindings: Finding[] = [];
           
-          // Fallback to getFindings if empty
-          if (allMyFindings.length === 0) {
-            const allFindings = await getFindings();
-            allMyFindings = unwrap(allFindings);
+          if (deptId) {
+            allMyFindings = await getFindingsByDepartment(parseInt(deptId, 10));
+          } else {
+            allMyFindings = await getFindings();
           }
           
-          // Filter by current audit and department
+          // Filter by current audit
           const relevantFindings = allMyFindings.filter((finding: any) => {
             const findingAuditId = finding.audit?.auditId || finding.auditId || '';
             const findingDeptId = finding.deptId || null;
@@ -863,13 +865,39 @@ const DepartmentChecklist = () => {
             return auditMatch && deptMatch;
           });
           
-          const map: Record<string, { findingId: string; status?: string }> = {};
+          const map: Record<string, { findingId: string; status?: string; createdDate?: string }> = {};
           relevantFindings.forEach((finding: any) => {
             if (finding.auditItemId && finding.findingId) {
-              map[finding.auditItemId] = {
-                findingId: finding.findingId,
-                status: finding.status
-              };
+              const existingFinding = map[finding.auditItemId];
+              
+              if (!existingFinding) {
+                map[finding.auditItemId] = {
+                  findingId: finding.findingId,
+                  status: finding.status,
+                  createdDate: finding.createdDate
+                };
+              } else {
+                const existingIsRejected = existingFinding.status?.toLowerCase() === 'witnessdisagreed';
+                const currentIsRejected = finding.status?.toLowerCase() === 'witnessdisagreed';
+                
+                if (existingIsRejected && !currentIsRejected) {
+                  map[finding.auditItemId] = {
+                    findingId: finding.findingId,
+                    status: finding.status,
+                    createdDate: finding.createdDate
+                  };
+                } else if (!existingIsRejected && !currentIsRejected) {
+                  const existingDate = new Date(existingFinding.createdDate || 0).getTime();
+                  const currentDate = new Date(finding.createdDate || 0).getTime();
+                  if (currentDate > existingDate) {
+                    map[finding.auditItemId] = {
+                      findingId: finding.findingId,
+                      status: finding.status,
+                      createdDate: finding.createdDate
+                    };
+                  }
+                }
+              }
             }
           });
           setFindingsMap(map);
@@ -1261,16 +1289,16 @@ const DepartmentChecklist = () => {
         const deptIdNum = parseInt(deptId, 10);
 
         // Load findings map FIRST to ensure status colors are available
-        // Try getMyFindings first, fallback to getFindings if empty
-        let allMyFindings = await getMyFindings();
+        // Load ALL findings for this department (collaborative mode)
+        let allMyFindings: Finding[] = [];
         
-        // If getMyFindings returns empty, try getFindings (all findings)
-        if (allMyFindings.length === 0) {
-          const allFindings = await getFindings();
-          allMyFindings = unwrap(allFindings);
+        if (deptId) {
+          allMyFindings = await getFindingsByDepartment(deptIdNum);
+        } else {
+          allMyFindings = await getFindings();
         }
         
-        // Filter by current audit and department
+        // Filter by current audit
         const relevantFindings = allMyFindings.filter((finding: any) => {
           const findingAuditId = finding.audit?.auditId || finding.auditId || '';
           const findingDeptId = finding.deptId || null;
@@ -1282,13 +1310,56 @@ const DepartmentChecklist = () => {
         });
         
         // Create map with filtered findings
-        const map: Record<string, { findingId: string; status?: string }> = {};
+        // Prioritize non-rejected findings when multiple findings exist for same auditItemId
+        const map: Record<string, { findingId: string; status?: string; createdDate?: string }> = {};
         relevantFindings.forEach((finding: any) => {
           if (finding.auditItemId && finding.findingId) {
-            map[finding.auditItemId] = {
-              findingId: finding.findingId,
-              status: finding.status
-            };
+            const existingFinding = map[finding.auditItemId];
+            
+            // If no existing finding, add this one
+            if (!existingFinding) {
+              map[finding.auditItemId] = {
+                findingId: finding.findingId,
+                status: finding.status,
+                createdDate: finding.createdDate
+              };
+            } else {
+              // If existing finding is rejected but this one is not, replace it
+              const existingIsRejected = existingFinding.status?.toLowerCase() === 'witnessdisagreed';
+              const currentIsRejected = finding.status?.toLowerCase() === 'witnessdisagreed';
+              
+              if (existingIsRejected && !currentIsRejected) {
+                map[finding.auditItemId] = {
+                  findingId: finding.findingId,
+                  status: finding.status,
+                  createdDate: finding.createdDate
+                };
+              }
+              // If both are not rejected, keep the newer one (by createdDate)
+              else if (!existingIsRejected && !currentIsRejected) {
+                const existingDate = new Date(existingFinding.createdDate || 0).getTime();
+                const currentDate = new Date(finding.createdDate || 0).getTime();
+                if (currentDate > existingDate) {
+                  map[finding.auditItemId] = {
+                    findingId: finding.findingId,
+                    status: finding.status,
+                    createdDate: finding.createdDate
+                  };
+                }
+              }
+              // If both are rejected, keep the newer one
+              else if (existingIsRejected && currentIsRejected) {
+                const existingDate = new Date(existingFinding.createdDate || 0).getTime();
+                const currentDate = new Date(finding.createdDate || 0).getTime();
+                if (currentDate > existingDate) {
+                  map[finding.auditItemId] = {
+                    findingId: finding.findingId,
+                    status: finding.status,
+                    createdDate: finding.createdDate
+                  };
+                }
+              }
+            }
           }
         });
         
@@ -1403,10 +1474,71 @@ const DepartmentChecklist = () => {
       // Small delay to ensure backend has updated
       await new Promise(resolve => setTimeout(resolve, 1000));
       
+      // Reload findings map to get latest status and findingIds (important after witness reject)
+      if (deptId) {
+        try {
+          const deptIdNum = parseInt(deptId, 10);
+          let allMyFindings = await getFindingsByDepartment(deptIdNum);
+          
+          // Filter by current audit
+          const relevantFindings = allMyFindings.filter((finding: any) => {
+            const findingAuditId = finding.audit?.auditId || finding.auditId || '';
+            const findingDeptId = finding.deptId || null;
+            
+            const auditMatch = !auditId || String(findingAuditId) === String(auditId);
+            const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === deptIdNum);
+            
+            return auditMatch && deptMatch;
+          });
+          
+          const map: Record<string, { findingId: string; status?: string; createdDate?: string }> = {};
+          relevantFindings.forEach((finding: any) => {
+            if (finding.auditItemId && finding.findingId) {
+              const existingFinding = map[finding.auditItemId];
+              
+              if (!existingFinding) {
+                map[finding.auditItemId] = {
+                  findingId: finding.findingId,
+                  status: finding.status,
+                  createdDate: finding.createdDate
+                };
+              } else {
+                const existingIsRejected = existingFinding.status?.toLowerCase() === 'witnessdisagreed';
+                const currentIsRejected = finding.status?.toLowerCase() === 'witnessdisagreed';
+                
+                if (existingIsRejected && !currentIsRejected) {
+                  map[finding.auditItemId] = {
+                    findingId: finding.findingId,
+                    status: finding.status,
+                    createdDate: finding.createdDate
+                  };
+                } else if (!existingIsRejected && !currentIsRejected) {
+                  const existingDate = new Date(existingFinding.createdDate || 0).getTime();
+                  const currentDate = new Date(finding.createdDate || 0).getTime();
+                  if (currentDate > existingDate) {
+                    map[finding.auditItemId] = {
+                      findingId: finding.findingId,
+                      status: finding.status,
+                      createdDate: finding.createdDate
+                    };
+                  }
+                }
+              }
+            }
+          });
+          setFindingsMap(map);
+        } catch (err) {
+          console.error('Error reloading findings map:', err);
+        }
+      }
+      
       // Reload root cause status if we have findings
       if (myFindings.length > 0) {
         await loadRootCauseStatus();
       }
+      
+      // Reload disagreed findings list to update badge
+      await loadDisagreedFindings();
     };
 
     window.addEventListener('rootCauseUpdated', handleRootCauseUpdated);
@@ -1415,11 +1547,13 @@ const DepartmentChecklist = () => {
       window.removeEventListener('rootCauseUpdated', handleRootCauseUpdated);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myFindings]);
+  }, [myFindings, deptId, auditId]);
 
   const loadMyFindings = async () => {
     setLoadingFindings(true);
     try {
+      // Load only MY findings (findings created by current user)
+      // Tab "My Findings" shows only user's own findings
       const allFindings = await getMyFindings();
 
       // Filter findings by current audit and department, exclude WitnessDisagreed
@@ -1484,6 +1618,7 @@ const DepartmentChecklist = () => {
   const loadDisagreedFindings = async () => {
     setLoadingDisagreedFindings(true);
     try {
+      // Load only MY findings (findings created by current user)
       const allFindings = await getMyFindings();
 
       // Filter findings by current audit and department, only WitnessDisagreed
@@ -1897,6 +2032,14 @@ const DepartmentChecklist = () => {
                       const findingData = findingsMap[item.auditItemId];
                       const findingId = findingData?.findingId;
                       
+                      // Check if finding was witness disagreed
+                      const isWitnessDisagreed = findingData?.status?.toLowerCase() === 'witnessdisagreed';
+                      
+                      // Get the disagreed finding from the disagreedFindings list for details
+                      const disagreedFinding = isWitnessDisagreed 
+                        ? disagreedFindings.find(f => f.auditItemId === item.auditItemId)
+                        : null;
+                      
                       // Determine which status to use for coloring
                       // Only use finding status if it's a "meaningful" status that should affect color
                       // Otherwise use item status
@@ -1927,9 +2070,26 @@ const DepartmentChecklist = () => {
                             <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 flex items-center justify-center bg-primary-100 text-primary-700 rounded-lg font-semibold text-xs sm:text-sm md:text-base">
                               {item.order || index + 1}
                             </div>
-                            <p className="text-xs sm:text-sm md:text-base text-gray-900 flex-1 min-w-0 break-words">
-                              {item.questionTextSnapshot}
-                            </p>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs sm:text-sm md:text-base text-gray-900 break-words">
+                                {item.questionTextSnapshot}
+                              </p>
+                              {isWitnessDisagreed && disagreedFinding && (
+                                <div className="mt-2 flex items-start gap-2">
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-700 border border-red-300 whitespace-nowrap flex-shrink-0">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                    Witness Rejected
+                                  </span>
+                                  {disagreedFinding.witnessDisagreementReason && (
+                                    <span className="text-[10px] text-red-600 italic line-clamp-1 flex-1">
+                                      "{disagreedFinding.witnessDisagreementReason}"
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center justify-end sm:justify-start gap-2 sm:gap-3 flex-shrink-0">
                             {/* Edit and Delete buttons for External audit type - Only show if no finding and not compliant */}
@@ -2234,12 +2394,7 @@ const DepartmentChecklist = () => {
                           
 
                             <div className="flex items-center gap-6 mt-2">
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
-                                  ? 'bg-red-100 text-red-700'
-                                  : finding.severity?.toLowerCase() === 'medium' || finding.severity?.toLowerCase() === 'normal'
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-green-100 text-green-700'
-                                }`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(finding.severity || '')}`}>
                                 {finding.severity || 'N/A'}
                               </span>
                               <p className={`text-xs  sm:text-sm line-clamp-2 font-medium ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
@@ -2320,14 +2475,16 @@ const DepartmentChecklist = () => {
                                 {finding.status || 'WitnessDisagreed'}
                               </span>
                             </div>
+                            {finding.witnessDisagreementReason && (
+                              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <p className="text-xs font-semibold text-red-800 mb-1">Rejection Reason:</p>
+                                <p className="text-xs text-red-700 leading-relaxed whitespace-pre-wrap break-words line-clamp-2">
+                                  {finding.witnessDisagreementReason}
+                                </p>
+                              </div>
+                            )}
                             <div className="flex items-center gap-6 mt-2 flex-wrap">
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
-                                  ? 'bg-red-100 text-red-700'
-                                  : finding.severity?.toLowerCase() === 'medium' || finding.severity?.toLowerCase() === 'normal'
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-green-100 text-green-700'
-                              }`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(finding.severity || '')}`}>
                                 {finding.severity || 'N/A'}
                               </span>
                             </div>
@@ -2480,15 +2637,16 @@ const DepartmentChecklist = () => {
             // Reload findings to update the map
             const reloadFindings = async () => {
               try {
-                let allMyFindings = await getMyFindings();
+                // Load all findings for this department (collaborative mode)
+                let allMyFindings: Finding[] = [];
                 
-                // Fallback to getFindings if empty
-                if (allMyFindings.length === 0) {
-                  const allFindings = await getFindings();
-                  allMyFindings = unwrap(allFindings);
+                if (deptId) {
+                  allMyFindings = await getFindingsByDepartment(parseInt(deptId, 10));
+                } else {
+                  allMyFindings = await getFindings();
                 }
                 
-                // Filter by current audit and department
+                // Filter by current audit
                 const relevantFindings = allMyFindings.filter((finding: any) => {
                   const findingAuditId = finding.audit?.auditId || finding.auditId || '';
                   const findingDeptId = finding.deptId || null;
@@ -2499,13 +2657,39 @@ const DepartmentChecklist = () => {
                   return auditMatch && deptMatch;
                 });
                 
-                const map: Record<string, { findingId: string; status?: string }> = {};
+                const map: Record<string, { findingId: string; status?: string; createdDate?: string }> = {};
                 relevantFindings.forEach((finding: any) => {
                   if (finding.auditItemId && finding.findingId) {
-                    map[finding.auditItemId] = {
-                      findingId: finding.findingId,
-                      status: finding.status
-                    };
+                    const existingFinding = map[finding.auditItemId];
+                    
+                    if (!existingFinding) {
+                      map[finding.auditItemId] = {
+                        findingId: finding.findingId,
+                        status: finding.status,
+                        createdDate: finding.createdDate
+                      };
+                    } else {
+                      const existingIsRejected = existingFinding.status?.toLowerCase() === 'witnessdisagreed';
+                      const currentIsRejected = finding.status?.toLowerCase() === 'witnessdisagreed';
+                      
+                      if (existingIsRejected && !currentIsRejected) {
+                        map[finding.auditItemId] = {
+                          findingId: finding.findingId,
+                          status: finding.status,
+                          createdDate: finding.createdDate
+                        };
+                      } else if (!existingIsRejected && !currentIsRejected) {
+                        const existingDate = new Date(existingFinding.createdDate || 0).getTime();
+                        const currentDate = new Date(finding.createdDate || 0).getTime();
+                        if (currentDate > existingDate) {
+                          map[finding.auditItemId] = {
+                            findingId: finding.findingId,
+                            status: finding.status,
+                            createdDate: finding.createdDate
+                          };
+                        }
+                      }
+                    }
                   }
                 });
                 setFindingsMap(map);
@@ -2929,19 +3113,21 @@ const DepartmentChecklist = () => {
                   />
                 </div>
 
-                {/* External Auditor Name */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    External Auditor Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={editFormData.externalAuditorName}
-                    onChange={(e) => setEditFormData(prev => ({ ...prev, externalAuditorName: e.target.value }))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    placeholder="Enter external auditor name"
-                  />
-                </div>
+                {/* External Auditor Name - Hidden for Returned status */}
+                {editingFinding?.status?.toLowerCase() !== 'return' && editingFinding?.status?.toLowerCase() !== 'returned' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      External Auditor Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editFormData.externalAuditorName}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, externalAuditorName: e.target.value }))}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      placeholder="Enter external auditor name"
+                    />
+                  </div>
+                )}
 
                 {/* Root Causes & Actions */}
                 <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">

@@ -6,6 +6,9 @@ import { getDepartmentById } from '../../api/departments';
 import { getSeverityColor } from '../../constants/statusColors';
 import { toast } from 'react-toastify';
 import { getUserFriendlyErrorMessage } from '../../utils/errorMessages';
+import { getRootCauseLogs } from '../../api/rootCauses';
+import { getActionsByRootCause, type Action } from '../../api/actions';
+import { apiClient } from '../../hooks/axios';
 
 interface WitnessedFindingDetailModalProps {
   isOpen: boolean;
@@ -24,6 +27,10 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
   const [createdByName, setCreatedByName] = useState<string>('');
   const [descriptionHeight, setDescriptionHeight] = useState<number>(120);
   
+  // Root causes and actions state
+  const [rootCauses, setRootCauses] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'details' | 'rootcauses'>('details');
+  
   // Rejection modal state
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -31,8 +38,12 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
 
   useEffect(() => {
     if (isOpen && findingId) {
+      console.log('[WitnessedFindingDetailModal] 🚀 Modal opened with findingId:', findingId);
       loadFinding();
       loadAttachments();
+      loadRootCauses();
+    } else {
+      console.log('[WitnessedFindingDetailModal] ⏸️ Modal closed or no findingId');
     }
   }, [isOpen, findingId]);
 
@@ -110,6 +121,87 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
       console.error('Error loading attachments:', err);
     } finally {
       setLoadingAttachments(false);
+    }
+  };
+
+  const loadRootCauses = async () => {
+    console.log('[WitnessedFindingDetailModal] 🔍 Loading root causes for finding:', findingId);
+    try {
+      const res = await apiClient.get(`/RootCauses/by-finding/${findingId}?_t=${Date.now()}`);
+      console.log('[WitnessedFindingDetailModal] 📦 API Response:', res);
+      
+      // API client returns data directly (not in res.data)
+      const responseData = res.data || res;
+      console.log('[WitnessedFindingDetailModal] 📦 Response data:', responseData);
+      
+      // Try multiple ways to extract the array
+      let rootCausesList: any[] = [];
+      try {
+        if (Array.isArray(responseData)) {
+          console.log('[WitnessedFindingDetailModal] 🔍 Format: Array');
+          rootCausesList = responseData;
+        } else if (responseData?.$values && Array.isArray(responseData.$values)) {
+          console.log('[WitnessedFindingDetailModal] 🔍 Format: $values');
+          rootCausesList = responseData.$values;
+        } else if (responseData?.data && Array.isArray(responseData.data)) {
+          console.log('[WitnessedFindingDetailModal] 🔍 Format: data');
+          rootCausesList = responseData.data;
+        } else if (responseData?.value && Array.isArray(responseData.value)) {
+          console.log('[WitnessedFindingDetailModal] 🔍 Format: value');
+          rootCausesList = responseData.value;
+        } else {
+          console.warn('[WitnessedFindingDetailModal] ⚠️ Unknown response format:', responseData);
+        }
+      } catch (parseErr) {
+        console.error('[WitnessedFindingDetailModal] ❌ Error parsing response:', parseErr);
+      }
+      
+      console.log('[WitnessedFindingDetailModal] 📋 Root causes list:', rootCausesList);
+      console.log('[WitnessedFindingDetailModal] 📊 Root causes count:', rootCausesList.length);
+      
+      if (!Array.isArray(rootCausesList) || rootCausesList.length === 0) {
+        console.log('[WitnessedFindingDetailModal] ⚠️ No root causes found for this finding');
+        setRootCauses([]);
+        return;
+      }
+      
+      console.log('[WitnessedFindingDetailModal] 🔄 Starting to process root causes...');
+      
+      // Fetch history and actions for each root cause
+      const rootCausesWithHistory = await Promise.all(
+        rootCausesList.map(async (rc: any, index: number) => {
+          console.log(`[WitnessedFindingDetailModal] 🔄 Processing root cause ${index + 1}/${rootCausesList.length}:`, rc);
+          try {
+            console.log(`[WitnessedFindingDetailModal] 📜 Fetching logs for ${rc.rootCauseId}...`);
+            const logs = await getRootCauseLogs(rc.rootCauseId);
+            console.log(`[WitnessedFindingDetailModal] ✅ Logs loaded for ${rc.rootCauseId}:`, logs.length);
+            
+            // Fetch actions (remediation proposals) for this root cause
+            let actions: Action[] = [];
+            try {
+              console.log(`[WitnessedFindingDetailModal] 🎯 Fetching actions for ${rc.rootCauseId}...`);
+              actions = await getActionsByRootCause(rc.rootCauseId);
+              console.log(`[WitnessedFindingDetailModal] ✅ Actions loaded for ${rc.rootCauseId}:`, actions.length);
+            } catch (actionErr) {
+              console.error('[WitnessedFindingDetailModal] ❌ Error loading actions:', rc.rootCauseId, actionErr);
+            }
+            return { ...rc, history: logs, actions: actions };
+          } catch (err) {
+            console.error('[WitnessedFindingDetailModal] ❌ Error loading history for root cause:', rc.rootCauseId, err);
+            return { ...rc, history: [], actions: [] };
+          }
+        })
+      );
+      
+      console.log('[WitnessedFindingDetailModal] 🎉 Final root causes with history:', rootCausesWithHistory);
+      console.log('[WitnessedFindingDetailModal] 💾 Setting state with', rootCausesWithHistory.length, 'root causes');
+      setRootCauses(rootCausesWithHistory);
+      console.log('[WitnessedFindingDetailModal] ✅ State updated successfully');
+    } catch (err: any) {
+      console.error('[WitnessedFindingDetailModal] ❌ Error loading root causes:', err);
+      console.error('[WitnessedFindingDetailModal] ❌ Error details:', err?.response?.data || err?.message);
+      console.error('[WitnessedFindingDetailModal] ❌ Stack trace:', err?.stack);
+      setRootCauses([]);
     }
   };
 
@@ -199,6 +291,40 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
             </div>
           ) : finding ? (
             <div className="space-y-6">
+              {/* Tabs */}
+              <div className="border-b border-gray-200">
+                <nav className="flex -mb-px space-x-8">
+                  <button
+                    onClick={() => setActiveTab('details')}
+                    className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      activeTab === 'details'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Finding Details
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('rootcauses')}
+                    className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      activeTab === 'rootcauses'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Root Causes & Actions
+                    {rootCauses.length > 0 && (
+                      <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-600 rounded-full">
+                        {rootCauses.length}
+                      </span>
+                    )}
+                  </button>
+                </nav>
+              </div>
+
+              {/* Tab Content */}
+              {activeTab === 'details' ? (
+                <>
               {/* Finding Info */}
               <div className="bg-gray-50 rounded-lg p-6 space-y-4">
                 <div className="flex items-start justify-between gap-4">
@@ -327,6 +453,165 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
                   </div>
                 )}
               </div>
+                </>
+              ) : (
+                /* Root Causes Tab */
+                <div className="space-y-4">
+                  {rootCauses.length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 rounded-lg">
+                      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <p className="mt-3 text-gray-500 font-medium">No root causes found</p>
+                    </div>
+                  ) : (
+                    rootCauses.map((rc: any, index: number) => (
+                      <div key={rc.rootCauseId} className="bg-white border-2 border-gray-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+                        {/* Root Cause Header */}
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <span className="text-sm font-bold text-blue-700">#{index + 1}</span>
+                              </div>
+                           
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <h4 className="text-lg font-bold text-gray-900 mb-2 break-words">{rc.name}</h4>
+                            {rc.description && (
+                              <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap break-words">{rc.description}</p>
+                            )}
+                          </div>
+                          
+                          {rc.reasonReject && (
+                            <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl">
+                              <div className="flex items-start gap-3">
+                                <div className="w-6 h-6 bg-red-200 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                                  <svg className="w-4 h-4 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-red-900 mb-1">Rejection Reason:</p>
+                                  <p className="text-sm text-red-700 whitespace-pre-wrap break-words">{rc.reasonReject}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions (Remediation Proposals) */}
+                        {rc.actions && rc.actions.length > 0 && (
+                          <div className="mt-6 pt-6 border-t-2 border-gray-200">
+                            <div className="flex items-center gap-3 mb-4">
+                              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                </svg>
+                              </div>
+                              <h5 className="text-base font-bold text-gray-900">
+                                Remediation Actions ({rc.actions.length})
+                              </h5>
+                            </div>
+                            <div className="space-y-3">
+                              {rc.actions.map((action: Action, idx: number) => (
+                                <div key={action.actionId} className="bg-gradient-to-r from-blue-50 to-white border-2 border-blue-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-md transition-all">
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                                      <span className="text-white text-xs font-bold">#{idx + 1}</span>
+                                    </div>
+                                    <div className="flex-1 min-w-0 space-y-2">
+                                     
+                                      {action.description && (
+                                        <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap break-words">{action.description}</p>
+                                      )}
+                                      <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                                        {action.dueDate && (
+                                          <div className="flex items-center gap-1.5">
+                                            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                            <span className="font-medium">Due: {new Date(action.dueDate).toLocaleDateString('vi-VN')}</span>
+                                          </div>
+                                        )}
+                                        {typeof action.progressPercent === 'number' && (
+                                          <div className="flex items-center gap-1.5">
+                                            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                            </svg>
+                                            <span className="font-medium">{action.progressPercent}% progress</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      {action.reviewFeedback && (
+                                        <div className="mt-2 pt-2 border-t border-blue-200">
+                                          <p className="text-xs font-semibold text-gray-700 mb-1">Review Feedback:</p>
+                                          <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap break-words">{action.reviewFeedback}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* History */}
+                        {rc.history && rc.history.length > 0 && (
+                          <div className="mt-6 pt-6 border-t-2 border-gray-200">
+                            <div className="flex items-center gap-3 mb-4">
+                              <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              </div>
+                              <h5 className="text-base font-bold text-gray-900">History</h5>
+                            </div>
+                            <div className="space-y-3 pl-2">
+                              {rc.history.map((log: any, logIndex: number) => (
+                                <div key={log.logId} className="flex items-start gap-4 relative">
+                                  {/* Timeline line */}
+                                  {logIndex < rc.history.length - 1 && (
+                                    <div className="absolute left-2 top-8 bottom-0 w-0.5 bg-gradient-to-b from-blue-300 to-transparent"></div>
+                                  )}
+                                  
+                                  {/* Timeline dot */}
+                                  <div className="flex-shrink-0 w-4 h-4 bg-blue-500 rounded-full mt-1 ring-4 ring-blue-100 relative z-10"></div>
+                                  
+                                  {/* Content */}
+                                  <div className="flex-1 min-w-0 bg-gradient-to-r from-blue-50 to-transparent border-l-4 border-blue-400 rounded-r-lg p-4 -ml-2">
+                                    <p className="text-sm text-gray-700 break-words">
+                                      <span className="font-bold text-gray-900">{log.changedBy || 'System'}</span>
+                                      {' '}changed status to{' '}
+                                      <span className="font-bold text-blue-700">{log.newStatus}</span>
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                      {new Date(log.changedAt).toLocaleString('vi-VN')}
+                                    </p>
+                                    {log.reasonReject && (
+                                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                                        <p className="text-xs text-red-700 font-medium whitespace-pre-wrap break-words">
+                                          <span className="font-bold">Reason:</span> {log.reasonReject}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
 
             </div>
           ) : null}

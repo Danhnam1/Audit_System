@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../../layouts';
+import { getSeverityColor } from '../../../constants/statusColors';
 
 interface Finding {
   id: string;
@@ -52,15 +53,16 @@ const AssignTasks = () => {
   };
 
   const getPriorityBadge = (priority: Finding['priority']) => {
-    const priorityMap = {
-      major: { label: 'MAJOR', color: 'bg-red-100 text-red-700' },
-      minor: { label: 'MINOR', color: 'bg-yellow-100 text-yellow-700' },
-      observation: { label: 'OBSERVATION', color: 'bg-gray-100 text-gray-700' },
+    const priorityMap: Record<string, string> = {
+      major: 'MAJOR',
+      minor: 'MINOR',
+      observation: 'OBSERVATION',
     };
-    const info = priorityMap[priority];
+    const label = priorityMap[priority] || String(priority).toUpperCase();
+    const colorClasses = getSeverityColor(priority);
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${info.color}`}>
-        {info.label}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${colorClasses}`}>
+        {label}
       </span>
     );
   };

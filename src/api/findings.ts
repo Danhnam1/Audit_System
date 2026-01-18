@@ -49,6 +49,7 @@ export interface Finding {
   reviewerId?: string;
   source?: string;
   externalAuditorName?: string;
+  witnessDisagreementReason?: string; // Reason when witness rejects finding
   audit?: {
     auditId: string;
     title: string;

@@ -135,7 +135,7 @@ export const getUserFriendlyErrorMessage = (error: any, defaultMessage: string =
   }
 
   if (errorMsgLower.includes('account blocked') || errorMsgLower.includes('account locked')) {
-    return 'Your account has been blocked. Please contact administrator for support.';
+    return 'Your account has been blocked. Please contact administrator(0913615977) for support.';
   }
 
   // Common API error patterns

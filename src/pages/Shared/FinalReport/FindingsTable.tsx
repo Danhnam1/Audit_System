@@ -1,3 +1,4 @@
+import { getSeverityColor } from '../../../constants/statusColors';
 
 interface FindingsTableProps {
   findings: any[];
@@ -70,11 +71,7 @@ export const FindingsTable = ({
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{f.title || "—"}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
-                        f.severity === 'Major' ? 'bg-red-100 text-red-700' :
-                        f.severity === 'Medium' ? 'bg-amber-100 text-amber-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(f.severity || '')}`}>
                         {f.severity || "—"}
                       </span>
                     </td>

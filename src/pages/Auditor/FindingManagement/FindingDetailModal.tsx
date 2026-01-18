@@ -825,6 +825,29 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                   )}
                 </div>
 
+                {/* Witness Disagreement Reason - Show prominently if finding was rejected */}
+                {finding.status?.toLowerCase() === 'witnessdisagreed' && finding.witnessDisagreementReason && (
+                  <div className="bg-red-50 border-2 border-red-300 rounded-xl p-5 shadow-md">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 bg-red-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <svg className="w-7 h-7 text-red-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-bold text-red-900 mb-2">Witness Disagreement Reason</h3>
+                        <p className="text-sm text-red-800 font-medium mb-1">The witness has rejected this finding. Please review and address the concerns below:</p>
+                        <div className="mt-3 p-4 bg-white border border-red-200 rounded-lg">
+                          <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words">{finding.witnessDisagreementReason}</p>
+                        </div>
+                        <div className="mt-3 text-xs text-red-700 font-medium">
+                          ⚠️ You may need to edit this finding to address the witness's concerns before resubmitting.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Attachments */}
                 {attachments.filter(att => (att.status || '').toLowerCase() !== 'inactive').length > 0 && (
                   <div>
