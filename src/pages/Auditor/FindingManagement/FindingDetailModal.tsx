@@ -723,6 +723,21 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                     />
                   </div>
 
+                  {/* External Auditor Name - Show if source is External or externalAuditorName exists */}
+                  {(finding.source?.toLowerCase() === 'external' || finding.externalAuditorName) && (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                        External Auditor Name
+                      </label>
+                      <input
+                        type="text"
+                        value={finding.externalAuditorName || 'N/A'}
+                        readOnly
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
+                      />
+                    </div>
+                  )}
+
                   {/* Department */}
                   {finding.deptId && (
                     <div>

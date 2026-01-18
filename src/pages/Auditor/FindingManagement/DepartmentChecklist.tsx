@@ -11,6 +11,7 @@ import { getChecklistItemsByDepartment, createAuditChecklistItem,
 import { getDepartmentById } from '../../../api/departments';
 import { getFindings, getMyFindings, getFindingsByDepartment, getFindingById, updateFinding, type Finding} from '../../../api/findings';
 import { getFindingSeverities } from '../../../api/findingSeverity';
+import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
 import CompliantModal from './CompliantModal';
@@ -89,12 +90,17 @@ const DepartmentChecklist = () => {
     severity: '',
     deadline: '',
     externalAuditorName: '',
+    witnessId: '',
   });
   const [loadingFinding, setLoadingFinding] = useState(false);
   const [submittingEdit, setSubmittingEdit] = useState(false);
+  const [showWitnessesDropdown, setShowWitnessesDropdown] = useState(false);
+  const [departmentUsers, setDepartmentUsers] = useState<AdminUserDto[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
   const [severities, setSeverities] = useState<Array<{ severity: string }>>([]);
   const [loadingSeverities, setLoadingSeverities] = useState(false);
   const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasPending: boolean; pendingCount: number; hasApproved: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }>>({}); // findingId -> root cause status
+  const [editedFindingIds, setEditedFindingIds] = useState<Set<string>>(new Set()); // Track findings that have been edited
 
   // Audit info state
   const [auditType, setAuditType] = useState<string>('');
@@ -503,7 +509,7 @@ const DepartmentChecklist = () => {
     (items || []).filter(att => (att.status || '').toLowerCase() !== 'inactive');
 
   // Load root causes, actions, and attachments for edit modal
-  const loadEditFindingExtras = async (findingId: string) => {
+  const loadEditFindingExtras = async (findingId: string, finding?: Finding) => {
     setLoadingEditExtras(true);
     try {
       const rootCauses = await getRootCausesByFinding(findingId);
@@ -527,6 +533,27 @@ const DepartmentChecklist = () => {
       } catch (err) {
         console.warn('Failed to load attachments for edit:', err);
         setEditAttachments([]);
+      }
+
+      // Load department users for witness selection
+      const deptId = finding?.deptId || editingFinding?.deptId;
+      if (deptId) {
+        setLoadingUsers(true);
+        try {
+          console.log('Loading users for department:', deptId);
+          const users = await getAdminUsersByDepartment(deptId);
+          console.log('Loaded users:', users);
+          const potentialWitnesses = users.filter(
+            (user) => user.roleName === 'AuditeeOwner' || user.roleName === 'CAPAOwner'
+          );
+          console.log('Filtered potential witnesses:', potentialWitnesses);
+          setDepartmentUsers(potentialWitnesses);
+        } catch (err) {
+          console.error('Error loading department users:', err);
+          setDepartmentUsers([]);
+        } finally {
+          setLoadingUsers(false);
+        }
       }
     } catch (err) {
       console.error('Error loading edit extras:', err);
@@ -708,15 +735,17 @@ const DepartmentChecklist = () => {
         description: editFormData.description.trim(),
         severity: editFormData.severity,
         deptId: editingFinding.deptId,
-        status: editingFinding.status || 'Open',
+        status: 'Fixed', // Set status to Fixed when editing
         deadline: editFormData.deadline ? new Date(editFormData.deadline).toISOString() : null,
         auditItemId: editingFinding.auditItemId,
         externalAuditorName: isReturned ? '' : (editFormData.externalAuditorName?.trim() || ''),
         source: '', // Always empty string as per user requirement
       };
 
-      // witnessId is optional - only include if exists
-      if (editingFinding.witnessId) {
+      // witnessId - include from editFormData if changed, or from editingFinding if unchanged
+      if (editFormData.witnessId) {
+        findingPayload.witnessId = editFormData.witnessId;
+      } else if (editingFinding.witnessId) {
         findingPayload.witnessId = editingFinding.witnessId;
       }
 
@@ -837,6 +866,10 @@ const DepartmentChecklist = () => {
 
       console.log('✓ All steps completed successfully!');
       toast.success('Finding updated successfully');
+      
+      // Mark this finding as edited
+      setEditedFindingIds(prev => new Set(prev).add(editingFinding.findingId));
+      
       setShowEditFindingModal(false);
       setEditingFinding(null);
       setDeletedRootCauseIds([]);
@@ -2124,12 +2157,47 @@ const DepartmentChecklist = () => {
                                 </button>
                               </div>
                             )}
-                            {isReturned(item, itemStatusToCheck) ? (
-                              /* Edit button for Returned items */
-                              <div className="flex items-center gap-2">
-                                <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-orange-100 text-orange-700 border border-orange-300">
-                                  Returned
-                                </span>
+                            {(() => {
+                              const findingData = findingsMap[item.auditItemId];
+                              const findingStatus = findingData?.status?.toLowerCase();
+                              const isFixedStatus = findingStatus === 'fixed';
+                              const isEditedInSession = editedFindingIds.has(findingData?.findingId || '');
+                              
+                              // Show Fixed badge with View icon if status is Fixed or already edited in this session
+                              if (isReturned(item, itemStatusToCheck) && (isFixedStatus || isEditedInSession)) {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-green-100 text-green-700 border border-green-300">
+                                      Fixed
+                                    </span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const findingId = findingData?.findingId;
+                                        if (findingId) {
+                                          setSelectedFindingId(findingId);
+                                          setShowDetailModal(true);
+                                        }
+                                      }}
+                                      className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                      title="View Finding Details"
+                                    >
+                                      <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                );
+                              }
+                              
+                              // Show Edit button only if status is not Fixed and not edited yet
+                              if (isReturned(item, itemStatusToCheck) && !isFixedStatus && !isEditedInSession) {
+                                return (
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-orange-100 text-orange-700 border border-orange-300">
+                                      Returned
+                                    </span>
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
@@ -2149,11 +2217,12 @@ const DepartmentChecklist = () => {
                                         description: finding.description || '',
                                         severity: finding.severity || '',
                                         deadline: finding.deadline ? new Date(finding.deadline).toISOString().split('T')[0] : '',
-                                      externalAuditorName: finding.externalAuditorName || '',
+                                        externalAuditorName: finding.externalAuditorName || '',
+                                        witnessId: finding.witnessId || '',
                                       });
                                       setShowEditFindingModal(true);
                                       await loadSeverities();
-                                      await loadEditFindingExtras(findingId);
+                                      await loadEditFindingExtras(findingId, finding);
                                     } catch (err: any) {
                                       console.error('Error loading finding:', err);
                                       toast.error('Failed to load finding details');
@@ -2177,7 +2246,12 @@ const DepartmentChecklist = () => {
                                   )}
                                 </button>
                               </div>
-                            ) : isCompliant(item.status) ? (
+                                );
+                              }
+                              
+                              return null;
+                            })()}
+                            {isCompliant(item.status) ? (
                               /* View button for Compliant items */
                               <div className="flex items-center gap-2">
                                 <div className="px-2 sm:px-4 py-1 sm:py-2 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap border shadow-sm flex items-center gap-1.5">
@@ -2257,7 +2331,7 @@ const DepartmentChecklist = () => {
                                   </svg>
                                 </button>
                               </div>
-                            ) : showProposalButtons ? (
+                            ) : showProposalButtons && !isReturned(item, itemStatusToCheck) && findingStatus !== 'fixed' && !editedFindingIds.has(findingData?.findingId || '') ? (
                               <>
                                 {/* Green Checkmark */}
                                 <button
@@ -3111,6 +3185,100 @@ const DepartmentChecklist = () => {
                     onChange={(e) => setEditFormData(prev => ({ ...prev, deadline: e.target.value }))}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   />
+                </div>
+
+                {/* Witness - Single select dropdown */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Witness
+                  </label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowWitnessesDropdown(!showWitnessesDropdown)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg text-left bg-white hover:bg-gray-50 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 flex items-center justify-between"
+                    >
+                      <span className="text-gray-700">
+                        {loadingUsers ? (
+                          <span className="text-gray-500">Loading users...</span>
+                        ) : !editFormData.witnessId ? (
+                          <span className="text-gray-500">Select a witness from department...</span>
+                        ) : (
+                          departmentUsers.find(u => u.userId === editFormData.witnessId)?.fullName || 'Unknown'
+                        )}
+                      </span>
+                      <svg  
+                        className={`w-4 h-4 text-gray-600 transition-transform ${
+                          showWitnessesDropdown ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                        />
+                      </svg>
+                    </button>
+
+                    {/* Dropdown menu */}
+                    {showWitnessesDropdown && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
+                        {loadingUsers ? (
+                          <div className="px-4 py-3 text-center text-gray-500">
+                            <div className="inline-block animate-spin">
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                />
+                              </svg>
+                            </div>
+                          </div>
+                        ) : departmentUsers.length === 0 ? (
+                          <div className="px-4 py-3 text-center text-gray-500 text-sm">
+                            No users found in this department
+                          </div>
+                        ) : (
+                          departmentUsers.map(user => (
+                            <label
+                              key={user.userId}
+                              className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              <input
+                                type="radio"
+                                name="witness"
+                                checked={editFormData.witnessId === user.userId}
+                                onChange={() => {
+                                  setEditFormData(prev => ({ ...prev, witnessId: user.userId || '' }));
+                                  setShowWitnessesDropdown(false);
+                                }}
+                                className="w-4 h-4 text-orange-600 border-gray-300 focus:ring-2 focus:ring-orange-500"
+                              />
+                              <span className="ml-3 text-sm text-gray-700">
+                                {user.fullName}
+                              </span>
+                              {user.email && (
+                                <span className="ml-2 text-xs text-gray-500">
+                                  ({user.email})
+                                </span>
+                              )}
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* External Auditor Name - Hidden for Returned status */}
