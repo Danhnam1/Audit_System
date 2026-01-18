@@ -165,7 +165,7 @@ const ActionDetailModal = ({
     }
   };
 
-  const loadRootCause = async (rootCauseId: number) => {
+  const loadRootCause = async (rootCauseId: string) => {
     setLoadingRootCause(true);
     try {
       const data = await getRootCauseById(rootCauseId);

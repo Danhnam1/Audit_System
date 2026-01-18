@@ -33,11 +33,11 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   const [rootCauseDescription, setRootCauseDescription] = useState<string>('');
   const [isEditingRootCause, setIsEditingRootCause] = useState(false);
   const [isSavingRootCause, setIsSavingRootCause] = useState(false);
-  const [editingRootCauseId, setEditingRootCauseId] = useState<number | null>(null);
+  const [editingRootCauseId, setEditingRootCauseId] = useState<string | null>(null);
   const [editingReasonReject, setEditingReasonReject] = useState<string>('');
   const [isProcessingReview, setIsProcessingReview] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const [rootCauseToDelete, setRootCauseToDelete] = useState<number | null>(null);
+  const [rootCauseToDelete, setRootCauseToDelete] = useState<string | null>(null);
   
   // AI Suggestions state - cache by findingId
   const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
@@ -177,13 +177,16 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           const rootCausesWithHistory = await Promise.all(
             rootCausesList.map(async (rc: any) => {
               try {
+                console.log('[handleRootCauseUpdated] 🔄 Processing root cause:', rc.rootCauseId, rc.name);
                 const logs = await getRootCauseLogs(rc.rootCauseId);
                 // Fetch actions (remediation proposals) for this root cause
                 let actions: Action[] = [];
                 try {
+                  console.log('[handleRootCauseUpdated] 🎯 Calling getActionsByRootCause for:', rc.rootCauseId);
                   actions = await getActionsByRootCause(rc.rootCauseId);
+                  console.log('[handleRootCauseUpdated] ✅ Actions loaded:', actions.length);
                 } catch (actionErr) {
-                  console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+                  console.error('[handleRootCauseUpdated] ❌ Error loading actions:', rc.rootCauseId, actionErr);
                 }
                 return { ...rc, history: logs, actions: actions };
               } catch (err) {
@@ -260,16 +263,28 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
         const rootCausesList = res.data.$values || [];
         
         // Fetch history and actions for each root cause
+        console.log('[FindingDetailModal] 📋 Loading root causes:', rootCausesList.length);
         const rootCausesWithHistory = await Promise.all(
-          rootCausesList.map(async (rc: any) => {
+          rootCausesList.map(async (rc: any, index: number) => {
             try {
+              console.log(`[FindingDetailModal] 🔄 Processing root cause ${index + 1}:`, {
+                rootCauseId: rc.rootCauseId,
+                name: rc.name,
+                type: typeof rc.rootCauseId
+              });
               const logs = await getRootCauseLogs(rc.rootCauseId);
               // Fetch actions (remediation proposals) for this root cause
               let actions: Action[] = [];
               try {
+                console.log(`[FindingDetailModal] 🎯 Calling getActionsByRootCause for:`, rc.rootCauseId);
                 actions = await getActionsByRootCause(rc.rootCauseId);
+                console.log(`[FindingDetailModal] ✅ Actions loaded for ${rc.name}:`, actions.length, 'actions');
               } catch (actionErr) {
-                console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+                console.error('[FindingDetailModal] ❌ Error loading actions for root cause:', {
+                  rootCauseId: rc.rootCauseId,
+                  name: rc.name,
+                  error: actionErr
+                });
               }
               return { ...rc, history: logs, actions: actions };
             } catch (err) {
@@ -278,6 +293,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
             }
           })
         );
+        console.log('[FindingDetailModal] 🎉 All root causes loaded with actions:', rootCausesWithHistory);
         
         setRootCauses(rootCausesWithHistory);
       } catch (err) {
@@ -377,13 +393,16 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const rootCausesWithHistory = await Promise.all(
         rootCausesList.map(async (rc: any) => {
           try {
+            console.log('[handleSaveRootCause] 🔄 Processing root cause:', rc.rootCauseId, rc.name);
             const logs = await getRootCauseLogs(rc.rootCauseId);
             // Fetch actions (remediation proposals) for this root cause
             let actions: Action[] = [];
             try {
+              console.log('[handleSaveRootCause] 🎯 Calling getActionsByRootCause for:', rc.rootCauseId);
               actions = await getActionsByRootCause(rc.rootCauseId);
+              console.log('[handleSaveRootCause] ✅ Actions loaded:', actions.length);
             } catch (actionErr) {
-              console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+              console.error('[handleSaveRootCause] ❌ Error loading actions:', rc.rootCauseId, actionErr);
             }
             return { ...rc, history: logs, actions: actions };
           } catch (err) {
@@ -448,13 +467,16 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const rootCausesWithHistory = await Promise.all(
         rootCausesList.map(async (rc: any) => {
           try {
+            console.log('[handleSubmitAllRootCauses] 🔄 Processing root cause:', rc.rootCauseId, rc.name);
             const logs = await getRootCauseLogs(rc.rootCauseId);
             // Fetch actions (remediation proposals) for this root cause
             let actions: Action[] = [];
             try {
+              console.log('[handleSubmitAllRootCauses] 🎯 Calling getActionsByRootCause for:', rc.rootCauseId);
               actions = await getActionsByRootCause(rc.rootCauseId);
+              console.log('[handleSubmitAllRootCauses] ✅ Actions loaded:', actions.length);
             } catch (actionErr) {
-              console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+              console.error('[handleSubmitAllRootCauses] ❌ Error loading actions:', rc.rootCauseId, actionErr);
             }
             return { ...rc, history: logs, actions: actions };
           } catch (err) {
@@ -502,13 +524,16 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const rootCausesWithHistory = await Promise.all(
         rootCausesList.map(async (rc: any) => {
           try {
+            console.log('[confirmDeleteRootCause] 🔄 Processing root cause:', rc.rootCauseId, rc.name);
             const logs = await getRootCauseLogs(rc.rootCauseId);
             // Fetch actions (remediation proposals) for this root cause
             let actions: Action[] = [];
             try {
+              console.log('[confirmDeleteRootCause] 🎯 Calling getActionsByRootCause for:', rc.rootCauseId);
               actions = await getActionsByRootCause(rc.rootCauseId);
+              console.log('[confirmDeleteRootCause] ✅ Actions loaded:', actions.length);
             } catch (actionErr) {
-              console.error('Error loading actions for root cause:', rc.rootCauseId, actionErr);
+              console.error('[confirmDeleteRootCause] ❌ Error loading actions:', rc.rootCauseId, actionErr);
             }
             return { ...rc, history: logs, actions: actions };
           } catch (err) {
@@ -1094,52 +1119,83 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                   </div>
                                 )}
                                 
-                                {/* Remediation Proposals (show only one, skip rejected) */}
+                                {/* Remediation Proposals (show all non-rejected) */}
                                 {(() => {
                                   const proposals = (rc.actions || []).filter((a: Action) => {
                                     const st = (a.status || '').toLowerCase();
                                     return st !== 'rejected' && st !== 'leadrejected' && st !== 'return';
                                   });
+                                  
+                                  console.log(`[UI] 📊 Root Cause "${rc.name}" has ${proposals.length} active actions:`, proposals);
+                                  console.log('[UI] 🔍 Detailed actions data:', JSON.stringify(proposals, null, 2));
+                                  
+                                  // Debug each action
+                                  proposals.forEach((action: Action, idx: number) => {
+                                    console.log(`[UI] Action #${idx + 1}:`, {
+                                      actionId: action.actionId,
+                                      title: action.title,
+                                      description: action.description,
+                                      status: action.status,
+                                      rootCauseId: action.rootCauseId,
+                                      assignedTo: action.assignedTo,
+                                      assignedBy: (action as any).assignedBy
+                                    });
+                                  });
+                                  
                                   if (proposals.length === 0) return null;
-                                  const action = proposals[0];
+                                  
                                   return (
                                     <div className="mt-4 ml-11">
-                                      <h5 className="text-xs font-semibold text-gray-700 mb-2 uppercase">
-                                        Proposed solution (1)
+                                      <h5 className="text-xs font-semibold text-gray-700 mb-2 uppercase flex items-center gap-2">
+                                        <span>Proposed solution ({proposals.length})</span>
+                                        <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded-full text-xs font-bold">
+                                          {proposals.length}
+                                        </span>
                                       </h5>
                                       <div className="space-y-2">
-                                        <div
-                                          key={action.actionId}
-                                          className="bg-blue-50 border border-blue-200 rounded-lg p-3 hover:bg-blue-100 transition-colors"
-                                        >
-                                          {action.description && (
-                                            <p className="text-xs text-gray-700 mb-2 leading-relaxed break-words whitespace-pre-wrap">{action.description}</p>
-                                          )}
-                                          <div className="flex flex-wrap gap-3 text-xs text-gray-600">
-                                            {action.dueDate && (
-                                              <span className="flex items-center gap-1">
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                                </svg>
-                                                Due: {formatDate(action.dueDate)}
+                                        {proposals.map((action: Action, idx: number) => (
+                                          <div
+                                            key={action.actionId}
+                                            className="bg-blue-50 border border-blue-200 rounded-lg p-3 hover:bg-blue-100 transition-colors"
+                                          >
+                                            {/* Action number badge */}
+                                            <div className="flex items-start gap-2 mb-2">
+                                              <span className="px-2 py-0.5 bg-blue-600 text-white rounded text-xs font-bold">
+                                                #{idx + 1}
                                               </span>
+                                          
+                                            </div>
+                                            
+                                            {action.description && (
+                                              <p className="text-xs text-gray-700 mb-2 leading-relaxed break-words whitespace-pre-wrap">{action.description}</p>
                                             )}
-                                            {typeof action.progressPercent === 'number' && (
-                                              <span className="flex items-center gap-1">
-                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                                                </svg>
-                                                {action.progressPercent}% progress
-                                              </span>
+                                            <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                                              {action.dueDate && (
+                                                <span className="flex items-center gap-1">
+                                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                  </svg>
+                                                  Due: {formatDate(action.dueDate)}
+                                                </span>
+                                              )}
+                                              {typeof action.progressPercent === 'number' && (
+                                                <span className="flex items-center gap-1">
+                                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                  </svg>
+                                                  {action.progressPercent}% progress
+                                                </span>
+                                              )}
+                                            
+                                            </div>
+                                            {action.reviewFeedback && (
+                                              <div className="mt-2 pt-2 border-t border-blue-200">
+                                                <p className="text-xs font-medium text-gray-700 mb-1">Review Feedback:</p>
+                                                <p className="text-xs text-gray-600 leading-relaxed break-words whitespace-pre-wrap">{action.reviewFeedback}</p>
+                                              </div>
                                             )}
                                           </div>
-                                          {action.reviewFeedback && (
-                                            <div className="mt-2 pt-2 border-t border-blue-200">
-                                              <p className="text-xs font-medium text-gray-700 mb-1">Review Feedback:</p>
-                                              <p className="text-xs text-gray-600 leading-relaxed break-words whitespace-pre-wrap">{action.reviewFeedback}</p>
-                                            </div>
-                                          )}
-                                        </div>
+                                        ))}
                                       </div>
                                     </div>
                                   );
@@ -1637,7 +1693,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               <div className="bg-gray-50 border-t-2 border-gray-200 px-6 py-4 rounded-b-2xl flex justify-end">
                 <button
                   onClick={() => setShowWitnessModal(false)}
-                  className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                 >
                   Close
                 </button>

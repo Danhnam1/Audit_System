@@ -41,7 +41,7 @@ export interface Action {
   createdAt?: string;
   closedAt?: string | null;
   reviewFeedback?: string | null;
-  rootCauseId?: number; // Link to root cause
+  rootCauseId?: string; // Link to root cause (GUID string)
 }
 
 // Create a new action
@@ -148,13 +148,24 @@ export const getActionsByDepartmentDashboard = async (deptId: number): Promise<A
 };
 
 // Get actions by root cause ID
-export const getActionsByRootCause = async (rootCauseId: number): Promise<Action[]> => {
+export const getActionsByRootCause = async (rootCauseId: string): Promise<Action[]> => {
   try {
+    console.log('[getActionsByRootCause] 🔍 Called with rootCauseId:', rootCauseId, 'Type:', typeof rootCauseId);
     const res = await apiClient.get(`/Action/by-root-cause/${rootCauseId}`) as any;
+    console.log('[getActionsByRootCause] ✅ API Response:', res);
     const { unwrap } = await import('../utils/normalize');
-    return unwrap<Action>(res);
-  } catch (err) {
-    console.error('Error fetching actions by root cause:', err);
+    const actions = unwrap<Action>(res);
+    console.log('[getActionsByRootCause] 📦 Unwrapped actions:', actions, 'Count:', actions.length);
+    return actions;
+  } catch (err: any) {
+    console.error('[getActionsByRootCause] ❌ Error:', {
+      rootCauseId,
+      error: err,
+      message: err?.message,
+      response: err?.response,
+      status: err?.response?.status,
+      data: err?.response?.data
+    });
     return [];
   }
 };
