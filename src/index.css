@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ensure toast notifications appear above modals */
+.Toastify__toast-container {
+  z-index: 10002 !important;
+}
+
+.Toastify__toast {
+  z-index: 10002 !important;
+}
+
 @layer utilities {
   @keyframes fadeIn {
     from {

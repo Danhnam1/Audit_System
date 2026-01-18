@@ -87,6 +87,7 @@ const AuditorLeadReports = () => {
   const [extensionComment, setExtensionComment] = useState('');
   const [extensionLoading, setExtensionLoading] = useState(false);
   const [revisionRequests, setRevisionRequests] = useState<ViewAuditPlanRevisionRequest[]>([]);
+  const [loadingRevisionRequests, setLoadingRevisionRequests] = useState(false);
   // Map of auditId -> revision requests (for checking extension approval)
   const [revisionRequestsMap, setRevisionRequestsMap] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
   // Selected checklist items for extension request (separate from findings for return)
@@ -485,6 +486,7 @@ const AuditorLeadReports = () => {
   useEffect(() => {
     const loadSummary = async () => {
       if (!selectedAuditId) return;
+      setLoadingRevisionRequests(true);
       try {
         const [sum, requests, checklistItems] = await Promise.all([
           getAuditSummary(selectedAuditId),
@@ -503,6 +505,8 @@ const AuditorLeadReports = () => {
       } catch (err) {
         console.error('Failed to load summary', err);
         setSummary(null);
+      } finally {
+        setLoadingRevisionRequests(false);
       }
     };
     loadSummary();
@@ -1684,9 +1688,28 @@ const AuditorLeadReports = () => {
       return;
     }
     
-    // Validate: must have at least one checklist item selected
+    // Auto-populate selectedChecklistItems from selectedFindings if not already set
+    if (selectedChecklistItems.size === 0 && selectedFindings.size > 0) {
+      const checklistItemIds = new Set<string>();
+      selectedFindings.forEach(findingId => {
+        const finding = allFindings.find((f: any) => 
+          String(f.findingId || f.id || '') === findingId
+        );
+        if (finding) {
+          const checklistItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
+          if (checklistItemId) {
+            checklistItemIds.add(String(checklistItemId));
+          }
+        }
+      });
+      if (checklistItemIds.size > 0) {
+        setSelectedChecklistItems(checklistItemIds);
+      }
+    }
+    
+    // Validate: must have at least one checklist item selected (either directly or from findings)
     if (selectedChecklistItems.size === 0) {
-      toast.error('Please select at least one checklist item to request extension for.');
+      toast.error('Please select at least one checklist item (by selecting findings) to request extension for.');
       return;
     }
     
@@ -1705,18 +1728,35 @@ const AuditorLeadReports = () => {
         toast.warning('Some checklist items failed to mark. Continuing with request...');
       }
       
-      // Create extension request (no longer need findingIds - backend will get from marked items)
+      // Extract findings from selected checklist items
+      const findingIds: string[] = [];
+      const selectedItemsList = allChecklistItems.filter((item: any) => 
+        selectedChecklistItems.has(item.auditItemId || item.id)
+      );
+      
+      // Get findings from allFindings that belong to selected checklist items
+      selectedItemsList.forEach((item: any) => {
+        const itemId = item.auditItemId || item.id;
+        allFindings.forEach((finding: any) => {
+          const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
+          if (String(findingItemId) === String(itemId)) {
+            const findingId = String(finding.findingId || finding.id || '');
+            if (findingId && !findingIds.includes(findingId)) {
+              findingIds.push(findingId);
+            }
+          }
+        });
+      });
+      
+      // Create extension request with findings
       const newRequest = await createAuditPlanRevisionRequest({
         auditId: selectedAuditId,
         comment: extensionComment.trim(),
-        // findingIds removed - backend will get from marked checklist items
+        findingIds: findingIds.length > 0 ? findingIds : undefined,
       });
       
       // Save mapping of request -> checklist items for later display
       if (newRequest?.requestId) {
-        const selectedItemsList = allChecklistItems.filter((item: any) => 
-          selectedChecklistItems.has(item.auditItemId || item.id)
-        );
         setMarkedItemsByRequest(prev => ({
           ...prev,
           [newRequest.requestId]: selectedItemsList
@@ -2240,6 +2280,49 @@ const AuditorLeadReports = () => {
                           }
                           return next;
                         });
+                        
+                        // Auto-map findings to checklist items for extension request
+                        if (isSelected) {
+                          // Find the finding and get its checklist item ID
+                          const finding = allFindings.find((f: any) => 
+                            String(f.findingId || f.id || '') === findingId
+                          );
+                          if (finding) {
+                            const checklistItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
+                            if (checklistItemId) {
+                              setSelectedChecklistItems(prev => {
+                                const next = new Set(prev);
+                                next.add(String(checklistItemId));
+                                return next;
+                              });
+                            }
+                          }
+                        } else {
+                          // When unselecting finding, also unselect its checklist item
+                          const finding = allFindings.find((f: any) => 
+                            String(f.findingId || f.id || '') === findingId
+                          );
+                          if (finding) {
+                            const checklistItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
+                            if (checklistItemId) {
+                              // Only remove if no other selected findings belong to this checklist item
+                              const otherFindingsForItem = allFindings.filter((f: any) => {
+                                const fItemId = f.auditChecklistItemId || f.auditItemId || f.auditItem?.auditItemId;
+                                return String(fItemId) === String(checklistItemId) && 
+                                       String(f.findingId || f.id || '') !== findingId &&
+                                       selectedFindings.has(String(f.findingId || f.id || ''));
+                              });
+                              
+                              if (otherFindingsForItem.length === 0) {
+                                setSelectedChecklistItems(prev => {
+                                  const next = new Set(prev);
+                                  next.delete(String(checklistItemId));
+                                  return next;
+                                });
+                              }
+                            }
+                          }
+                        }
                       }}
                     />
                    
@@ -2920,7 +3003,14 @@ const AuditorLeadReports = () => {
 
               {/* Content */}
               <div className="flex-1 overflow-y-auto p-6">
-                {revisionRequests.length === 0 ? (
+                {loadingRevisionRequests ? (
+                  <div className="text-center py-12">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-sm text-gray-500">Loading extension requests...</p>
+                    </div>
+                  </div>
+                ) : revisionRequests.length === 0 ? (
                   <div className="text-center py-12">
                     <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />

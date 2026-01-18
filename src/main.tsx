@@ -20,6 +20,8 @@ createRoot(document.getElementById('root')!).render(
       draggable
       pauseOnHover
       theme="light"
+      style={{ zIndex: 10002 }}
+      toastClassName="!z-[10002]"
     />
   </StrictMode>,
 )
