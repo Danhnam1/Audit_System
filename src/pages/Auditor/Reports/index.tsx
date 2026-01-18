@@ -49,6 +49,7 @@ const SQAStaffReports = () => {
   const [loadingRejectSchedules, setLoadingRejectSchedules] = useState(false);
   const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
+  const [creatorAuditIds, setCreatorAuditIds] = useState<Set<string>>(new Set()); // auditId -> creator can resubmit
   const [leadAuditorNames, setLeadAuditorNames] = useState<Record<string, string>>({}); // auditId -> Lead Auditor name
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
   const [reportRequests, setReportRequests] = useState<Record<string, ViewReportRequest>>({});
@@ -496,7 +497,7 @@ const SQAStaffReports = () => {
       setLeadAuditorNames(leadAuditorNamesMap);
       
       // Get audit IDs where current user is the creator
-      const creatorAuditIds = new Set<string>();
+      const creatorAuditIdsSet = new Set<string>();
       if (normalizedCurrentUserId) {
         const arrForCreator = unwrap(res);
         (Array.isArray(arrForCreator) ? arrForCreator : []).forEach((a: any) => {
@@ -510,13 +511,16 @@ const SQAStaffReports = () => {
             if (auditId) {
               const auditIdStr = String(auditId).trim();
               if (auditIdStr) {
-                creatorAuditIds.add(auditIdStr);
-                creatorAuditIds.add(auditIdStr.toLowerCase());
+                creatorAuditIdsSet.add(auditIdStr);
+                creatorAuditIdsSet.add(auditIdStr.toLowerCase());
               }
             }
           }
         });
       }
+      
+      // Set creator audit IDs
+      setCreatorAuditIds(creatorAuditIdsSet);
       
       // Debug logging (only in development mode)
       if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
@@ -550,7 +554,7 @@ const SQAStaffReports = () => {
       const userAudits = (Array.isArray(arr) ? arr : []).filter((a: any) => {
         // Check if user is in audit team OR is the creator
         const hasTeamAccess = normalizedCurrentUserId && userAuditIds.size > 0;
-        const hasCreatorAccess = normalizedCurrentUserId && creatorAuditIds.size > 0;
+        const hasCreatorAccess = normalizedCurrentUserId && creatorAuditIdsSet.size > 0;
         
         if (!hasTeamAccess && !hasCreatorAccess) {
           return false;
@@ -571,15 +575,15 @@ const SQAStaffReports = () => {
           if (userAuditIds.has(auditId.toLowerCase())) return true;
           
           // Check creator access
-          if (creatorAuditIds.has(auditId)) return true;
-          if (creatorAuditIds.has(auditId.toLowerCase())) return true;
+          if (creatorAuditIdsSet.has(auditId)) return true;
+          if (creatorAuditIdsSet.has(auditId.toLowerCase())) return true;
           
           // Try lowercase version for team
           const lowerAuditId = auditId.toLowerCase();
           if (Array.from(userAuditIds).some(uid => uid.toLowerCase() === lowerAuditId)) return true;
           
           // Try lowercase version for creator
-          if (Array.from(creatorAuditIds).some(uid => uid.toLowerCase() === lowerAuditId)) return true;
+          if (Array.from(creatorAuditIdsSet).some(uid => uid.toLowerCase() === lowerAuditId)) return true;
           
           return false;
         });
@@ -1088,10 +1092,17 @@ const SQAStaffReports = () => {
     
     const auditIdStr = String(selectedAuditId).trim();
     const isLeadAuditor = leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase());
+    const isCreator = creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase());
     
-    // Validate: Only Lead Auditor of the team can submit
-    if (!isLeadAuditor) {
-      toast.error('Only Lead Auditor of the team can submit reports.');
+    // Check if report is rejected
+    const reportRequest = reportRequests[auditIdStr];
+    const reportStatus = reportRequest?.status || '';
+    const isReportRejected = String(reportStatus).toLowerCase() === 'returned';
+    const rejected = isReportRejected || isRejectedStatus(reportStatus);
+    
+    // Validate: Lead Auditor can always submit, Creator can only resubmit when rejected
+    if (!isLeadAuditor && !(isCreator && rejected)) {
+      toast.error('Only Lead Auditor of the team can submit reports, or creator can resubmit rejected reports.');
       return;
     }
     
@@ -1689,6 +1700,10 @@ const SQAStaffReports = () => {
                       const submitted = isSubmittedStatus(statusToCheck, auditIdStr);
                       const completed = isCompletedStatus(statusToCheck);
                       const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
+                      const isCreator = auditIdStr && (creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase()));
+                      
+                      // Allow submit/resubmit if: Lead Auditor OR (Creator AND report is rejected)
+                      const canSubmit = isLeadAuditor || (isCreator && rejected);
 
                       // Hide button only if audit is completed/closed/approved
                       if (completed) {
@@ -1698,13 +1713,13 @@ const SQAStaffReports = () => {
                       const key = String(selectedAuditId || '').trim();
                       const hasRejectNote = key && rejectNotes[key] && rejectNotes[key].trim().length > 0;
                       
-                      // Disable if: loading, no audit selected, already submitted (not rejected), rejected without note, or NOT Lead Auditor of team
-                      // Only Lead Auditor of the team can submit (isLead === true in AuditTeam)
+                      // Disable if: loading, no audit selected, already submitted (not rejected), rejected without note, or NOT authorized
+                      // Lead Auditor can always submit, Creator can only resubmit when rejected
                       const disabled = submitLoading 
                         || !selectedAuditId 
                         || (submitted && !rejected) 
                         || (rejected && !hasRejectNote) 
-                        || !isLeadAuditor; // Only Lead Auditor of team can submit
+                        || !canSubmit; // Must be Lead Auditor OR (Creator with rejected report)
 
                       // Get Lead Auditor name for this audit
                       const leadAuditorName = leadAuditorNames[auditIdStr] || 'Lead Auditor';
@@ -1717,8 +1732,10 @@ const SQAStaffReports = () => {
                             ? hasRejectNote
                               ? 'Resubmit to Lead Auditor'
                               : 'Loading reject reason...'
-                            : !isLeadAuditor
-                              ? `Only Lead of the team: ${leadAuditorName} can submit`
+                            : !canSubmit
+                              ? isCreator
+                                ? 'Only Lead Auditor can submit new reports'
+                                : `Only Lead of the team: ${leadAuditorName} can submit`
                             : 'Submit to Lead Auditor';
 
                       return (

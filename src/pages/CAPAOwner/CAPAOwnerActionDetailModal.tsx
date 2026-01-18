@@ -140,11 +140,11 @@ const CAPAOwnerActionDetailModal = ({
   //   if (statusLower === 'approved') return (<span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-300 flex-shrink-0">Approved</span>);
   //   if (statusLower === 'open') return (<span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded border border-blue-300 flex-shrink-0">Open</span>);
   //   return (
-      <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded border border-gray-300 flex-shrink-0">
-        {status}
-      </span>
-    );
-  };
+  //     <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded border border-gray-300 flex-shrink-0">
+  //       {status}
+  //     </span>
+  //   );
+  // };
 
   if (!isOpen) return null;
 

@@ -7,14 +7,14 @@ import { toast } from 'react-toastify';
 import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import {
   getPendingRevisionRequestsForDirector,
+  getAllRevisionRequestsForDirector,
   approveAuditPlanRevisionRequest,
   rejectAuditPlanRevisionRequest,
   type ViewAuditPlanRevisionRequest,
 } from '../../../api/auditPlanRevisionRequest';
-import { getOverdueChecklistItems, getChecklistTemplates } from '../../../api/checklists';
+import { getOverdueChecklistItems, getChecklistTemplates, getMarkedChecklistItems, toggleMarkChecklistItem } from '../../../api/checklists';
 import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
-import { getFindingsByAudit } from '../../../api/findings';
 import { unwrap, normalizePlanDetails } from '../../../utils/normalize';
 import { getAuditTeam } from '../../../api/auditTeam';
 import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
@@ -28,8 +28,9 @@ export default function DirectorExtensionRequestsPage() {
   const { user } = useAuth();
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const [requests, setRequests] = useState<ViewAuditPlanRevisionRequest[]>([]);
+  const [allRequests, setAllRequests] = useState<ViewAuditPlanRevisionRequest[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showAuditDetailsModal, setShowAuditDetailsModal] = useState(false);
@@ -48,14 +49,21 @@ export default function DirectorExtensionRequestsPage() {
   const [auditTeams, setAuditTeams] = useState<any[]>([]);
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [templatesForCurrentAudit, setTemplatesForCurrentAudit] = useState<any[]>([]);
-  const [requestFindings, setRequestFindings] = useState<any[]>([]);
-  const [loadingFindings, setLoadingFindings] = useState(false);
+  const [markedChecklistItems, setMarkedChecklistItems] = useState<any[]>([]);
+  const [loadingMarkedItems, setLoadingMarkedItems] = useState(false);
 
   const loadRequests = async () => {
     setLoading(true);
     try {
-      const data = await getPendingRevisionRequestsForDirector();
-      setRequests(data);
+      // Try to get all requests, fallback to pending only if API doesn't exist
+      try {
+        const data = await getAllRevisionRequestsForDirector();
+        setAllRequests(data || []);
+      } catch (err) {
+        // Fallback: load pending requests only
+        const pendingData = await getPendingRevisionRequestsForDirector();
+        setAllRequests(pendingData || []);
+      }
     } catch (error) {
       console.error('Failed to load extension requests:', error);
       toast.error('Failed to load extension requests');
@@ -63,6 +71,19 @@ export default function DirectorExtensionRequestsPage() {
       setLoading(false);
     }
   };
+
+  // Filter requests by active tab
+  const filteredRequests = allRequests.filter((req) => {
+    const status = (req.status || '').toLowerCase();
+    if (activeTab === 'pending') {
+      return status === 'pending' || !status;
+    } else if (activeTab === 'approved') {
+      return status === 'approved';
+    } else if (activeTab === 'rejected') {
+      return status === 'rejected';
+    }
+    return false;
+  });
 
   useEffect(() => {
     loadRequests();
@@ -161,10 +182,36 @@ export default function DirectorExtensionRequestsPage() {
     setSubmitting(true);
     try {
       const res = await approveAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
+      
+      // Unmark all checklist items for this audit after approval
+      try {
+        const markedItems = await getMarkedChecklistItems(selectedRequest.auditId);
+        const unmarkPromises = markedItems.map((item: any) => {
+          const itemId = item.auditItemId || item.id;
+          if (item.isMarked) {
+            return toggleMarkChecklistItem(itemId);
+          }
+          return Promise.resolve();
+        });
+        await Promise.all(unmarkPromises);
+      } catch (unmarkErr) {
+        console.warn('Failed to unmark checklist items:', unmarkErr);
+        // Don't block the success flow if unmarking fails
+      }
+      
+      // Update request in allRequests
+      setAllRequests(prev => prev.map(req => 
+        req.requestId === selectedRequest.requestId 
+          ? { ...req, ...res, status: 'Approved' }
+          : req
+      ));
+      
       toast.success('Extension request approved successfully.');
       setShowApproveModal(false);
       setSelectedRequest(null);
       setResponseComment('');
+      // Switch to Approved tab
+      setActiveTab('approved');
       await loadRequests();
 
       // Notify other screens (e.g. Lead Reports) so "Edit Schedule & Team" button appears immediately
@@ -193,11 +240,37 @@ export default function DirectorExtensionRequestsPage() {
     
     setSubmitting(true);
     try {
-      await rejectAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
+      const res = await rejectAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
+      
+      // Unmark all checklist items for this audit after rejection
+      try {
+        const markedItems = await getMarkedChecklistItems(selectedRequest.auditId);
+        const unmarkPromises = markedItems.map((item: any) => {
+          const itemId = item.auditItemId || item.id;
+          if (item.isMarked) {
+            return toggleMarkChecklistItem(itemId);
+          }
+          return Promise.resolve();
+        });
+        await Promise.all(unmarkPromises);
+      } catch (unmarkErr) {
+        console.warn('Failed to unmark checklist items:', unmarkErr);
+        // Don't block the success flow if unmarking fails
+      }
+      
+      // Update request in allRequests
+      setAllRequests(prev => prev.map(req => 
+        req.requestId === selectedRequest.requestId 
+          ? { ...req, ...res, status: 'Rejected' }
+          : req
+      ));
+      
       toast.success('Extension request rejected.');
       setShowRejectModal(false);
       setSelectedRequest(null);
       setResponseComment('');
+      // Switch to Rejected tab
+      setActiveTab('rejected');
       await loadRequests();
     } catch (error: any) {
       console.error('Failed to reject request:', error);
@@ -211,29 +284,18 @@ export default function DirectorExtensionRequestsPage() {
     setSelectedRequest(request);
     setResponseComment('');
     setShowApproveModal(true);
-    setRequestFindings([]);
+    setMarkedChecklistItems([]);
     
-    console.log('🔍 Extension Request:', request);
-    console.log('🔍 Finding IDs:', request.findingIds);
-    
-    // Load findings if findingIds are present
-    if (request.findingIds && request.findingIds.length > 0) {
-      setLoadingFindings(true);
-      try {
-        const allFindings = await getFindingsByAudit(request.auditId);
-        console.log('📋 All Findings:', allFindings);
-        // Filter to only include the findings that were selected
-        const selectedFindings = allFindings.filter((f: any) => 
-          request.findingIds?.includes(f.findingId || f.id)
-        );
-        console.log('✅ Selected Findings:', selectedFindings);
-        setRequestFindings(selectedFindings);
-      } catch (err) {
-        console.error('Failed to load findings:', err);
-        setRequestFindings([]);
-      } finally {
-        setLoadingFindings(false);
-      }
+    // Load marked checklist items for this audit
+    setLoadingMarkedItems(true);
+    try {
+      const markedItems = await getMarkedChecklistItems(request.auditId);
+      setMarkedChecklistItems(markedItems || []);
+    } catch (err) {
+      console.error('Failed to load marked checklist items:', err);
+      setMarkedChecklistItems([]);
+    } finally {
+      setLoadingMarkedItems(false);
     }
   };
 
@@ -360,61 +422,107 @@ export default function DirectorExtensionRequestsPage() {
           subtitle="Review and approve/reject requests from Lead Auditors to extend evidence due dates"
         />
 
-        {loading ? (
-          <div className="bg-white border border-primary-100 rounded-xl shadow-md p-8 flex items-center justify-center gap-3 text-sm text-primary-700">
-            <div className="h-5 w-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
-            <span>Loading extension requests...</span>
+        {/* Tabs Navigation */}
+        <div className="bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px" aria-label="Tabs">
+              <button
+                onClick={() => setActiveTab('pending')}
+                className={`flex-1 px-6 py-4 text-sm font-medium text-center border-b-2 transition-colors ${
+                  activeTab === 'pending'
+                    ? 'border-amber-500 text-amber-600 bg-amber-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Pending
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    activeTab === 'pending' ? 'bg-amber-200 text-amber-800' : 'bg-gray-200 text-gray-600'
+                  }`}>
+                    {allRequests.filter(r => (r.status || '').toLowerCase() === 'pending' || !r.status).length}
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('approved')}
+                className={`flex-1 px-6 py-4 text-sm font-medium text-center border-b-2 transition-colors ${
+                  activeTab === 'approved'
+                    ? 'border-green-500 text-green-600 bg-green-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Approved
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    activeTab === 'approved' ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'
+                  }`}>
+                    {allRequests.filter(r => (r.status || '').toLowerCase() === 'approved').length}
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('rejected')}
+                className={`flex-1 px-6 py-4 text-sm font-medium text-center border-b-2 transition-colors ${
+                  activeTab === 'rejected'
+                    ? 'border-red-500 text-red-600 bg-red-50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Rejected
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    activeTab === 'rejected' ? 'bg-red-200 text-red-800' : 'bg-gray-200 text-gray-600'
+                  }`}>
+                    {allRequests.filter(r => (r.status || '').toLowerCase() === 'rejected').length}
+                  </span>
+                </div>
+              </button>
+            </nav>
           </div>
-        ) : requests.length === 0 ? (
-          <div className="bg-white border border-dashed border-gray-300 rounded-xl shadow-sm p-8 text-center text-sm text-gray-500">
-            No pending extension requests at this time.
-          </div>
-        ) : (
-          <div className="bg-white border border-primary-100 rounded-xl shadow-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-primary-100 bg-gradient-to-r from-primary-600 to-primary-700">
-              <h2 className="text-sm font-semibold text-white uppercase tracking-wide flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Pending Extension Requests ({requests.length})
-              </h2>
+
+          {/* Tab Content */}
+          {loading ? (
+            <div className="p-8 flex items-center justify-center gap-3 text-sm text-gray-600">
+              <div className="h-5 w-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+              <span>Loading extension requests...</span>
             </div>
+          ) : filteredRequests.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-500">
+              {activeTab === 'pending' && 'No pending extension requests at this time.'}
+              {activeTab === 'approved' && 'No approved extension requests yet.'}
+              {activeTab === 'rejected' && 'No rejected extension requests yet.'}
+            </div>
+          ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      #
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Audit Information
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Requested By
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Requested Date
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Actions
-                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">#</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit Information</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Requested By</th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Requested Date</th>
+                    {activeTab !== 'pending' && (
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Responded Date</th>
+                    )}
+                    <th scope="col" className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                    <th scope="col" className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {requests.map((request, index) => (
-                    <tr 
-                      key={request.requestId}
-                      className="hover:bg-primary-50/30 transition-colors"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {index + 1}
-                      </td>
+                  {filteredRequests.map((request, index) => (
+                    <tr key={request.requestId} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{index + 1}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-gray-900 truncate">
                               {request.auditTitle || `Audit ${request.auditId.slice(0, 8)}...`}
@@ -429,39 +537,64 @@ export default function DirectorExtensionRequestsPage() {
                               {(request.requestedByName || 'LA').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                             </span>
                           </div>
-                          <div className="text-sm text-gray-900">
-                            {request.requestedByName || 'Lead Auditor'}
-                          </div>
+                          <div className="text-sm text-gray-900">{request.requestedByName || 'Lead Auditor'}</div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
                           {request.requestedAt ? new Date(request.requestedAt).toLocaleDateString('en-US', { 
-                            year: 'numeric', 
-                            month: 'short', 
-                            day: 'numeric' 
+                            year: 'numeric', month: 'short', day: 'numeric' 
                           }) : '—'}
                         </div>
                         <div className="text-xs text-gray-500">
                           {request.requestedAt ? new Date(request.requestedAt).toLocaleTimeString('en-US', { 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
+                            hour: '2-digit', minute: '2-digit' 
                           }) : ''}
                         </div>
                       </td>
+                      {activeTab !== 'pending' && (
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {request.respondedAt ? new Date(request.respondedAt).toLocaleDateString('en-US', { 
+                              year: 'numeric', month: 'short', day: 'numeric' 
+                            }) : '—'}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {request.respondedAt ? new Date(request.respondedAt).toLocaleTimeString('en-US', { 
+                              hour: '2-digit', minute: '2-digit' 
+                            }) : ''}
+                          </div>
+                        </td>
+                      )}
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700 shadow-sm">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          PENDING
-                        </span>
+                        {activeTab === 'pending' ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700 shadow-sm">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            PENDING
+                          </span>
+                        ) : activeTab === 'approved' ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700 shadow-sm">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            APPROVED
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            REJECTED
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => openAuditDetailsModal(request)}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
                             title="View Audit Details"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -469,16 +602,18 @@ export default function DirectorExtensionRequestsPage() {
                             </svg>
                             View Audit
                           </button>
-                          <button
-                            onClick={() => openReviewModal(request)}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white shadow-md hover:shadow-lg transition-all duration-200 transform hover:-translate-y-0.5"
-                            title="Review Extension Request"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                            </svg>
-                            Review Request
-                          </button>
+                          {activeTab === 'pending' && (
+                            <button
+                              onClick={() => openReviewModal(request)}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                              title="Review Extension Request"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                              </svg>
+                              Review Request
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -486,8 +621,8 @@ export default function DirectorExtensionRequestsPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Review/Approve/Reject Modal */}
         {showApproveModal && selectedRequest && createPortal(
@@ -570,198 +705,97 @@ export default function DirectorExtensionRequestsPage() {
                   </div>
                 </div>
 
-                {/* Selected Findings Section */}
+                {/* Marked Checklist Items Section */}
                 <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl">
                   <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                     <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    Selected Findings ({selectedRequest.findingIds?.length || 0})
+                    Marked Checklist Items ({markedChecklistItems.length})
                   </h4>
                   
-                  {(() => {
-                    if (!selectedRequest.findingIds || selectedRequest.findingIds.length === 0) {
-                      return (
-                        <div className="text-center py-4">
-                          <p className="text-xs text-gray-500">No findings were selected for this request</p>
-                        </div>
-                      );
-                    }
-                    
-                    if (loadingFindings) {
-                      return (
-                        <div className="flex items-center justify-center py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                            <span className="text-sm text-gray-600">Loading findings...</span>
-                          </div>
-                        </div>
-                      );
-                    }
-                    
-                    if (requestFindings.length > 0) {
-                      return (
-                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                          {requestFindings.map((finding: any, idx: number) => (
-                            <div key={finding.findingId || finding.id || idx} className="bg-white border border-purple-200 rounded-lg p-3">
-                              <div className="flex items-start gap-2">
-                                <div className="flex-shrink-0 mt-0.5">
-                                  <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                </div>
-                                <div className="flex-1">
-                                  <p className="text-sm font-semibold text-gray-900">{finding.title || finding.findingTitle}</p>
-                                  {finding.description && (
-                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{finding.description}</p>
+                  {loadingMarkedItems ? (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-sm text-gray-600">Loading marked items...</span>
+                      </div>
+                    </div>
+                  ) : markedChecklistItems.length === 0 ? (
+                    <div className="text-center py-4">
+                      <p className="text-xs text-gray-500">No checklist items were marked for this request</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {markedChecklistItems.map((item: any, idx: number) => {
+                        const findings = item.findings || [];
+                        return (
+                          <div key={item.auditItemId || item.id || idx} className="bg-white border border-purple-200 rounded-lg p-3">
+                            {/* Checklist Item */}
+                            <div className="flex items-start gap-2 mb-2">
+                              <div className="flex-shrink-0 mt-0.5">
+                                <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                </svg>
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-gray-900">{item.questionTextSnapshot || item.question || 'No question text'}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  {item.section && (
+                                    <span className="text-xs text-gray-500">{item.section}</span>
                                   )}
-                                  <div className="flex items-center gap-2 mt-2">
-                                    {finding.severity && (
-                                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                        finding.severity === 'Critical' ? 'bg-red-100 text-red-700' :
-                                        finding.severity === 'High' ? 'bg-orange-100 text-orange-700' :
-                                        finding.severity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                                        'bg-blue-100 text-blue-700'
-                                      }`}>
-                                        {finding.severity}
-                                      </span>
-                                    )}
-                                    {finding.departmentName && (
-                                      <span className="text-xs text-gray-500">{finding.departmentName}</span>
-                                    )}
-                                  </div>
+                                  {item.status && (
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                      item.status === 'Compliant' ? 'bg-green-100 text-green-700' :
+                                      item.status === 'Non-Compliant' ? 'bg-red-100 text-red-700' :
+                                      item.status === 'Overdue' ? 'bg-orange-100 text-orange-700' :
+                                      'bg-gray-100 text-gray-700'
+                                    }`}>
+                                      {item.status}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      );
-                    }
-                    
-                    return (
-                      <div className="text-center py-4">
-                        <p className="text-xs text-gray-500">No finding details available</p>
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Overdue Checklist Items Section */}
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold text-red-900 flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      Overdue Checklist Items ({loadingOverdue ? 'Loading...' : overdueItems.length})
-                    </h4>
-                  </div>
-                  {loadingOverdue ? (
-                    <div className="text-xs text-gray-600 text-center py-2">Loading overdue items...</div>
-                  ) : overdueItems.length === 0 ? (
-                    <div className="text-xs text-gray-600 text-center py-2">No overdue checklist items found.</div>
-                  ) : (
-                    <div className="space-y-4 max-h-96 overflow-y-auto">
-                      {(() => {
-                        // Get template IDs for this audit
-                        const auditId = selectedRequest?.auditId || '';
-                        const templateIds = auditTemplateMaps[auditId] || [];
-                        
-                        // Show templates used in this audit
-                        const templatesUsed = templateIds
-                          .map(id => templateMap[id])
-                          .filter(Boolean);
-                        
-                        // Group items by Section (as proxy for template grouping)
-                        const groupedBySection: Record<string, any[]> = {};
-                        overdueItems.forEach((item: any) => {
-                          const section = item.section || item.Section || 'Unknown Section';
-                          if (!groupedBySection[section]) {
-                            groupedBySection[section] = [];
-                          }
-                          groupedBySection[section].push(item);
-                        });
-
-                        return (
-                          <>
-                            {templatesUsed.length > 0 && (
-                              <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-md">
-                                <p className="text-[10px] font-semibold text-blue-900 mb-1">Templates Used in This Audit:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {templatesUsed.map((name, idx) => (
-                                    <span key={idx} className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
-                                      {name}
-                                    </span>
+                            
+                            {/* Findings for this checklist item */}
+                            {findings.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-purple-100">
+                                <p className="text-xs font-medium text-gray-700 mb-1">Findings ({findings.length}):</p>
+                                <div className="space-y-1.5">
+                                  {findings.map((finding: any, fIdx: number) => (
+                                    <div key={finding.findingId || finding.id || fIdx} className="bg-purple-50 border border-purple-100 rounded p-2">
+                                      <div className="flex items-start gap-2">
+                                        <div className="flex-shrink-0 mt-0.5">
+                                          <svg className="w-3 h-3 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                        </div>
+                                        <div className="flex-1">
+                                          <p className="text-xs font-medium text-gray-900">{finding.title || finding.findingTitle}</p>
+                                          {finding.description && (
+                                            <p className="text-xs text-gray-600 mt-0.5 line-clamp-1">{finding.description}</p>
+                                          )}
+                                          {finding.severity && (
+                                            <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                              finding.severity === 'Critical' ? 'bg-red-100 text-red-700' :
+                                              finding.severity === 'High' ? 'bg-orange-100 text-orange-700' :
+                                              finding.severity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                              'bg-blue-100 text-blue-700'
+                                            }`}>
+                                              {finding.severity}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
                                   ))}
                                 </div>
                               </div>
                             )}
-                            {Object.entries(groupedBySection).map(([section, items]) => {
-                              // Try to match section with a template name (approximate)
-                              const sectionTemplateName = templatesUsed.length > 0 ? templatesUsed[0] : section;
-                              
-                              return (
-                                <div key={section} className="bg-white border border-red-300 rounded-lg p-3">
-                                  <div className="mb-2 pb-2 border-b border-red-200">
-                                    <h5 className="text-xs font-bold text-red-900 uppercase">
-                                      📋 {sectionTemplateName}
-                                    </h5>
-                                    <p className="text-[10px] text-gray-600 mt-0.5">
-                                      Section: {section} • {items.length} overdue item{items.length !== 1 ? 's' : ''}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-2">
-                                    {items.map((item: any, idx: number) => (
-                                      <div key={item.auditChecklistItemId || item.auditItemId || idx} className="bg-red-50 border border-red-200 rounded-md p-2.5">
-                                        <div className="flex items-start justify-between gap-2">
-                                          <div className="flex-1">
-                                            <p className="text-xs font-semibold text-gray-900 mb-1">
-                                              Item {idx + 1}
-                                            </p>
-                                            {item.questionTextSnapshot && (
-                                              <p className="text-xs text-gray-700 mb-2 whitespace-pre-wrap">
-                                                {item.questionTextSnapshot}
-                                              </p>
-                                            )}
-                                            {!item.questionTextSnapshot && (item.title || item.itemTitle) && (
-                                              <p className="text-xs text-gray-700 mb-2">
-                                                {item.title || item.itemTitle}
-                                              </p>
-                                            )}
-                                            <div className="flex flex-wrap gap-2 text-[10px] text-gray-600">
-                                              {item.dueDate && (
-                                                <span className="inline-flex items-center">
-                                                  <span className="font-medium">Due:</span>{' '}
-                                                  <span className="text-red-600 font-semibold">
-                                                    {new Date(item.dueDate).toLocaleDateString()}
-                                                  </span>
-                                                </span>
-                                              )}
-                                              {item.status && (
-                                                <span className="inline-flex items-center">
-                                                  <span className="font-medium">Status:</span> {item.status}
-                                                </span>
-                                              )}
-                                              {item.section && (
-                                                <span className="inline-flex items-center">
-                                                  <span className="font-medium">Section:</span> {item.section}
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 whitespace-nowrap flex-shrink-0">
-                                            OVERDUE
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </>
+                          </div>
                         );
-                      })()}
+                      })}
                     </div>
                   )}
                 </div>
@@ -865,127 +899,6 @@ export default function DirectorExtensionRequestsPage() {
               </div>
               
               <div className="p-6">
-
-                {/* Overdue Checklist Items Section */}
-                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold text-red-900 flex items-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      Overdue Checklist Items ({loadingOverdue ? 'Loading...' : overdueItems.length})
-                    </h4>
-                  </div>
-                  {loadingOverdue ? (
-                    <div className="text-xs text-gray-600 text-center py-2">Loading overdue items...</div>
-                  ) : overdueItems.length === 0 ? (
-                    <div className="text-xs text-gray-600 text-center py-2">No overdue checklist items found.</div>
-                  ) : (
-                    <div className="space-y-4 max-h-96 overflow-y-auto">
-                      {(() => {
-                        // Get template IDs for this audit
-                        const auditId = selectedRequest?.auditId || '';
-                        const templateIds = auditTemplateMaps[auditId] || [];
-                        
-                        // Show templates used in this audit
-                        const templatesUsed = templateIds
-                          .map(id => templateMap[id])
-                          .filter(Boolean);
-                        
-                        // Group items by Section (as proxy for template grouping)
-                        const groupedBySection: Record<string, any[]> = {};
-                        overdueItems.forEach((item: any) => {
-                          const section = item.section || item.Section || 'Unknown Section';
-                          if (!groupedBySection[section]) {
-                            groupedBySection[section] = [];
-                          }
-                          groupedBySection[section].push(item);
-                        });
-
-                        return (
-                          <>
-                            {templatesUsed.length > 0 && (
-                              <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-md">
-                                <p className="text-[10px] font-semibold text-blue-900 mb-1">Templates Used in This Audit:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {templatesUsed.map((name, idx) => (
-                                    <span key={idx} className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
-                                      {name}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {Object.entries(groupedBySection).map(([section, items]) => {
-                              // Use first template name if available, otherwise use section
-                              const sectionTemplateName = templatesUsed.length > 0 ? templatesUsed[0] : section;
-                              
-                              return (
-                                <div key={section} className="bg-white border border-red-300 rounded-lg p-3">
-                                  <div className="mb-2 pb-2 border-b border-red-200">
-                                    <h5 className="text-xs font-bold text-red-900 uppercase">
-                                      📋 {sectionTemplateName}
-                                    </h5>
-                                    <p className="text-[10px] text-gray-600 mt-0.5">
-                                      Section: {section} • {items.length} overdue item{items.length !== 1 ? 's' : ''}
-                                    </p>
-                                  </div>
-                                  <div className="space-y-2">
-                                    {items.map((item: any, idx: number) => (
-                                      <div key={item.auditChecklistItemId || item.auditItemId || idx} className="bg-red-50 border border-red-200 rounded-md p-2.5">
-                                        <div className="flex items-start justify-between gap-2">
-                                          <div className="flex-1">
-                                            <p className="text-xs font-semibold text-gray-900 mb-1">
-                                              Item {idx + 1}
-                                            </p>
-                                            {item.questionTextSnapshot && (
-                                              <p className="text-xs text-gray-700 mb-2 whitespace-pre-wrap">
-                                                {item.questionTextSnapshot}
-                                              </p>
-                                            )}
-                                            {!item.questionTextSnapshot && (item.title || item.itemTitle) && (
-                                              <p className="text-xs text-gray-700 mb-2">
-                                                {item.title || item.itemTitle}
-                                              </p>
-                                            )}
-                                            <div className="flex flex-wrap gap-2 text-[10px] text-gray-600">
-                                              {item.dueDate && (
-                                                <span className="inline-flex items-center">
-                                                  <span className="font-medium">Due:</span>{' '}
-                                                  <span className="text-red-600 font-semibold">
-                                                    {new Date(item.dueDate).toLocaleDateString()}
-                                                  </span>
-                                                </span>
-                                              )}
-                                              {item.status && (
-                                                <span className="inline-flex items-center">
-                                                  <span className="font-medium">Status:</span> {item.status}
-                                                </span>
-                                              )}
-                                              {item.section && (
-                                                <span className="inline-flex items-center">
-                                                  <span className="font-medium">Section:</span> {item.section}
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 whitespace-nowrap flex-shrink-0">
-                                            OVERDUE
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </div>
-
                 <div className="mb-6">
                   <label className="block text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
                     <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

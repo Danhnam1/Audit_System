@@ -16,7 +16,7 @@ import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getAllReportRequests, type ViewReportRequest } from '../../../api/reportRequest';
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
-import { getAuditChecklistItems } from '../../../api/checklists';
+import { getAuditChecklistItems, toggleMarkChecklistItem, getMarkedChecklistItems } from '../../../api/checklists';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
 import { 
@@ -77,15 +77,24 @@ const AuditorLeadReports = () => {
   const [returnLoading, setReturnLoading] = useState(false);
   // Selected findings for return
   const [selectedFindings, setSelectedFindings] = useState<Set<string>>(new Set());
+  // Required findings from approved extension requests (must be selected and disabled)
+  const [requiredFindings, setRequiredFindings] = useState<Set<string>>(new Set());
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
   
   // Extension request states
   const [showExtensionModal, setShowExtensionModal] = useState(false);
+  const [showRequestHistoryModal, setShowRequestHistoryModal] = useState(false);
   const [extensionComment, setExtensionComment] = useState('');
   const [extensionLoading, setExtensionLoading] = useState(false);
   const [revisionRequests, setRevisionRequests] = useState<ViewAuditPlanRevisionRequest[]>([]);
   // Map of auditId -> revision requests (for checking extension approval)
   const [revisionRequestsMap, setRevisionRequestsMap] = useState<Record<string, ViewAuditPlanRevisionRequest[]>>({});
+  // Selected checklist items for extension request (separate from findings for return)
+  const [selectedChecklistItems, setSelectedChecklistItems] = useState<Set<string>>(new Set());
+  const [allChecklistItems, setAllChecklistItems] = useState<any[]>([]);
+  // Map of requestId -> marked checklist items (for displaying in Previous Requests)
+  const [markedItemsByRequest, setMarkedItemsByRequest] = useState<Record<string, any[]>>({});
+  const [loadingMarkedItems, setLoadingMarkedItems] = useState<Record<string, boolean>>({});
   
   // Edit Schedule & Team states
   const [showEditScheduleTeamModal, setShowEditScheduleTeamModal] = useState(false);
@@ -499,6 +508,7 @@ const AuditorLeadReports = () => {
     loadSummary();
   }, [selectedAuditId, summaryReloadKey]);
 
+
   const rows = useMemo(() => {
     const getCreatedByLabel = (a: any): string => {
       const src =
@@ -673,25 +683,6 @@ const AuditorLeadReports = () => {
     }
     return list;
   }, [rows, statusFilter, reportSearch]);
-
-  const needsDecision = (status: string) => {
-    const s = String(status || '').toLowerCase().trim();
-    if (!s) return false;
-    
-    // If status is already Approved, Returned, or Rejected, no decision needed
-    // Check exact matches first, then partial matches
-    if (s === 'approved' || s === 'returned' || s === 'rejected') {
-      return false;
-    }
-    
-    // Check for partial matches (case-insensitive)
-    if (s.includes('approve') || s.includes('reject') || s.includes('return')) {
-      return false;
-    }
-    
-    // Only show buttons for Pending/Submitted/UnderReview statuses
-    return s.includes('submit') || s === 'pending' || s.includes('underreview') || s.includes('under review');
-  };
 
   const openApproveModal = (auditId: string) => {
     setApproveAuditId(auditId);
@@ -888,6 +879,15 @@ const AuditorLeadReports = () => {
     if (selectedFindings.size === 0) {
       toast.error('Please select at least one finding to return.');
       return;
+    }
+    
+    // Validate: all required findings must be selected
+    if (requiredFindings.size > 0) {
+      const missingRequired = Array.from(requiredFindings).filter(id => !selectedFindings.has(id));
+      if (missingRequired.length > 0) {
+        toast.error(`Please select all required findings (${missingRequired.length} missing) from approved extension request.`);
+        return;
+      }
     }
     
     setActionLoading(`${auditId}:return`);
@@ -1630,11 +1630,46 @@ const AuditorLeadReports = () => {
     setSelectedAuditId(auditId);
     setShowExtensionModal(true);
     setExtensionComment('');
+    // Don't reset selectedChecklistItems - items are selected outside the modal
+    
+    // Load checklist items for this audit (needed for handleRequestExtension to get full item details)
+    try {
+      const items = await getAuditChecklistItems(auditId);
+      setAllChecklistItems(items || []);
+    } catch (err) {
+      console.error('Failed to load checklist items:', err);
+      setAllChecklistItems([]);
+    }
     
     // Load existing revision requests
     try {
       const requests = await getAuditPlanRevisionRequestsByAuditId(auditId);
       setRevisionRequests(requests);
+      
+      // Load marked checklist items for approved/rejected requests
+      // Only load if we don't already have the data in state
+      const approvedRejectedRequests = requests.filter(r => 
+        (r.status === 'Approved' || r.status === 'Rejected') && !markedItemsByRequest[r.requestId]
+      );
+      
+      for (const req of approvedRejectedRequests) {
+        setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: true }));
+        try {
+          // Try to get marked items (might be empty if already unmarked after approval)
+          // If backend stores request-item mapping, this should work
+          // Otherwise, we rely on the mapping saved when submitting the request
+          const markedItems = await getMarkedChecklistItems(auditId).catch(() => []);
+          if (markedItems && markedItems.length > 0) {
+            setMarkedItemsByRequest(prev => ({ ...prev, [req.requestId]: markedItems }));
+          }
+          // If no items found, keep existing mapping (if any) or leave empty
+        } catch (err) {
+          console.error(`Failed to load marked items for request ${req.requestId}:`, err);
+          // Don't overwrite existing mapping if load fails
+        } finally {
+          setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: false }));
+        }
+      }
     } catch (err) {
       console.error('Failed to load revision requests:', err);
       setRevisionRequests([]);
@@ -1649,21 +1684,50 @@ const AuditorLeadReports = () => {
       return;
     }
     
-    // Convert Set to Array
-    const selectedFindingIds = Array.from(selectedFindings);
+    // Validate: must have at least one checklist item selected
+    if (selectedChecklistItems.size === 0) {
+      toast.error('Please select at least one checklist item to request extension for.');
+      return;
+    }
     
     setExtensionLoading(true);
     try {
-      await createAuditPlanRevisionRequest({
+      // Mark all selected checklist items
+      const markPromises = Array.from(selectedChecklistItems).map(auditItemId => 
+        toggleMarkChecklistItem(auditItemId)
+      );
+      
+      try {
+        await Promise.all(markPromises);
+        toast.success(`Marked ${selectedChecklistItems.size} checklist item(s) for extension request.`);
+      } catch (markErr: any) {
+        console.error('Failed to mark some checklist items:', markErr);
+        toast.warning('Some checklist items failed to mark. Continuing with request...');
+      }
+      
+      // Create extension request (no longer need findingIds - backend will get from marked items)
+      const newRequest = await createAuditPlanRevisionRequest({
         auditId: selectedAuditId,
         comment: extensionComment.trim(),
-        findingIds: selectedFindingIds.length > 0 ? selectedFindingIds : undefined,
+        // findingIds removed - backend will get from marked checklist items
       });
+      
+      // Save mapping of request -> checklist items for later display
+      if (newRequest?.requestId) {
+        const selectedItemsList = allChecklistItems.filter((item: any) => 
+          selectedChecklistItems.has(item.auditItemId || item.id)
+        );
+        setMarkedItemsByRequest(prev => ({
+          ...prev,
+          [newRequest.requestId]: selectedItemsList
+        }));
+      }
+      
       toast.success('Extension request sent to Director successfully.');
       setShowExtensionModal(false);
       setExtensionComment('');
-      // Clear selected findings after successful submission
-      setSelectedFindings(new Set());
+      // Clear selected checklist items after successful submission
+      setSelectedChecklistItems(new Set());
       // Reload revision requests
       const requests = await getAuditPlanRevisionRequestsByAuditId(selectedAuditId);
       setRevisionRequests(requests);
@@ -1813,6 +1877,92 @@ const AuditorLeadReports = () => {
     return Array.from(deptSet).sort();
   }, [auditChecklistItems]);
 
+  // Auto-select and disable findings from approved extension requests
+  useEffect(() => {
+    const loadRequiredFindings = async () => {
+      if (!selectedAuditId || !allFindings.length) {
+        setRequiredFindings(new Set());
+        return;
+      }
+      
+      // Check if there's an approved extension request
+      const auditRevisionRequests = revisionRequestsMap[selectedAuditId] || [];
+      const approvedRequest = auditRevisionRequests.find((req: ViewAuditPlanRevisionRequest) => {
+        const reqStatus = String(req.status || '').trim();
+        return reqStatus.toLowerCase() === 'approved';
+      });
+      
+      if (!approvedRequest) {
+        setRequiredFindings(new Set());
+        return;
+      }
+      
+      // Get marked checklist items for this approved request
+      let markedItems = markedItemsByRequest[approvedRequest.requestId] || [];
+      
+      // If not in state, try to load from API
+      if (markedItems.length === 0) {
+        try {
+          markedItems = await getMarkedChecklistItems(selectedAuditId);
+          if (markedItems && markedItems.length > 0) {
+            setMarkedItemsByRequest(prev => ({
+              ...prev,
+              [approvedRequest.requestId]: markedItems
+            }));
+          }
+        } catch (err) {
+          console.error('Failed to load marked items for required findings:', err);
+        }
+      }
+      
+      // Extract findings from marked checklist items
+      const requiredFindingIds = new Set<string>();
+      markedItems.forEach((item: any) => {
+        // Check findings array
+        if (item.findings && Array.isArray(item.findings)) {
+          item.findings.forEach((finding: any) => {
+            const findingId = String(finding.findingId || finding.id || '');
+            if (findingId) requiredFindingIds.add(findingId);
+          });
+        }
+        // Also check checklistItemNoFindings (if it has findings)
+        if (item.checklistItemNoFindings) {
+          const noFinding = item.checklistItemNoFindings;
+          const findingId = String(noFinding.findingId || noFinding.id || '');
+          if (findingId) requiredFindingIds.add(findingId);
+        }
+      });
+      
+      // Also try to get findings from allFindings that belong to marked checklist items
+      if (requiredFindingIds.size === 0) {
+        markedItems.forEach((markedItem: any) => {
+          const itemId = markedItem.auditItemId || markedItem.id;
+          allFindings.forEach((finding: any) => {
+            const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
+            if (String(findingItemId) === String(itemId)) {
+              const findingId = String(finding.findingId || finding.id || '');
+              if (findingId) requiredFindingIds.add(findingId);
+            }
+          });
+        });
+      }
+      
+      // Set required findings
+      setRequiredFindings(requiredFindingIds);
+      
+      // Auto-select required findings
+      if (requiredFindingIds.size > 0) {
+        setSelectedFindings(prev => {
+          const next = new Set(prev);
+          requiredFindingIds.forEach(id => next.add(id));
+          return next;
+        });
+      }
+    };
+    
+    loadRequiredFindings();
+  }, [selectedAuditId, allFindings, revisionRequestsMap, markedItemsByRequest]);
+
   // Compliant items only (for "No Findings" tab)
   const compliantItemsOnly = useMemo(() => {
     if (!auditChecklistItems) return [];
@@ -1958,53 +2108,64 @@ const AuditorLeadReports = () => {
                       className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'checklist' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                     >Checklist</button>
                   </div>
-                  {/* Request Extension Button */}
-                  {(() => {
-                    // Check if there's already a pending request
-                    const pendingRequest = revisionRequests.find(r => r.status === 'Pending');
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2">
+                    {/* Request History Button - Always show if there are any requests */}
+                    {revisionRequests.length > 0 && (
+                      <button
+                        onClick={() => {
+                          setShowRequestHistoryModal(true);
+                        }}
+                        className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-2"
+                        title="View request history"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                        </svg>
+                        Request History
+                        {revisionRequests.length > 0 && (
+                          <span className="ml-1 px-1.5 py-0.5 bg-blue-400 rounded-full text-xs font-semibold">
+                            {revisionRequests.length}
+                          </span>
+                        )}
+                      </button>
+                    )}
                     
-                    if (pendingRequest) {
-                      // Show "Request has been submitted" button
+                    {/* Request Extension Button - Only show if no pending request */}
+                    {(() => {
+                      const pendingRequest = revisionRequests.find(r => r.status === 'Pending');
+                      
+                      if (pendingRequest) {
+                        // Show disabled button when pending
+                        return (
+                          <button
+                            disabled
+                            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-400 text-white cursor-not-allowed flex items-center gap-2"
+                            title="A request is already pending"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Request Pending
+                          </button>
+                        );
+                      }
+                      
                       return (
                         <button
                           onClick={() => {
-                            // Show the comment in a toast or modal
-                            toast.info(
-                              <div>
-                                <p className="font-semibold mb-1">Extension Request Submitted</p>
-                                <p className="text-sm">{pendingRequest.comment || 'No comment provided'}</p>
-                                {pendingRequest.findingIds && pendingRequest.findingIds.length > 0 && (
-                                  <p className="text-xs mt-1 text-gray-600">{pendingRequest.findingIds.length} finding(s) included</p>
-                                )}
-                              </div>,
-                              { autoClose: 5000 }
-                            );
+                            openExtensionModal(selectedAuditId);
                           }}
-                          className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-2"
-                          title="Click to view submitted request details"
+                          className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-2"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          Request has been submitted
+                          Request Extension
                         </button>
                       );
-                    }
-                    
-                    return (
-                      <button
-                        onClick={() => {
-                          openExtensionModal(selectedAuditId);
-                        }}
-                        className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-2"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Request Extension
-                      </button>
-                    );
-                  })()}
+                    })()}
+                  </div>
                 </div>
                 {activeTab === 'departmentsSummary' ? (
                   <>
@@ -2063,7 +2224,13 @@ const AuditorLeadReports = () => {
                         setShowAttachmentsModal(true);
                       }}
                       selectedFindings={selectedFindings}
+                      requiredFindings={requiredFindings}
                       onSelectFinding={(findingId, isSelected) => {
+                        // Don't allow unselecting required findings
+                        if (!isSelected && requiredFindings.has(findingId)) {
+                          toast.warning('This finding is required due to approved extension request and cannot be deselected.');
+                          return;
+                        }
                         setSelectedFindings(prev => {
                           const next = new Set(prev);
                           if (isSelected) {
@@ -2355,6 +2522,15 @@ const AuditorLeadReports = () => {
                         {/* Return button - always show when needs decision */}
                         <button
                           onClick={async () => {
+                            // Validate required findings before proceeding
+                            if (requiredFindings.size > 0) {
+                              const missingRequired = Array.from(requiredFindings).filter(id => !selectedFindings.has(id));
+                              if (missingRequired.length > 0) {
+                                toast.error(`Please select all required findings (${missingRequired.length} missing) from approved extension request.`);
+                                return;
+                              }
+                            }
+                            
                             setShowViewModal(false);
                             
                             // If has approved extension → open modal to edit schedule & team
@@ -2367,7 +2543,7 @@ const AuditorLeadReports = () => {
                           }}
                           disabled={actionLoading === `${selectedAuditId}:approve` || actionLoading === `${selectedAuditId}:return`}
                           className={`px-4 py-2 ${hasApprovedExtension ? 'bg-orange-700 hover:bg-orange-800 ring-2 ring-orange-300' : 'bg-orange-600 hover:bg-orange-700'} disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm flex items-center gap-2`}
-                          title={hasApprovedExtension ? 'Extension approved - You must Return to edit schedule and team' : `Return report${selectedFindings.size > 0 ? ` and ${selectedFindings.size} finding(s)` : ''}`}
+                          title={hasApprovedExtension ? `Extension approved - You must Return to edit schedule and team${requiredFindings.size > 0 ? ` (${requiredFindings.size} required finding(s))` : ''}` : `Return report${selectedFindings.size > 0 ? ` and ${selectedFindings.size} finding(s)` : ''}`}
                         >
                           {actionLoading === `${selectedAuditId}:return` ? (
                             <>
@@ -2567,10 +2743,15 @@ const AuditorLeadReports = () => {
                           const role = String(u.roleName || u.role || '').toLowerCase();
                           return role === 'auditor' || role === 'leadauditor';
                         })
-                        .map((u: any) => ({
-                          value: String(u.userId || u.id || u.$id),
-                          label: u.fullName || u.name || 'Unknown',
-                        }))}
+                        .map((u: any) => {
+                          const userId = String(u.userId || u.id || u.$id);
+                          const isExisting = returnInitialAuditorIds.has(userId);
+                          return {
+                            value: userId,
+                            label: u.fullName || u.name || 'Unknown',
+                            disabled: isExisting, // Disable existing members
+                          };
+                        })}
                       value={returnSelectedAuditorIds}
                       onChange={(next) => {
                         // Ensure all initial auditor IDs are still included (cannot remove)
@@ -2659,67 +2840,6 @@ const AuditorLeadReports = () => {
                   </div>
                 </div>
                 
-                {/* Selected Findings Display */}
-                {(() => {
-                  // Get findings that were selected from the table
-                  const selectedFindingsList = allFindings.filter((f: any) => 
-                    selectedFindings.has(f.findingId || f.id)
-                  );
-                  
-                  if (selectedFindingsList.length === 0) {
-                    return (
-                      <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-sm text-blue-700">
-                          <span className="font-semibold">Note:</span> No findings selected. Select findings from the table before requesting extension to include them in the request.
-                        </p>
-                      </div>
-                    );
-                  }
-                  
-                  return (
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Selected Findings ({selectedFindingsList.length})
-                      </label>
-                      <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50 space-y-2">
-                        {selectedFindingsList.map((finding: any) => (
-                          <div
-                            key={finding.findingId || finding.id}
-                            className="flex items-start gap-2 p-2 bg-white rounded border border-gray-200"
-                          >
-                            <div className="flex-shrink-0 mt-0.5">
-                              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                            </div>
-                            <div className="flex-1 text-xs">
-                              <p className="font-medium text-gray-900">{finding.title || finding.findingTitle}</p>
-                              {finding.description && (
-                                <p className="text-gray-600 line-clamp-2 mt-0.5">{finding.description}</p>
-                              )}
-                              <div className="flex items-center gap-2 mt-1">
-                                {finding.severity && (
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                    finding.severity === 'Critical' ? 'bg-red-100 text-red-700' :
-                                    finding.severity === 'High' ? 'bg-orange-100 text-orange-700' :
-                                    finding.severity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                                    'bg-blue-100 text-blue-700'
-                                  }`}>
-                                    {finding.severity}
-                                  </span>
-                                )}
-                                {finding.departmentName && (
-                                  <span className="text-gray-500">{finding.departmentName}</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-                
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Reason for extension request:
@@ -2733,36 +2853,8 @@ const AuditorLeadReports = () => {
                   />
                 </div>
 
-                {/* Show existing requests if any */}
-                {revisionRequests.length > 0 && (
-                  <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-xs font-semibold text-gray-700 mb-2">Previous Requests:</p>
-                    <div className="space-y-2">
-                      {revisionRequests.map((req) => (
-                        <div key={req.requestId} className="text-xs text-gray-600">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">
-                              {req.status === 'Pending' ? '⏳ Pending' : 
-                               req.status === 'Approved' ? '✅ Approved' : 
-                               req.status === 'Rejected' ? '❌ Rejected' : req.status}
-                            </span>
-                            <span className="text-gray-500">
-                              {req.requestedAt ? new Date(req.requestedAt).toLocaleDateString() : ''}
-                            </span>
-                          </div>
-                          {req.comment && (
-                            <p className="mt-1 text-gray-500 line-clamp-2">{req.comment}</p>
-                          )}
-                          {req.responseComment && (
-                            <p className="mt-1 text-gray-600">
-                              <span className="font-medium">Response:</span> {req.responseComment}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+              
+                
                 
                 <div className="flex gap-3 justify-end">
                   <button
@@ -2783,6 +2875,234 @@ const AuditorLeadReports = () => {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Request History Modal */}
+        {showRequestHistoryModal && selectedAuditId && createPortal(
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => setShowRequestHistoryModal(false)}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-xl shadow-xl border-2 border-gray-300 w-full max-w-4xl mx-auto max-h-[90vh] flex flex-col overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b-2 border-gray-300 flex-shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 rounded-t-xl">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">
+                      Extension Request History
+                    </h3>
+                    <p className="text-sm text-white/80 mt-0.5">
+                      View all extension requests and Director's responses
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowRequestHistoryModal(false)}
+                  className="flex-shrink-0 w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {revisionRequests.length === 0 ? (
+                  <div className="text-center py-12">
+                    <svg className="w-16 h-16 mx-auto text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                    <p className="text-sm text-gray-500">No extension requests found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {revisionRequests
+                      .sort((a, b) => {
+                        // Sort by date: newest first
+                        const dateA = a.requestedAt ? new Date(a.requestedAt).getTime() : 0;
+                        const dateB = b.requestedAt ? new Date(b.requestedAt).getTime() : 0;
+                        return dateB - dateA;
+                      })
+                      .map((req) => {
+                        const markedItems = markedItemsByRequest[req.requestId] || [];
+                        const isLoading = loadingMarkedItems[req.requestId];
+                        const isApproved = req.status === 'Approved';
+                        const isRejected = req.status === 'Rejected';
+                        const isPending = req.status === 'Pending';
+                        
+                        return (
+                          <div key={req.requestId} className="bg-white border-2 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                            {/* Request Header */}
+                            <div className={`p-4 border-b-2 ${
+                              isApproved ? 'bg-green-50 border-green-200' :
+                              isRejected ? 'bg-red-50 border-red-200' :
+                              'bg-amber-50 border-amber-200'
+                            }`}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  {isApproved && (
+                                    <div className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                  {isRejected && (
+                                    <div className="flex-shrink-0 w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                                      <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                  {isPending && (
+                                    <div className="flex-shrink-0 w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                                      <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <h4 className={`text-sm font-bold ${
+                                      isApproved ? 'text-green-800' :
+                                      isRejected ? 'text-red-800' :
+                                      'text-amber-800'
+                                    }`}>
+                                      {isApproved ? 'APPROVED' : isRejected ? 'REJECTED' : 'PENDING'}
+                                    </h4>
+                                    <p className="text-xs text-gray-600 mt-0.5">
+                                      Requested: {req.requestedAt ? new Date(req.requestedAt).toLocaleString() : 'N/A'}
+                                    </p>
+                                    {req.respondedAt && (
+                                      <p className="text-xs text-gray-600">
+                                        Responded: {new Date(req.respondedAt).toLocaleString()}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                {req.respondedByName && (
+                                  <div className="text-right">
+                                    <p className="text-xs text-gray-600">By</p>
+                                    <p className="text-sm font-semibold text-gray-900">{req.respondedByName}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Request Details */}
+                            <div className="p-4 space-y-3">
+                              {/* Comment */}
+                              {req.comment && (
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-700 mb-1">Your Request:</p>
+                                  <p className="text-sm text-gray-900 bg-gray-50 rounded-lg p-3 border border-gray-200">
+                                    {req.comment}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Director's Response */}
+                              {req.responseComment && (
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-700 mb-1">Director's Response:</p>
+                                  <p className={`text-sm rounded-lg p-3 border ${
+                                    isApproved 
+                                      ? 'bg-green-50 border-green-200 text-green-900' 
+                                      : 'bg-red-50 border-red-200 text-red-900'
+                                  }`}>
+                                    {req.responseComment}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Checklist Items - Show for all statuses */}
+                              {(isApproved || isRejected) && (
+                                <div>
+                                  <p className="text-xs font-semibold text-gray-700 mb-2">Checklist Items Included:</p>
+                                  {isLoading ? (
+                                    <div className="flex items-center justify-center py-4">
+                                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                        Loading items...
+                                      </div>
+                                    </div>
+                                  ) : markedItems.length > 0 ? (
+                                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                                      {markedItems.map((item: any, idx: number) => (
+                                        <div key={item.auditItemId || item.id || idx} className={`flex items-start gap-2 p-3 rounded-lg border ${
+                                          isApproved 
+                                            ? 'bg-green-50 border-green-200' 
+                                            : 'bg-red-50 border-red-200'
+                                        }`}>
+                                          <svg className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
+                                            isApproved ? 'text-green-600' : 'text-red-600'
+                                          }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-gray-900">
+                                              {item.questionTextSnapshot || item.question || 'No question text'}
+                                            </p>
+                                            {item.section && (
+                                              <p className="text-xs text-gray-500 mt-0.5">{item.section}</p>
+                                            )}
+                                            {/* Show findings for this item if available */}
+                                            {item.findings && item.findings.length > 0 && (
+                                              <div className="mt-2 space-y-1">
+                                                <p className="text-xs font-medium text-gray-700">Findings ({item.findings.length}):</p>
+                                                {item.findings.map((finding: any, fIdx: number) => (
+                                                  <div key={finding.findingId || fIdx} className="bg-white rounded p-2 border border-gray-200">
+                                                    <p className="text-xs font-medium text-gray-900">{finding.title || finding.findingTitle}</p>
+                                                    {finding.description && (
+                                                      <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{finding.description}</p>
+                                                    )}
+                                                    {finding.severity && (
+                                                      <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                                        finding.severity === 'Critical' ? 'bg-red-100 text-red-700' :
+                                                        finding.severity === 'High' ? 'bg-orange-100 text-orange-700' :
+                                                        finding.severity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                                        'bg-blue-100 text-blue-700'
+                                                      }`}>
+                                                        {finding.severity}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-gray-500 italic text-center py-2">
+                                      No checklist items found for this request
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+
+         
+              
             </div>
           </div>,
           document.body

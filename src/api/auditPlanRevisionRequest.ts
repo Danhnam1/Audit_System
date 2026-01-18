@@ -66,6 +66,13 @@ export const getPendingRevisionRequestsForDirector = async (): Promise<ViewAudit
   return unwrap<ViewAuditPlanRevisionRequest>(data);
 };
 
+// Get all requests for Director (pending, approved, rejected)
+export const getAllRevisionRequestsForDirector = async (): Promise<ViewAuditPlanRevisionRequest[]> => {
+  const res: any = await apiClient.get('/AuditPlanRevisionRequest/for-director');
+  const data = res?.data ?? res;
+  return unwrap<ViewAuditPlanRevisionRequest>(data);
+};
+
 // Approve revision request (Director)
 export const approveAuditPlanRevisionRequest = async (
   requestId: string,

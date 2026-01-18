@@ -16,6 +16,7 @@ interface Props {
   setFindingsSeverity: (v: string) => void;
   onViewAttachments?: (attachments: any[], findingTitle: string) => void;
   selectedFindings?: Set<string>;
+  requiredFindings?: Set<string>;
   onSelectFinding?: (findingId: string, isSelected: boolean) => void;
 }
 
@@ -31,6 +32,7 @@ const DepartmentsSection: React.FC<Props> = ({
   setFindingsSeverity,
   onViewAttachments,
   selectedFindings = new Set(),
+  requiredFindings = new Set(),
   onSelectFinding
 }) => {
   const filteredFindings = findings.filter((f: any) => {
@@ -135,19 +137,25 @@ const DepartmentsSection: React.FC<Props> = ({
                   const deadline = f?.deadline ? new Date(f.deadline).toLocaleDateString() : '';
                   const isReturned = String(f?.status || '').toLowerCase() === 'return';
                   const isSelected = selectedFindings.has(fid);
+                  const isRequired = requiredFindings.has(fid);
                   return (
                     <tr 
                       key={fid} 
-                      className={`hover:bg-gray-50 ${isReturned ? 'border-l-4 border-orange-500' : ''} ${isSelected ? 'bg-orange-50' : ''}`}
+                      className={`hover:bg-gray-50 ${isReturned ? 'border-l-4 border-orange-500' : ''} ${isSelected ? 'bg-orange-50' : ''} ${isRequired ? 'bg-green-50 border-l-4 border-green-500' : ''}`}
                     >
                       <td className="px-4 py-2 text-sm">
                         {onSelectFinding && (
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => onSelectFinding(fid, e.target.checked)}
-                            className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
-                          />
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={isRequired}
+                              onChange={(e) => onSelectFinding(fid, e.target.checked)}
+                              className={`w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500 ${isRequired ? 'cursor-not-allowed opacity-60' : ''}`}
+                              title={isRequired ? 'Required due to approved extension request' : ''}
+                            />
+                           
+                          </div>
                         )}
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-900 font-medium">{f?.title || '—'}</td>

@@ -327,6 +327,19 @@ export const deleteAuditChecklistItem = async (auditItemId: string): Promise<voi
   await apiClient.delete(`/AuditChecklistItems/${auditItemId}`);
 };
 
+// Toggle mark status of a checklist item (for extension requests)
+export const toggleMarkChecklistItem = async (auditItemId: string): Promise<{ auditItemId: string; isMarked: boolean }> => {
+  const res: any = await apiClient.put(`/AuditChecklistItems/${auditItemId}/mark`);
+  return res.data || res;
+};
+
+// Get marked checklist items by audit ID (for Director to view extension requests)
+export const getMarkedChecklistItems = async (auditId: string): Promise<any[]> => {
+  const res: any = await apiClient.get(`/AuditChecklistItems/marked?auditId=${auditId}`);
+  const data = res?.data ?? res;
+  return unwrapArray(data);
+};
+
 // Get compliant details for a compliant item by its ID
 export const getChecklistItemCompliantDetails = async (compliantItemId: string | number): Promise<any> => {
   const res = await apiClient.get(`/ChecklistItemNoFinding/${compliantItemId}`);
@@ -397,4 +410,6 @@ export default {
   getChecklistItemCompliantDetails,
   getCompliantIdByAuditItemId,
   updateOverdueToActiveByAuditId,
+  toggleMarkChecklistItem,
+  getMarkedChecklistItems,
 };
