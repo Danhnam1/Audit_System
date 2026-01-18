@@ -197,33 +197,61 @@ const FindingDetailModal = ({
                               Title: {rc.name || rc.rootCauseName || `Root Cause ${idx + 1}`}
                             </div>
                             {rc.description && (
-                              <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
+                              <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap mb-2">
                                 Description: {rc.description}
                               </div>
                             )}
-                            {rc.proposedAction && (
-                              <div className="mt-2 pt-2 border-t border-gray-200">
-                                <div className="text-xs font-medium text-gray-600 mb-1">Proposed Action:</div>
-                                <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
-                                  {rc.proposedAction}
+                            
+                            {/* Proposed Solutions (from Actions array) */}
+                            {rc.actions && rc.actions.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-gray-300">
+                                <div className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-2">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                  </svg>
+                                  Proposed Solutions ({rc.actions.length})
+                                </div>
+                                <div className="space-y-2">
+                                  {rc.actions.map((action: any, actionIdx: number) => (
+                                    <div key={action.actionId || actionIdx} className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                      <div className="flex items-start gap-2">
+                                        <span className="flex-shrink-0 px-1.5 py-0.5 bg-blue-600 text-white rounded text-[10px] font-bold">
+                                          #{actionIdx + 1}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                          {action.description && (
+                                            <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap mb-1">
+                                              {action.description}
+                                            </div>
+                                          )}
+                                          {(action.dueDate || typeof action.progressPercent === 'number') && (
+                                            <div className="flex flex-wrap gap-2 text-[10px] text-gray-600 mt-1">
+                                              {action.dueDate && (
+                                                <span className="flex items-center gap-1">
+                                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                  </svg>
+                                                  Due: {new Date(action.dueDate).toLocaleDateString('en-GB')}
+                                                </span>
+                                              )}
+                                              {typeof action.progressPercent === 'number' && (
+                                                <span className="flex items-center gap-1">
+                                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                                                  </svg>
+                                                  {action.progressPercent}% progress
+                                                </span>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
                               </div>
                             )}
-                            {/* {rc.status && (
-                              <div className="mt-2">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                                  rc.status.toLowerCase() === 'approved' 
-                                    ? 'bg-green-100 text-green-700 border border-green-200'
-                                    : rc.status.toLowerCase() === 'rejected'
-                                    ? 'bg-red-100 text-red-700 border border-red-200'
-                                    : rc.status.toLowerCase() === 'pending'
-                                    ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                                    : 'bg-gray-100 text-gray-700 border border-gray-200'
-                                }`}>
-                                  {rc.status}
-                                </span>
-                              </div>
-                            )} */}
+                            
                           </div>
                         </div>
                       </div>

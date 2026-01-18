@@ -17,6 +17,8 @@ import { getAllReportRequests, type ViewReportRequest } from '../../../api/repor
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
 import { getAuditChecklistItems } from '../../../api/checklists';
+import { getRootCausesByFinding } from '../../../api/rootCauses';
+import { getActionsByRootCause } from '../../../api/actions';
 import { 
   createAuditPlanRevisionRequest, 
   getAuditPlanRevisionRequestsByAuditId,
@@ -95,6 +97,10 @@ const AuditorLeadReports = () => {
   const [showReturnFindingModal, setShowReturnFindingModal] = useState(false);
   const [returnFindingNote, setReturnFindingNote] = useState('');
   const [returningFindingId, setReturningFindingId] = useState<string | null>(null);
+  
+  // Root causes map: findingId -> rootCauses[]
+  const [rootCausesMap, setRootCausesMap] = useState<Record<string, any[]>>({});
+  const [loadingRootCauses, setLoadingRootCauses] = useState<Record<string, boolean>>({});
   
   // Attachments modal state
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
@@ -1619,6 +1625,22 @@ const AuditorLeadReports = () => {
     }
   };
 
+  // Handle opening extension modal
+  const openExtensionModal = async (auditId: string) => {
+    setSelectedAuditId(auditId);
+    setShowExtensionModal(true);
+    setExtensionComment('');
+    
+    // Load existing revision requests
+    try {
+      const requests = await getAuditPlanRevisionRequestsByAuditId(auditId);
+      setRevisionRequests(requests);
+    } catch (err) {
+      console.error('Failed to load revision requests:', err);
+      setRevisionRequests([]);
+    }
+  };
+
   // Handle request extension (Lead Auditor)
   const handleRequestExtension = async () => {
     if (!selectedAuditId) return;
@@ -1627,15 +1649,21 @@ const AuditorLeadReports = () => {
       return;
     }
     
+    // Convert Set to Array
+    const selectedFindingIds = Array.from(selectedFindings);
+    
     setExtensionLoading(true);
     try {
       await createAuditPlanRevisionRequest({
         auditId: selectedAuditId,
         comment: extensionComment.trim(),
+        findingIds: selectedFindingIds.length > 0 ? selectedFindingIds : undefined,
       });
       toast.success('Extension request sent to Director successfully.');
       setShowExtensionModal(false);
       setExtensionComment('');
+      // Clear selected findings after successful submission
+      setSelectedFindings(new Set());
       // Reload revision requests
       const requests = await getAuditPlanRevisionRequestsByAuditId(selectedAuditId);
       setRevisionRequests(requests);
@@ -1930,18 +1958,43 @@ const AuditorLeadReports = () => {
                       className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'checklist' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                     >Checklist</button>
                   </div>
-                  {/* Request Extension Button - Always show (no conditions) */}
+                  {/* Request Extension Button */}
                   {(() => {
                     // Check if there's already a pending request
-                    const hasPendingRequest = revisionRequests.some(r => r.status === 'Pending');
+                    const pendingRequest = revisionRequests.find(r => r.status === 'Pending');
                     
-                    if (hasPendingRequest) return null;
+                    if (pendingRequest) {
+                      // Show "Request has been submitted" button
+                      return (
+                        <button
+                          onClick={() => {
+                            // Show the comment in a toast or modal
+                            toast.info(
+                              <div>
+                                <p className="font-semibold mb-1">Extension Request Submitted</p>
+                                <p className="text-sm">{pendingRequest.comment || 'No comment provided'}</p>
+                                {pendingRequest.findingIds && pendingRequest.findingIds.length > 0 && (
+                                  <p className="text-xs mt-1 text-gray-600">{pendingRequest.findingIds.length} finding(s) included</p>
+                                )}
+                              </div>,
+                              { autoClose: 5000 }
+                            );
+                          }}
+                          className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-2"
+                          title="Click to view submitted request details"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Request has been submitted
+                        </button>
+                      );
+                    }
                     
                     return (
                       <button
                         onClick={() => {
-                          setShowViewModal(false);
-                          setShowExtensionModal(true);
+                          openExtensionModal(selectedAuditId);
                         }}
                         className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-2"
                       >
@@ -1967,9 +2020,38 @@ const AuditorLeadReports = () => {
                       selectedDeptKey={selectedDeptKey}
                       setSelectedDeptKey={setSelectedDeptKey}
                       findings={findingsForSelectedDept}
-                      onViewFinding={(finding) => {
+                      onViewFinding={async (finding) => {
                         setSelectedFindingId(String(finding?.findingId || ''));
                         setShowFindingModal(true);
+                        
+                        // Load root causes for this finding
+                        const findingId = finding?.findingId || finding?.id;
+                        if (findingId && !rootCausesMap[findingId]) {
+                          setLoadingRootCauses(prev => ({ ...prev, [findingId]: true }));
+                          try {
+                            const rootCauses = await getRootCausesByFinding(String(findingId));
+                            
+                            // Load actions (proposed solutions) for each root cause
+                            const rootCausesWithActions = await Promise.all(
+                              rootCauses.map(async (rc: any) => {
+                                try {
+                                  const actions = await getActionsByRootCause(rc.rootCauseId);
+                                  return { ...rc, actions: actions || [] };
+                                } catch (err) {
+                                  console.error('Failed to load actions for root cause:', rc.rootCauseId, err);
+                                  return { ...rc, actions: [] };
+                                }
+                              })
+                            );
+                            
+                            setRootCausesMap(prev => ({ ...prev, [findingId]: rootCausesWithActions || [] }));
+                          } catch (err) {
+                            console.error('Failed to load root causes:', err);
+                            setRootCausesMap(prev => ({ ...prev, [findingId]: [] }));
+                          } finally {
+                            setLoadingRootCauses(prev => ({ ...prev, [findingId]: false }));
+                          }
+                        }
                       }}
                       findingsSearch={findingsSearch}
                       setFindingsSearch={setFindingsSearch}
@@ -2577,6 +2659,67 @@ const AuditorLeadReports = () => {
                   </div>
                 </div>
                 
+                {/* Selected Findings Display */}
+                {(() => {
+                  // Get findings that were selected from the table
+                  const selectedFindingsList = allFindings.filter((f: any) => 
+                    selectedFindings.has(f.findingId || f.id)
+                  );
+                  
+                  if (selectedFindingsList.length === 0) {
+                    return (
+                      <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-700">
+                          <span className="font-semibold">Note:</span> No findings selected. Select findings from the table before requesting extension to include them in the request.
+                        </p>
+                      </div>
+                    );
+                  }
+                  
+                  return (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Selected Findings ({selectedFindingsList.length})
+                      </label>
+                      <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50 space-y-2">
+                        {selectedFindingsList.map((finding: any) => (
+                          <div
+                            key={finding.findingId || finding.id}
+                            className="flex items-start gap-2 p-2 bg-white rounded border border-gray-200"
+                          >
+                            <div className="flex-shrink-0 mt-0.5">
+                              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </div>
+                            <div className="flex-1 text-xs">
+                              <p className="font-medium text-gray-900">{finding.title || finding.findingTitle}</p>
+                              {finding.description && (
+                                <p className="text-gray-600 line-clamp-2 mt-0.5">{finding.description}</p>
+                              )}
+                              <div className="flex items-center gap-2 mt-1">
+                                {finding.severity && (
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                    finding.severity === 'Critical' ? 'bg-red-100 text-red-700' :
+                                    finding.severity === 'High' ? 'bg-orange-100 text-orange-700' :
+                                    finding.severity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-blue-100 text-blue-700'
+                                  }`}>
+                                    {finding.severity}
+                                  </span>
+                                )}
+                                {finding.departmentName && (
+                                  <span className="text-gray-500">{finding.departmentName}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Reason for extension request:
@@ -2658,6 +2801,8 @@ const AuditorLeadReports = () => {
               isOpen={showFindingModal}
               onClose={() => setShowFindingModal(false)}
               finding={selectedFinding}
+              rootCauses={selectedFinding?.findingId ? rootCausesMap[selectedFinding.findingId] || [] : []}
+              loadingRootCauses={selectedFinding?.findingId ? loadingRootCauses[selectedFinding.findingId] || false : false}
             />
           );
         })()}

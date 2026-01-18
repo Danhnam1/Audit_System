@@ -85,7 +85,7 @@ const AuditeeOwnerWitnessedAuditFindings = lazy(() => import("../pages/AuditeeOw
 // Director pages
 const DirectorDashboard = lazy(() => import("../pages/Director/Dashboard"));
 const DirectorReviewAuditPlans = lazy(() => import("../pages/Director/ReviewAuditPlans"));
-const DirectorAuditPlanDetail = lazy(() => import("../pages/Director/AuditPlanDetail"));
+// const DirectorAuditPlanDetail = lazy(() => import("../pages/Director/AuditPlanDetail"));
 const DirectorReviewAuditResults = lazy(() => import("../pages/Director/ReviewAuditResults"));
 const DirectorSummaryReport = lazy(() => import("../pages/Director/SummaryReport"));
 const DirectorFinalSummaryPage = lazy(() => import("../pages/Director/FinalSummary"));
@@ -630,14 +630,14 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
-            <Route
+            {/* <Route
                 path="/director/review-plans/:planId"
                 element={
                     <ProtectedRoute allowedRoles={["Director"]}>
                         <DirectorAuditPlanDetail />
                     </ProtectedRoute>
                 }
-            />
+            /> */}
             <Route
                 path="/director/review-results"
                 element={

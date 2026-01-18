@@ -14,6 +14,7 @@ import {
 import { getOverdueChecklistItems, getChecklistTemplates } from '../../../api/checklists';
 import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
+import { getFindingsByAudit } from '../../../api/findings';
 import { unwrap, normalizePlanDetails } from '../../../utils/normalize';
 import { getAuditTeam } from '../../../api/auditTeam';
 import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
@@ -47,6 +48,8 @@ export default function DirectorExtensionRequestsPage() {
   const [auditTeams, setAuditTeams] = useState<any[]>([]);
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [templatesForCurrentAudit, setTemplatesForCurrentAudit] = useState<any[]>([]);
+  const [requestFindings, setRequestFindings] = useState<any[]>([]);
+  const [loadingFindings, setLoadingFindings] = useState(false);
 
   const loadRequests = async () => {
     setLoading(true);
@@ -204,10 +207,34 @@ export default function DirectorExtensionRequestsPage() {
     }
   };
 
-  const openReviewModal = (request: ViewAuditPlanRevisionRequest) => {
+  const openReviewModal = async (request: ViewAuditPlanRevisionRequest) => {
     setSelectedRequest(request);
     setResponseComment('');
     setShowApproveModal(true);
+    setRequestFindings([]);
+    
+    console.log('🔍 Extension Request:', request);
+    console.log('🔍 Finding IDs:', request.findingIds);
+    
+    // Load findings if findingIds are present
+    if (request.findingIds && request.findingIds.length > 0) {
+      setLoadingFindings(true);
+      try {
+        const allFindings = await getFindingsByAudit(request.auditId);
+        console.log('📋 All Findings:', allFindings);
+        // Filter to only include the findings that were selected
+        const selectedFindings = allFindings.filter((f: any) => 
+          request.findingIds?.includes(f.findingId || f.id)
+        );
+        console.log('✅ Selected Findings:', selectedFindings);
+        setRequestFindings(selectedFindings);
+      } catch (err) {
+        console.error('Failed to load findings:', err);
+        setRequestFindings([]);
+      } finally {
+        setLoadingFindings(false);
+      }
+    }
   };
 
   const openRejectModal = (request: ViewAuditPlanRevisionRequest) => {
@@ -240,9 +267,7 @@ export default function DirectorExtensionRequestsPage() {
       
       try {
         const planIdToUse = String(rawData.planId || rawData.id || request.auditId);
-        console.log('[ExtensionRequests] Loading sensitive areas for planId:', planIdToUse);
         const sensitiveDepts = await getSensitiveDepartments(planIdToUse);
-        console.log('[ExtensionRequests] Sensitive departments loaded:', sensitiveDepts);
         
         if (sensitiveDepts && sensitiveDepts.length > 0) {
           sensitiveFlag = sensitiveDepts.some((sd: any) => sd.sensitiveFlag === true);
@@ -294,14 +319,8 @@ export default function DirectorExtensionRequestsPage() {
           
           sensitiveAreas = Array.from(allAreas);
         }
-        
-        console.log('[ExtensionRequests] Processed sensitive data:', {
-          sensitiveFlag,
-          sensitiveAreas,
-          sensitiveAreasByDept
-        });
       } catch (sensErr) {
-        console.warn('[ExtensionRequests] Failed to load sensitive areas:', sensErr);
+        console.warn('Failed to load sensitive areas:', sensErr);
       }
       
       // Merge sensitive areas into normalized data
@@ -312,7 +331,6 @@ export default function DirectorExtensionRequestsPage() {
         sensitiveAreasByDept
       };
       
-      console.log('[ExtensionRequests] Enhanced details with sensitive areas:', enhancedDetails);
       setSelectedAuditDetails(enhancedDetails);
       
       // Build templates list for this audit
@@ -562,6 +580,82 @@ export default function DirectorExtensionRequestsPage() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Selected Findings Section */}
+                <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Selected Findings ({selectedRequest.findingIds?.length || 0})
+                  </h4>
+                  
+                  {(() => {
+                    if (!selectedRequest.findingIds || selectedRequest.findingIds.length === 0) {
+                      return (
+                        <div className="text-center py-4">
+                          <p className="text-xs text-gray-500">No findings were selected for this request</p>
+                        </div>
+                      );
+                    }
+                    
+                    if (loadingFindings) {
+                      return (
+                        <div className="flex items-center justify-center py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                            <span className="text-sm text-gray-600">Loading findings...</span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    
+                    if (requestFindings.length > 0) {
+                      return (
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {requestFindings.map((finding: any, idx: number) => (
+                            <div key={finding.findingId || finding.id || idx} className="bg-white border border-purple-200 rounded-lg p-3">
+                              <div className="flex items-start gap-2">
+                                <div className="flex-shrink-0 mt-0.5">
+                                  <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm font-semibold text-gray-900">{finding.title || finding.findingTitle}</p>
+                                  {finding.description && (
+                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{finding.description}</p>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-2">
+                                    {finding.severity && (
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                        finding.severity === 'Critical' ? 'bg-red-100 text-red-700' :
+                                        finding.severity === 'High' ? 'bg-orange-100 text-orange-700' :
+                                        finding.severity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                        'bg-blue-100 text-blue-700'
+                                      }`}>
+                                        {finding.severity}
+                                      </span>
+                                    )}
+                                    {finding.departmentName && (
+                                      <span className="text-xs text-gray-500">{finding.departmentName}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div className="text-center py-4">
+                        <p className="text-xs text-gray-500">No finding details available</p>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Overdue Checklist Items Section */}

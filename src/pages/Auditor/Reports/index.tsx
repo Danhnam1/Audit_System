@@ -18,6 +18,7 @@ import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getAuditPlanRevisionRequestsByAuditId, type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
 import { getAuditChecklistItems } from '../../../api/checklists';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
+import { getActionsByRootCause } from '../../../api/actions';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
@@ -2069,7 +2070,21 @@ const SQAStaffReports = () => {
                                         setLoadingRootCauses(prev => ({ ...prev, [findingId]: true }));
                                         try {
                                           const rootCauses = await getRootCausesByFinding(String(findingId));
-                                          setRootCausesMap(prev => ({ ...prev, [findingId]: rootCauses || [] }));
+                                          
+                                          // Load actions (proposed solutions) for each root cause
+                                          const rootCausesWithActions = await Promise.all(
+                                            rootCauses.map(async (rc: any) => {
+                                              try {
+                                                const actions = await getActionsByRootCause(rc.rootCauseId);
+                                                return { ...rc, actions: actions || [] };
+                                              } catch (err) {
+                                                console.error('Failed to load actions for root cause:', rc.rootCauseId, err);
+                                                return { ...rc, actions: [] };
+                                              }
+                                            })
+                                          );
+                                          
+                                          setRootCausesMap(prev => ({ ...prev, [findingId]: rootCausesWithActions || [] }));
                                         } catch (err) {
                                           console.error('Failed to load root causes:', err);
                                           setRootCausesMap(prev => ({ ...prev, [findingId]: [] }));

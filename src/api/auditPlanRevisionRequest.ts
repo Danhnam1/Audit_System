@@ -8,6 +8,7 @@ export interface ViewAuditPlanRevisionRequest {
   requestedBy: string;
   requestedByName?: string;
   comment?: string;
+  findingIds?: string[];
   status?: string;
   requestedAt?: string;
   respondedAt?: string;
@@ -19,6 +20,7 @@ export interface ViewAuditPlanRevisionRequest {
 export interface CreateAuditPlanRevisionRequest {
   auditId: string;
   comment?: string;
+  findingIds?: string[];
 }
 
 export interface ApproveRejectRequest {
