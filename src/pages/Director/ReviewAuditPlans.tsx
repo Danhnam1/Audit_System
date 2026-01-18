@@ -11,6 +11,7 @@ import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from '../../c
 import { PlanDetailsModal } from '../Auditor/AuditPlanning/components/PlanDetailsModal';
 import { getDepartmentName, getCriterionName } from '../../helpers/auditPlanHelpers';
 import { getChecklistTemplates } from '../../api/checklists';
+import { getAuditChecklistTemplateMapsByAudit } from '../../api/auditChecklistTemplateMaps';
 import { getAuditSchedules } from '../../api/auditSchedule';
 import { getAuditTeam } from '../../api/auditTeam';
 import { MainLayout } from '../../layouts';
@@ -467,14 +468,32 @@ const ReviewAuditPlans = () => {
         console.warn('Failed to load sensitive areas', sensitiveErr);
       }
 
+      // Load templates for this audit
+      let templatesForAudit: any[] = [];
+      try {
+        const templateMapsData = await getAuditChecklistTemplateMapsByAudit(String(plan.planId));
+        
+        const templateIds = Array.isArray(templateMapsData) 
+          ? templateMapsData.map((m: any) => m.templateId).filter(Boolean)
+          : [];
+        
+        templatesForAudit = checklistTemplates.filter((t: any) => {
+          const tid = t.templateId || t.id || t.$id;
+          return templateIds.includes(tid) || templateIds.includes(String(tid));
+        });
+      } catch (templateErr) {
+        console.warn('Failed to load templates for audit', templateErr);
+      }
+
       const normalized = normalizePlanDetails(detailsWithSchedules, { departments, criteriaList, users: allUsers });
       
-      // Add sensitive areas data
+      // Add sensitive areas data and templates
       const detailsWithSensitive = {
         ...normalized,
         sensitiveFlag,
         sensitiveAreas,
         sensitiveAreasByDept,
+        templatesForPlan: templatesForAudit,
       };
       
       setSelectedDetails(detailsWithSensitive);
@@ -784,6 +803,7 @@ const ReviewAuditPlans = () => {
           <PlanDetailsModal
             showModal={true}
             selectedPlanDetails={selectedDetails}
+            templatesForPlan={selectedDetails.templatesForPlan || []}
             onClose={() => setSelectedDetails(null)}
             onApprove={canApproveOrRejectPlan ? async (auditId: string, comment?: string) => {
               try {

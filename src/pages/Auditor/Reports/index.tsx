@@ -1549,26 +1549,30 @@ const SQAStaffReports = () => {
                           const auditIdStr = String(audit.auditId);
                           const auditIdNorm = normalizeId(auditIdStr);
                           const approved = isReportApproved(auditIdStr);
-                          const hasUploaded = uploadedAudits.has(auditIdNorm);
+                          const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
+                          const leadAuditorName = leadAuditorNames[auditIdStr] || 'Lead Auditor';
                           
-                          // Disable export if: not approved OR already uploaded
-                          const disableExport = !approved || hasUploaded;
+                          // Disable export if: not approved OR not Lead of the Team
+                          const disableExport = !approved || !isLeadAuditor;
                           
-                          // Disable upload if: not approved OR currently uploading (cho phép upload nhiều lần)
+                          // Disable upload if: not approved OR not Lead of the Team OR currently uploading
                           const disableUpload =
                             !approved ||
+                            !isLeadAuditor ||
                             uploadLoading[auditIdNorm];
                           
                           // Tooltip messages
                           const exportTooltip = !approved
                             ? 'Export is available only after the report request is approved'
-                            : hasUploaded
-                              ? 'Cannot export - report already uploaded'
+                            : !isLeadAuditor
+                              ? `Only Lead of the Team (${leadAuditorName}) can export`
                               : 'Export PDF report';
                           
                           const uploadTooltip = !approved
                             ? 'Upload is available only after the report request is approved'
-                            : 'Upload signed report';
+                            : !isLeadAuditor
+                              ? `Only Lead of the Team (${leadAuditorName}) can upload`
+                              : 'Upload signed report';
                           
                           return (
                             <>
@@ -1579,8 +1583,8 @@ const SQAStaffReports = () => {
                                     toast.error('Cannot export. Report request must be approved by Lead Auditor.');
                                     return;
                                   }
-                                  if (hasUploaded) {
-                                    toast.error('Cannot export. Report has already been uploaded.');
+                                  if (!isLeadAuditor) {
+                                    toast.error(`Only Lead of the Team (${leadAuditorName}) can export reports.`);
                                     return;
                                   }
                                   handleExportPdfForRow(auditIdStr, audit.title);
@@ -1603,6 +1607,10 @@ const SQAStaffReports = () => {
                                   e.stopPropagation();
                                   if (!approved) {
                                     toast.error('Cannot upload. Report request must be approved by Lead Auditor.');
+                                    return;
+                                  }
+                                  if (!isLeadAuditor) {
+                                    toast.error(`Only Lead of the Team (${leadAuditorName}) can upload reports.`);
                                     return;
                                   }
                                   onClickUpload(auditIdStr);
