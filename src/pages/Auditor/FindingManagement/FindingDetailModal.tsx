@@ -505,7 +505,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
   
   // Delete draft root cause
   const handleDeleteRootCause = (id: number) => {
-    setRootCauseToDelete(id);
+    setRootCauseToDelete(String(id));
     setShowDeleteConfirmModal(true);
   };
 

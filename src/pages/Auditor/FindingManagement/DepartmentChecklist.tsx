@@ -2331,7 +2331,11 @@ const DepartmentChecklist = () => {
                                   </svg>
                                 </button>
                               </div>
-                            ) : showProposalButtons && !isReturned(item, itemStatusToCheck) && findingStatus !== 'fixed' && !editedFindingIds.has(findingData?.findingId || '') ? (
+                            ) : (() => {
+                              const findingData = findingsMap[item.auditItemId];
+                              const findingStatus = findingData?.status?.toLowerCase();
+                              return showProposalButtons && !isReturned(item, itemStatusToCheck) && findingStatus !== 'fixed' && !editedFindingIds.has(findingData?.findingId || '');
+                            })() ? (
                               <>
                                 {/* Green Checkmark */}
                                 <button

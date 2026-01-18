@@ -13,7 +13,7 @@ import { Pagination } from '../../../components';
 import AuditeeActionReviewModal from './AuditeeActionReviewModal';
 import { toast } from 'react-toastify';
 import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
-import { getStatusColor, getSeverityColor } from '../../../constants';
+import { getSeverityColor } from '../../../constants/statusColors';
 
 const FindingsProgress = () => {
   const { user } = useAuth();
