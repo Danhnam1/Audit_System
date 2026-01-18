@@ -4,7 +4,7 @@ import { useAuth } from '../../../contexts';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
-import { createAction, getActionsByFinding, getActionsByRootCause, type Action, rejectActionForResubmit } from '../../../api/actions';
+import { createAction, getActionsByFinding, getActionsByRootCause, type Action, rejectActionForResubmit, updateAction } from '../../../api/actions';
 import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
 import apiClient from '../../../api/client';
@@ -56,6 +56,7 @@ const FindingsProgress = () => {
   const [loadingRootCauses, setLoadingRootCauses] = useState(false);
   const [submittedRootCauseIds, setSubmittedRootCauseIds] = useState<Set<string>>(new Set()); // Track submitted root causes (UUID strings)
   const [assignedRootCauseData, setAssignedRootCauseData] = useState<Record<string, { staffId: string; staffName: string; dueDate: string }>>({}); // Track assigned data
+  const [rejectedRootCauseData, setRejectedRootCauseData] = useState<Record<string, { actionId: string; staffId: string; staffName: string; dueDate: string; reviewFeedback: string }>>({}); // Track rejected assignments
 
   // Individual root cause assignment modal
   const [showIndividualAssignModal, setShowIndividualAssignModal] = useState(false);
@@ -64,6 +65,7 @@ const FindingsProgress = () => {
   const [individualDueDate, setIndividualDueDate] = useState('');
   const [individualStaffError, setIndividualStaffError] = useState('');
   const [individualDateError, setIndividualDateError] = useState('');
+  const [keepExistingAssignment, setKeepExistingAssignment] = useState(true); // For rejected actions - default to keep existing
 
   // Description view modal
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
@@ -559,19 +561,86 @@ const FindingsProgress = () => {
       // Fetch actions for this finding to check which root causes are already assigned
       let assignedRootCauseIds = new Set<string>();
       const assignedDataMap: Record<string, { staffId: string; staffName: string; dueDate: string }> = {};
+      const rejectedDataMap: Record<string, { actionId: string; staffId: string; staffName: string; dueDate: string; reviewFeedback: string }> = {};
 
       try {
         const actions = await getActionsByFinding(findingId);
+        console.log('[LOAD ROOT CAUSES] 📦 All actions for finding:', actions);
 
         if (actions && actions.length > 0) {
-          // IMPORTANT: Only consider actions that are NOT rejected
+          console.log('[LOAD ROOT CAUSES] 🔍 Checking each action for rejection status...');
+          
+          // Check for rejected actions - try multiple possible rejection indicators
+          const rejectedActions = actions.filter((action: Action) => {
+            const statusLower = action.status?.toLowerCase() || '';
+            
+            // Check multiple possible rejection indicators:
+            // 1. Status contains "reject"
+            const hasRejectedStatus = statusLower.includes('reject');
+            // 2. Has rejectedAt field
+            const hasRejectedAt = !!(action as any).rejectedAt;
+            // 3. Has rejectionReason field
+            const hasRejectionReason = !!(action as any).rejectionReason;
+            // 4. ReviewFeedback exists and progress is reset to 0 (possible rejection pattern)
+            const hasReviewFeedbackAndZeroProgress = !!action.reviewFeedback && action.progressPercent === 0;
+            
+            const isRejected = (hasRejectedStatus || hasRejectedAt || hasRejectionReason) && action.rootCauseId && action.assignedTo;
+            
+            console.log(`[LOAD ROOT CAUSES] Action ${action.actionId}:`, {
+              status: action.status,
+              statusLower,
+              hasRejectedStatus,
+              hasRejectedAt,
+              hasRejectionReason,
+              hasReviewFeedbackAndZeroProgress,
+              rejectedAt: (action as any).rejectedAt,
+              rejectionReason: (action as any).rejectionReason,
+              reviewFeedback: action.reviewFeedback,
+              progressPercent: action.progressPercent,
+              rootCauseId: action.rootCauseId,
+              assignedTo: action.assignedTo,
+              isRejected
+            });
+            
+            return isRejected;
+          });
+
+          console.log('[LOAD ROOT CAUSES] 🔴 Rejected actions found:', rejectedActions);
+
+          // Save rejected action info
+          await Promise.all(
+            rejectedActions.map(async (action: Action) => {
+              const rcId = String(action.rootCauseId);
+              console.log(`[LOAD ROOT CAUSES] Processing rejected action for RC ${rcId}`);
+              try {
+                const user = await getUserById(action.assignedTo);
+                rejectedDataMap[rcId] = {
+                  actionId: action.actionId,
+                  staffId: action.assignedTo,
+                  staffName: user.fullName || user.email || 'Unknown',
+                  dueDate: action.dueDate || '',
+                  reviewFeedback: action.reviewFeedback || 'No feedback provided'
+                };
+                console.log(`[LOAD ROOT CAUSES] ✅ Saved rejected data for RC ${rcId}:`, rejectedDataMap[rcId]);
+              } catch (err) {
+                console.error(`[LOAD ROOT CAUSES] ❌ Error fetching user for rejected action:`, err);
+                rejectedDataMap[rcId] = {
+                  actionId: action.actionId,
+                  staffId: action.assignedTo,
+                  staffName: 'Unknown',
+                  dueDate: action.dueDate || '',
+                  reviewFeedback: action.reviewFeedback || 'No feedback provided'
+                };
+              }
+            })
+          );
+
+          // Get valid (non-rejected) actions with assignments
           const validActions = actions.filter((action: Action) => {
             const statusLower = action.status?.toLowerCase() || '';
             return statusLower !== 'rejected' && statusLower !== 'leadrejected';
           });
 
-          // Get all root cause IDs that have valid (non-rejected) actions AND have assignedTo
-          // Only consider "assigned" if action has BOTH rootCauseId AND assignedTo
           const fullyAssignedActions = validActions.filter((action: Action) => 
             action.rootCauseId && action.assignedTo
           );
@@ -579,10 +648,9 @@ const FindingsProgress = () => {
           // Fetch user info for all assigned actions
           await Promise.all(
             fullyAssignedActions.map(async (action: Action) => {
-              const rcId = String(action.rootCauseId); // Ensure string
+              const rcId = String(action.rootCauseId);
               assignedRootCauseIds.add(rcId);
 
-              // Get assigned user info
               if (!assignedDataMap[rcId]) {
                 try {
                   const user = await getUserById(action.assignedTo);
@@ -599,6 +667,11 @@ const FindingsProgress = () => {
                   };
                 }
               }
+      console.log('[LOAD ROOT CAUSES] 💾 Setting state:');
+      console.log('[LOAD ROOT CAUSES] - Submitted IDs:', assignedRootCauseIds);
+      console.log('[LOAD ROOT CAUSES] - Assigned Data:', assignedDataMap);
+      console.log('[LOAD ROOT CAUSES] - Rejected Data:', rejectedDataMap);
+      
             })
           );
         }
@@ -606,11 +679,10 @@ const FindingsProgress = () => {
         console.warn('Error loading actions for finding:', err);
       }
 
-      // Update submittedRootCauseIds with root causes that have actions
+      // Update state
       setSubmittedRootCauseIds(assignedRootCauseIds);
-
-      // Update assignedRootCauseData
       setAssignedRootCauseData(assignedDataMap);
+      setRejectedRootCauseData(rejectedDataMap);
 
       // NEW FLOW: Show ALL root causes with actions (not just approved ones)
       // Load actions for each root cause
@@ -660,15 +732,21 @@ const FindingsProgress = () => {
 
   // Assign single root cause immediately
   const handleAssignSingleRootCause = async () => {
+    console.log('[REASSIGN] 🚀 Start reassignment process');
+    console.log('[REASSIGN] Selected Finding:', selectedFindingForAssign);
+    console.log('[REASSIGN] Selected Root Cause:', selectedRootCause);
+    console.log('[REASSIGN] Individual Staff ID:', individualStaffId);
+    console.log('[REASSIGN] Individual Due Date:', individualDueDate);
+    console.log('[REASSIGN] Keep Existing Assignment:', keepExistingAssignment);
  
     if (!selectedFindingForAssign || !selectedRootCause) {
-      console.error(' Missing selectedFindingForAssign or selectedRootCause');
+      console.error('[REASSIGN] ❌ Missing selectedFindingForAssign or selectedRootCause');
       toast.error('Please select a finding and root cause');
       return;
     }
 
     if (!individualStaffId || !individualDueDate) {
-      console.error(' Missing individualStaffId or individualDueDate');
+      console.error('[REASSIGN] ❌ Missing individualStaffId or individualDueDate');
       toast.error('Please select CAPA owner and due date');
       return;
     }
@@ -683,22 +761,54 @@ const FindingsProgress = () => {
         return;
       }
 
-      // Create action for this root cause with rootCauseId link
-      // Keep finding description separate, don't mix with root cause info
-      await createAction({
-        findingId: selectedFindingForAssign.findingId,
-        title: `${selectedFindingForAssign.title} - ${selectedRootCause.name}`,
-        description: selectedFindingForAssign.description || '', // Keep original finding description
-        assignedTo: individualStaffId,
-        assignedDeptId: selectedFindingForAssign.deptId, // Only send if valid (> 0)
-        progressPercent: 0,
-        dueDate: new Date(individualDueDate).toISOString(),
-        reviewFeedback: '',
-        rootCauseId: selectedRootCause.rootCauseId, // Link to root cause
-      });
+      const rcIdStr = String(selectedRootCause.rootCauseId);
+      const rejectedInfo = rejectedRootCauseData[rcIdStr];
+      
+      console.log('[REASSIGN] 📊 Root Cause ID String:', rcIdStr);
+      console.log('[REASSIGN] 📋 Rejected Info:', rejectedInfo);
+      console.log('[REASSIGN] 📋 All Rejected Data:', rejectedRootCauseData);
+
+      // Check if this is a rejected action and user wants to keep existing assignment
+      if (rejectedInfo && keepExistingAssignment) {
+        console.log('[REASSIGN] 🔄 Updating existing rejected action:', rejectedInfo.actionId);
+        
+        const updatePayload = {
+          status: 'Pending',
+          dueDate: new Date(individualDueDate).toISOString(),
+        };
+        console.log('[REASSIGN] 📤 Update payload:', updatePayload);
+        
+        await updateAction(rejectedInfo.actionId, updatePayload);
+        
+        console.log('[REASSIGN] ✅ Action updated successfully');
+        const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
+        toast.success(`Action reassigned to ${staffName} (kept existing assignment)`);
+      } else {
+        console.log('[REASSIGN] 🆕 Creating new action');
+        console.log('[REASSIGN] Reason:', !rejectedInfo ? 'No rejected info' : 'User chose different person');
+        
+        // Create new action (either no rejection or user chose different person)
+        const createPayload = {
+          findingId: selectedFindingForAssign.findingId,
+          title: `${selectedFindingForAssign.title} - ${selectedRootCause.name}`,
+          description: selectedFindingForAssign.description || '',
+          assignedTo: individualStaffId,
+          assignedDeptId: selectedFindingForAssign.deptId,
+          progressPercent: 0,
+          dueDate: new Date(individualDueDate).toISOString(),
+          reviewFeedback: '',
+          rootCauseId: selectedRootCause.rootCauseId,
+        };
+        console.log('[REASSIGN] 📤 Create payload:', createPayload);
+        
+        await createAction(createPayload);
+
+        console.log('[REASSIGN] ✅ Action created successfully');
+        const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
+        toast.success(`Action created for ${staffName}`);
+      }
 
       // Mark this root cause as submitted and save assigned data
-      const rcIdStr = String(selectedRootCause.rootCauseId);
       const newSubmittedIds = new Set(submittedRootCauseIds);
       newSubmittedIds.add(rcIdStr);
       setSubmittedRootCauseIds(newSubmittedIds);
@@ -712,6 +822,15 @@ const FindingsProgress = () => {
           dueDate: individualDueDate
         }
       }));
+
+      // Remove from rejected data if it was there
+      if (rejectedInfo) {
+        setRejectedRootCauseData(prev => {
+          const newData = { ...prev };
+          delete newData[rcIdStr];
+          return newData;
+        });
+      }
 
       // Check if all root causes are now assigned
       const allRootCausesRes = await apiClient.get(`/RootCauses/by-finding/${selectedFindingForAssign.findingId}`);
@@ -729,12 +848,10 @@ const FindingsProgress = () => {
       const remainingCount = allRootCauses.length - newSubmittedIds.size;
 
       if (allAssigned) {
-        toast.success(`Action created for ${staffName}. All root causes assigned! Finding marked as Received.`);
-        // Close assign modal completely
+        toast.success(`All root causes assigned! Finding marked as Received.`);
         handleCloseAssignModal();
       } else {
-        toast.success(`Action created for ${staffName}. ${remainingCount} root cause${remainingCount > 1 ? 's' : ''} remaining.`);
-        // Keep all root causes in the list to show assigned status
+        toast.success(`${remainingCount} root cause${remainingCount > 1 ? 's' : ''} remaining.`);
       }
 
       // Reload findings with assigned users and root cause status
@@ -768,6 +885,7 @@ const FindingsProgress = () => {
     // Reset all state first
     setSubmittedRootCauseIds(new Set());
     setAssignedRootCauseData({});
+    setRejectedRootCauseData({});
     setFindingRootCauses([]);
     
     // Then set the finding and open modal
@@ -785,6 +903,7 @@ const FindingsProgress = () => {
     setFindingRootCauses([]);
     setSubmittedRootCauseIds(new Set()); // Reset submitted tracking
     setAssignedRootCauseData({}); // Reset assigned data
+    setRejectedRootCauseData({}); // Reset rejected data
     setShowAssignModal(false);
   };
 
@@ -1454,14 +1573,51 @@ const FindingsProgress = () => {
                       {/* Root Causes List - Simple Design */}
                       <div className="space-y-3">
                         {findingRootCauses.map((rootCause, index) => {
-                          const rcId = String(rootCause.rootCauseId); // Ensure string for comparison
-                          const isAssigned = submittedRootCauseIds.has(rcId);
+                          const rcId = String(rootCause.rootCauseId);
+                          const rejectedInfo = rejectedRootCauseData[rcId];
                           const assignedData = assignedRootCauseData[rcId];
                           const actions = rootCause.actions || [];
                           const proposals = actions.length > 0 ? [actions[0]] : [];
+                          
+                          // Check if there's ANY rejected action for this root cause
+                          // Even if there are other non-rejected actions
+                          const hasRejectedAction = actions.some((action: any) => {
+                            const statusLower = action.status?.toLowerCase() || '';
+                            const hasRejectedStatus = statusLower.includes('reject');
+                            const hasRejectedAt = !!(action as any).rejectedAt;
+                            const hasRejectionReason = !!(action as any).rejectionReason;
+                            return (hasRejectedStatus || hasRejectedAt || hasRejectionReason) && action.assignedTo;
+                          });
+                          
+                          // Check if there's an action with feedback that might indicate rejection
+                          const hasActionWithFeedback = actions.some((action: any) => {
+                            const statusLower = action.status?.toLowerCase() || '';
+                            const hasReviewFeedback = !!action.reviewFeedback && action.reviewFeedback.trim() !== '';
+                            const hasLowProgress = action.progressPercent <= 10;
+                            const isActiveOrReviewed = statusLower === 'active' || statusLower === 'reviewed';
+                            return hasReviewFeedback && hasLowProgress && isActiveOrReviewed && action.assignedTo;
+                          });
+                          
+                          // Priority: Show reassign if there's ANY rejection, regardless of other actions
+                          const needsReassignment = rejectedInfo || hasRejectedAction || hasActionWithFeedback;
+                          const isFullyAssigned = assignedData && !needsReassignment;
+                          
+                          console.log(`[ROOT CAUSE ${rcId}] Status:`, {
+                            rejectedInfo: !!rejectedInfo,
+                            hasRejectedAction,
+                            hasActionWithFeedback,
+                            assignedData: !!assignedData,
+                            needsReassignment,
+                            isFullyAssigned,
+                            actionsCount: actions.length
+                          });
 
                           return (
-                            <div key={rootCause.rootCauseId} className={`border rounded-lg ${isAssigned ? 'border-green-300 bg-green-50' : 'border-gray-300 bg-white'}`}>
+                            <div key={rootCause.rootCauseId} className={`border rounded-lg ${
+                              needsReassignment ? 'border-red-300 bg-red-50' : 
+                              isFullyAssigned ? 'border-green-300 bg-green-50' : 
+                              'border-gray-300 bg-white'
+                            }`}>
                               {/* Root Cause Header */}
                               <div className="px-4 py-3 border-b border-gray-200">
                                 <div className="flex items-start gap-3">
@@ -1480,7 +1636,12 @@ const FindingsProgress = () => {
                                         <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                                           Title
                                         </label>
-                                        {isAssigned && (
+                                        {needsReassignment && (
+                                          <span className="px-2 py-0.5 text-xs font-medium bg-red-600 text-white rounded">
+                                            ✗ Needs Reassignment
+                                          </span>
+                                        )}
+                                        {isFullyAssigned && !needsReassignment && (
                                           <span className="px-2 py-0.5 text-xs font-medium bg-green-600 text-white rounded">
                                             ✓ Assigned
                                           </span>
@@ -1506,7 +1667,26 @@ const FindingsProgress = () => {
                                 </div>
                               </div>
 
-                              {/* Remediation Proposals (show only first proposal per root cause) */}
+                              {/* Rejection Info - Show if rejected */}
+                              {rejectedInfo && (
+                                <div className="px-4 py-3 bg-red-100 border-y border-red-200">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                      </svg>
+                                      <p className="text-xs font-semibold text-red-700">Previously rejected assignment</p>
+                                    </div>
+                                    <div className="text-xs text-red-800 space-y-1">
+                                      <p><span className="font-medium">Assigned to:</span> {rejectedInfo.staffName}</p>
+                                      <p><span className="font-medium">Due date:</span> {new Date(rejectedInfo.dueDate).toLocaleDateString()}</p>
+                                      <p><span className="font-medium">Rejection reason:</span> {rejectedInfo.reviewFeedback}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Remediation Proposals */}
                               <div className="px-4 py-3">
                                 {proposals.length === 0 ? (
                                   <p className="text-xs text-gray-500 italic py-2">No remediation proposals yet</p>
@@ -1515,20 +1695,13 @@ const FindingsProgress = () => {
                                     <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Remediation Proposal (1)</p>
                                     {proposals.map((action: any, idx: number) => (
                                         <div key={action.actionId || idx} className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
-                                          {/* Title Section */}
-                                        
-
-                                          {/* Description Section */}
                                           {action.description && (
                                             <div>
-                                             
                                               <p className="text-xs text-gray-600 break-words leading-relaxed whitespace-pre-wrap">
                                                 {action.description}
                                               </p>
                                             </div>
                                           )}
-
-                                          {/* Progress and Due Date */}
                                           <div className="flex items-center gap-3 pt-2 border-t border-gray-200 text-xs text-gray-500">
                                             <span className="font-medium">Progress: {action.progressPercent || 0}%</span>
                                             <span>•</span>
@@ -1544,7 +1717,11 @@ const FindingsProgress = () => {
                               <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="text-xs">
-                                    {assignedData ? (
+                                    {needsReassignment ? (
+                                      <span className="text-red-700 font-medium">
+                                        ⚠ {rejectedInfo ? 'Action rejected' : hasRejectedAction ? 'Has rejected action' : 'Action has issues'} - Requires reassignment
+                                      </span>
+                                    ) : assignedData ? (
                                       <div>
                                         <span className="text-green-700 font-medium">✓ {assignedData.staffName}</span>
                                         <span className="text-gray-500 ml-2">Due: {new Date(assignedData.dueDate).toLocaleDateString()}</span>
@@ -1553,19 +1730,29 @@ const FindingsProgress = () => {
                                       <span className="text-gray-500">Not assigned</span>
                                     )}
                                   </div>
-                                  {!isAssigned && (
+                                  {(!isFullyAssigned || needsReassignment) && (
                                     <button
                                       onClick={() => {
                                         setSelectedRootCause(rootCause);
-                                        setIndividualStaffId('');
-                                        setIndividualDueDate('');
+                                        // Pre-fill with rejected assignment data if exists
+                                        if (rejectedInfo) {
+                                          setIndividualStaffId(rejectedInfo.staffId);
+                                          setIndividualDueDate(rejectedInfo.dueDate.split('T')[0]);
+                                          setKeepExistingAssignment(true);
+                                        } else {
+                                          setIndividualStaffId('');
+                                          setIndividualDueDate('');
+                                          setKeepExistingAssignment(true);
+                                        }
                                         setIndividualStaffError('');
                                         setIndividualDateError('');
                                         setShowIndividualAssignModal(true);
                                       }}
-                                      className="px-3 py-1.5 text-xs font-medium bg-primary-600 text-white rounded hover:bg-primary-700"
+                                      className={`px-3 py-1.5 text-xs font-medium text-white rounded ${
+                                        needsReassignment ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'
+                                      }`}
                                     >
-                                      Assign
+                                      {needsReassignment ? 'Reassign' : 'Assign'}
                                     </button>
                                   )}
                                 </div>
@@ -1614,6 +1801,62 @@ const FindingsProgress = () => {
 
                 {/* Body */}
                 <div className="p-4 space-y-4">
+                  {/* Rejection Warning - Show if this is a rejected assignment */}
+                  {(() => {
+                    const rcId = String(selectedRootCause.rootCauseId);
+                    const rejectedInfo = rejectedRootCauseData[rcId];
+                    if (!rejectedInfo) return null;
+                    
+                    return (
+                      <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 space-y-3">
+                        <div className="flex items-start gap-3">
+                          <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          <div className="flex-1">
+                            <h4 className="text-sm font-semibold text-red-800 mb-2">Previous Assignment Rejected</h4>
+                            <div className="text-xs text-red-700 space-y-1">
+                              <p><span className="font-medium">Previously assigned to:</span> {rejectedInfo.staffName}</p>
+                              <p><span className="font-medium">Due date:</span> {new Date(rejectedInfo.dueDate).toLocaleDateString()}</p>
+                              <p className="mt-2 pt-2 border-t border-red-200">
+                                <span className="font-medium">Rejection reason:</span><br/>
+                                <span className="italic">{rejectedInfo.reviewFeedback}</span>
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Option to keep or change assignment */}
+                        <div className="mt-3 pt-3 border-t border-red-200">
+                          <label className="flex items-center gap-2 text-xs font-medium text-red-800">
+                            <input
+                              type="checkbox"
+                              checked={keepExistingAssignment}
+                              onChange={(e) => {
+                                setKeepExistingAssignment(e.target.checked);
+                                if (!e.target.checked) {
+                                  // If unchecking, clear the staff selection
+                                  setIndividualStaffId('');
+                                } else {
+                                  // If checking, restore the previous assignment
+                                  setIndividualStaffId(rejectedInfo.staffId);
+                                  setIndividualDueDate(rejectedInfo.dueDate.split('T')[0]);
+                                }
+                              }}
+                              className="w-4 h-4 text-primary-600 border-red-300 rounded focus:ring-2 focus:ring-red-500"
+                            />
+                            <span>Keep same CAPA owner ({rejectedInfo.staffName})</span>
+                          </label>
+                          <p className="text-xs text-red-600 mt-1 ml-6">
+                            {keepExistingAssignment 
+                              ? 'The existing action will be updated and status reset to Pending' 
+                              : 'A new action will be created for the selected person'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* Root Cause Info */}
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
                     {/* Title */}

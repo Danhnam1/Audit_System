@@ -687,12 +687,19 @@ const AssignedTasks = () => {
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                               </svg>
                                             </button>
-                                            <button
-                                              onClick={() => handleStart(task.actionId)}
-                                              className="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium"
-                                            >
-                                              Retry
-                                            </button>
+                                            {/* Check if action has reviewFeedback (Lead Auditor rejection) and progressPercent is low */}
+                                            {task.reviewFeedback && typeof task.reviewFeedback === 'string' && task.reviewFeedback.trim() !== '' && task.progressPercent <= 10 ? (
+                                              <div className="px-3 py-1.5 bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg text-xs font-medium">
+                                                ⏳ Waiting for reassignment
+                                              </div>
+                                            ) : (
+                                              <button
+                                                onClick={() => handleStart(task.actionId)}
+                                                className="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-xs font-medium"
+                                              >
+                                                Retry
+                                              </button>
+                                            )}
                                           </>
                                         ) : task.progressPercent === 100 ? (
                                           <span className="px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-xs font-medium">

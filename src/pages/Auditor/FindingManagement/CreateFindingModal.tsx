@@ -467,7 +467,19 @@ const [findingTime, setFindingTime] = useState(() => {
       }
 
       // Create multiple root causes with actions
+      console.log('[CREATE FINDING] 🏗️ Starting to create root causes and actions:', {
+        findingId,
+        totalRootCauses: rootCauses.length,
+        rootCausesData: rootCauses
+      });
+      
       for (const rc of rootCauses) {
+        console.log('[CREATE FINDING] 📝 Creating root cause:', {
+          rootCauseName: rc.rootCauseName,
+          rootCauseDescription: rc.rootCauseDescription,
+          proposedAction: rc.proposedAction
+        });
+        
         // Create root cause with status 'Pending' (waiting for department head to assign CAPA owner)
         const rootCausePayload = {
           findingId: findingId,
@@ -478,12 +490,17 @@ const [findingTime, setFindingTime] = useState(() => {
           category: '', // Empty category as requested
         };
 
+        console.log('[CREATE FINDING] 🚀 Calling createRootCause API with payload:', rootCausePayload);
         const rootCause = await createRootCause(rootCausePayload);
+        console.log('[CREATE FINDING] ✅ Root cause created, response:', rootCause);
+        
         const rootCauseId = rootCause.rootCauseId || (rootCause as any).$id || (rootCause as any).id;
 
         if (!rootCauseId) {
           throw new Error('Root Cause ID not found in response');
         }
+
+        console.log('[CREATE FINDING] 🎯 Root Cause ID extracted:', rootCauseId);
 
         // Create action with proposed action as description (department head will assign CAPA owner later)
         const actionPayload = {
@@ -498,8 +515,13 @@ const [findingTime, setFindingTime] = useState(() => {
           reviewFeedback: '',
         };
 
-        await createAction(actionPayload);
+        console.log('[CREATE FINDING] 🚀 Calling createAction API with payload:', actionPayload);
+        const actionResult = await createAction(actionPayload);
+        console.log('[CREATE FINDING] ✅ Action created, response:', actionResult);
+        console.log('[CREATE FINDING] ➡️ Moving to next root cause (if any)...');
       }
+      
+      console.log('[CREATE FINDING] 🎉 All root causes and actions created successfully');
 
       // Don't mark as 'Received' - let it stay as 'Open' until department head assigns actions
 

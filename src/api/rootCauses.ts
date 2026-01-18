@@ -2,7 +2,7 @@ import apiClient from './client';
 import { unwrap } from '../utils';
 
 export interface RootCause {
-  rootCauseId: number;
+  rootCauseId: string; // GUID string from backend
   name: string;
   description?: string;
   proposedAction?: string;
@@ -10,7 +10,7 @@ export interface RootCause {
 
 export interface RemediationProposal {
   id: number;
-  rootCauseId: number;
+  rootCauseId: string; // GUID string
   title: string;
   description: string;
   status: string;
@@ -20,7 +20,7 @@ export interface RemediationProposal {
 }
 
 export interface CreateRemediationProposalDto {
-  rootCauseId: number;
+  rootCauseId: string; // GUID string
   title: string;
   description: string;
   status: string;
@@ -54,7 +54,7 @@ const toPascalCase = (obj: any): any => {
 };
 
 // Get root cause by ID
-export const getRootCauseById = async (id: number): Promise<RootCause> => {
+export const getRootCauseById = async (id: string): Promise<RootCause> => {
   const res = await apiClient.get(`/RootCauses/${id}`);
   return res.data;
 };
@@ -97,29 +97,30 @@ export const createRootCause = async (dto: CreateRootCauseDto): Promise<RootCaus
 };
 
 // Update root cause
-export const updateRootCause = async (id: number, dto: Partial<CreateRootCauseDto>): Promise<RootCause> => {
+// Update root cause
+export const updateRootCause = async (id: string, dto: Partial<CreateRootCauseDto>): Promise<RootCause> => {
   const pascalDto = toPascalCase(dto);
   const res = await apiClient.put(`/RootCauses/${id}`, pascalDto);
   return res.data;
 };
 
 // Approve root cause
-export const approveRootCause = async (id: number): Promise<void> => {
+export const approveRootCause = async (id: string): Promise<void> => {
   await apiClient.post(`/RootCauses/${id}/approve`);
 };
 
 // Reject root cause
-export const rejectRootCause = async (id: number, reasonReject: string): Promise<void> => {
+export const rejectRootCause = async (id: string, reasonReject: string): Promise<void> => {
   await apiClient.post(`/RootCauses/${id}/reject`, { reasonReject });
 };
 
 // Send root cause for review (change from Draft to Pending)
-export const sendRootCauseForReview = async (id: number): Promise<void> => {
+export const sendRootCauseForReview = async (id: string): Promise<void> => {
   await apiClient.post(`/RootCauses/${id}/pending-review`);
 };
 
 // Delete root cause
-export const deleteRootCause = async (id: number): Promise<void> => {
+export const deleteRootCause = async (id: string): Promise<void> => {
   await apiClient.delete(`/RootCauses/${id}`);
 };
 
@@ -163,7 +164,7 @@ export const getRootCausesByFinding = async (findingId: string): Promise<RootCau
 };
 
 // Remediation Proposal APIs
-export const getRemediationProposalsByRootCause = async (rootCauseId: number): Promise<RemediationProposal[]> => {
+export const getRemediationProposalsByRootCause = async (rootCauseId: string): Promise<RemediationProposal[]> => {
   try {
     const res = await apiClient.get(`/RemediationProposals/root-cause/${rootCauseId}`);
     const proposals = unwrap<RemediationProposal>(res.data);

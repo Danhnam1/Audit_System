@@ -359,28 +359,7 @@ const CAPAOwnerWitnessedAuditFindings = () => {
                             </div>
                           ) : finding.status === 'Open' ? (
                             <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => handleConfirmWitness(finding)}
-                                disabled={submittingAction}
-                                className="px-3 py-1.5 text-sm bg-green-600 text-white hover:bg-green-700 rounded-lg font-medium transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Approve this finding"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                                Approve
-                              </button>
-                              <button
-                                onClick={() => handleRejectClick(finding)}
-                                disabled={submittingAction}
-                                className="px-3 py-1.5 text-sm bg-red-600 text-white hover:bg-red-700 rounded-lg font-medium transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Reject this finding"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                                Reject
-                              </button>
+                              
                               <button
                                 onClick={() => handleViewDetail(finding.findingId)}
                                 className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg font-medium transition-colors flex items-center gap-1"
