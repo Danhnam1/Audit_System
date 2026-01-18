@@ -564,16 +564,16 @@ const ArchivedHistoryPage = () => {
                   {!loading &&
                     filteredAudits.map((audit, idx) => (
                       <tr key={audit.auditId} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 align-middle">
                           <span className="text-sm text-gray-700">{idx + 1}</span>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="text-ms font-bold text-black">{audit.title}</span>
+                        <td className="px-6 py-4 align-middle">
+                          <span className="text-sm font-bold text-black">{audit.title}</span>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="text-ms text-[#5b6166]">{audit.type}</span>
+                        <td className="px-6 py-4 text-center align-middle">
+                          <span className="text-sm text-[#5b6166]">{audit.type}</span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 text-center align-middle">
                           <span
                             className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(
                               audit.status
@@ -582,13 +582,13 @@ const ArchivedHistoryPage = () => {
                             {audit.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="text-ms text-[#5b6166]">{audit.createdDate || '—'}</span>
+                        <td className="px-6 py-4 text-center align-middle">
+                          <span className="text-sm text-[#5b6166]">{audit.createdDate || '—'}</span>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="text-ms text-[#5b6166]">{audit.createdBy || '—'}</span>
+                        <td className="px-6 py-4 text-center align-middle">
+                          <span className="text-sm text-[#5b6166]">{audit.createdBy || '—'}</span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 text-center align-middle">
                           <button
                             onClick={() => handleViewDetails(audit.auditId)}
                             className="p-1.5 text-blue-600 hover:bg-gray-100 rounded transition-colors"
