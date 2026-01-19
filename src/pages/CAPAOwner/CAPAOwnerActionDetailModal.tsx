@@ -365,7 +365,7 @@ const CAPAOwnerActionDetailModal = ({
                                       >
                                         <div className="flex items-start justify-between gap-3">
                                           <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-semibold text-gray-900">{rcAction.title || 'Untitled action'}</p>
+                     
                                             {rcAction.description && (
                                               <p className="text-xs text-gray-600 mt-1 line-clamp-2">{rcAction.description}</p>
                                             )}
@@ -378,19 +378,8 @@ const CAPAOwnerActionDetailModal = ({
                                                   Due: {formatDate(rcAction.dueDate)}
                                                 </span>
                                               )}
-                                              {typeof rcAction.progressPercent === 'number' && (
-                                                <span className="flex items-center gap-1">
-                                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                                                  </svg>
-                                                  {rcAction.progressPercent}% progress
-                                                </span>
-                                              )}
                                             </div>
                                           </div>
-                                          <span className={`px-2 py-1 rounded-full text-[11px] font-semibold border whitespace-nowrap ${statusColor}`}>
-                                            {rcAction.status || 'N/A'}
-                                          </span>
                                         </div>
                                       </div>
                                     );
