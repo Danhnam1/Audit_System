@@ -558,6 +558,7 @@ const [findingTime, setFindingTime] = useState(() => {
           findingId: findingId,
           title: rc.rootCauseName.trim(), // Use root cause name as title (for backend validation)
           description: rc.proposedAction.trim(), // Proposed action as description
+          assignedBy: null, // Will be set when department head assigns the action
           assignedTo: null, // To be assigned by department head
           assignedDeptId: deptId,
           rootCauseId: rootCauseId,

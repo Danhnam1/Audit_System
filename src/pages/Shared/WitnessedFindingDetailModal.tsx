@@ -620,7 +620,7 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
         {/* Footer - always visible */}
         <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex gap-3">
-            {finding?.status === 'Open' && (
+            {(finding?.status === 'Open' || finding?.status === 'Fixed') && (
               <>
                 <button
                   onClick={handleApprove}
@@ -629,7 +629,7 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  Approve
+                  {finding?.status === 'Fixed' ? 'Confirm' : 'Approve'}
                 </button>
                 <button
                   onClick={handleRejectClick}
