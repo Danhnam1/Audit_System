@@ -5,7 +5,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getStatusColor } from '../../../constants/statusColors';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
-import { createAction, getActionsByFinding, getActionsByRootCause, type Action, rejectActionForResubmit, updateAction } from '../../../api/actions';
+import { createAction, getActionsByFinding, getActionsByRootCause, type Action, rejectActionForResubmit, updateAction, assignActionTo } from '../../../api/actions';
 import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
 import apiClient from '../../../api/client';
@@ -16,6 +16,7 @@ import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { getSeverityColor } from '../../../constants/statusColors';
 
 const FindingsProgress = () => {
+
   const { user } = useAuth();
   const { auditId } = useParams<{ auditId: string }>();
   const location = useLocation();
@@ -245,6 +246,68 @@ const FindingsProgress = () => {
     }
     return null;
   };
+
+  // // Get current user's ID from token
+  // const getCurrentUserId = (): string | null => {
+  //   // First try to get from user context
+  //   console.log('[GET USER ID] 👤 User object from context:', user);
+    
+  //   if (user?.userId) {
+  //     console.log('[GET USER ID] ✅ Got userId from context:', user.userId);
+  //     return user.userId;
+  //   }
+
+  //   // User object doesn't have userId, decode token
+  //   const token = localStorage.getItem('auth-storage');
+  //   if (!token) {
+  //     console.warn('[GET USER ID] ⚠️ No token found');
+  //     return null;
+  //   }
+
+  //   try {
+  //     const authData = JSON.parse(token);
+  //     console.log('[GET USER ID] 📦 Auth data:', authData);
+      
+  //     // Try to get token from user object first (already in context)
+  //     const jwtToken = user?.token || authData?.state?.token;
+      
+  //     if (jwtToken) {
+  //       const base64Url = jwtToken.split('.')[1];
+  //       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+  //       const payload = JSON.parse(window.atob(base64));
+        
+  //       console.log('[GET USER ID] 🔍 JWT Payload (all claims):', payload);
+  //       console.log('[GET USER ID] 🔍 All payload keys:', Object.keys(payload));
+        
+  //       // Try multiple possible claim names for user ID
+  //       // .NET uses these standard claims
+  //       const userId = 
+  //         payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'] || // .NET standard
+  //         payload['nameidentifier'] ||
+  //         payload['sub'] || 
+  //         payload['userId'] || 
+  //         payload['UserId'] || 
+  //         payload['nameid'] || 
+  //         payload['unique_name'] ||
+  //         payload['id'] ||
+  //         payload['Id'] ||
+  //         payload['uid'] ||
+  //         authData?.state?.user?.userId; // Try from auth state
+        
+  //       if (userId) {
+  //         console.log('[GET USER ID] ✅ Got userId from token:', userId);
+  //       } else {
+  //         console.warn('[GET USER ID] ⚠️ No userId found in token claims');
+  //         console.warn('[GET USER ID] 📋 Available claims:', Object.keys(payload));
+  //       }
+        
+  //       return userId || null;
+  //     }
+  //   } catch (err) {
+  //     console.error('[GET USER ID] ❌ Error parsing token:', err);
+  //   }
+  //   return null;
+  // };
 
   // Load root cause status for findings
   const loadRootCauseStatus = async (findingsData: Finding[]) => {
@@ -740,6 +803,12 @@ const FindingsProgress = () => {
     console.log('[REASSIGN] Individual Due Date:', individualDueDate);
     console.log('[REASSIGN] Keep Existing Assignment:', keepExistingAssignment);
  
+    // Prevent double submission
+    if (submittingAssign) {
+      console.warn('[REASSIGN] ⚠️ Already submitting, ignoring duplicate call');
+      return;
+    }
+
     if (!selectedFindingForAssign || !selectedRootCause) {
       console.error('[REASSIGN] ❌ Missing selectedFindingForAssign or selectedRootCause');
       toast.error('Please select a finding and root cause');
@@ -769,30 +838,65 @@ const FindingsProgress = () => {
       console.log('[REASSIGN] 📋 Rejected Info:', rejectedInfo);
       console.log('[REASSIGN] 📋 All Rejected Data:', rejectedRootCauseData);
 
-      // Check if this is a rejected action and user wants to keep existing assignment
+      // Check if there's an existing action for this root cause (with assignedTo = null or empty)
+      const existingActions = await getActionsByRootCause(selectedRootCause.rootCauseId);
+      const unassignedAction = existingActions.find((action: Action) => 
+        !action.assignedTo || action.assignedTo.trim() === ''
+      );
+      
+      console.log('[REASSIGN] 🔍 Existing actions for root cause:', existingActions);
+      console.log('[REASSIGN] 🔍 Unassigned action found:', unassignedAction);
+
+      // Priority 1: Update rejected action if user wants to keep it
       if (rejectedInfo && keepExistingAssignment) {
         console.log('[REASSIGN] 🔄 Updating existing rejected action:', rejectedInfo.actionId);
         
+        const currentUserId = getCurrentUserId();
         const updatePayload = {
           status: 'Pending',
+          assignedBy: currentUserId,
+          assignedTo: individualStaffId,
           dueDate: new Date(individualDueDate).toISOString(),
+          reviewFeedback: '',
         };
         console.log('[REASSIGN] 📤 Update payload:', updatePayload);
         
         await updateAction(rejectedInfo.actionId, updatePayload);
         
-        console.log('[REASSIGN] ✅ Action updated successfully');
+        console.log('[REASSIGN] ✅ Rejected action updated successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
         toast.success(`Action reassigned to ${staffName} (kept existing assignment)`);
-      } else {
-        console.log('[REASSIGN] 🆕 Creating new action');
-        console.log('[REASSIGN] Reason:', !rejectedInfo ? 'No rejected info' : 'User chose different person');
+      } 
+      // Priority 2: Update existing unassigned action (assignedTo = null)
+      else if (unassignedAction) {
+        console.log('[REASSIGN] 📝 Updating existing unassigned action:', unassignedAction.actionId);
         
-        // Create new action (either no rejection or user chose different person)
+        // Use the specific assign API instead of generic update
+        console.log('[REASSIGN] 🎯 Using /assigned-to API');
+        await assignActionTo(unassignedAction.actionId, individualStaffId);
+        
+        // Also update title, description, and due date if needed
+        const updatePayload = {
+          title: selectedRootCause.name,
+          description: selectedRootCause.description || selectedFindingForAssign.description || '',
+          dueDate: new Date(individualDueDate).toISOString(),
+        };
+        console.log('[REASSIGN] 📤 Additional update payload:', updatePayload);
+        await updateAction(unassignedAction.actionId, updatePayload);
+        
+        console.log('[REASSIGN] ✅ Unassigned action updated successfully');
+        const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
+        toast.success(`Action assigned to ${staffName}`);
+      } 
+      // Priority 3: Create new action only if no existing action found
+      else {
+        console.log('[REASSIGN] 🆕 Creating new action');
+        console.log('[REASSIGN] Reason: No existing unassigned action found');
+        
         const createPayload = {
           findingId: selectedFindingForAssign.findingId,
-          title: `${selectedFindingForAssign.title} - ${selectedRootCause.name}`,
-          description: selectedFindingForAssign.description || '',
+          title: selectedRootCause.name,
+          description: selectedRootCause.description || selectedFindingForAssign.description || '',
           assignedTo: individualStaffId,
           assignedDeptId: selectedFindingForAssign.deptId,
           progressPercent: 0,
@@ -804,7 +908,7 @@ const FindingsProgress = () => {
         
         await createAction(createPayload);
 
-        console.log('[REASSIGN] ✅ Action created successfully');
+        console.log('[REASSIGN] ✅ New action created successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
         toast.success(`Action created for ${staffName}`);
       }
@@ -1956,6 +2060,7 @@ const FindingsProgress = () => {
                 {/* Footer */}
                 <div className="bg-gray-50 px-4 py-3 rounded-b-xl flex justify-end gap-2">
                   <button
+                    type="button"
                     onClick={() => setShowIndividualAssignModal(false)}
                     className="px-3 py-1.5 border rounded text-sm text-gray-700 hover:bg-gray-100"
                   >
@@ -2000,6 +2105,7 @@ const FindingsProgress = () => {
                         handleAssignSingleRootCause();
                       }
                     }}
+                    type="button"
                     disabled={!individualStaffId || !individualDueDate || submittingAssign}
                     className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >

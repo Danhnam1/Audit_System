@@ -57,9 +57,10 @@ export const createAction = async (dto: CreateActionDto): Promise<Action> => {
   
   // Only include optional fields if they have valid values
   if (dto.title) cleanDto.title = dto.title;
-  if (dto.assignedBy) cleanDto.assignedBy = dto.assignedBy;
-  // Only include assignedTo if it's a non-empty string (valid GUID)
-  if (dto.assignedTo && dto.assignedTo.trim() !== '') cleanDto.assignedTo = dto.assignedTo;
+  // Always include assignedBy to prevent backend from auto-setting it (null = not assigned yet)
+  cleanDto.assignedBy = dto.assignedBy ?? null;
+  // Only include assignedTo if it's a non-empty string (valid GUID), otherwise explicitly null
+  cleanDto.assignedTo = (dto.assignedTo && dto.assignedTo.trim() !== '') ? dto.assignedTo : null;
   if (dto.rootCauseId) cleanDto.rootCauseId = dto.rootCauseId;
   // ReviewFeedback is required by backend - always include it (empty string if not provided)
   cleanDto.reviewFeedback = dto.reviewFeedback || '';
@@ -179,10 +180,26 @@ export const updateAction = async (
     status: string;
     progressPercent: number;
     dueDate: string;
+    assignedBy: string;
     assignedTo: string;
     assignedDeptId: number;
+    reviewFeedback: string;
   }>
 ): Promise<void> => {
   const pascalPayload = toPascalCase(payload);
+  console.log('[UPDATE ACTION] 📤 Payload before PascalCase:', payload);
+  console.log('[UPDATE ACTION] 📤 Payload after PascalCase:', pascalPayload);
   await apiClient.put(`/Action/${actionId}`, pascalPayload);
+};
+
+// Assign action to user (specific API for assignment)
+export const assignActionTo = async (
+  actionId: string,
+  assignedTo: string
+): Promise<void> => {
+  const payload = { assignedTo };
+  const pascalPayload = toPascalCase(payload);
+  console.log('[ASSIGN ACTION] 📤 ActionId:', actionId);
+  console.log('[ASSIGN ACTION] 📤 Payload:', pascalPayload);
+  await apiClient.put(`/Action/${actionId}/assigned-to`, pascalPayload);
 };
