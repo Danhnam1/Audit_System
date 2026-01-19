@@ -157,7 +157,21 @@ export const STATUS_GROUPS = {
   NEGATIVE: ['Rejected', 'Declined', 'Returned', 'Return', 'Cancelled'],
   SPECIAL: ['Reopened', 'Overdue'],
   CHECKLIST: ['Compliant', 'NonCompliant', 'Non-Compliant', 'Overdue'],
-} as const;
+} as const;export const getStatusBadgeColor = (status: string): string => {
+  const statusLower = status?.toLowerCase() || '';
+  switch (statusLower) {
+    case 'assigned':
+      return 'bg-blue-100 text-blue-800 border border-blue-300';
+    case 'inprogress':
+      return 'bg-yellow-100 text-yellow-800 border border-yellow-300';
+    case 'completed':
+      return 'bg-green-100 text-green-800';
+    case 'archived':
+      return 'bg-gray-100 text-gray-800 border border-gray-300';
+    default:
+      return 'bg-gray-100 text-gray-800 border border-gray-300';
+  }
+};
 
 // Helper to check if status is in a group
 export const isStatusInGroup = (status: string, group: keyof typeof STATUS_GROUPS): boolean => {
@@ -177,21 +191,7 @@ export const getStatusProgress = (status: string): number => {
  * Badge color for audit status (used in audit lists/cards)
  * Different from getStatusColor - this is for badge styling with borders
  */
-export const getStatusBadgeColor = (status: string): string => {
-  const statusLower = status?.toLowerCase() || '';
-  switch (statusLower) {
-    case 'assigned':
-      return 'bg-blue-100 text-blue-800 border border-blue-300';
-    case 'in progress':
-      return 'bg-yellow-100 text-yellow-800 border border-yellow-300';
-    case 'completed':
-      return 'bg-green-100 text-green-800';
-    case 'archived':
-      return 'bg-gray-100 text-gray-800 border border-gray-300';
-    default:
-      return 'bg-gray-100 text-gray-800 border border-gray-300';
-  }
-};
+
 
 /**
  * Badge color for audit type (used in audit lists/cards)

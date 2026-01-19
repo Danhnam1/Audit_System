@@ -7,7 +7,7 @@ import { getAuditPlanById } from '../../../api/audits';
 import { DataTable } from '../../../components/DataTable';
 import type { TableColumn } from '../../../components/DataTable';
 import { Pagination } from '../../../components';
-import { getStatusBadgeColor, getAuditTypeBadgeColor } from '../../../constants';
+import { STATUS_COLORS, getAuditTypeBadgeColor } from '../../../constants';
 
 interface AuditCard {
   auditId: string;
@@ -312,13 +312,30 @@ const AuditeeOwnerAuditList = () => {
     });
   };
 
+  // Helper function to get status color with proper type handling
+  const getStatusColor = (status: string): string => {
+    console.log('[STATUS COLOR] Checking status:', status);
+    console.log('[STATUS COLOR] Available keys:', Object.keys(STATUS_COLORS));
+    
+    // Direct lookup
+    const color = (STATUS_COLORS as Record<string, string>)[status];
+    
+    if (color) {
+      console.log('[STATUS COLOR] ✅ Found color:', color);
+      return color;
+    }
+    
+    console.log('[STATUS COLOR] ❌ No color found, using default');
+    return 'bg-gray-200 text-gray-800';
+  };
+
   return (
     <MainLayout user={layoutUser}>
       {/* Header */}
       <div className="  mb-6 px-6">
         <div className="rounded-xl border-b  shadow-sm  border-primary-100 bg-white px-6 py-8 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-black">Fingding management</h1>
+            <h1 className="text-2xl font-semibold text-black">Finding Management</h1>
 
           </div>
         
@@ -484,7 +501,7 @@ const AuditeeOwnerAuditList = () => {
                   header: 'Status',
                   cellClassName: 'whitespace-nowrap',
                   render: (audit: AuditCard) => (
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(audit.status)}`}>
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColor(audit.status)}`}>
                       {audit.status || 'Unknown'}
                     </span>
                   ),

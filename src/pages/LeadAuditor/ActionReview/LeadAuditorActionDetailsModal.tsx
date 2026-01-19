@@ -437,7 +437,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                     {action.description && (
                       <div className="md:col-span-2">
                         <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                          Description
+                          Proposed solutions
                         </label>
                         <textarea
                           value={action.description}
