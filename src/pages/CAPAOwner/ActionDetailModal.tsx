@@ -624,7 +624,7 @@ const ActionDetailModal = ({
                   {action.description && (
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                        Description
+                        Proposed solutions
                       </label>
                       <div className="px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 break-words leading-relaxed whitespace-pre-wrap min-h-[100px]">
                         {(() => {

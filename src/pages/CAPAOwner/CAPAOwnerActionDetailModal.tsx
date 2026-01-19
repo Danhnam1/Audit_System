@@ -132,19 +132,6 @@ const CAPAOwnerActionDetailModal = ({
     );
   };
 
-  // Old implementation with hardcoded colors:
-  // const getAttachmentStatusBadge = (status?: string) => {
-  //   if (!status) return null;
-  //   const statusLower = status.toLowerCase();
-  //   if (statusLower === 'rejected') return (<span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded border border-red-300 flex-shrink-0">Rejected</span>);
-  //   if (statusLower === 'approved') return (<span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-300 flex-shrink-0">Approved</span>);
-  //   if (statusLower === 'open') return (<span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded border border-blue-300 flex-shrink-0">Open</span>);
-  //   return (
-  //     <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded border border-gray-300 flex-shrink-0">
-  //       {status}
-  //     </span>
-  //   );
-  // };
 
   if (!isOpen) return null;
 
@@ -162,15 +149,6 @@ const CAPAOwnerActionDetailModal = ({
     }
   };
 
-  // Unused function
-  // const getStatusColor = (_status: string) => {
-  //   const statusLower = _status?.toLowerCase() || '';
-  //   if (statusLower === 'completed' || statusLower === 'approved') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
-  //   if (statusLower === 'active' || statusLower === 'open') return 'bg-blue-100 text-blue-700 border-blue-200';
-  //   if (statusLower === 'closed') return 'bg-gray-100 text-gray-700 border-gray-200';
-  //   if (statusLower === 'pending' || statusLower === 'reviewed') return 'bg-amber-100 text-amber-700 border-amber-200';
-  //   return 'bg-gray-100 text-gray-700 border-gray-200';
-  // };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">

@@ -98,131 +98,10 @@ const FindingsProgress = () => {
     });
   };
 
-  // Get display status for finding - override "Closed" if not all actions are closed
-  // Keep "Received" if there's at least one action not approved or verified
-  // If all actions are "completed", show "Completed"
+  // Get display status for finding - just return the finding's status directly
   const getDisplayStatus = (finding: Finding): string => {
-    const originalStatus = finding.status || '';
-    const statusLower = originalStatus.toLowerCase();
-    const actions = findingActionsMap[finding.findingId] || [];
-
-    // If no actions loaded, trust the finding status
-    if (actions.length === 0) {
-      if (statusLower === 'closed') return 'Closed';
-      return originalStatus || 'N/A';
-    }
-
-    // If finding itself is Closed, keep it Closed
-    if (statusLower === 'closed') {
-      return 'Closed';
-    }
-
-    // First, check if all actions are completed - if so, always show "Completed"
-    if (actions.length > 0) {
-      const allCompleted = actions.every(a => {
-        const actionStatus = (a.status || '').toLowerCase().trim();
-        const progressVal = Number(a.progressPercent);
-        const isDone =
-          actionStatus === 'completed' ||
-          actionStatus === 'complete' ||
-          actionStatus === 'closed' ||
-          actionStatus === 'done' ||
-          (!Number.isNaN(progressVal) && progressVal >= 100);
-        return isDone;
-      });
-      
-      if (allCompleted) {
-        return 'Completed';
-      }
-    }
-
-    // If status is "Received", check if all actions are approved/verified
-    if (statusLower === 'received') {
-      if (actions.length > 0) {
-        // Check if all actions are approved or verified
-        const allApprovedOrVerified = actions.every(a => {
-          const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'approved' || actionStatus === 'verified' || actionStatus === 'completed';
-        });
-        
-        // If not all actions are approved/verified, keep "Received" status
-        if (!allApprovedOrVerified) {
-          return 'Received';
-        }
-        
-        // If all actions are approved/verified, change status based on action states
-        // Check if all actions are closed
-        const allClosed = actions.every(a => {
-          const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'closed' || a.closedAt !== null;
-        });
-        
-        if (allClosed) {
-          return 'Closed';
-        }
-        
-        // All verified/approved but not all closed - show "Verified" or "Approved" status
-        // Check if all are verified
-        const allVerified = actions.every(a => {
-          const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'verified';
-        });
-        
-        if (allVerified) {
-          return 'Verified';
-        }
-        
-        // Check if all are approved
-        const allApproved = actions.every(a => {
-          const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'approved' || actionStatus === 'completed';
-        });
-        
-        if (allApproved) {
-          return 'Approved';
-        }
-        
-        // Mixed verified/approved - show "In Progress"
-        return 'In Progress';
-      }
-      // No actions yet, keep Received
-      return 'Received';
-    }
-
-    // If status is "Closed", check if all actions are actually closed
-    if (statusLower === 'closed') {
-      const allClosed = areAllActionsClosed(finding.findingId);
-      if (!allClosed) {
-        // Not all actions are closed, determine status based on actions
-        if (actions.length === 0) {
-          return 'Open'; // No actions yet
-        }
-
-        // Check action statuses to determine finding status
-        const hasInProgress = actions.some(a => {
-          const status = a.status?.toLowerCase() || '';
-          return status === 'inprogress' || status === 'in progress' || (a.progressPercent > 0 && a.progressPercent < 100);
-        });
-
-        if (hasInProgress) {
-          return 'In Progress';
-        }
-
-        const hasReviewed = actions.some(a => a.status?.toLowerCase() === 'reviewed');
-        if (hasReviewed) {
-          return 'Review';
-        }
-
-        const hasApproved = actions.some(a => a.status?.toLowerCase() === 'approved');
-        if (hasApproved) {
-          return 'Approved';
-        }
-
-        // Default to Open if we can't determine
-        return 'Open';
-      }
-    }
-    
+    const originalStatus = finding.status || 'N/A';
+    console.log('[GET DISPLAY STATUS] Finding:', finding.findingId, 'Status:', originalStatus);
     return originalStatus;
   };
 
@@ -621,6 +500,13 @@ const FindingsProgress = () => {
     try {
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
       const rootCauses = res.data.$values || [];
+      console.log('[LOAD ROOT CAUSES] 📊 All root causes from backend:', rootCauses);
+      console.log('[LOAD ROOT CAUSES] 📊 Root causes count:', rootCauses.length);
+      console.log('[LOAD ROOT CAUSES] 📊 Root cause statuses:', rootCauses.map((rc: any) => ({ 
+        id: rc.rootCauseId, 
+        name: rc.name, 
+        status: rc.status 
+      })));
 
       // Fetch actions for this finding to check which root causes are already assigned
       let assignedRootCauseIds = new Set<string>();
@@ -700,9 +586,11 @@ const FindingsProgress = () => {
           );
 
           // Get valid (non-rejected) actions with assignments
+          // NOTE: We also count rejected actions as "assigned" since they need reassignment
           const validActions = actions.filter((action: Action) => {
             const statusLower = action.status?.toLowerCase() || '';
-            return statusLower !== 'rejected' && statusLower !== 'leadrejected';
+            // Don't filter out rejected/leadrejected - they are still "assigned" (just need reassignment)
+            return true;
           });
 
           const fullyAssignedActions = validActions.filter((action: Action) => 
@@ -731,10 +619,7 @@ const FindingsProgress = () => {
                   };
                 }
               }
-      console.log('[LOAD ROOT CAUSES] 💾 Setting state:');
-      console.log('[LOAD ROOT CAUSES] - Submitted IDs:', assignedRootCauseIds);
-      console.log('[LOAD ROOT CAUSES] - Assigned Data:', assignedDataMap);
-      console.log('[LOAD ROOT CAUSES] - Rejected Data:', rejectedDataMap);
+
       
             })
           );
@@ -796,13 +681,7 @@ const FindingsProgress = () => {
 
   // Assign single root cause immediately
   const handleAssignSingleRootCause = async () => {
-    console.log('[REASSIGN] 🚀 Start reassignment process');
-    console.log('[REASSIGN] Selected Finding:', selectedFindingForAssign);
-    console.log('[REASSIGN] Selected Root Cause:', selectedRootCause);
-    console.log('[REASSIGN] Individual Staff ID:', individualStaffId);
-    console.log('[REASSIGN] Individual Due Date:', individualDueDate);
-    console.log('[REASSIGN] Keep Existing Assignment:', keepExistingAssignment);
- 
+   
     // Prevent double submission
     if (submittingAssign) {
       console.warn('[REASSIGN] ⚠️ Already submitting, ignoring duplicate call');
@@ -834,9 +713,7 @@ const FindingsProgress = () => {
       const rcIdStr = String(selectedRootCause.rootCauseId);
       const rejectedInfo = rejectedRootCauseData[rcIdStr];
       
-      console.log('[REASSIGN] 📊 Root Cause ID String:', rcIdStr);
-      console.log('[REASSIGN] 📋 Rejected Info:', rejectedInfo);
-      console.log('[REASSIGN] 📋 All Rejected Data:', rejectedRootCauseData);
+     
 
       // Check if there's an existing action for this root cause (with assignedTo = null or empty)
       const existingActions = await getActionsByRootCause(selectedRootCause.rootCauseId);
@@ -851,17 +728,30 @@ const FindingsProgress = () => {
       if (rejectedInfo && keepExistingAssignment) {
         console.log('[REASSIGN] 🔄 Updating existing rejected action:', rejectedInfo.actionId);
         
-        const currentUserId = getCurrentUserId();
-        const updatePayload = {
-          status: 'Pending',
-          assignedBy: currentUserId,
-          assignedTo: individualStaffId,
-          dueDate: new Date(individualDueDate).toISOString(),
-          reviewFeedback: '',
-        };
-        console.log('[REASSIGN] 📤 Update payload:', updatePayload);
+        // COMMENTED OUT: Using updateAction with assignedBy manually
+        // const currentUserId = getCurrentUserId();
+        // const updatePayload = {
+        //   status: 'Pending',
+        //   assignedBy: currentUserId,
+        //   assignedTo: individualStaffId,
+        //   dueDate: new Date(individualDueDate).toISOString(),
+        //   reviewFeedback: '',
+        // };
+        // console.log('[REASSIGN] 📤 Update payload:', updatePayload);
+        // await updateAction(rejectedInfo.actionId, updatePayload);
         
-        await updateAction(rejectedInfo.actionId, updatePayload);
+        // NEW: Use assignActionTo API - Backend auto-sets assignedBy
+        console.log('[REASSIGN] 🎯 Using /assigned-to API for rejected action');
+        await assignActionTo(rejectedInfo.actionId, individualStaffId);
+        
+        // COMMENTED OUT: Also update status and due date separately
+        // const updatePayload = {
+        //   status: 'Pending',
+        //   dueDate: new Date(individualDueDate).toISOString(),
+        //   reviewFeedback: '',
+        // };
+        // console.log('[REASSIGN] 📤 Additional update payload:', updatePayload);
+        // await updateAction(rejectedInfo.actionId, updatePayload);
         
         console.log('[REASSIGN] ✅ Rejected action updated successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
@@ -875,14 +765,14 @@ const FindingsProgress = () => {
         console.log('[REASSIGN] 🎯 Using /assigned-to API');
         await assignActionTo(unassignedAction.actionId, individualStaffId);
         
-        // Also update title, description, and due date if needed
-        const updatePayload = {
-          title: selectedRootCause.name,
-          description: selectedRootCause.description || selectedFindingForAssign.description || '',
-          dueDate: new Date(individualDueDate).toISOString(),
-        };
-        console.log('[REASSIGN] 📤 Additional update payload:', updatePayload);
-        await updateAction(unassignedAction.actionId, updatePayload);
+        // COMMENTED OUT: Also update title, description, and due date if needed
+        // const updatePayload = {
+        //   title: selectedRootCause.name,
+        //   description: selectedRootCause.description || selectedFindingForAssign.description || '',
+        //   dueDate: new Date(individualDueDate).toISOString(),
+        // };
+        // console.log('[REASSIGN] 📤 Additional update payload:', updatePayload);
+        // await updateAction(unassignedAction.actionId, updatePayload);
         
         console.log('[REASSIGN] ✅ Unassigned action updated successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
@@ -893,24 +783,32 @@ const FindingsProgress = () => {
         console.log('[REASSIGN] 🆕 Creating new action');
         console.log('[REASSIGN] Reason: No existing unassigned action found');
         
+        // Step 1: Create action WITHOUT assignedTo (null initially)
         const createPayload = {
           findingId: selectedFindingForAssign.findingId,
           title: selectedRootCause.name,
           description: selectedRootCause.description || selectedFindingForAssign.description || '',
-          assignedTo: individualStaffId,
+          assignedTo: null, // Don't assign yet
+          assignedBy: null, // Will be set by assignActionTo API
           assignedDeptId: selectedFindingForAssign.deptId,
           progressPercent: 0,
           dueDate: new Date(individualDueDate).toISOString(),
           reviewFeedback: '',
           rootCauseId: selectedRootCause.rootCauseId,
         };
-        console.log('[REASSIGN] 📤 Create payload:', createPayload);
+        console.log('[REASSIGN] 📤 Create payload (without assignment):', createPayload);
         
-        await createAction(createPayload);
+        const newAction = await createAction(createPayload);
+        const newActionId = newAction.actionId;
+        console.log('[REASSIGN] ✅ New action created with ID:', newActionId);
+        
+        // Step 2: Use assignActionTo API to assign - Backend auto-sets assignedBy
+        console.log('[REASSIGN] 🎯 Using /assigned-to API for new action');
+        await assignActionTo(newActionId, individualStaffId);
 
-        console.log('[REASSIGN] ✅ New action created successfully');
+        console.log('[REASSIGN] ✅ New action assigned successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
-        toast.success(`Action created for ${staffName}`);
+        toast.success(`Action created and assigned to ${staffName}`);
       }
 
       // Mark this root cause as submitted and save assigned data
