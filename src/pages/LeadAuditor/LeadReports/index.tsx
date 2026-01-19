@@ -58,7 +58,7 @@ const AuditorLeadReports = () => {
   const [showFindingModal, setShowFindingModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<string>(''); // Format: "auditId:approve" or "auditId:reject"
   const [actionMsg, setActionMsg] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'returned'>('all');
   const [reportSearch, setReportSearch] = useState<string>('');
   const [findingsSearch, setFindingsSearch] = useState<string>('');
   const [findingsSeverity, setFindingsSeverity] = useState<string>('all');
@@ -307,9 +307,9 @@ const AuditorLeadReports = () => {
       
      
       
-      // Filter chỉ lấy status: Pending và Approved (Lead Auditor cần thấy Pending để approve/reject)
+      // Filter chỉ lấy status: Pending, Approved, và Returned (Lead Auditor cần thấy Pending để approve/reject, Returned để theo dõi)
       // Chỉ lấy từ submitAudit API (luồng 3), không lấy từ final summary (luồng 5)
-      const allowedStatuses = ['approved', 'pending','returned'];
+      const allowedStatuses = ['approved', 'pending', 'returned'];
       const filtered = combinedReports.filter((p: any) => {
         const rawStatus = p.status || p.state || p.approvalStatus || '';
         const reportStatus = String(rawStatus).toLowerCase().replace(/\s+/g, '');
@@ -344,10 +344,10 @@ const AuditorLeadReports = () => {
           return candidates.some((id: string) => leadAuditIds.has(id) || leadAuditIds.has(id.toLowerCase()));
         };
         
-        // If Lead Auditor role, show all reports with allowed status (Pending and Approved)
+        // If Lead Auditor role, show all reports with allowed status (Pending, Approved, and Returned)
         // Otherwise, only show reports where user is lead of the audit
         if (isLeadAuditorRole) {
-          return true; // Lead Auditor sees all reports with Pending and Approved status
+          return true; // Lead Auditor sees all reports with Pending, Approved, and Returned status
         }
         return auditMatchesLead(p);
       });
@@ -640,6 +640,10 @@ const AuditorLeadReports = () => {
         if (statusFilter === 'approved') {
           // Approved filter shows Approved reports (after Director approval)
           return s === 'approved';
+        }
+        if (statusFilter === 'returned') {
+          // Returned filter shows Returned reports (rejected by Director or Lead Auditor)
+          return s === 'returned' || s.includes('return') || s.includes('reject');
         }
         return true;
       });
