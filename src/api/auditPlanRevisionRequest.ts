@@ -66,6 +66,20 @@ export const getPendingRevisionRequestsForDirector = async (): Promise<ViewAudit
   return unwrap<ViewAuditPlanRevisionRequest>(data);
 };
 
+// Get approved requests for Director
+export const getApprovedRevisionRequestsForDirector = async (): Promise<ViewAuditPlanRevisionRequest[]> => {
+  const res: any = await apiClient.get('/AuditPlanRevisionRequest?status=Approved');
+  const data = res?.data ?? res;
+  return unwrap<ViewAuditPlanRevisionRequest>(data);
+};
+
+// Get rejected requests for Director
+export const getRejectedRevisionRequestsForDirector = async (): Promise<ViewAuditPlanRevisionRequest[]> => {
+  const res: any = await apiClient.get('/AuditPlanRevisionRequest?status=Rejected');
+  const data = res?.data ?? res;
+  return unwrap<ViewAuditPlanRevisionRequest>(data);
+};
+
 // Get all requests for Director (pending, approved, rejected)
 export const getAllRevisionRequestsForDirector = async (): Promise<ViewAuditPlanRevisionRequest[]> => {
   const res: any = await apiClient.get('/AuditPlanRevisionRequest/for-director');

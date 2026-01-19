@@ -7,13 +7,22 @@ import { toast } from 'react-toastify';
 import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import {
   getPendingRevisionRequestsForDirector,
+  getApprovedRevisionRequestsForDirector,
+  getRejectedRevisionRequestsForDirector,
   getAllRevisionRequestsForDirector,
   getAllAuditPlanRevisionRequests,
   approveAuditPlanRevisionRequest,
   rejectAuditPlanRevisionRequest,
   type ViewAuditPlanRevisionRequest,
 } from '../../../api/auditPlanRevisionRequest';
-import { getOverdueChecklistItems, getChecklistTemplates, getMarkedChecklistItems } from '../../../api/checklists';
+import { 
+  getOverdueChecklistItems, 
+  getChecklistTemplates, 
+  getMarkedChecklistItems,
+  getPendingMarkedChecklistItems,
+  getApprovedMarkedChecklistItems,
+  getRejectedMarkedChecklistItems
+} from '../../../api/checklists';
 import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
 import { unwrap, normalizePlanDetails } from '../../../utils/normalize';
@@ -56,14 +65,17 @@ export default function DirectorExtensionRequestsPage() {
   const loadRequests = async (status?: string) => {
     setLoading(true);
     try {
-      // Use GET /AuditPlanRevisionRequest API with status filter
+      // Use 3 separate APIs for 3 different statuses
       let data: ViewAuditPlanRevisionRequest[] = [];
       
-      if (status) {
-        // Load requests filtered by status
-        data = await getAllAuditPlanRevisionRequests(status);
+      if (status === 'Pending') {
+        data = await getPendingRevisionRequestsForDirector();
+      } else if (status === 'Approved') {
+        data = await getApprovedRevisionRequestsForDirector();
+      } else if (status === 'Rejected') {
+        data = await getRejectedRevisionRequestsForDirector();
       } else {
-        // Load all requests (for pending tab or initial load)
+        // Load all requests (fallback)
         data = await getAllAuditPlanRevisionRequests();
       }
       
@@ -71,19 +83,7 @@ export default function DirectorExtensionRequestsPage() {
     } catch (error) {
       console.error('Failed to load extension requests:', error);
       toast.error('Failed to load extension requests');
-      // Fallback: try old API
-      try {
-        if (status === 'Pending') {
-          const pendingData = await getPendingRevisionRequestsForDirector();
-          setAllRequests(pendingData || []);
-        } else {
-          const allData = await getAllRevisionRequestsForDirector();
-          setAllRequests(allData || []);
-        }
-      } catch (fallbackError) {
-        console.error('Fallback API also failed:', fallbackError);
-        setAllRequests([]);
-      }
+      setAllRequests([]);
     } finally {
       setLoading(false);
     }
@@ -292,10 +292,27 @@ export default function DirectorExtensionRequestsPage() {
     setShowApproveModal(true);
     setMarkedChecklistItems([]);
     
-    // Load marked checklist items for this audit
+    // Load marked checklist items for this audit based on request status
     setLoadingMarkedItems(true);
     try {
-      const markedItems = await getMarkedChecklistItems(request.auditId);
+      let markedItems: any[] = [];
+      const requestStatus = String(request.status || '').trim().toLowerCase();
+      
+      // Get items based on request status
+      if (requestStatus === 'pending') {
+        // For pending requests, get items with Pending mark status
+        markedItems = await getPendingMarkedChecklistItems(request.auditId);
+      } else if (requestStatus === 'approved') {
+        // For approved requests, get items with Approved mark status
+        markedItems = await getApprovedMarkedChecklistItems(request.auditId);
+      } else if (requestStatus === 'rejected') {
+        // For rejected requests, get items with Rejected mark status
+        markedItems = await getRejectedMarkedChecklistItems(request.auditId);
+      } else {
+        // Fallback: get all marked items (Pending, Marked, Approved)
+        markedItems = await getMarkedChecklistItems(request.auditId);
+      }
+      
       setMarkedChecklistItems(markedItems || []);
     } catch (err) {
       console.error('Failed to load marked checklist items:', err);

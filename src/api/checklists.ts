@@ -327,13 +327,38 @@ export const deleteAuditChecklistItem = async (auditItemId: string): Promise<voi
   await apiClient.delete(`/AuditChecklistItems/${auditItemId}`);
 };
 
-// Toggle mark status of a checklist item (for extension requests)
+// Toggle mark status of a checklist item (for extension requests) - DEPRECATED: Use markChecklistItemPending instead
 export const toggleMarkChecklistItem = async (auditItemId: string): Promise<{ auditItemId: string; isMarked: boolean }> => {
   const res: any = await apiClient.put(`/AuditChecklistItems/${auditItemId}/mark`);
   return res.data || res;
 };
 
+// Mark checklist item status as Pending (for extension requests)
+export const markChecklistItemPending = async (auditItemId: string): Promise<{ auditItemId: string; markStatus: string }> => {
+  const res: any = await apiClient.put(`/AuditChecklistItems/${auditItemId}/mark-status/pending`);
+  return res?.data ?? res;
+};
+
+// Mark checklist item status as Approved
+export const markChecklistItemApproved = async (auditItemId: string): Promise<{ auditItemId: string; markStatus: string }> => {
+  const res: any = await apiClient.put(`/AuditChecklistItems/${auditItemId}/mark-status/approved`);
+  return res?.data ?? res;
+};
+
+// Mark checklist item status as Rejected
+export const markChecklistItemRejected = async (auditItemId: string): Promise<{ auditItemId: string; markStatus: string }> => {
+  const res: any = await apiClient.put(`/AuditChecklistItems/${auditItemId}/mark-status/rejected`);
+  return res?.data ?? res;
+};
+
+// Mark checklist item status as Unmarked
+export const markChecklistItemUnmarked = async (auditItemId: string): Promise<{ auditItemId: string; markStatus: string }> => {
+  const res: any = await apiClient.put(`/AuditChecklistItems/${auditItemId}/mark-status/unmarked`);
+  return res?.data ?? res;
+};
+
 // Get marked checklist items by audit ID (for Director to view extension requests)
+// Returns items with MarkStatus = "Pending" || "Marked" || "Approved"
 export const getMarkedChecklistItems = async (auditId: string): Promise<any[]> => {
   const res: any = await apiClient.get(`/AuditChecklistItems/marked?auditId=${auditId}`);
   console.log(`[getMarkedChecklistItems] Raw API response for auditId ${auditId}:`, res);
@@ -342,6 +367,39 @@ export const getMarkedChecklistItems = async (auditId: string): Promise<any[]> =
   const result = unwrapArray(data);
   console.log(`[getMarkedChecklistItems] Unwrapped array result (length: ${result.length}):`, result);
   return result;
+};
+
+// Get checklist items by markStatus (Pending, Approved, Rejected, Unmarked, Marked)
+export const getChecklistItemsByMarkStatus = async (
+  auditId: string, 
+  markStatus: 'Pending' | 'Approved' | 'Rejected' | 'Unmarked' | 'Marked'
+): Promise<any[]> => {
+  // Get all items first, then filter by markStatus
+  const allItems = await getAuditChecklistItems(auditId);
+  return allItems.filter((item: any) => {
+    const itemMarkStatus = String(item.markStatus || '').trim();
+    return itemMarkStatus === markStatus;
+  });
+};
+
+// Get checklist items with Pending mark status
+export const getPendingMarkedChecklistItems = async (auditId: string): Promise<any[]> => {
+  return getChecklistItemsByMarkStatus(auditId, 'Pending');
+};
+
+// Get checklist items with Approved mark status
+export const getApprovedMarkedChecklistItems = async (auditId: string): Promise<any[]> => {
+  return getChecklistItemsByMarkStatus(auditId, 'Approved');
+};
+
+// Get checklist items with Rejected mark status
+export const getRejectedMarkedChecklistItems = async (auditId: string): Promise<any[]> => {
+  return getChecklistItemsByMarkStatus(auditId, 'Rejected');
+};
+
+// Get checklist items with Unmarked status
+export const getUnmarkedChecklistItems = async (auditId: string): Promise<any[]> => {
+  return getChecklistItemsByMarkStatus(auditId, 'Unmarked');
 };
 
 // Get compliant details for a compliant item by its ID
@@ -415,5 +473,14 @@ export default {
   getCompliantIdByAuditItemId,
   updateOverdueToActiveByAuditId,
   toggleMarkChecklistItem,
+  markChecklistItemPending,
+  markChecklistItemApproved,
+  markChecklistItemRejected,
+  markChecklistItemUnmarked,
   getMarkedChecklistItems,
+  getChecklistItemsByMarkStatus,
+  getPendingMarkedChecklistItems,
+  getApprovedMarkedChecklistItems,
+  getRejectedMarkedChecklistItems,
+  getUnmarkedChecklistItems,
 };

@@ -16,7 +16,7 @@ import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../../api/reportRequest';
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
-import { getAuditChecklistItems, toggleMarkChecklistItem, getMarkedChecklistItems } from '../../../api/checklists';
+import { getAuditChecklistItems, markChecklistItemPending, getMarkedChecklistItems } from '../../../api/checklists';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
 import { 
@@ -1703,14 +1703,14 @@ const AuditorLeadReports = () => {
     
     setExtensionLoading(true);
     try {
-      // Mark all selected checklist items
+      // Mark all selected checklist items as Pending (for extension requests)
       const markPromises = Array.from(selectedChecklistItems).map(auditItemId => 
-        toggleMarkChecklistItem(auditItemId)
+        markChecklistItemPending(auditItemId)
       );
       
       try {
         await Promise.all(markPromises);
-        toast.success(`Marked ${selectedChecklistItems.size} checklist item(s) for extension request.`);
+        toast.success(`Marked ${selectedChecklistItems.size} checklist item(s) as Pending for extension request.`);
       } catch (markErr: any) {
         console.error('Failed to mark some checklist items:', markErr);
         toast.warning('Some checklist items failed to mark. Continuing with request...');
