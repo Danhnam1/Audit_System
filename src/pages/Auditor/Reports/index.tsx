@@ -1562,29 +1562,33 @@ const SQAStaffReports = () => {
                           const auditIdNorm = normalizeId(auditIdStr);
                           const approved = isReportApproved(auditIdStr);
                           const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
+                          const isCreator = auditIdStr && (creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase()));
                           const leadAuditorName = leadAuditorNames[auditIdStr] || 'Lead Auditor';
                           
-                          // Disable export if: not approved OR not Lead of the Team
-                          const disableExport = !approved || !isLeadAuditor;
+                          // Allow export if: approved AND is Creator only
+                          // Only the creator can export after Lead Auditor approves
+                          const canExport = approved && isCreator;
+                          const disableExport = !canExport;
                           
-                          // Disable upload if: not approved OR not Lead of the Team OR currently uploading
-                          const disableUpload =
-                            !approved ||
-                            !isLeadAuditor ||
-                            uploadLoading[auditIdNorm];
+                          // Allow upload if: approved AND is Creator AND not currently uploading
+                          // Only the creator can upload signed report after approval
+                          const canUpload = approved && isCreator && !uploadLoading[auditIdNorm];
+                          const disableUpload = !canUpload;
                           
                           // Tooltip messages
                           const exportTooltip = !approved
                             ? 'Export is available only after the report request is approved'
-                            : !isLeadAuditor
-                              ? `Only Lead of the Team (${leadAuditorName}) can export`
+                            : !isCreator
+                              ? 'Only the creator can export reports'
                               : 'Export PDF report';
                           
                           const uploadTooltip = !approved
                             ? 'Upload is available only after the report request is approved'
-                            : !isLeadAuditor
-                              ? `Only Lead of the Team (${leadAuditorName}) can upload`
-                              : 'Upload signed report';
+                            : !isCreator
+                              ? 'Only the creator can upload signed reports'
+                              : uploadLoading[auditIdNorm]
+                                ? 'Upload in progress...'
+                                : 'Upload signed report';
                           
                           return (
                             <>
@@ -1595,8 +1599,8 @@ const SQAStaffReports = () => {
                                     toast.error('Cannot export. Report request must be approved by Lead Auditor.');
                                     return;
                                   }
-                                  if (!isLeadAuditor) {
-                                    toast.error(`Only Lead of the Team (${leadAuditorName}) can export reports.`);
+                                  if (!isCreator) {
+                                    toast.error('Only the creator can export reports.');
                                     return;
                                   }
                                   handleExportPdfForRow(auditIdStr, audit.title);
@@ -1621,8 +1625,8 @@ const SQAStaffReports = () => {
                                     toast.error('Cannot upload. Report request must be approved by Lead Auditor.');
                                     return;
                                   }
-                                  if (!isLeadAuditor) {
-                                    toast.error(`Only Lead of the Team (${leadAuditorName}) can upload reports.`);
+                                  if (!isCreator) {
+                                    toast.error('Only the creator can upload reports.');
                                     return;
                                   }
                                   onClickUpload(auditIdStr);
