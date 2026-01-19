@@ -59,10 +59,22 @@ export const validateDepartmentWithConditions = async (
     const auditsInPeriod = await getAuditsByPeriod(startDate, endDate);
     const auditsArray = Array.isArray(auditsInPeriod) ? auditsInPeriod : [];
     
+    // Filter out inactive, deleted, rejected, declined, pending review, and pending director approval audits
+    // These statuses should not be considered as conflicts
+    let activeAudits = auditsArray.filter((a: any) => {
+      const status = String(a.status || '').toLowerCase().replace(/\s+/g, '');
+      return status !== 'inactive' 
+        && status !== 'deleted' 
+        && status !== 'rejected' 
+        && status !== 'declined'
+        && status !== 'pendingreview'
+        && status !== 'pendingdirectorapproval';
+    });
+    
     // Filter out current audit if editing
-const otherAudits = auditId 
-      ? auditsArray.filter((a: any) => String(a.auditId || a.id) !== String(auditId))
-      : auditsArray;
+    const otherAudits = auditId 
+      ? activeAudits.filter((a: any) => String(a.auditId || a.id) !== String(auditId))
+      : activeAudits;
 
     if (otherAudits.length === 0) {
       return {

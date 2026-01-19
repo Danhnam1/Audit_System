@@ -8,6 +8,7 @@ import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import {
   getPendingRevisionRequestsForDirector,
   getAllRevisionRequestsForDirector,
+  getAllAuditPlanRevisionRequests,
   approveAuditPlanRevisionRequest,
   rejectAuditPlanRevisionRequest,
   type ViewAuditPlanRevisionRequest,
@@ -52,27 +53,43 @@ export default function DirectorExtensionRequestsPage() {
   const [markedChecklistItems, setMarkedChecklistItems] = useState<any[]>([]);
   const [loadingMarkedItems, setLoadingMarkedItems] = useState(false);
 
-  const loadRequests = async () => {
+  const loadRequests = async (status?: string) => {
     setLoading(true);
     try {
-      // Try to get all requests, fallback to pending only if API doesn't exist
-      try {
-        const data = await getAllRevisionRequestsForDirector();
-        setAllRequests(data || []);
-      } catch (err) {
-        // Fallback: load pending requests only
-        const pendingData = await getPendingRevisionRequestsForDirector();
-        setAllRequests(pendingData || []);
+      // Use GET /AuditPlanRevisionRequest API with status filter
+      let data: ViewAuditPlanRevisionRequest[] = [];
+      
+      if (status) {
+        // Load requests filtered by status
+        data = await getAllAuditPlanRevisionRequests(status);
+      } else {
+        // Load all requests (for pending tab or initial load)
+        data = await getAllAuditPlanRevisionRequests();
       }
+      
+      setAllRequests(data || []);
     } catch (error) {
       console.error('Failed to load extension requests:', error);
       toast.error('Failed to load extension requests');
+      // Fallback: try old API
+      try {
+        if (status === 'Pending') {
+          const pendingData = await getPendingRevisionRequestsForDirector();
+          setAllRequests(pendingData || []);
+        } else {
+          const allData = await getAllRevisionRequestsForDirector();
+          setAllRequests(allData || []);
+        }
+      } catch (fallbackError) {
+        console.error('Fallback API also failed:', fallbackError);
+        setAllRequests([]);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Filter requests by active tab
+  // Filter requests by active tab (client-side filter as backup)
   const filteredRequests = allRequests.filter((req) => {
     const status = (req.status || '').toLowerCase();
     if (activeTab === 'pending') {
@@ -85,9 +102,31 @@ export default function DirectorExtensionRequestsPage() {
     return false;
   });
 
+  // Ensure only one modal is open at a time
   useEffect(() => {
-    loadRequests();
-    
+    if (showRejectModal) {
+      setShowApproveModal(false);
+    }
+  }, [showRejectModal]);
+
+  useEffect(() => {
+    if (showApproveModal) {
+      setShowRejectModal(false);
+    }
+  }, [showApproveModal]);
+
+  // Load requests when tab changes
+  useEffect(() => {
+    const statusMap: Record<string, string> = {
+      'pending': 'Pending',
+      'approved': 'Approved',
+      'rejected': 'Rejected'
+    };
+    const status = statusMap[activeTab];
+    loadRequests(status);
+  }, [activeTab]);
+
+  useEffect(() => {
     // Load all necessary data
     const loadAllData = async () => {
       try {
@@ -140,9 +179,17 @@ export default function DirectorExtensionRequestsPage() {
     loadAllData();
     
     // Auto-refresh every 30 seconds
-    const interval = setInterval(loadRequests, 30000);
+    const interval = setInterval(() => {
+      const statusMap: Record<string, string> = {
+        'pending': 'Pending',
+        'approved': 'Approved',
+        'rejected': 'Rejected'
+      };
+      const status = statusMap[activeTab];
+      loadRequests(status);
+    }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [activeTab]);
 
   // Load overdue items and template maps when request is selected
   useEffect(() => {
@@ -212,7 +259,7 @@ export default function DirectorExtensionRequestsPage() {
       setResponseComment('');
       // Switch to Approved tab
       setActiveTab('approved');
-      await loadRequests();
+      await loadRequests('Approved');
 
       // Notify other screens (e.g. Lead Reports) so "Edit Schedule & Team" button appears immediately
       try {
@@ -271,7 +318,7 @@ export default function DirectorExtensionRequestsPage() {
       setResponseComment('');
       // Switch to Rejected tab
       setActiveTab('rejected');
-      await loadRequests();
+      await loadRequests('Rejected');
     } catch (error: any) {
       console.error('Failed to reject request:', error);
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to reject request. Please try again.'));
@@ -300,9 +347,14 @@ export default function DirectorExtensionRequestsPage() {
   };
 
   const openRejectModal = (request: ViewAuditPlanRevisionRequest) => {
+    // Ensure approve modal is closed first
+    setShowApproveModal(false);
     setSelectedRequest(request);
     setResponseComment('');
-    setShowRejectModal(true);
+    // Use requestAnimationFrame to ensure state updates are processed
+    requestAnimationFrame(() => {
+      setShowRejectModal(true);
+    });
   };
 
   const openAuditDetailsModal = async (request: ViewAuditPlanRevisionRequest) => {
@@ -625,7 +677,7 @@ export default function DirectorExtensionRequestsPage() {
         </div>
 
         {/* Review/Approve/Reject Modal */}
-        {showApproveModal && selectedRequest && createPortal(
+        {showApproveModal && !showRejectModal && selectedRequest && createPortal(
           <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
             <div
               className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
@@ -829,8 +881,10 @@ export default function DirectorExtensionRequestsPage() {
                   </Button>
                   <Button
                     onClick={() => {
-                      setShowApproveModal(false);
-                      openRejectModal(selectedRequest);
+                      // Close approve modal and open reject modal
+                      if (selectedRequest) {
+                        openRejectModal(selectedRequest);
+                      }
                     }}
                     disabled={submitting}
                     variant="danger"
@@ -854,7 +908,7 @@ export default function DirectorExtensionRequestsPage() {
         )}
 
         {/* Reject Modal */}
-        {showRejectModal && selectedRequest && createPortal(
+        {showRejectModal && !showApproveModal && selectedRequest && createPortal(
           <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
             <div
               className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"

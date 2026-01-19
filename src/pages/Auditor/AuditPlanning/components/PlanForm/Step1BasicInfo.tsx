@@ -50,10 +50,16 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
         // Unwrap response to handle different formats ($values, values, data, or direct array)
         const auditsArray = unwrap(auditsInPeriod);
         
-        // Filter out inactive and deleted audits
+        // Filter out inactive, deleted, rejected, declined, pending review, and pending director approval audits
+        // These statuses should not be considered as conflicts
         const activeAudits = auditsArray.filter((a: any) => {
           const status = String(a.status || '').toLowerCase().replace(/\s+/g, '');
-          const isActive = status !== 'inactive' && status !== 'deleted';
+          const isActive = status !== 'inactive' 
+            && status !== 'deleted' 
+            && status !== 'rejected' 
+            && status !== 'declined'
+            && status !== 'pendingreview'
+            && status !== 'pendingdirectorapproval';
           if (!isActive) {
           }
           return isActive;

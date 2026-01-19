@@ -73,6 +73,18 @@ export const getAllRevisionRequestsForDirector = async (): Promise<ViewAuditPlan
   return unwrap<ViewAuditPlanRevisionRequest>(data);
 };
 
+// Get all revision requests (with optional status filter)
+export const getAllAuditPlanRevisionRequests = async (status?: string): Promise<ViewAuditPlanRevisionRequest[]> => {
+  const queryParams = new URLSearchParams();
+  if (status) {
+    queryParams.append('status', status);
+  }
+  const url = `/AuditPlanRevisionRequest${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+  const res: any = await apiClient.get(url);
+  const data = res?.data ?? res;
+  return unwrap<ViewAuditPlanRevisionRequest>(data);
+};
+
 // Approve revision request (Director)
 export const approveAuditPlanRevisionRequest = async (
   requestId: string,
