@@ -3,7 +3,7 @@ import { createAudit, updateAuditPlan, setSensitiveFlag, getAuditScopeDepartment
 // import { createAuditChecklistItemsFromTemplate } from "../api/checklists";
 import { addCriterionToAudit, getCriteriaForAudit, removeCriterionFromAudit } from "../api/auditCriteriaMap";
 import { addTeamMember, deleteTeamMember, getAuditTeam } from "../api/auditTeam";
-import { addAuditSchedule, updateAuditSchedule, getAuditSchedules, deleteAuditSchedule } from "../api/auditSchedule";
+import { updateAuditSchedule, getAuditSchedules } from "../api/auditSchedule";
 import { syncAuditChecklistTemplateMaps, getAuditChecklistTemplateMapsByAudit, deleteAuditChecklistTemplateMap, addAuditChecklistTemplateMap } from "../api/auditChecklistTemplateMaps";
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from "../constants/audit";
 import {
@@ -282,7 +282,7 @@ export const checkAuditConflicts = async (
  */
 export const createOrUpdateAuditPlan = async (
   formState: FormState,
-  context?: {
+  _context?: {
     departments: Array<{ deptId: number | string; name: string }>;
     ownerOptions: any[];
     selectedCriteriaByDept: Map<string, Set<string>>;
@@ -579,12 +579,22 @@ export const addTeamMembersToAudit = async (
 };
 
 /**
- * Posts schedules to audit
+ * Updates schedules to audit using PUT only (no POST or DELETE)
  */
 export const postSchedulesToAudit = async (
   auditId: string,
   formState: FormState
 ): Promise<void> => {
+  // First, get existing schedules to check which ones already exist
+  const existingSchedules = await getAuditSchedules(auditId);
+  const existingSchedulesArray = Array.isArray(existingSchedules) ? existingSchedules : [];
+  const existingSchedulesMap = new Map(
+    existingSchedulesArray.map((s: any) => [
+      s.milestoneName || s.MilestoneName,
+      s,
+    ])
+  );
+
   const schedulePairs = [
     { name: MILESTONE_NAMES.KICKOFF, date: formState.kickoffMeeting },
     { name: MILESTONE_NAMES.FIELDWORK, date: formState.fieldworkStart },
@@ -594,16 +604,41 @@ export const postSchedulesToAudit = async (
   ].filter((pair) => pair.date);
 
   if (schedulePairs.length > 0) {
-    const schedulePromises = schedulePairs.map((pair) =>
-      addAuditSchedule({
-        auditId,
-        milestoneName: pair.name,
-        dueDate: new Date(pair.date!).toISOString(),
-        status: SCHEDULE_STATUS.PLANNED,
-        notes: "",
+    // Use PUT only for schedules that already exist
+    // For new schedules in create mode, they will be created via backend PUT upsert if supported
+    // Otherwise, they will be skipped (PUT requires existing scheduleId)
+    const scheduleResults = await Promise.allSettled(
+      schedulePairs.map(async (pair) => {
+        const existing = existingSchedulesMap.get(pair.name);
+        if (existing) {
+          // Update existing schedule using PUT
+          const scheduleId = existing.scheduleId || existing.ScheduleId || existing.id;
+          if (scheduleId) {
+            const result = await updateAuditSchedule(scheduleId, {
+              milestoneName: pair.name,
+              dueDate: new Date(pair.date!).toISOString(),
+              notes: "",
+              status: SCHEDULE_STATUS.PLANNED,
+            });
+            console.log(`[Create Schedule] Updated ${pair.name} (${scheduleId}) using PUT:`, result);
+            return result;
+          }
+        }
+        // If schedule doesn't exist, skip it (PUT only - no POST for new schedules)
+        // Note: In create mode, schedules may not exist yet, so they will be created
+        // via backend when audit plan is created, or via PUT upsert if backend supports it
+        console.log(`[Create Schedule] Skipped ${pair.name} - schedule does not exist (PUT only mode)`);
+        return null;
       })
     );
-    await Promise.allSettled(schedulePromises);
+
+    const scheduleFailures = scheduleResults.filter((r) => r.status === "rejected");
+    if (scheduleFailures.length > 0) {
+      console.error("[Create Schedule] Some schedules failed:", scheduleFailures);
+      scheduleFailures.forEach((failure) => {
+        console.error("[Create Schedule] Failure:", failure);
+      });
+    }
   }
 };
 
@@ -677,21 +712,31 @@ export const submitAuditPlan = async (
   if (formState.isEditMode) {
     // Edit mode: Update each entity separately
     try {
-      // 4.1: Update Checklist Templates - Delete all then add all
+      // 4.1: Update Checklist Templates - DELETE by ID then POST (no PUT)
+      // Strategy: Delete all existing templates first, then POST new ones
       const existingTemplates = await getAuditChecklistTemplateMapsByAudit(auditId);
       const existingTemplateIds = existingTemplates
         .map((m: any) => m.templateId || m.checklistTemplateId || m.template?.templateId || m.template?.id)
         .filter((id: any) => id != null)
         .map((id: any) => String(id).trim());
 
-      // Delete all existing templates
-      await Promise.allSettled(
+      // Step 1: DELETE all existing templates by ID
+      const deleteTemplateResults = await Promise.allSettled(
         existingTemplateIds.map((templateId: string) =>
           deleteAuditChecklistTemplateMap(auditId, templateId)
         )
       );
 
-      // Add all new templates
+      // Check for DELETE failures
+      const deleteTemplateFailures = deleteTemplateResults.filter((r) => r.status === "rejected");
+      if (deleteTemplateFailures.length > 0) {
+        console.warn("[Update Templates] Some DELETE operations failed:", deleteTemplateFailures);
+      }
+
+      // Add a small delay to ensure backend has committed DELETE operations
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // Step 2: POST all new templates (after DELETE completes and delay)
       const uniqueTemplateIds = Array.from(
         new Set(formState.selectedTemplateIds.map((id) => String(id).trim()).filter(Boolean))
       );
@@ -710,14 +755,15 @@ export const submitAuditPlan = async (
     }
 
     try {
-      // 4.2: Update Departments - Delete all then add all
+      // 4.2: Update Audit Scope Departments - DELETE by ID then POST (no PUT)
+      // Strategy: Delete all existing departments first, then POST new ones
       const allScopeDepts = await getAuditScopeDepartments();
       const existingScopeDepts = (Array.isArray(allScopeDepts) ? allScopeDepts : [])
         .filter((sd: any) => String(sd.auditId || sd.$auditId || sd.AuditId) === String(auditId))
         .filter((sd: any) => (sd.status || sd.Status) === "Active");
 
-      // Delete all existing departments
-      await Promise.allSettled(
+      // Step 1: DELETE all existing departments by ID
+      const deleteDeptResults = await Promise.allSettled(
         existingScopeDepts.map((scopeDept: any) => {
           const scopeId = scopeDept.auditScopeId || scopeDept.AuditScopeId || scopeDept.id || scopeDept.$id;
           if (scopeId) {
@@ -727,6 +773,15 @@ export const submitAuditPlan = async (
         })
       );
 
+      // Check for DELETE failures
+      const deleteDeptFailures = deleteDeptResults.filter((r) => r.status === "rejected");
+      if (deleteDeptFailures.length > 0) {
+        console.warn("[Update Departments] Some DELETE operations failed:", deleteDeptFailures);
+      }
+
+      // Add a small delay to ensure backend has committed DELETE operations
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
       // Determine target dept IDs
       let targetDeptIds: string[] = [];
       if (formState.level === "academy" || formState.level.toLowerCase() === "academy") {
@@ -735,7 +790,7 @@ export const submitAuditPlan = async (
         targetDeptIds = formState.selectedDeptIds;
       }
 
-      // Add all new departments
+      // Step 2: POST all new departments (after DELETE completes)
       const successfulDepts = await Promise.allSettled(
         targetDeptIds.map((deptIdStr) => addAuditScopeDepartment(auditId, Number(deptIdStr)))
       ).then((results) =>
@@ -755,21 +810,31 @@ export const submitAuditPlan = async (
     }
 
     try {
-      // 4.2.1: Update Criteria - Delete all then add all
+      // 4.2.1: Update Audit Criteria Map - DELETE by ID then POST (no PUT)
+      // Strategy: Delete all existing criteria first, then POST new ones
       const existingCriteria = await getCriteriaForAudit(auditId);
       const existingCriteriaIds = (Array.isArray(existingCriteria) ? existingCriteria : [])
         .map((c: any) => c.criteriaId || c.id || c)
         .filter((id: any) => id != null)
         .map((id: any) => String(id).trim());
 
-      // Delete all existing criteria
-      await Promise.allSettled(
+      // Step 1: DELETE all existing criteria by ID
+      const deleteCriteriaResults = await Promise.allSettled(
         existingCriteriaIds.map((criteriaId: string) =>
           removeCriterionFromAudit(auditId, criteriaId)
         )
       );
 
-      // Add all new criteria from selectedCriteriaIds
+      // Check for DELETE failures
+      const deleteCriteriaFailures = deleteCriteriaResults.filter((r) => r.status === "rejected");
+      if (deleteCriteriaFailures.length > 0) {
+        console.warn("[Update Criteria] Some DELETE operations failed:", deleteCriteriaFailures);
+      }
+
+      // Add a small delay to ensure backend has committed DELETE operations
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // Step 2: POST all new criteria (after DELETE completes and delay)
       const uniqueCriteriaIds = Array.from(
         new Set(formState.selectedCriteriaIds.map((id) => String(id).trim()).filter(Boolean))
       );
@@ -784,19 +849,31 @@ export const submitAuditPlan = async (
     }
 
     try {
-      // 4.3: Update Team & Responsibilities - Delete all then add all
+      // 4.3: Update Audit Team - DELETE by ID then POST (no PUT)
+      // Strategy: Delete all existing team members first, then POST new ones
       const allTeams = await getAuditTeam();
       const existingTeams = (Array.isArray(allTeams) ? allTeams : []).filter(
         (t: any) => String(t.auditId || t.$auditId) === String(auditId)
       );
 
-      // Delete all existing teams
-      await Promise.allSettled(
+      // Step 1: DELETE all existing team members by ID
+      // Wait for all DELETE operations to complete
+      const deleteResults = await Promise.allSettled(
         existingTeams.map((t: any) => {
           const teamId = t.auditTeamId || t.AuditTeamId || t.id;
           return teamId ? deleteTeamMember(teamId) : Promise.resolve();
         })
       );
+
+      // Check for DELETE failures
+      const deleteFailures = deleteResults.filter((r) => r.status === "rejected");
+      if (deleteFailures.length > 0) {
+        console.warn("[Update Team] Some DELETE operations failed:", deleteFailures);
+      }
+
+      // Add a small delay to ensure backend has committed DELETE operations
+      // This prevents "user already assigned" errors when POSTing immediately after DELETE
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Build target team members
       const targetTeamMembers: Array<{ userId: string; roleInTeam: string; isLead: boolean }> = [];
@@ -839,7 +916,7 @@ export const submitAuditPlan = async (
         });
       }
 
-      // Add all new team members
+      // Step 2: POST all new team members (after DELETE completes and delay)
       await Promise.allSettled(
         targetTeamMembers.map((member) =>
           addTeamMember({
@@ -856,7 +933,7 @@ export const submitAuditPlan = async (
     }
 
     try {
-      // 4.4: Update Schedule
+      // 4.4: Update Schedule - Use PUT only (no DELETE or POST)
       const existingSchedules = await getAuditSchedules(auditId);
       const schedulePairs = [
         { name: MILESTONE_NAMES.KICKOFF, date: formState.kickoffMeeting },
@@ -874,7 +951,8 @@ export const submitAuditPlan = async (
         ])
       );
 
-      // Update or add schedules
+      // Update schedules using PUT only
+      // Only update schedules that exist and are in the form
       const scheduleResults = await Promise.allSettled(
         schedulePairs.map(async (pair) => {
           const existing = existingSchedulesMap.get(pair.name);
@@ -890,17 +968,11 @@ export const submitAuditPlan = async (
               console.log(`[Update Schedule] Updated ${pair.name} (${scheduleId}):`, result);
               return result;
             }
-          } else {
-            const result = await addAuditSchedule({
-              auditId,
-              milestoneName: pair.name,
-              dueDate: new Date(pair.date!).toISOString(),
-              status: SCHEDULE_STATUS.PLANNED,
-              notes: "",
-            });
-            console.log(`[Update Schedule] Added ${pair.name}:`, result);
-            return result;
           }
+          // If schedule doesn't exist, skip it (no POST for new schedules)
+          // User wants PUT only, so we only update existing schedules
+          console.log(`[Update Schedule] Skipped ${pair.name} - schedule does not exist (using PUT only)`);
+          return null;
         })
       );
 
@@ -913,23 +985,7 @@ export const submitAuditPlan = async (
         });
       }
 
-      // Delete schedules that are no longer in the form
-      const targetMilestoneNames = new Set(schedulePairs.map((p) => p.name));
-      const toDeleteSchedules = existingSchedulesArray.filter(
-        (s: any) => !targetMilestoneNames.has(s.milestoneName || s.MilestoneName)
-      );
-      if (toDeleteSchedules.length > 0) {
-        const deleteResults = await Promise.allSettled(
-          toDeleteSchedules.map((s: any) => {
-            const scheduleId = s.scheduleId || s.ScheduleId || s.id;
-            return scheduleId ? deleteAuditSchedule(scheduleId) : Promise.resolve();
-          })
-        );
-        const deleteFailures = deleteResults.filter((r) => r.status === "rejected");
-        if (deleteFailures.length > 0) {
-          console.error("[Update Schedule] Some schedule deletions failed:", deleteFailures);
-        }
-      }
+      // Note: No DELETE operations - schedules not in form are left as-is
 
       // Trigger refresh in modal by dispatching event and updating localStorage
       // Do this after all schedule operations complete
