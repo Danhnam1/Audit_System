@@ -307,9 +307,9 @@ const AuditorLeadReports = () => {
       
      
       
-      // Filter chỉ lấy status: Approved (Lead Auditor chỉ hiển thị status Approved)
+      // Filter chỉ lấy status: Pending và Approved (Lead Auditor cần thấy Pending để approve/reject)
       // Chỉ lấy từ submitAudit API (luồng 3), không lấy từ final summary (luồng 5)
-      const allowedStatuses = ['approved'];
+      const allowedStatuses = ['approved', 'pending','returned'];
       const filtered = combinedReports.filter((p: any) => {
         const rawStatus = p.status || p.state || p.approvalStatus || '';
         const reportStatus = String(rawStatus).toLowerCase().replace(/\s+/g, '');
@@ -344,10 +344,10 @@ const AuditorLeadReports = () => {
           return candidates.some((id: string) => leadAuditIds.has(id) || leadAuditIds.has(id.toLowerCase()));
         };
         
-        // If Lead Auditor role, show all reports with allowed status (Approved only)
+        // If Lead Auditor role, show all reports with allowed status (Pending and Approved)
         // Otherwise, only show reports where user is lead of the audit
         if (isLeadAuditorRole) {
-          return true; // Lead Auditor sees all reports with Approved status
+          return true; // Lead Auditor sees all reports with Pending and Approved status
         }
         return auditMatchesLead(p);
       });
