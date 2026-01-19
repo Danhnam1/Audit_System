@@ -335,7 +335,6 @@ const CAPAOwnerActionDetailModal = ({
                               ) : (
                                 <div className="space-y-3">
                                   {proposals.map((rcAction, idx) => {
-                                    const statusColor = getStatusColor(rcAction.status || '');
                                     return (
                                       <div
                                         key={rcAction.actionId || idx}

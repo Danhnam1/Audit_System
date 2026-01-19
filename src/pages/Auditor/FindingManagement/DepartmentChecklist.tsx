@@ -12,7 +12,6 @@ import { getDepartmentById } from '../../../api/departments';
 import { getFindings, getMyFindings, getFindingsByDepartment, getFindingById, updateFinding, type Finding} from '../../../api/findings';
 import { getFindingSeverities } from '../../../api/findingSeverity';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
-import { unwrap } from '../../../utils/normalize';
 import CreateFindingModal from './CreateFindingModal';
 import CompliantModal from './CompliantModal';
 import CompliantDetailsViewer from './CompliantDetailsViewer';
@@ -2063,7 +2062,6 @@ const DepartmentChecklist = () => {
                     {checklistItems.map((item, index) => {
                       // Check if this item has a finding with Return status
                       const findingData = findingsMap[item.auditItemId];
-                      const findingId = findingData?.findingId;
                       
                       // Check if finding was witness disagreed
                       const isWitnessDisagreed = findingData?.status?.toLowerCase() === 'witnessdisagreed';

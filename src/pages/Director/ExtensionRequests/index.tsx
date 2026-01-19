@@ -9,7 +9,6 @@ import {
   getPendingRevisionRequestsForDirector,
   getApprovedRevisionRequestsForDirector,
   getRejectedRevisionRequestsForDirector,
-  getAllRevisionRequestsForDirector,
   getAllAuditPlanRevisionRequests,
   approveAuditPlanRevisionRequest,
   rejectAuditPlanRevisionRequest,
@@ -48,10 +47,10 @@ export default function DirectorExtensionRequestsPage() {
   const [selectedAuditDetails, setSelectedAuditDetails] = useState<any | null>(null);
   const [responseComment, setResponseComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [overdueItems, setOverdueItems] = useState<any[]>([]);
-  const [loadingOverdue, setLoadingOverdue] = useState(false);
-  const [templateMap, setTemplateMap] = useState<Record<string, string>>({});
-  const [auditTemplateMaps, setAuditTemplateMaps] = useState<Record<string, string[]>>({});
+  const [_overdueItems, setOverdueItems] = useState<any[]>([]);
+  const [_loadingOverdue, setLoadingOverdue] = useState(false);
+  const [_templateMap, setTemplateMap] = useState<Record<string, string>>({});
+  const [_auditTemplateMaps, setAuditTemplateMaps] = useState<Record<string, string[]>>({});
   const [departments, setDepartments] = useState<Array<{ deptId: number | string; name: string }>>([]);
   const [criteriaList, setCriteriaList] = useState<any[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<any[]>([]);

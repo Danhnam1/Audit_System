@@ -5,7 +5,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getStatusColor } from '../../../constants/statusColors';
 import FindingDetailModal from '../../../pages/Auditor/FindingManagement/FindingDetailModal';
-import { createAction, getActionsByFinding, getActionsByRootCause, type Action, rejectActionForResubmit, updateAction, assignActionTo } from '../../../api/actions';
+import { createAction, getActionsByFinding, getActionsByRootCause, type Action, rejectActionForResubmit, assignActionTo } from '../../../api/actions';
 import { getAdminUsersByDepartment, getUserById } from '../../../api/adminUsers';
 import { markFindingAsReceived } from '../../../api/findings';
 import apiClient from '../../../api/client';
@@ -51,7 +51,7 @@ const FindingsProgress = () => {
   const [returnedActionsMap, setReturnedActionsMap] = useState<Record<string, Action>>({}); // findingId -> returned action
   const [rejectedActionsMap, setRejectedActionsMap] = useState<Record<string, Action>>({}); // findingId -> rejected action
   const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasApproved: boolean; hasPending: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }>>({}); // findingId -> root cause status
-  const [findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> all actions
+  const [_findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> all actions
 
   // New states for root cause assignment
   const [findingRootCauses, setFindingRootCauses] = useState<any[]>([]); // Root causes of selected finding
@@ -85,18 +85,6 @@ const FindingsProgress = () => {
 
   const formatVNDate = (date: Date) =>
     date.toLocaleDateString('en-CA');
-  // Check if all actions for a finding are closed
-  const areAllActionsClosed = (findingId: string): boolean => {
-    const actions = findingActionsMap[findingId] || [];
-    if (actions.length === 0) return false; // No actions means not all closed
-
-    // Check if all actions are closed
-    return actions.every(action => {
-      const status = action.status?.toLowerCase() || '';
-      const isClosed = status === 'closed' || action.closedAt !== null;
-      return isClosed;
-    });
-  };
 
   // Get display status for finding - just return the finding's status directly
   const getDisplayStatus = (finding: Finding): string => {
@@ -587,8 +575,7 @@ const FindingsProgress = () => {
 
           // Get valid (non-rejected) actions with assignments
           // NOTE: We also count rejected actions as "assigned" since they need reassignment
-          const validActions = actions.filter((action: Action) => {
-            const statusLower = action.status?.toLowerCase() || '';
+          const validActions = actions.filter(() => {
             // Don't filter out rejected/leadrejected - they are still "assigned" (just need reassignment)
             return true;
           });

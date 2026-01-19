@@ -631,14 +631,16 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
-            {/* <Route
+            {/* Route commented out - DirectorAuditPlanDetail component missing
+            <Route
                 path="/director/review-plans/:planId"
                 element={
                     <ProtectedRoute allowedRoles={["Director"]}>
                         <DirectorAuditPlanDetail />
                     </ProtectedRoute>
                 }
-            /> */}
+            />
+            */}
             <Route
                 path="/director/review-results"
                 element={

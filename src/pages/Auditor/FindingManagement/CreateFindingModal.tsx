@@ -7,7 +7,7 @@ import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { createRootCause } from '../../../api/rootCauses';
 import { createAction } from '../../../api/actions';
-import { analyzeFinding, type SuggestedRootCause } from '../../../api/chatbot';
+import { type SuggestedRootCause } from '../../../api/chatbot';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import {
@@ -138,9 +138,9 @@ const [findingTime, setFindingTime] = useState(() => {
   
   // AI Suggestions state
   const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<SuggestedRootCause[]>([]);
-  const [aiAnalysisSummary, setAiAnalysisSummary] = useState<string>('');
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [aiSuggestions, _setAiSuggestions] = useState<SuggestedRootCause[]>([]);
+  const [aiAnalysisSummary, _setAiAnalysisSummary] = useState<string>('');
+  const [loadingSuggestions, _setLoadingSuggestions] = useState(false);
 
   // Get current date and time automatically
   useEffect(() => {

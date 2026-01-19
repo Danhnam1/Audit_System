@@ -97,7 +97,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   
   // State for submit functionality
   const [reportRequest, setReportRequest] = useState<any>(null);
-  const [loadingReportRequest, setLoadingReportRequest] = useState(false);
+  const [_loadingReportRequest, setLoadingReportRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Load list of audits for dropdown - Lead Auditor can see all audits (no need to wait for submit)

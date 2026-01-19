@@ -47,10 +47,10 @@ const SQAStaffReports = () => {
   const [rejectReasonText, setRejectReasonText] = useState<string>('');
   const [rejectSchedules, setRejectSchedules] = useState<any[]>([]);
   const [loadingRejectSchedules, setLoadingRejectSchedules] = useState(false);
-  const [uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
-  const [leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
+  const [_uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
+  const [_leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [creatorAuditIds, setCreatorAuditIds] = useState<Set<string>>(new Set()); // auditId -> creator can resubmit
-  const [leadAuditorNames, setLeadAuditorNames] = useState<Record<string, string>>({}); // auditId -> Lead Auditor name
+  const [_leadAuditorNames, setLeadAuditorNames] = useState<Record<string, string>>({}); // auditId -> Lead Auditor name
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
   const [reportRequests, setReportRequests] = useState<Record<string, ViewReportRequest>>({});
   const [allReportRequests, setAllReportRequests] = useState<ViewReportRequest[]>([]);
@@ -1091,14 +1091,7 @@ const SQAStaffReports = () => {
     if (!selectedAuditId) return;
     
     const auditIdStr = String(selectedAuditId).trim();
-    const isLeadAuditor = leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase());
     const isCreator = creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase());
-    
-    // Check if report is rejected
-    const reportRequest = reportRequests[auditIdStr];
-    const reportStatus = reportRequest?.status || '';
-    const isReportRejected = String(reportStatus).toLowerCase() === 'returned';
-    const rejected = isReportRejected || isRejectedStatus(reportStatus);
     
     // Validate: Only Creator can submit
     if (!isCreator) {
@@ -1561,9 +1554,7 @@ const SQAStaffReports = () => {
                           const auditIdStr = String(audit.auditId);
                           const auditIdNorm = normalizeId(auditIdStr);
                           const approved = isReportApproved(auditIdStr);
-                          const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
                           const isCreator = auditIdStr && (creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase()));
-                          const leadAuditorName = leadAuditorNames[auditIdStr] || 'Lead Auditor';
                           
                           // Allow export if: approved AND is Creator only
                           // Only the creator can export after Lead Auditor approves
@@ -1703,7 +1694,6 @@ const SQAStaffReports = () => {
                       const rejected = isReportRejected || isRejectedStatus(statusToCheck);
                       const submitted = isSubmittedStatus(statusToCheck, auditIdStr);
                       const completed = isCompletedStatus(statusToCheck);
-                      const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
                       const isCreator = auditIdStr && (creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase()));
                       
                       // Check if report has been approved by Lead Auditor
@@ -1727,9 +1717,6 @@ const SQAStaffReports = () => {
                         || (submitted && !rejected) 
                         || (rejected && !hasRejectNote) 
                         || !canSubmit; // Must be Creator
-
-                      // Get Lead Auditor name for this audit
-                      const leadAuditorName = leadAuditorNames[auditIdStr] || 'Lead Auditor';
 
                       let label = submitLoading
                         ? 'Submitting...'

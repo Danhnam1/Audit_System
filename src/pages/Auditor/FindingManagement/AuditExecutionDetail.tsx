@@ -168,7 +168,10 @@ const AuditExecutionDetail = () => {
     try {
       const newRootCause = await createRootCause(newRootCauseForm);
       setRootCauses(prev => [...prev, newRootCause]);
-      setFindingForm(prev => ({ ...prev, rootCauseId: newRootCause.rootCauseId }));
+      const rootCauseIdNum = typeof newRootCause.rootCauseId === 'string' 
+        ? parseInt(newRootCause.rootCauseId, 10) 
+        : (typeof newRootCause.rootCauseId === 'number' ? newRootCause.rootCauseId : undefined);
+      setFindingForm(prev => ({ ...prev, rootCauseId: rootCauseIdNum }));
       setNewRootCauseForm({ name: '', description: '', status: 'Active', category: 'Root Cause' });
       setShowAddRootCause(false);
       alert('Root cause added successfully!');
