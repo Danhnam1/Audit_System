@@ -51,6 +51,9 @@ const CreateFindingModal = ({
   const [fieldworkStartDate, setFieldworkStartDate] = useState<Date | null>(null);
   const [evidenceDueDate, setEvidenceDueDate] = useState<Date | null>(null);
   
+  // Audit info
+  const [auditType, setAuditType] = useState<string>(''); // Internal or External
+  
   // Form fields
   const [description, setDescription] = useState('');
   const [severity, setSeverity] = useState('');
@@ -58,6 +61,7 @@ const CreateFindingModal = ({
   const [files, setFiles] = useState<File[]>([]);
   const [witnesses, setWitnesses] = useState<string>(''); // Single witness selection
   const [previewImage, setPreviewImage] = useState<string | null>(null); // For image preview modal
+  const [externalAuditorName, setExternalAuditorName] = useState(''); // External auditor name (only for External audits)
   
   // Department users for witnesses dropdown
   const [departmentUsers, setDepartmentUsers] = useState<AdminUserDto[]>([]);
@@ -120,6 +124,7 @@ const [findingTime, setFindingTime] = useState(() => {
     severity?: string;
     deadline?: string;
     files?: string;
+    externalAuditorName?: string;
     rootCauses?: Record<number, {
       rootCauseName?: string;
       rootCauseDescription?: string;
@@ -143,8 +148,36 @@ const [findingTime, setFindingTime] = useState(() => {
       loadSeverities();
       loadSchedule();
       loadDepartmentUsers();
+      loadAuditInfo();
     }
   }, [isOpen]);
+
+  // Load audit info to check audit type
+  const loadAuditInfo = async () => {
+    if (!checklistItem.auditId) return;
+    
+    try {
+      // Import getAuditPlanById from api/audits
+      const { getAuditPlanById } = await import('../../../api/audits');
+      const auditResponse = await getAuditPlanById(checklistItem.auditId);
+      
+      console.log('[CREATE FINDING] 🔍 Full audit object:', auditResponse);
+      
+      // Check audit type - could be at different levels in the response
+      // API returns nested structure: { audit: { type: "External" } }
+      const auditData = auditResponse.audit || auditResponse;
+      const type = auditData.type || auditData.auditType || auditData.Type || '';
+      
+      setAuditType(type);
+      
+      console.log('[CREATE FINDING] ✅ Audit Type set to:', type);
+      console.log('[CREATE FINDING] 🎯 Will show External Auditor field:', type.toLowerCase() === 'external');
+    } catch (err) {
+      console.error('[CREATE FINDING] ❌ Error loading audit info:', err);
+      // Default to Internal if error
+      setAuditType('Internal');
+    }
+  };
 
 
 
@@ -338,6 +371,14 @@ const [findingTime, setFindingTime] = useState(() => {
       newErrors.severity = severityError;
     }
 
+    // Validate external auditor name if audit type is External
+    if (auditType && auditType.toLowerCase() === 'external') {
+      const externalAuditorError = validateRequired(externalAuditorName, 'External Auditor Name');
+      if (externalAuditorError) {
+        newErrors.externalAuditorName = externalAuditorError;
+      }
+    }
+
     // Validate root causes array
     if (rootCauses.length === 0) {
       alert('Please add at least one root cause');
@@ -462,8 +503,8 @@ const [findingTime, setFindingTime] = useState(() => {
         status: witnesses ? 'Open' : '', // If witness assigned, status = PendingWitnessConfirmation
         deadline: new Date(deadline).toISOString(),
         reviewerId: null, // null is accepted by backend
-        source: '', // Empty string
-        externalAuditorName: '', // Empty string
+        source: auditType || 'Internal', // Use audit type (Internal or External)
+        externalAuditorName: auditType && auditType.toLowerCase() === 'external' ? externalAuditorName.trim() : '', // Only set if External
         witnessId: witnesses || '', // Single witness's userId (GUID string)
       };
 
@@ -581,6 +622,7 @@ const [findingTime, setFindingTime] = useState(() => {
       setWitnesses('');
       setFieldworkStartDate(null);
       setEvidenceDueDate(null);
+      setExternalAuditorName('');
       setRootCauses([{
         id: 1,
         rootCauseName: '',
@@ -650,6 +692,7 @@ const [findingTime, setFindingTime] = useState(() => {
     setWitnesses('');
     setFieldworkStartDate(null);
     setEvidenceDueDate(null);
+    setExternalAuditorName('');
     setRootCauses([{
       id: 1,
       rootCauseName: '',
@@ -827,9 +870,21 @@ const [findingTime, setFindingTime] = useState(() => {
 
             {/* Title (read-only) */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Title
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Title
+                </label>
+                {/* Debug badge to show audit type */}
+                {auditType && (
+                  <span className={`px-2 py-1 text-xs font-semibold rounded ${
+                    auditType.toLowerCase() === 'external' 
+                      ? 'bg-purple-100 text-purple-800' 
+                      : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {auditType} Audit
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 value={`Non-compliance: ${checklistItem.questionTextSnapshot}`}
@@ -918,6 +973,35 @@ const [findingTime, setFindingTime] = useState(() => {
                 <p className="mt-1 text-sm text-red-600">{errors.severity}</p>
               )}
             </div>
+
+            {/* External Auditor Name - Only show if audit type is External */}
+            {auditType && auditType.toLowerCase() === 'external' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  External Auditor Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={externalAuditorName}
+                  onChange={(e) => {
+                    setExternalAuditorName(e.target.value);
+                    if (errors.externalAuditorName) {
+                      setErrors(prev => ({ ...prev, externalAuditorName: undefined }));
+                    }
+                  }}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${
+                    errors.externalAuditorName ? 'border-red-300' : 'border-gray-300'
+                  }`}
+                  placeholder="Enter external auditor name..."
+                />
+                {errors.externalAuditorName && (
+                  <p className="mt-1 text-sm text-red-600">{errors.externalAuditorName}</p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">
+                  This audit is an External Audit, please provide the external auditor's name
+                </p>
+              </div>
+            )}
 
             {/* Deadline */}
             <div>

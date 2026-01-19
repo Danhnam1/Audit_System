@@ -398,10 +398,10 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
                       <p className="text-gray-900 font-medium">{finding.source}</p>
                     </div>
                   )}
-                  {finding.externalAuditorName && (
+                  {(finding.source?.toLowerCase() === 'external' || finding.externalAuditorName) && (
                     <div>
-                      <label className="text-sm font-medium text-gray-500">External Auditor</label>
-                      <p className="text-gray-900 font-medium">{finding.externalAuditorName}</p>
+                      <label className="text-sm font-medium text-gray-500">External Auditor Name</label>
+                      <p className="text-gray-900 font-medium">{finding.externalAuditorName || 'N/A'}</p>
                     </div>
                   )}
                 </div>

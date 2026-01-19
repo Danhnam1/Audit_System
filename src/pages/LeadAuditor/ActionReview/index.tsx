@@ -964,12 +964,28 @@ const ActionReview = () => {
             // Reload actions
             if (selectedFindingId) {
               const actionsData = await getActionsByFinding(selectedFindingId);
-              const actionsList = unwrap<Action>(actionsData);
-              setActions(Array.isArray(actionsList) ? actionsList : []);
+              const allActions = unwrap<Action>(actionsData);
+              const actionsList = Array.isArray(allActions) ? allActions : [];
+              
+              // Filter out actions that don't have assignedTo (these are remediation proposals, not assigned actions)
+              // Only show actions that have been assigned to a CAPA Owner
+              const assignedActions = actionsList.filter(action => action.assignedTo);
+              
+              // Remove duplicates by actionId (in case API returns duplicates)
+              const uniqueActionsById = new Map<string, Action>();
+              assignedActions.forEach(action => {
+                if (!uniqueActionsById.has(action.actionId)) {
+                  uniqueActionsById.set(action.actionId, action);
+                }
+              });
+              
+              const filteredActions = Array.from(uniqueActionsById.values());
+              setActions(filteredActions);
+              
               // Update actions map
               setFindingActionsMap(prev => ({
                 ...prev,
-                [selectedFindingId]: actionsList || []
+                [selectedFindingId]: filteredActions
               }));
             }
             }}
