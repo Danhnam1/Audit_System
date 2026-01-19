@@ -14,8 +14,8 @@ interface Row {
 
 interface Props {
   rows: Row[];
-  statusFilter: 'all' | 'submitted' | 'approved';
-  setStatusFilter: (v: 'all' | 'submitted' | 'approved') => void;
+  statusFilter: 'all' | 'pending' | 'approved';
+  setStatusFilter: (v: 'all' | 'pending' | 'approved') => void;
   reportSearch: string;
   setReportSearch: (v: string) => void;
   onView: (auditId: string) => void;
@@ -84,7 +84,7 @@ const AuditReportsTable: React.FC<Props> = ({
               className="border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
               <option value="all">All</option>
-              <option value="submitted">Submitted</option>
+              <option value="pending">Pending</option>
               <option value="approved">Approved</option>
             </select>
           </div>

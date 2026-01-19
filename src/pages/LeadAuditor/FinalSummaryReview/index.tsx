@@ -17,6 +17,8 @@ import { getAuditCriteria } from "../../../api/auditCriteria";
 import { getChecklistTemplates } from "../../../api/checklists";
 import {
   getAllReportRequests,
+  submitFinalReport,
+  getReportRequestFromFinalSubmit,
 } from "../../../api/reportRequest";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
@@ -92,15 +94,20 @@ export default function LeadAuditorFinalSummaryReviewPage() {
 
   const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
+  
+  // State for submit functionality
+  const [reportRequest, setReportRequest] = useState<any>(null);
+  const [loadingReportRequest, setLoadingReportRequest] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Load list of audits for dropdown - only show audits with submitted report requests
+  // Load list of audits for dropdown - Lead Auditor can see all audits (no need to wait for submit)
   useEffect(() => {
     const loadAudits = async () => {
       setLoadingAudits(true);
       try {
         const [
           plansRes,
-          
+          ,
           usersRes,
           deptsRes,
           criteriaRes,
@@ -133,27 +140,21 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         const templatesArr = Array.isArray(templatesRes) ? templatesRes : [];
         setChecklistTemplates(templatesArr);
 
-        // Filter report requests: Lead Auditor should see all submitted audits
-        // No status filtering needed - once Auditor submits, Lead can view it
-        const relevantReportRequests = Array.isArray(reportRequestsRes)
-          ? reportRequestsRes.filter((rr: any) => {
-              const status = String(rr.status || "").trim().toLowerCase();
-              // Show Pending (newly submitted), Approved, or any other status
-              // Exclude only if explicitly empty or invalid
-              return status && status !== '' && status !== 'null' && status !== 'undefined';
-            })
-          : [];
-
-        // Create a map of auditId -> status for easy lookup
+        // Create a map of auditId -> status for easy lookup (optional, for showing status if exists)
         const auditStatusMap = new Map<string, string>();
-        relevantReportRequests.forEach((rr: any) => {
-          const auditId = rr.auditId;
-          if (auditId) {
-            const auditIdStr = String(auditId).trim();
-            const status = String(rr.status || "").trim();
-            auditStatusMap.set(auditIdStr, status);
-          }
-        });
+        if (Array.isArray(reportRequestsRes)) {
+          reportRequestsRes.forEach((rr: any) => {
+            const auditId = rr.auditId;
+            if (auditId) {
+              const auditIdStr = String(auditId).trim();
+              const status = String(rr.status || "").trim();
+              // Only store if status exists and is valid
+              if (status && status !== '' && status !== 'null' && status !== 'undefined') {
+                auditStatusMap.set(auditIdStr, status);
+              }
+            }
+          });
+        }
 
         // Helper to format date
         const formatDate = (dateStr: string | null | undefined): string => {
@@ -177,15 +178,16 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           return "Department";
         };
 
-        // Filter audits to only include those with relevant report requests
-        const filteredAudits = (Array.isArray(plans) ? plans : [])
+        // Show ALL audits - Lead Auditor can view any audit without waiting for submit
+        const allAudits = (Array.isArray(plans) ? plans : [])
           .filter((a: any) => {
             const auditId = String(a.auditId || a.id || "").trim();
-            return auditId && auditStatusMap.has(auditId);
+            return auditId && auditId !== "";
           })
           .map((a: any) => {
             const auditId = String(a.auditId || a.id || "").trim();
-            const status = auditStatusMap.get(auditId) || "";
+            // Get status from report request if exists, otherwise show audit status
+            const status = auditStatusMap.get(auditId) || a.status || "";
             let title = a.title || a.auditTitle || "Untitled audit";
             // Remove "true" or "false" from title if present
             title = title.replace(/\s*(true|false)\s*$/i, "").trim();
@@ -198,10 +200,9 @@ export default function LeadAuditorFinalSummaryReviewPage() {
               scope: formatScope(a.scope),
               status: status,
             };
-          })
-          .filter((x: any) => x.auditId);
+          });
 
-        setAudits(filteredAudits);
+        setAudits(allAudits as Array<{ auditId: string; title: string; type: string; startDate: string; endDate: string; scope: string; status?: string }>);
       } catch (error) {
         console.error("[LeadAuditor] Failed to load audits:", error);
       } finally {
@@ -263,6 +264,121 @@ export default function LeadAuditorFinalSummaryReviewPage() {
 
     loadAllData();
   }, [selectedAuditId]);
+
+  // Load report request when audit is selected
+  useEffect(() => {
+    if (!selectedAuditId) {
+      setReportRequest(null);
+      return;
+    }
+
+    const loadReportRequest = async () => {
+      setLoadingReportRequest(true);
+      try {
+        const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
+        setReportRequest(rr || null);
+      } catch (err) {
+        console.error('Failed to load report request:', err);
+        setReportRequest(null);
+      } finally {
+        setLoadingReportRequest(false);
+      }
+    };
+
+    loadReportRequest();
+  }, [selectedAuditId]);
+
+  // Handle submit final report to Director
+  const handleSubmitReport = async () => {
+    if (!selectedAuditId) {
+      alert("Please select an audit first.");
+      return;
+    }
+
+    if (!window.confirm("Are you sure you want to submit this final audit summary report to Director for review?")) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await submitFinalReport(selectedAuditId);
+      console.log('[FinalSummaryReview] Submit result:', result);
+      
+      // After submit, the status should be PendingFirstApproval or PendingSecondApproval
+      // Create a temporary report request object with pending status to show "Submitted" state
+      if (result) {
+        // If result has status, use it directly
+        if (result.status) {
+          console.log('[FinalSummaryReview] Using submit result with status:', result.status);
+          setReportRequest(result);
+        } else if (result.reportRequestId) {
+          // If result has reportRequestId but no status, create temp object with pending status
+          console.log('[FinalSummaryReview] Creating temp report request with pending status');
+          setReportRequest({
+            ...result,
+            status: 'PendingFirstApproval', // Default to pending status after submit
+            auditId: selectedAuditId
+          });
+        }
+      }
+      
+      // Also reload to get the actual status from backend (but don't wait for it)
+      if (selectedAuditId) {
+        // Reload in background without blocking
+        setTimeout(async () => {
+          try {
+            const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
+            console.log('[FinalSummaryReview] Background reloaded report request:', rr);
+            // Only update if we got a pending status (not approved)
+            if (rr && rr.status) {
+              const statusLower = String(rr.status).toLowerCase();
+              if (statusLower.includes('pending') || statusLower === 'submitted') {
+                setReportRequest(rr);
+              }
+            }
+          } catch (err) {
+            console.error('Failed to reload report request:', err);
+          }
+        }, 1000);
+      }
+      
+      alert("Report submitted successfully! Director will be notified.");
+    } catch (error: any) {
+      console.error("Failed to submit report:", error);
+      const errorMessage = error?.response?.data?.message || error?.message || "Failed to submit report. Please try again.";
+      alert(errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Check if report has been submitted (check pending statuses - button will be disabled and show "Submitted")
+  // Check case-insensitive to handle different status formats
+  const reportStatus = reportRequest?.status ? String(reportRequest.status).trim() : '';
+  const statusLower = reportStatus.toLowerCase();
+  
+  // Consider as submitted if:
+  // 1. Status is pending (waiting for approval)
+  // 2. Status is submitted
+  // 3. OR if we just submitted (submitting flag will handle this temporarily)
+  const alreadySubmitted = Boolean(
+    reportStatus && 
+    (statusLower === 'pendingfirstapproval' || 
+     statusLower === 'pendingsecondapproval' ||
+     statusLower === 'submitted' ||
+     (statusLower.includes('pending') && statusLower.includes('approval')))
+  ) || submitting; // Also disable while submitting
+  
+  // Debug log
+  if (selectedAuditId && reportRequest) {
+    console.log('[FinalSummaryReview] Report status:', {
+      auditId: selectedAuditId,
+      status: reportStatus,
+      statusLower,
+      alreadySubmitted,
+      submitting
+    });
+  }
 
   
 
@@ -701,6 +817,26 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                 >
                   View audit details
                 </button>
+                {selectedAuditId && (
+                  <button
+                    type="button"
+                    onClick={handleSubmitReport}
+                    disabled={submitting || alreadySubmitted}
+                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                      alreadySubmitted
+                        ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                        : submitting
+                        ? 'bg-green-500 text-white cursor-not-allowed opacity-50'
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    {submitting 
+                      ? 'Submitting...' 
+                      : alreadySubmitted 
+                        ? 'Submitted' 
+                        : 'Submit to Director'}
+                  </button>
+                )}
               </div>
             )
           }

@@ -13,7 +13,7 @@ import AuditReportsTable from './components/AuditReportsTable';
 import DepartmentsSection from './components/DepartmentsSection';
 import { getAuditTeam, getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
-import { getAllReportRequests, type ViewReportRequest } from '../../../api/reportRequest';
+import { getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../../api/reportRequest';
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
 import { getAuditChecklistItems, toggleMarkChecklistItem, getMarkedChecklistItems } from '../../../api/checklists';
@@ -58,7 +58,7 @@ const AuditorLeadReports = () => {
   const [showFindingModal, setShowFindingModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<string>(''); // Format: "auditId:approve" or "auditId:reject"
   const [actionMsg, setActionMsg] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'approved'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved'>('all');
   const [reportSearch, setReportSearch] = useState<string>('');
   const [findingsSearch, setFindingsSearch] = useState<string>('');
   const [findingsSeverity, setFindingsSeverity] = useState<string>('all');
@@ -125,10 +125,9 @@ const AuditorLeadReports = () => {
 
   const reload = useCallback(async () => {
     try {
-      const [teamsRes, usersRes, reportRequestsRes, auditsRes] = await Promise.all([
+      const [teamsRes, usersRes, auditsRes] = await Promise.all([
         getAuditTeam(),
         getAdminUsers(),
-        getAllReportRequests().catch(() => []), // Get all ReportRequests (submitted by Auditors)
         getAuditPlans().catch(() => []) // Get all audits to merge with ReportRequests
       ]);
       
@@ -177,75 +176,38 @@ const AuditorLeadReports = () => {
         });
       }
       
-      // Get ReportRequests (submitted by Auditors)
-      const rawReportRequests = Array.isArray(reportRequestsRes) ? reportRequestsRes as ViewReportRequest[] : [];
-      
-      // Debug: Group ReportRequests by auditId to see how many exist
-      if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-        const groupedByAuditId = rawReportRequests.reduce((acc, rr) => {
-          const auditId = String(rr.auditId || '').trim();
-          if (!auditId) return acc;
-          if (!acc[auditId]) acc[auditId] = [];
-          acc[auditId].push(rr);
-          return acc;
-        }, {} as Record<string, ViewReportRequest[]>);
-        
-        Object.entries(groupedByAuditId).forEach(([_auditId, requests]) => {
-          if (requests.length > 1) {
-          
-          }
-        });
-      }
-      
-      // So we compare: max(completedAt, requestedAt) for each ReportRequest to find the most recent action
-      const reportRequestMap = new Map<string, ViewReportRequest>();
-      rawReportRequests.forEach((rr) => {
-        const auditId = String(rr.auditId || '').trim();
-        if (!auditId) return;
-        const key = auditId.toLowerCase();
-        const existing = reportRequestMap.get(key) as any;
-        
-        if (!existing) {
-          reportRequestMap.set(key, rr);
-        } else {
-          // Compare timestamps to find the LATEST action
-          const existingCompletedAt = existing.completedAt ? new Date(existing.completedAt).getTime() : 0;
-          const currentCompletedAt = rr.completedAt ? new Date(rr.completedAt).getTime() : 0;
-          const existingRequestedAt = existing.requestedAt ? new Date(existing.requestedAt).getTime() : 0;
-          const currentRequestedAt = rr.requestedAt ? new Date(rr.requestedAt).getTime() : 0;
-          
-          // Get the latest timestamp for each ReportRequest (completedAt or requestedAt, whichever is newer)
-          // This handles both cases:
-          // 1. Resubmit: new ReportRequest has requestedAt > old ReportRequest's completedAt
-          // 2. Reject/Approve: same ReportRequest gets completedAt updated
-          const existingLatest = Math.max(existingCompletedAt, existingRequestedAt);
-          const currentLatest = Math.max(currentCompletedAt, currentRequestedAt);
-          
-          // Use the ReportRequest with the latest timestamp
-          if (currentLatest > existingLatest) {
-            reportRequestMap.set(key, rr);
-            // Debug log in development
-            if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-            
-            }
-          } else if (currentLatest === existingLatest) {
-            // If timestamps are equal, prefer the one with status "Pending" (newer submission)
-            const existingStatus = String(existing.status || '').toLowerCase();
-            const currentStatus = String(rr.status || '').toLowerCase();
-            if (currentStatus === 'pending' && existingStatus !== 'pending') {
-              reportRequestMap.set(key, rr);
-              if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-              }
-            }
-          }
-          // Otherwise keep existing
-        }
-      });
-      const reportRequests = Array.from(reportRequestMap.values()) as ViewReportRequest[];
-      
-      // Get all audits to merge with ReportRequests
+      // Get all audits first
       const auditsList = unwrap(auditsRes);
       const allAudits = Array.isArray(auditsList) ? auditsList : [];
+      
+      // Get ReportRequests using getReportRequestFromSubmitAudit (same as Auditor/Reports)
+      // This ensures we only get report requests from submitAudit API (luồng 3), not from final summary (luồng 5)
+      const reportRequestsMap = new Map<string, ViewReportRequest>();
+      
+      // Load report requests for each audit using getReportRequestFromSubmitAudit
+      try {
+        await Promise.all(
+          allAudits.map(async (audit: any) => {
+            const auditId = String(audit.auditId || audit.id || audit.$id || '').trim();
+            if (auditId) {
+              try {
+                // Use getReportRequestFromSubmitAudit to only get status from submitAudit API (luồng 3)
+                const reportRequest = await getReportRequestFromSubmitAudit(auditId);
+                if (reportRequest) {
+                  const key = auditId.toLowerCase();
+                  reportRequestsMap.set(key, reportRequest);
+                }
+              } catch (err) {
+                // Ignore errors for individual report requests
+              }
+            }
+          })
+        );
+      } catch (err) {
+        console.error('[LeadReports] Failed to load report requests from submitAudit:', err);
+      }
+      
+      const reportRequests = Array.from(reportRequestsMap.values()) as ViewReportRequest[];
       
       // Create a map of audits by auditId for quick lookup
       const auditMap = new Map<string, any>();
@@ -345,8 +307,9 @@ const AuditorLeadReports = () => {
       
      
       
-      // Filter chỉ lấy status: Pending, Approved, Returned
-      const allowedStatuses = ['pending', 'approved', 'returned'];
+      // Filter chỉ lấy status: Approved (Lead Auditor chỉ hiển thị status Approved)
+      // Chỉ lấy từ submitAudit API (luồng 3), không lấy từ final summary (luồng 5)
+      const allowedStatuses = ['approved'];
       const filtered = combinedReports.filter((p: any) => {
         const rawStatus = p.status || p.state || p.approvalStatus || '';
         const reportStatus = String(rawStatus).toLowerCase().replace(/\s+/g, '');
@@ -381,10 +344,10 @@ const AuditorLeadReports = () => {
           return candidates.some((id: string) => leadAuditIds.has(id) || leadAuditIds.has(id.toLowerCase()));
         };
         
-        // If Lead Auditor role, show all reports with allowed status
+        // If Lead Auditor role, show all reports with allowed status (Approved only)
         // Otherwise, only show reports where user is lead of the audit
         if (isLeadAuditorRole) {
-          return true; // Lead Auditor sees all reports with Pending/Approved/Returned status
+          return true; // Lead Auditor sees all reports with Approved status
         }
         return auditMatchesLead(p);
       });
@@ -670,7 +633,7 @@ const AuditorLeadReports = () => {
       list = list.filter(r => {
         const s = String(r.status || '').toLowerCase().replace(/\s+/g, '');
         // Filter theo status từ AuditReports: Pending, Approved, Returned
-        if (statusFilter === 'submitted') {
+        if (statusFilter === 'pending') {
           // Submitted = Pending
           return s === 'pending';
         }

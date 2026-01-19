@@ -1706,11 +1706,14 @@ const SQAStaffReports = () => {
                       const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
                       const isCreator = auditIdStr && (creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase()));
                       
+                      // Check if report has been approved by Lead Auditor
+                      const approved = isReportApproved(auditIdStr);
+                      
                       // Allow submit/resubmit if: Only Creator (the person who created the audit)
                       const canSubmit = isCreator;
 
-                      // Hide button only if audit is completed/closed/approved
-                      if (completed) {
+                      // Hide button if: audit is completed/closed/approved OR report has been approved by Lead Auditor
+                      if (completed || approved) {
                         return null;
                       }
 

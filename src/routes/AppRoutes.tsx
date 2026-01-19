@@ -31,7 +31,7 @@ const SQAStaffAuditReview = lazy(() => import("../pages/Auditor/AuditReview"));
 const SQAStaffHistoryUpload = lazy(() => import("../pages/Auditor/HistoryUpload"));
 const SQAStaffSchedule = lazy(() => import("../pages/Auditor/Schedule"));
 const SQAStaffMyQR = lazy(() => import("../pages/Auditor/MyQR"));
-const AuditorFinalSummaryPage = lazy(() => import("../pages/Auditor/FinalSummary"));
+// const AuditorFinalSummaryPage = lazy(() => import("../pages/Auditor/FinalSummary")); // Removed - Lead Auditor now handles this
 
 // Lead Auditor pages
 const LeadAuditorAuditAssignment = lazy(() => import("../pages/LeadAuditor/AuditAssignment"));
@@ -334,14 +334,15 @@ export function AppRoutes() {
                     </ProtectedRoute>
                 }
             />
-            <Route
+            {/* Auditor FinalSummary route removed - Lead Auditor now handles this */}
+            {/* <Route
                 path="/auditor/final-summary/:auditId?"
                 element={
                     <ProtectedRoute allowedRoles={["Auditor"]}>
                         <AuditorFinalSummaryPage />
                     </ProtectedRoute>
                 }
-            />
+            /> */}
             <Route
                 path="/auditor/audit-assignment"
                 element={
