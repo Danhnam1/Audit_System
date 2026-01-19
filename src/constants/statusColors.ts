@@ -11,12 +11,14 @@ export const STATUS_COLORS = {
   'Completed': 'bg-green-100 text-green-800',
   'Closed': 'bg-green-600 text-white',
   'Verified': 'bg-teal-100 text-teal-800',
+  'WitnessConfirmed': 'bg-teal-100 text-teal-800',
   'Published': 'bg-blue-100 text-blue-800',
   
   // In Progress/Active States - Medium primary/sky tone
   'In Progress': 'bg-sky-500 text-white',
   'InProgress': 'bg-sky-500 text-white',
   'Assigned': 'bg-sky-400 text-white',
+  'Fixed': 'bg-blue-400 text-white',
   
   // Under Review States - Light primary/sky tone
   'Under Review': 'bg-sky-200 text-sky-800',
