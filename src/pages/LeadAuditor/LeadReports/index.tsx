@@ -885,15 +885,6 @@ const AuditorLeadReports = () => {
       return;
     }
     
-    // Validate: all required findings must be selected
-    if (requiredFindings.size > 0) {
-      const missingRequired = Array.from(requiredFindings).filter(id => !selectedFindings.has(id));
-      if (missingRequired.length > 0) {
-        toast.error(`Please select all required findings (${missingRequired.length} missing) from approved extension request.`);
-        return;
-      }
-    }
-    
     setActionLoading(`${auditId}:return`);
     try {
       // Return selected findings
@@ -1629,6 +1620,62 @@ const AuditorLeadReports = () => {
     }
   };
 
+  // Load marked findings for extension requests
+  const loadMarkedFindingsForRequests = async (auditId: string, requests: ViewAuditPlanRevisionRequest[]) => {
+    // Only load if we don't already have the data in state
+    const requestsToLoad = requests.filter(r => !markedItemsByRequest[r.requestId]);
+    
+    if (requestsToLoad.length === 0) {
+      console.log(`[Extension Request History] All requests already have findings loaded`);
+      return;
+    }
+    
+    for (const req of requestsToLoad) {
+      setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: true }));
+      try {
+        let findingsForRequest: any[] = [];
+        
+        // Only get findings from marked items (isMarked = true)
+        // API GET /api/AuditChecklistItems/marked?auditId={auditId}
+        // Returns: { $id: "1", $values: [ { auditItemId, questionTextSnapshot, findings: { $values: [finding1, finding2] } } ] }
+        console.log(`[Extension Request History] Loading marked items for request ${req.requestId}, auditId: ${auditId}`);
+        const markedItems = await getMarkedChecklistItems(auditId).catch((err) => {
+          console.error(`[Extension Request History] API call failed for request ${req.requestId}:`, err);
+          return [];
+        });
+        
+        console.log(`[Extension Request History] API response for request ${req.requestId}:`, markedItems);
+        
+        if (markedItems && markedItems.length > 0) {
+          // Extract all findings from nested structure
+          // Response structure: checklist items with findings nested in findings.$values
+          markedItems.forEach((item: any) => {
+            // Check if findings exist and extract them
+            const findings = item.findings;
+            if (findings) {
+              // Handle both $values and direct array
+              const findingsArray = findings.$values || findings.values || (Array.isArray(findings) ? findings : []);
+              if (findingsArray && findingsArray.length > 0) {
+                findingsForRequest.push(...findingsArray);
+                console.log(`[Extension Request History] Extracted ${findingsArray.length} findings from item ${item.auditItemId}`);
+              }
+            }
+          });
+        }
+        
+        console.log(`[Extension Request History] Total findings for request ${req.requestId}: ${findingsForRequest.length}`, findingsForRequest);
+        
+        // Store findings (even if empty, to indicate loading is complete)
+        setMarkedItemsByRequest(prev => ({ ...prev, [req.requestId]: findingsForRequest }));
+      } catch (err) {
+        console.error(`[Extension Request History] Failed to load marked findings for request ${req.requestId}:`, err);
+        // Don't overwrite existing mapping if load fails
+      } finally {
+        setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: false }));
+      }
+    }
+  };
+
   // Handle opening extension modal
   const openExtensionModal = async (auditId: string) => {
     setSelectedAuditId(auditId);
@@ -1650,30 +1697,8 @@ const AuditorLeadReports = () => {
       const requests = await getAuditPlanRevisionRequestsByAuditId(auditId);
       setRevisionRequests(requests);
       
-      // Load marked checklist items for approved/rejected requests
-      // Only load if we don't already have the data in state
-      const approvedRejectedRequests = requests.filter(r => 
-        (r.status === 'Approved' || r.status === 'Rejected') && !markedItemsByRequest[r.requestId]
-      );
-      
-      for (const req of approvedRejectedRequests) {
-        setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: true }));
-        try {
-          // Try to get marked items (might be empty if already unmarked after approval)
-          // If backend stores request-item mapping, this should work
-          // Otherwise, we rely on the mapping saved when submitting the request
-          const markedItems = await getMarkedChecklistItems(auditId).catch(() => []);
-          if (markedItems && markedItems.length > 0) {
-            setMarkedItemsByRequest(prev => ({ ...prev, [req.requestId]: markedItems }));
-          }
-          // If no items found, keep existing mapping (if any) or leave empty
-        } catch (err) {
-          console.error(`Failed to load marked items for request ${req.requestId}:`, err);
-          // Don't overwrite existing mapping if load fails
-        } finally {
-          setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: false }));
-        }
-      }
+      // Load marked findings for all requests
+      await loadMarkedFindingsForRequests(auditId, requests);
     } catch (err) {
       console.error('Failed to load revision requests:', err);
       setRevisionRequests([]);
@@ -1735,6 +1760,7 @@ const AuditorLeadReports = () => {
       );
       
       // Get findings from allFindings that belong to selected checklist items
+      const findingsForRequest: any[] = [];
       selectedItemsList.forEach((item: any) => {
         const itemId = item.auditItemId || item.id;
         allFindings.forEach((finding: any) => {
@@ -1743,6 +1769,7 @@ const AuditorLeadReports = () => {
             const findingId = String(finding.findingId || finding.id || '');
             if (findingId && !findingIds.includes(findingId)) {
               findingIds.push(findingId);
+              findingsForRequest.push(finding);
             }
           }
         });
@@ -1755,11 +1782,13 @@ const AuditorLeadReports = () => {
         findingIds: findingIds.length > 0 ? findingIds : undefined,
       });
       
-      // Save mapping of request -> checklist items for later display
+      // Save mapping of request -> findings for later display
+      // Store findings directly (not checklist items) so we can display them in Extension Request History
       if (newRequest?.requestId) {
+        console.log(`[Extension Request History] Saving ${findingsForRequest.length} findings for request ${newRequest.requestId}:`, findingsForRequest);
         setMarkedItemsByRequest(prev => ({
           ...prev,
-          [newRequest.requestId]: selectedItemsList
+          [newRequest.requestId]: findingsForRequest
         }));
       }
       
@@ -2153,8 +2182,16 @@ const AuditorLeadReports = () => {
                     {/* Request History Button - Always show if there are any requests */}
                     {revisionRequests.length > 0 && (
                       <button
-                        onClick={() => {
+                        onClick={async () => {
+                          console.log('[Request History Button] Opening history modal, selectedAuditId:', selectedAuditId);
                           setShowRequestHistoryModal(true);
+                          // Load marked findings for all requests when opening history modal
+                          if (selectedAuditId && revisionRequests.length > 0) {
+                            console.log('[Request History Button] Loading marked findings for', revisionRequests.length, 'requests');
+                            await loadMarkedFindingsForRequests(selectedAuditId, revisionRequests);
+                          } else {
+                            console.log('[Request History Button] Skipping load - no auditId or no requests');
+                          }
                         }}
                         className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-2"
                         title="View request history"
@@ -2266,11 +2303,6 @@ const AuditorLeadReports = () => {
                       selectedFindings={selectedFindings}
                       requiredFindings={requiredFindings}
                       onSelectFinding={(findingId, isSelected) => {
-                        // Don't allow unselecting required findings
-                        if (!isSelected && requiredFindings.has(findingId)) {
-                          toast.warning('This finding is required due to approved extension request and cannot be deselected.');
-                          return;
-                        }
                         setSelectedFindings(prev => {
                           const next = new Set(prev);
                           if (isSelected) {
@@ -2605,15 +2637,6 @@ const AuditorLeadReports = () => {
                         {/* Return button - always show when needs decision */}
                         <button
                           onClick={async () => {
-                            // Validate required findings before proceeding
-                            if (requiredFindings.size > 0) {
-                              const missingRequired = Array.from(requiredFindings).filter(id => !selectedFindings.has(id));
-                              if (missingRequired.length > 0) {
-                                toast.error(`Please select all required findings (${missingRequired.length} missing) from approved extension request.`);
-                                return;
-                              }
-                            }
-                            
                             setShowViewModal(false);
                             
                             // If has approved extension → open modal to edit schedule & team
@@ -3027,11 +3050,49 @@ const AuditorLeadReports = () => {
                         return dateB - dateA;
                       })
                       .map((req) => {
+                        // markedItemsByRequest actually stores findings (not items) after extraction
+                        // It can contain either:
+                        // 1. Direct findings array (from findingIds in request)
+                        // 2. Findings extracted from marked checklist items (from API)
                         const markedItems = markedItemsByRequest[req.requestId] || [];
                         const isLoading = loadingMarkedItems[req.requestId];
                         const isApproved = req.status === 'Approved';
                         const isRejected = req.status === 'Rejected';
                         const isPending = req.status === 'Pending';
+                        
+                        // Extract findings for display
+                        // markedItems may already be findings (from findingIds) or items with nested findings (from API)
+                        let findingsToDisplay: any[] = [];
+                        if (markedItems && markedItems.length > 0) {
+                          // Check if first item has findingId (direct findings array) or findings property (nested items)
+                          const firstItem = markedItems[0];
+                          if (firstItem.findingId || firstItem.title) {
+                            // Already a direct findings array (from findingIds or already extracted)
+                            findingsToDisplay = markedItems;
+                          } else if (firstItem.findings) {
+                            // Nested structure: extract findings from each checklist item
+                            // API returns: checklist items with findings nested in findings.$values
+                            markedItems.forEach((item: any) => {
+                              const findings = item.findings;
+                              if (findings) {
+                                // Handle both $values and direct array
+                                const findingsArray = findings.$values || findings.values || (Array.isArray(findings) ? findings : []);
+                                if (findingsArray && findingsArray.length > 0) {
+                                  findingsToDisplay.push(...findingsArray);
+                                }
+                              }
+                            });
+                          }
+                        }
+                        
+                        // Debug logging
+                        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
+                          console.log(`[Extension Request History] Request ${req.requestId}:`, {
+                            markedItems,
+                            findingsToDisplay,
+                            isLoading
+                          });
+                        }
                         
                         return (
                           <div key={req.requestId} className="bg-white border-2 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -3117,72 +3178,81 @@ const AuditorLeadReports = () => {
                                 </div>
                               )}
 
-                              {/* Checklist Items - Show for all statuses */}
-                              {(isApproved || isRejected) && (
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-700 mb-2">Checklist Items Included:</p>
-                                  {isLoading ? (
-                                    <div className="flex items-center justify-center py-4">
-                                      <div className="flex items-center gap-2 text-sm text-gray-500">
-                                        <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                                        Loading items...
-                                      </div>
+                              {/* Selected Findings - Show for all statuses */}
+                              <div>
+                                <p className="text-xs font-semibold text-gray-700 mb-2">Selected Findings:</p>
+                                {isLoading ? (
+                                  <div className="flex items-center justify-center py-4">
+                                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                                      <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                      Loading findings...
                                     </div>
-                                  ) : markedItems.length > 0 ? (
-                                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                                      {markedItems.map((item: any, idx: number) => (
-                                        <div key={item.auditItemId || item.id || idx} className={`flex items-start gap-2 p-3 rounded-lg border ${
+                                  </div>
+                                ) : findingsToDisplay.length > 0 ? (
+                                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                                    {findingsToDisplay.map((finding: any, idx: number) => {
+                                      // API returns findings with title, description, severity, etc.
+                                      const findingTitle = finding.title || finding.findingTitle || 'No title';
+                                      const findingDescription = finding.description || '';
+                                      const findingSeverity = finding.severity || '';
+                                      const findingStatus = finding.status || '';
+                                      const findingDeadline = finding.deadline ? new Date(finding.deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null;
+                                      
+                                      return (
+                                        <div key={finding.findingId || finding.auditItemId || finding.id || idx} className={`flex items-start gap-3 p-3 rounded-lg border ${
                                           isApproved 
                                             ? 'bg-green-50 border-green-200' 
-                                            : 'bg-red-50 border-red-200'
+                                            : isRejected
+                                            ? 'bg-red-50 border-red-200'
+                                            : 'bg-amber-50 border-amber-200'
                                         }`}>
-                                          <svg className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
-                                            isApproved ? 'text-green-600' : 'text-red-600'
+                                          <svg className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
+                                            isApproved ? 'text-green-600' : 
+                                            isRejected ? 'text-red-600' : 
+                                            'text-amber-600'
                                           }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                           </svg>
                                           <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-gray-900">
-                                              {item.questionTextSnapshot || item.question || 'No question text'}
+                                            <p className="text-sm font-medium text-gray-900 line-clamp-2">
+                                              {findingTitle}
                                             </p>
-                                            {item.section && (
-                                              <p className="text-xs text-gray-500 mt-0.5">{item.section}</p>
+                                            {findingDescription && (
+                                              <p className="text-xs text-gray-600 mt-1 line-clamp-2">{findingDescription}</p>
                                             )}
-                                            {/* Show findings for this item if available */}
-                                            {item.findings && item.findings.length > 0 && (
-                                              <div className="mt-2 space-y-1">
-                                                <p className="text-xs font-medium text-gray-700">Findings ({item.findings.length}):</p>
-                                                {item.findings.map((finding: any, fIdx: number) => (
-                                                  <div key={finding.findingId || fIdx} className="bg-white rounded p-2 border border-gray-200">
-                                                    <p className="text-xs font-medium text-gray-900">{finding.title || finding.findingTitle}</p>
-                                                    {finding.description && (
-                                                      <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{finding.description}</p>
-                                                    )}
-                                                    {finding.severity && (
-                                                      <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                                        finding.severity === 'Critical' ? 'bg-red-100 text-red-700' :
-                                                        finding.severity === 'High' ? 'bg-orange-100 text-orange-700' :
-                                                        finding.severity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                                                        'bg-blue-100 text-blue-700'
-                                                      }`}>
-                                                        {finding.severity}
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            )}
+                                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                              {findingSeverity && (
+                                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                                  findingSeverity === 'Critical' || findingSeverity === 'Major' ? 'bg-red-100 text-red-700' :
+                                                  findingSeverity === 'High' || findingSeverity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
+                                                  findingSeverity === 'Minor' ? 'bg-blue-100 text-blue-700' :
+                                                  'bg-gray-100 text-gray-700'
+                                                }`}>
+                                                  {findingSeverity}
+                                                </span>
+                                              )}
+                                              {findingStatus && (
+                                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">
+                                                  {findingStatus}
+                                                </span>
+                                              )}
+                                              {findingDeadline && (
+                                                <span className="text-xs text-gray-500">
+                                                  Deadline: {findingDeadline}
+                                                </span>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-gray-500 italic text-center py-2">
-                                      No checklist items found for this request
-                                    </p>
-                                  )}
-                                </div>
-                              )}
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-gray-500 italic text-center py-2">
+                                    No findings selected for this request
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );

@@ -336,8 +336,12 @@ export const toggleMarkChecklistItem = async (auditItemId: string): Promise<{ au
 // Get marked checklist items by audit ID (for Director to view extension requests)
 export const getMarkedChecklistItems = async (auditId: string): Promise<any[]> => {
   const res: any = await apiClient.get(`/AuditChecklistItems/marked?auditId=${auditId}`);
+  console.log(`[getMarkedChecklistItems] Raw API response for auditId ${auditId}:`, res);
   const data = res?.data ?? res;
-  return unwrapArray(data);
+  console.log(`[getMarkedChecklistItems] Data after extraction:`, data);
+  const result = unwrapArray(data);
+  console.log(`[getMarkedChecklistItems] Unwrapped array result (length: ${result.length}):`, result);
+  return result;
 };
 
 // Get compliant details for a compliant item by its ID

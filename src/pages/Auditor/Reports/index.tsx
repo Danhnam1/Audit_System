@@ -1100,9 +1100,9 @@ const SQAStaffReports = () => {
     const isReportRejected = String(reportStatus).toLowerCase() === 'returned';
     const rejected = isReportRejected || isRejectedStatus(reportStatus);
     
-    // Validate: Lead Auditor can always submit, Creator can only resubmit when rejected
-    if (!isLeadAuditor && !(isCreator && rejected)) {
-      toast.error('Only Lead Auditor of the team can submit reports, or creator can resubmit rejected reports.');
+    // Validate: Only Creator can submit
+    if (!isCreator) {
+      toast.error('Only the creator can submit reports.');
       return;
     }
     
@@ -1702,8 +1702,8 @@ const SQAStaffReports = () => {
                       const isLeadAuditor = auditIdStr && (leadAuditIds.has(auditIdStr) || leadAuditIds.has(auditIdStr.toLowerCase()));
                       const isCreator = auditIdStr && (creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase()));
                       
-                      // Allow submit/resubmit if: Lead Auditor OR (Creator AND report is rejected)
-                      const canSubmit = isLeadAuditor || (isCreator && rejected);
+                      // Allow submit/resubmit if: Only Creator (the person who created the audit)
+                      const canSubmit = isCreator;
 
                       // Hide button only if audit is completed/closed/approved
                       if (completed) {
@@ -1714,12 +1714,12 @@ const SQAStaffReports = () => {
                       const hasRejectNote = key && rejectNotes[key] && rejectNotes[key].trim().length > 0;
                       
                       // Disable if: loading, no audit selected, already submitted (not rejected), rejected without note, or NOT authorized
-                      // Lead Auditor can always submit, Creator can only resubmit when rejected
+                      // Only Creator can submit
                       const disabled = submitLoading 
                         || !selectedAuditId 
                         || (submitted && !rejected) 
                         || (rejected && !hasRejectNote) 
-                        || !canSubmit; // Must be Lead Auditor OR (Creator with rejected report)
+                        || !canSubmit; // Must be Creator
 
                       // Get Lead Auditor name for this audit
                       const leadAuditorName = leadAuditorNames[auditIdStr] || 'Lead Auditor';
@@ -1733,9 +1733,7 @@ const SQAStaffReports = () => {
                               ? 'Resubmit to Lead Auditor'
                               : 'Loading reject reason...'
                             : !canSubmit
-                              ? isCreator
-                                ? 'Only Lead Auditor can submit new reports'
-                                : `Only Lead of the team: ${leadAuditorName} can submit`
+                              ? 'Only the creator can submit reports'
                             : 'Submit to Lead Auditor';
 
                       return (
@@ -1750,8 +1748,8 @@ const SQAStaffReports = () => {
                           title={
                             disabled && submitted && !rejected
                               ? 'Report has been submitted and is pending review'
-                              : disabled && !isLeadAuditor
-                              ? 'Only Lead Auditor of the team can submit reports'
+                              : disabled && !canSubmit
+                              ? 'Only the creator can submit reports'
                               : undefined
                           }
                         >

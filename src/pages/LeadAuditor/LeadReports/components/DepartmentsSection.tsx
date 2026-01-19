@@ -149,9 +149,8 @@ const DepartmentsSection: React.FC<Props> = ({
                             <input
                               type="checkbox"
                               checked={isSelected}
-                              disabled={isRequired}
                               onChange={(e) => onSelectFinding(fid, e.target.checked)}
-                              className={`w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500 ${isRequired ? 'cursor-not-allowed opacity-60' : ''}`}
+                              className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
                               title={isRequired ? 'Required due to approved extension request' : ''}
                             />
                            

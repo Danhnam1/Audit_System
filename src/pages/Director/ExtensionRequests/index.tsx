@@ -13,7 +13,7 @@ import {
   rejectAuditPlanRevisionRequest,
   type ViewAuditPlanRevisionRequest,
 } from '../../../api/auditPlanRevisionRequest';
-import { getOverdueChecklistItems, getChecklistTemplates, getMarkedChecklistItems, toggleMarkChecklistItem } from '../../../api/checklists';
+import { getOverdueChecklistItems, getChecklistTemplates, getMarkedChecklistItems } from '../../../api/checklists';
 import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
 import { unwrap, normalizePlanDetails } from '../../../utils/normalize';
@@ -102,18 +102,7 @@ export default function DirectorExtensionRequestsPage() {
     return false;
   });
 
-  // Ensure only one modal is open at a time
-  useEffect(() => {
-    if (showRejectModal) {
-      setShowApproveModal(false);
-    }
-  }, [showRejectModal]);
-
-  useEffect(() => {
-    if (showApproveModal) {
-      setShowRejectModal(false);
-    }
-  }, [showApproveModal]);
+  // Note: Both modals can be open at the same time - reject modal appears on top
 
   // Load requests when tab changes
   useEffect(() => {
@@ -230,22 +219,6 @@ export default function DirectorExtensionRequestsPage() {
     try {
       const res = await approveAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
       
-      // Unmark all checklist items for this audit after approval
-      try {
-        const markedItems = await getMarkedChecklistItems(selectedRequest.auditId);
-        const unmarkPromises = markedItems.map((item: any) => {
-          const itemId = item.auditItemId || item.id;
-          if (item.isMarked) {
-            return toggleMarkChecklistItem(itemId);
-          }
-          return Promise.resolve();
-        });
-        await Promise.all(unmarkPromises);
-      } catch (unmarkErr) {
-        console.warn('Failed to unmark checklist items:', unmarkErr);
-        // Don't block the success flow if unmarking fails
-      }
-      
       // Update request in allRequests
       setAllRequests(prev => prev.map(req => 
         req.requestId === selectedRequest.requestId 
@@ -289,22 +262,6 @@ export default function DirectorExtensionRequestsPage() {
     try {
       const res = await rejectAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
       
-      // Unmark all checklist items for this audit after rejection
-      try {
-        const markedItems = await getMarkedChecklistItems(selectedRequest.auditId);
-        const unmarkPromises = markedItems.map((item: any) => {
-          const itemId = item.auditItemId || item.id;
-          if (item.isMarked) {
-            return toggleMarkChecklistItem(itemId);
-          }
-          return Promise.resolve();
-        });
-        await Promise.all(unmarkPromises);
-      } catch (unmarkErr) {
-        console.warn('Failed to unmark checklist items:', unmarkErr);
-        // Don't block the success flow if unmarking fails
-      }
-      
       // Update request in allRequests
       setAllRequests(prev => prev.map(req => 
         req.requestId === selectedRequest.requestId 
@@ -313,7 +270,9 @@ export default function DirectorExtensionRequestsPage() {
       ));
       
       toast.success('Extension request rejected.');
+      // Close both modals after successful rejection
       setShowRejectModal(false);
+      setShowApproveModal(false);
       setSelectedRequest(null);
       setResponseComment('');
       // Switch to Rejected tab
@@ -347,14 +306,10 @@ export default function DirectorExtensionRequestsPage() {
   };
 
   const openRejectModal = (request: ViewAuditPlanRevisionRequest) => {
-    // Ensure approve modal is closed first
-    setShowApproveModal(false);
+    // Keep approve modal open, just show reject modal on top
     setSelectedRequest(request);
     setResponseComment('');
-    // Use requestAnimationFrame to ensure state updates are processed
-    requestAnimationFrame(() => {
-      setShowRejectModal(true);
-    });
+    setShowRejectModal(true);
   };
 
   const openAuditDetailsModal = async (request: ViewAuditPlanRevisionRequest) => {
@@ -677,7 +632,7 @@ export default function DirectorExtensionRequestsPage() {
         </div>
 
         {/* Review/Approve/Reject Modal */}
-        {showApproveModal && !showRejectModal && selectedRequest && createPortal(
+        {showApproveModal && selectedRequest && createPortal(
           <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
             <div
               className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
@@ -908,13 +863,13 @@ export default function DirectorExtensionRequestsPage() {
         )}
 
         {/* Reject Modal */}
-        {showRejectModal && !showApproveModal && selectedRequest && createPortal(
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+        {showRejectModal && selectedRequest && createPortal(
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
             <div
               className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
               onClick={() => {
+                // Only close reject modal, keep approve modal open
                 setShowRejectModal(false);
-                setSelectedRequest(null);
                 setResponseComment('');
               }}
             />
@@ -939,8 +894,8 @@ export default function DirectorExtensionRequestsPage() {
                   </div>
                   <button
                     onClick={() => {
+                      // Only close reject modal, keep approve modal open
                       setShowRejectModal(false);
-                      setSelectedRequest(null);
                       setResponseComment('');
                     }}
                     className="flex-shrink-0 w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
@@ -974,8 +929,8 @@ export default function DirectorExtensionRequestsPage() {
                 <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
                   <Button
                     onClick={() => {
+                      // Only close reject modal, keep approve modal open
                       setShowRejectModal(false);
-                      setSelectedRequest(null);
                       setResponseComment('');
                     }}
                     variant="secondary"
