@@ -3,7 +3,7 @@ import { createAudit, updateAuditPlan, setSensitiveFlag, getAuditScopeDepartment
 // import { createAuditChecklistItemsFromTemplate } from "../api/checklists";
 import { addCriterionToAudit, getCriteriaForAudit, removeCriterionFromAudit } from "../api/auditCriteriaMap";
 import { addTeamMember, deleteTeamMember, getAuditTeam } from "../api/auditTeam";
-import { updateAuditSchedule, getAuditSchedules } from "../api/auditSchedule";
+import { addAuditSchedule, updateAuditSchedule, getAuditSchedules } from "../api/auditSchedule";
 import { syncAuditChecklistTemplateMaps, getAuditChecklistTemplateMapsByAudit, deleteAuditChecklistTemplateMap, addAuditChecklistTemplateMap } from "../api/auditChecklistTemplateMaps";
 import { MILESTONE_NAMES, SCHEDULE_STATUS } from "../constants/audit";
 import {
@@ -604,9 +604,7 @@ export const postSchedulesToAudit = async (
   ].filter((pair) => pair.date);
 
   if (schedulePairs.length > 0) {
-    // Use PUT only for schedules that already exist
-    // For new schedules in create mode, they will be created via backend PUT upsert if supported
-    // Otherwise, they will be skipped (PUT requires existing scheduleId)
+    // Create new schedules or update existing ones
     const scheduleResults = await Promise.allSettled(
       schedulePairs.map(async (pair) => {
         const existing = existingSchedulesMap.get(pair.name);
@@ -623,11 +621,23 @@ export const postSchedulesToAudit = async (
             console.log(`[Create Schedule] Updated ${pair.name} (${scheduleId}) using PUT:`, result);
             return result;
           }
+        } else {
+          // Create new schedule using POST
+          try {
+            const result = await addAuditSchedule({
+              auditId: auditId,
+              milestoneName: pair.name,
+              dueDate: new Date(pair.date!).toISOString(),
+              notes: "",
+              status: SCHEDULE_STATUS.PLANNED,
+            });
+            console.log(`[Create Schedule] Created ${pair.name} using POST:`, result);
+            return result;
+          } catch (error) {
+            console.error(`[Create Schedule] Failed to create ${pair.name}:`, error);
+            throw error;
+          }
         }
-        // If schedule doesn't exist, skip it (PUT only - no POST for new schedules)
-        // Note: In create mode, schedules may not exist yet, so they will be created
-        // via backend when audit plan is created, or via PUT upsert if backend supports it
-        console.log(`[Create Schedule] Skipped ${pair.name} - schedule does not exist (PUT only mode)`);
         return null;
       })
     );
@@ -951,12 +961,12 @@ export const submitAuditPlan = async (
         ])
       );
 
-      // Update schedules using PUT only
-      // Only update schedules that exist and are in the form
+      // Create new schedules or update existing ones
       const scheduleResults = await Promise.allSettled(
         schedulePairs.map(async (pair) => {
           const existing = existingSchedulesMap.get(pair.name);
           if (existing) {
+            // Update existing schedule using PUT
             const scheduleId = existing.scheduleId || existing.ScheduleId || existing.id;
             if (scheduleId) {
               const result = await updateAuditSchedule(scheduleId, {
@@ -968,10 +978,23 @@ export const submitAuditPlan = async (
               console.log(`[Update Schedule] Updated ${pair.name} (${scheduleId}):`, result);
               return result;
             }
+          } else {
+            // Create new schedule using POST
+            try {
+              const result = await addAuditSchedule({
+                auditId: auditId,
+                milestoneName: pair.name,
+                dueDate: new Date(pair.date!).toISOString(),
+                notes: "",
+                status: SCHEDULE_STATUS.PLANNED,
+              });
+              console.log(`[Update Schedule] Created ${pair.name} using POST:`, result);
+              return result;
+            } catch (error) {
+              console.error(`[Update Schedule] Failed to create ${pair.name}:`, error);
+              throw error;
+            }
           }
-          // If schedule doesn't exist, skip it (no POST for new schedules)
-          // User wants PUT only, so we only update existing schedules
-          console.log(`[Update Schedule] Skipped ${pair.name} - schedule does not exist (using PUT only)`);
           return null;
         })
       );
