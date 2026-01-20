@@ -2459,8 +2459,19 @@ const AuditorLeadReports = () => {
                       </button>
                     )}
                     
-                    {/* Request Extension Button - Only show if no pending or approved request */}
+                    {/* Request Extension Button - Only show if no pending or approved request, and report is not approved */}
                     {(() => {
+                      // Check if report is approved by Lead Auditor
+                      const currentAudit = audits.find(a => String(a.auditId || a.id || a.$id) === selectedAuditId);
+                      const status = currentAudit?.status || currentAudit?.state || currentAudit?.approvalStatus || '';
+                      const statusToCheck = String(status).toLowerCase().trim().replace(/\s+/g, '');
+                      const isReportApproved = statusToCheck === 'approved' || statusToCheck.includes('approve');
+                      
+                      // Don't show button if report is already approved by Lead Auditor
+                      if (isReportApproved) {
+                        return null;
+                      }
+                      
                       const pendingRequest = revisionRequests.find(r => r.status === 'Pending');
                       const approvedRequest = revisionRequests.find(r => r.status === 'Approved');
                       const auditType = selectedAuditId ? getAuditType(selectedAuditId) : null;

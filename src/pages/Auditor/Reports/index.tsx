@@ -1347,9 +1347,12 @@ const SQAStaffReports = () => {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      window.URL.revokeObjectURL(url);
       
-      toast.success('Report exported successfully');
+      // Delay revoking URL and showing toast to ensure file is saved
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        toast.success('Report exported successfully');
+      }, 200);
     } catch (err) {
       console.error('Export PDF failed', err);
       toast.error('Export PDF failed. Please try again.');
