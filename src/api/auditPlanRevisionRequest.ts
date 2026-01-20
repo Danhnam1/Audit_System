@@ -27,6 +27,20 @@ export interface ApproveRejectRequest {
   responseComment?: string;
 }
 
+export interface ViewAuditPlanRevisionRequestMarkedItem {
+  requestId: string;
+  auditItemId: string;
+  createdAt: string;
+  status: string; // Status của marked item: "Pending", "Approved", "Rejected"
+  auditId: string;
+  questionTextSnapshot: string;
+  section: string;
+  order?: number;
+  itemStatus: string; // Status của AuditChecklistItem
+  comment?: string;
+  markStatus: string;
+}
+
 // Create revision request (Lead Auditor)
 export const createAuditPlanRevisionRequest = async (
   dto: CreateAuditPlanRevisionRequest
@@ -119,6 +133,15 @@ export const rejectAuditPlanRevisionRequest = async (
     responseComment: responseComment || '',
   });
   return res?.data ?? res;
+};
+
+// Get marked items by request ID
+export const getMarkedItemsByRequestId = async (
+  requestId: string
+): Promise<ViewAuditPlanRevisionRequestMarkedItem[]> => {
+  const res: any = await apiClient.get(`/AuditPlanRevisionRequest/${requestId}/marked-items`);
+  const data = res?.data ?? res;
+  return unwrap<ViewAuditPlanRevisionRequestMarkedItem>(data);
 };
 
 

@@ -17,6 +17,7 @@ import { getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../.
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
 import { getAuditChecklistItems, markChecklistItemPending, getMarkedChecklistItems, getCompliantIdByAuditItemId, returnCompliantItem } from '../../../api/checklists';
+import { getMarkedItemsByRequestId } from '../../../api/auditPlanRevisionRequest';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
 import CompliantDetailModal from '../../Shared/CompliantDetailModal';
@@ -27,7 +28,7 @@ import {
 } from '../../../api/auditPlanRevisionRequest';
 import EditScheduleAndTeamModal from './components/EditScheduleAndTeamModal';
 import { updateAuditSchedule, addAuditSchedule, deleteAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule';
-import { addTeamMember, deleteTeamMember } from '../../../api/auditTeam';
+import { addTeamMember } from '../../../api/auditTeam';
 import FindingDetailModal from '../../Shared/FindingDetailModal';
 import MultiSelect from '../../../components/MultiSelect';
 
@@ -76,6 +77,8 @@ const AuditorLeadReports = () => {
   const [returnPeriodFrom, setReturnPeriodFrom] = useState<string | undefined>(undefined);
   const [returnPeriodTo, setReturnPeriodTo] = useState<string | undefined>(undefined);
   const [returnLoading, setReturnLoading] = useState(false);
+  const [returnScheduleErrors, setReturnScheduleErrors] = useState<Record<number, string>>({});
+  const [returnInitialEvidenceDueDate, setReturnInitialEvidenceDueDate] = useState<string | null>(null);
   // Reason return modal states
   const [showReasonReturnModal, setShowReasonReturnModal] = useState(false);
   const [reasonReturnAuditId, setReasonReturnAuditId] = useState<string | null>(null);
@@ -753,15 +756,22 @@ const AuditorLeadReports = () => {
         }
       };
       
-      setReturnSchedules(
-        filteredSchedules.map((s: any, idx: number) => ({
-          scheduleId: s.scheduleId || s.id || s.$id ? String(s.scheduleId || s.id || s.$id) : undefined,
-          milestoneName: s.milestoneName || s.milestone || `Schedule ${idx + 1}`,
-          dueDate: formatDateForInput(s.dueDate),
-          status: s.status || 'Active',
-          notes: s.notes || '',
-        }))
-      );
+      const formattedSchedules = filteredSchedules.map((s: any, idx: number) => ({
+        scheduleId: s.scheduleId || s.id || s.$id ? String(s.scheduleId || s.id || s.$id) : undefined,
+        milestoneName: s.milestoneName || s.milestone || `Schedule ${idx + 1}`,
+        dueDate: formatDateForInput(s.dueDate),
+        status: s.status || 'Active',
+        notes: s.notes || '',
+      }));
+      
+      setReturnSchedules(formattedSchedules);
+      
+      // Save initial Evidence Due date for validation
+      const evidenceDueSchedule = formattedSchedules.find((s: any) => {
+        const name = String(s.milestoneName || '').toLowerCase().replace(/\s+/g, '');
+        return name.includes('evidencedue') || name.includes('evidence-due') || name === 'evidence due';
+      });
+      setReturnInitialEvidenceDueDate(evidenceDueSchedule?.dueDate || null);
 
       const teamData = unwrap(teamRes);
       const users = Array.isArray(usersRes) ? usersRes : [];
@@ -813,8 +823,120 @@ const AuditorLeadReports = () => {
     setReturnInitialAuditorIds(new Set());
     setReturnPeriodFrom(undefined);
     setReturnPeriodTo(undefined);
+    setReturnScheduleErrors({});
+    setReturnInitialEvidenceDueDate(null);
     // Note: Don't clear selectedFindings here - they should persist until report is returned
   };
+
+  // Validation for return schedules
+  const computedReturnScheduleErrors = useMemo(() => {
+    const errs: Record<number, string> = {};
+
+    if (returnSchedules.length === 0) return errs;
+
+    const toDate = (d?: string) => (d ? new Date(d) : null);
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+    // Helper to get schedule index by milestone label
+    const findIndexByMilestone = (label: string) => {
+      const normLabel = label.toLowerCase().replace(/\s+/g, '');
+      return returnSchedules.findIndex((s) => {
+        const name = String(s.milestoneName || '').toLowerCase().replace(/\s+/g, '');
+        return name === normLabel || name.includes(normLabel) || normLabel.includes(name);
+      });
+    };
+
+    const evidenceIdx = findIndexByMilestone('Evidence Due');
+    const capaIdx = findIndexByMilestone('CAPA Due');
+    const draftIdx = findIndexByMilestone('Draft Report Due');
+
+    // 1) Basic: required + within period
+    returnSchedules.forEach((s, index) => {
+      if (!s.dueDate) {
+        errs[index] = 'Due date is required';
+        return;
+      }
+
+      if (returnPeriodFrom && returnPeriodTo) {
+        const scheduleDate = new Date(s.dueDate);
+        const periodFromDate = new Date(returnPeriodFrom);
+        const periodToDate = new Date(returnPeriodTo);
+
+        scheduleDate.setHours(0, 0, 0, 0);
+        periodFromDate.setHours(0, 0, 0, 0);
+        periodToDate.setHours(0, 0, 0, 0);
+
+        if (scheduleDate < periodFromDate) {
+          errs[index] = `Date must be on or after Period From (${new Date(returnPeriodFrom).toLocaleDateString()}).`;
+        } else if (scheduleDate > periodToDate) {
+          errs[index] = `Date must be on or before Period To (${new Date(returnPeriodTo).toLocaleDateString()}).`;
+        }
+      }
+    });
+
+    // 2) Minimum gaps: 5 days between consecutive schedules
+    const addGapError = (
+      laterIdx: number | null,
+      laterLabelFallback: string,
+      earlierIdx: number | null,
+      minDays: number
+    ) => {
+      if (laterIdx == null || earlierIdx == null) return;
+      if (laterIdx < 0 || earlierIdx < 0) return;
+      const laterDate = toDate(returnSchedules[laterIdx].dueDate);
+      const earlierDate = toDate(returnSchedules[earlierIdx].dueDate);
+      if (!laterDate || !earlierDate) return;
+
+      const diffDays = Math.floor((laterDate.getTime() - earlierDate.getTime()) / MS_PER_DAY);
+      if (diffDays < minDays && !errs[laterIdx]) {
+        const laterLabel = returnSchedules[laterIdx].milestoneName || laterLabelFallback;
+        const earlierLabel = returnSchedules[earlierIdx].milestoneName || '';
+        errs[laterIdx] = `${laterLabel} must be at least ${minDays} day(s) after ${earlierLabel}.`;
+      }
+    };
+
+    // CAPA ≥ Evidence + 5 days
+    addGapError(capaIdx, 'CAPA Due', evidenceIdx, 5);
+    // Draft Report Due ≥ CAPA + 5 days
+    addGapError(draftIdx, 'Draft Report Due', capaIdx, 5);
+
+    // 3) Draft Report Due must be within Period To (End Date)
+    if (draftIdx != null && draftIdx >= 0 && returnPeriodTo) {
+      const draftDate = toDate(returnSchedules[draftIdx].dueDate);
+      const periodToDate = new Date(returnPeriodTo);
+      
+      if (draftDate) {
+        draftDate.setHours(0, 0, 0, 0);
+        periodToDate.setHours(0, 0, 0, 0);
+        
+        if (draftDate > periodToDate && !errs[draftIdx]) {
+          errs[draftIdx] = `Draft Report Due must be on or before Period To (${new Date(returnPeriodTo).toLocaleDateString()}).`;
+        }
+      }
+    }
+
+    // 4) Evidence Due cannot be earlier than initial date
+    if (evidenceIdx != null && evidenceIdx >= 0 && returnInitialEvidenceDueDate) {
+      const currentEvidenceDate = toDate(returnSchedules[evidenceIdx].dueDate);
+      const initialEvidenceDate = toDate(returnInitialEvidenceDueDate);
+      
+      if (currentEvidenceDate && initialEvidenceDate) {
+        currentEvidenceDate.setHours(0, 0, 0, 0);
+        initialEvidenceDate.setHours(0, 0, 0, 0);
+        
+        if (currentEvidenceDate < initialEvidenceDate && !errs[evidenceIdx]) {
+          errs[evidenceIdx] = `Evidence Due cannot be earlier than the original date (${new Date(returnInitialEvidenceDueDate).toLocaleDateString()}).`;
+        }
+      }
+    }
+
+    return errs;
+  }, [returnSchedules, returnPeriodFrom, returnPeriodTo, returnInitialEvidenceDueDate]);
+
+  // Update returnScheduleErrors whenever computedReturnScheduleErrors changes
+  useEffect(() => {
+    setReturnScheduleErrors(computedReturnScheduleErrors);
+  }, [computedReturnScheduleErrors]);
 
   const handleApprove = async () => {
     if (!approveAuditId) return;
@@ -1657,11 +1779,11 @@ const AuditorLeadReports = () => {
 
      
 
-        // 1) Add new members: in selectedUserIds but not in currentUserIds
+        // Add new members: in selectedUserIds but not in currentUserIds
+        // Only add new members, do not delete existing ones (Add only, cannot remove existing members)
         for (const userId of Array.from(selectedUserIds)) {
           if (!currentUserIds.has(userId)) {
             try {
-        
               await addTeamMember({
                 auditId: editScheduleTeamAuditId,
                 userId,
@@ -1669,52 +1791,7 @@ const AuditorLeadReports = () => {
                 isLead: false,
               });
             } catch (addErr: any) {
-        
               teamUpdateErrors.push({ userId, error: addErr });
-            }
-          }
-        }
-
-        // 2) Delete removed members: in currentUserIds but not in selectedUserIds
-        // This will run even if teamMembers is empty (user unchecked all)
-        for (const currentMember of currentAuditors) {
-          const uid = String(currentMember.userId || currentMember.id || currentMember.$id || '').trim();
-          
-          // Try multiple fields to get auditTeamId for deletion
-          // API might return: auditTeamId, id, $id, AuditTeamId, etc.
-          const currentId = currentMember.auditTeamId 
-            || currentMember.AuditTeamId 
-            || currentMember.id 
-            || currentMember.$id
-            || currentMember.Id
-            || (currentMember as any).auditTeam?.id
-            || (currentMember as any).auditTeam?.$id;
-          
-          // Log full member structure for debugging
-         
-          
-          if (!uid) {
-        
-            continue;
-          }
-          
-          if (!currentId) {
-          
-            teamUpdateErrors.push({ 
-              member: currentMember, 
-              error: new Error('Missing auditTeamId - cannot delete without ID'),
-              userId: uid,
-            });
-            continue;
-          }
-
-          if (!selectedUserIds.has(uid)) {
-            try {
-            
-              await deleteTeamMember(String(currentId));
-            } catch (deleteErr: any) {
-            
-              teamUpdateErrors.push({ member: currentMember, error: deleteErr, userId: uid });
             }
           }
         }
@@ -1831,43 +1908,25 @@ const AuditorLeadReports = () => {
     for (const req of requestsToLoad) {
       setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: true }));
       try {
-        let findingsForRequest: any[] = [];
-        
-        // Only get findings from marked items (isMarked = true)
-        // API GET /api/AuditChecklistItems/marked?auditId={auditId}
-        // Returns: { $id: "1", $values: [ { auditItemId, questionTextSnapshot, findings: { $values: [finding1, finding2] } } ] }
-        console.log(`[Extension Request History] Loading marked items for request ${req.requestId}, auditId: ${auditId}`);
-        const markedItems = await getMarkedChecklistItems(auditId).catch((err) => {
+        // Use new API: GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
+        // This returns the marked checklist items that were included in this specific request
+        console.log(`[Extension Request History] Loading marked items for request ${req.requestId}`);
+        const markedItems = await getMarkedItemsByRequestId(req.requestId).catch((err) => {
           console.error(`[Extension Request History] API call failed for request ${req.requestId}:`, err);
           return [];
         });
         
         console.log(`[Extension Request History] API response for request ${req.requestId}:`, markedItems);
         
-        if (markedItems && markedItems.length > 0) {
-          // Extract all findings from nested structure
-          // Response structure: checklist items with findings nested in findings.$values
-          markedItems.forEach((item: any) => {
-            // Check if findings exist and extract them
-            const findings = item.findings;
-            if (findings) {
-              // Handle both $values and direct array
-              const findingsArray = findings.$values || findings.values || (Array.isArray(findings) ? findings : []);
-              if (findingsArray && findingsArray.length > 0) {
-                findingsForRequest.push(...findingsArray);
-                console.log(`[Extension Request History] Extracted ${findingsArray.length} findings from item ${item.auditItemId}`);
-              }
-            }
-          });
-        }
+        // Store marked items directly (these are checklist items, not findings)
+        // Each marked item contains: questionTextSnapshot, section, auditItemId, status, etc.
+        setMarkedItemsByRequest(prev => ({ ...prev, [req.requestId]: markedItems || [] }));
         
-        console.log(`[Extension Request History] Total findings for request ${req.requestId}: ${findingsForRequest.length}`, findingsForRequest);
-        
-        // Store findings (even if empty, to indicate loading is complete)
-        setMarkedItemsByRequest(prev => ({ ...prev, [req.requestId]: findingsForRequest }));
+        console.log(`[Extension Request History] Stored ${(markedItems || []).length} marked items for request ${req.requestId}`);
       } catch (err) {
-        console.error(`[Extension Request History] Failed to load marked findings for request ${req.requestId}:`, err);
-        // Don't overwrite existing mapping if load fails
+        console.error(`[Extension Request History] Failed to load marked items for request ${req.requestId}:`, err);
+        // Store empty array to indicate loading is complete
+        setMarkedItemsByRequest(prev => ({ ...prev, [req.requestId]: [] }));
       } finally {
         setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: false }));
       }
@@ -2220,52 +2279,46 @@ const AuditorLeadReports = () => {
       // Get marked checklist items for this approved request
       let markedItems = markedItemsByRequest[approvedRequest.requestId] || [];
       
-      // If not in state, try to load from API
+      // If not in state, try to load from API using requestId
       if (markedItems.length === 0) {
         try {
-          markedItems = await getMarkedChecklistItems(selectedAuditId);
-          if (markedItems && markedItems.length > 0) {
-            setMarkedItemsByRequest(prev => ({
-              ...prev,
-              [approvedRequest.requestId]: markedItems
-            }));
+          // Use new API: GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
+          const markedItemsFromApi = await getMarkedItemsByRequestId(approvedRequest.requestId);
+          if (markedItemsFromApi && markedItemsFromApi.length > 0) {
+            // Extract findings from allFindings that belong to these marked checklist items
+            const markedItemIds = new Set(markedItemsFromApi.map((item: any) => String(item.auditItemId || item.id)));
+            const findingsFromMarkedItems: any[] = [];
+            
+            allFindings.forEach((finding: any) => {
+              const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
+              if (findingItemId && markedItemIds.has(String(findingItemId))) {
+                const findingId = String(finding.findingId || finding.id || '');
+                if (findingId && !findingsFromMarkedItems.find(f => String(f.findingId || f.id) === findingId)) {
+                  findingsFromMarkedItems.push(finding);
+                }
+              }
+            });
+            
+            markedItems = findingsFromMarkedItems;
+            if (markedItems.length > 0) {
+              setMarkedItemsByRequest(prev => ({
+                ...prev,
+                [approvedRequest.requestId]: markedItems
+              }));
+            }
           }
         } catch (err) {
           console.error('Failed to load marked items for required findings:', err);
         }
       }
       
-      // Extract findings from marked checklist items
+      // Extract findings from marked items (which are already findings)
       const requiredFindingIds = new Set<string>();
       markedItems.forEach((item: any) => {
-        // Check findings array
-        if (item.findings && Array.isArray(item.findings)) {
-          item.findings.forEach((finding: any) => {
-            const findingId = String(finding.findingId || finding.id || '');
-            if (findingId) requiredFindingIds.add(findingId);
-          });
-        }
-        // Also check checklistItemNoFindings (if it has findings)
-        if (item.checklistItemNoFindings) {
-          const noFinding = item.checklistItemNoFindings;
-          const findingId = String(noFinding.findingId || noFinding.id || '');
-          if (findingId) requiredFindingIds.add(findingId);
-        }
+        // markedItems are already findings (from loadMarkedFindingsForRequests or from API above)
+        const findingId = String(item.findingId || item.id || '');
+        if (findingId) requiredFindingIds.add(findingId);
       });
-      
-      // Also try to get findings from allFindings that belong to marked checklist items
-      if (requiredFindingIds.size === 0) {
-        markedItems.forEach((markedItem: any) => {
-          const itemId = markedItem.auditItemId || markedItem.id;
-          allFindings.forEach((finding: any) => {
-            const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
-            if (String(findingItemId) === String(itemId)) {
-              const findingId = String(finding.findingId || finding.id || '');
-              if (findingId) requiredFindingIds.add(findingId);
-            }
-          });
-        });
-      }
       
       // Set required findings
       setRequiredFindings(requiredFindingIds);
@@ -3207,8 +3260,13 @@ const AuditorLeadReports = () => {
                               }}
                               min={returnPeriodFrom}
                               max={returnPeriodTo}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
+                                returnScheduleErrors[index] ? 'border-red-500' : 'border-gray-300'
+                              }`}
                             />
+                            {returnScheduleErrors[index] && (
+                              <p className="text-xs text-red-600 mt-1">{returnScheduleErrors[index]}</p>
+                            )}
                           </div>
                         </div>
                       );
@@ -3282,7 +3340,7 @@ const AuditorLeadReports = () => {
                 </Button>
                 <button
                   onClick={handleReturn}
-                  disabled={returnLoading || !returnNote.trim()}
+                  disabled={returnLoading || !returnNote.trim() || Object.keys(returnScheduleErrors).length > 0}
                   className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm flex items-center gap-2"
                 >
                   {returnLoading ? (
@@ -3438,47 +3496,21 @@ const AuditorLeadReports = () => {
                         return dateB - dateA;
                       })
                       .map((req) => {
-                        // markedItemsByRequest actually stores findings (not items) after extraction
-                        // It can contain either:
-                        // 1. Direct findings array (from findingIds in request)
-                        // 2. Findings extracted from marked checklist items (from API)
+                        // markedItemsByRequest stores marked checklist items from API
+                        // API returns: ViewAuditPlanRevisionRequestMarkedItem[]
+                        // Each item contains: questionTextSnapshot, section, auditItemId, status, etc.
                         const markedItems = markedItemsByRequest[req.requestId] || [];
                         const isLoading = loadingMarkedItems[req.requestId];
                         const isApproved = req.status === 'Approved';
                         const isRejected = req.status === 'Rejected';
                         const isPending = req.status === 'Pending';
                         
-                        // Extract findings for display
-                        // markedItems may already be findings (from findingIds) or items with nested findings (from API)
-                        let findingsToDisplay: any[] = [];
-                        if (markedItems && markedItems.length > 0) {
-                          // Check if first item has findingId (direct findings array) or findings property (nested items)
-                          const firstItem = markedItems[0];
-                          if (firstItem.findingId || firstItem.title) {
-                            // Already a direct findings array (from findingIds or already extracted)
-                            findingsToDisplay = markedItems;
-                          } else if (firstItem.findings) {
-                            // Nested structure: extract findings from each checklist item
-                            // API returns: checklist items with findings nested in findings.$values
-                            markedItems.forEach((item: any) => {
-                              const findings = item.findings;
-                              if (findings) {
-                                // Handle both $values and direct array
-                                const findingsArray = findings.$values || findings.values || (Array.isArray(findings) ? findings : []);
-                                if (findingsArray && findingsArray.length > 0) {
-                                  findingsToDisplay.push(...findingsArray);
-                                }
-                              }
-                            });
-                          }
-                        }
-                        
                         // Debug logging
                         if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
                           console.log(`[Extension Request History] Request ${req.requestId}:`, {
                             markedItems,
-                            findingsToDisplay,
-                            isLoading
+                            isLoading,
+                            requestStatus: req.status
                           });
                         }
                         
@@ -3566,28 +3598,29 @@ const AuditorLeadReports = () => {
                                 </div>
                               )}
 
-                              {/* Selected Findings - Show for all statuses */}
+                              {/* Selected Checklist Items - Show marked items from API */}
                               <div>
-                                <p className="text-xs font-semibold text-gray-700 mb-2">Selected Findings:</p>
+                                <p className="text-xs font-semibold text-gray-700 mb-2">Selected Checklist Items:</p>
                                 {isLoading ? (
                                   <div className="flex items-center justify-center py-4">
                                     <div className="flex items-center gap-2 text-sm text-gray-500">
                                       <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                                      Loading findings...
+                                      Loading checklist items...
                                     </div>
                                   </div>
-                                ) : findingsToDisplay.length > 0 ? (
+                                ) : markedItems.length > 0 ? (
                                   <div className="space-y-2 max-h-64 overflow-y-auto">
-                                    {findingsToDisplay.map((finding: any, idx: number) => {
-                                      // API returns findings with title, description, severity, etc.
-                                      const findingTitle = finding.title || finding.findingTitle || 'No title';
-                                      const findingDescription = finding.description || '';
-                                      const findingSeverity = finding.severity || '';
-                                      const findingStatus = finding.status || '';
-                                      const findingDeadline = finding.deadline ? new Date(finding.deadline).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null;
+                                    {markedItems.map((item: any, idx: number) => {
+                                      // API returns: ViewAuditPlanRevisionRequestMarkedItem
+                                      // Contains: questionTextSnapshot, section, auditItemId, status, itemStatus, etc.
+                                      const questionText = item.questionTextSnapshot || item.questionText || 'No question text';
+                                      const section = item.section || 'Unknown Section';
+                                      const itemStatus = item.itemStatus || item.status || '';
+                                      const markStatus = item.markStatus || '';
+                                      const order = item.order !== undefined ? item.order : idx + 1;
                                       
                                       return (
-                                        <div key={finding.findingId || finding.auditItemId || finding.id || idx} className={`flex items-start gap-3 p-3 rounded-lg border ${
+                                        <div key={item.auditItemId || item.id || idx} className={`flex items-start gap-3 p-3 rounded-lg border ${
                                           isApproved 
                                             ? 'bg-green-50 border-green-200' 
                                             : isRejected
@@ -3599,37 +3632,42 @@ const AuditorLeadReports = () => {
                                             isRejected ? 'text-red-600' : 
                                             'text-amber-600'
                                           }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                                           </svg>
                                           <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-gray-900 line-clamp-2">
-                                              {findingTitle}
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <span className="text-xs font-semibold text-gray-500">#{order}</span>
+                                              <span className="text-xs font-medium text-gray-600">{section}</span>
+                                            </div>
+                                            <p className="text-sm font-medium text-gray-900 line-clamp-3">
+                                              {questionText}
                                             </p>
-                                            {findingDescription && (
-                                              <p className="text-xs text-gray-600 mt-1 line-clamp-2">{findingDescription}</p>
-                                            )}
                                             <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                              {findingSeverity && (
-                                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                                  findingSeverity === 'Critical' || findingSeverity === 'Major' ? 'bg-red-100 text-red-700' :
-                                                  findingSeverity === 'High' || findingSeverity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                                                  findingSeverity === 'Minor' ? 'bg-blue-100 text-blue-700' :
-                                                  'bg-gray-100 text-gray-700'
-                                                }`}>
-                                                  {findingSeverity}
-                                                </span>
-                                              )}
-                                              {findingStatus && (
+                                              {itemStatus && (
                                                 <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">
-                                                  {findingStatus}
+                                                  Status: {itemStatus}
                                                 </span>
                                               )}
-                                              {findingDeadline && (
-                                                <span className="text-xs text-gray-500">
-                                                  Deadline: {findingDeadline}
+                                              {markStatus && (
+                                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
+                                                  Mark: {markStatus}
+                                                </span>
+                                              )}
+                                              {item.status && (
+                                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                                  item.status === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                  item.status === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                  'bg-amber-100 text-amber-700'
+                                                }`}>
+                                                  Request: {item.status}
                                                 </span>
                                               )}
                                             </div>
+                                            {item.comment && (
+                                              <p className="text-xs text-gray-600 mt-2 italic">
+                                                Comment: {item.comment}
+                                              </p>
+                                            )}
                                           </div>
                                         </div>
                                       );
@@ -3637,7 +3675,7 @@ const AuditorLeadReports = () => {
                                   </div>
                                 ) : (
                                   <p className="text-xs text-gray-500 italic text-center py-2">
-                                    No findings selected for this request
+                                    No checklist items selected for this request
                                   </p>
                                 )}
                               </div>

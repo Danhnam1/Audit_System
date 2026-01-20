@@ -1,6 +1,6 @@
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getChecklistItemsByDepartment, createAuditChecklistItem, 
   updateAuditChecklistItem, 
@@ -194,6 +194,10 @@ const DepartmentChecklist = () => {
   const userIdFromToken = useUserId();
   const [scannerUserId, setScannerUserId] = useState<string | null>(null);
   const [isSensitiveDept, setIsSensitiveDept] = useState<boolean | null>(null);
+  
+  // Ref to track if QR check is in progress to prevent multiple calls
+  const isCheckingQrRef = useRef(false);
+  const hasCheckedQrRef = useRef(false);
 
   // Get auditId and auditType from location state (passed from parent component)
   const auditId = (location.state as any)?.auditId || '';
@@ -262,9 +266,16 @@ const DepartmentChecklist = () => {
   // Check QR scan status on mount
   useEffect(() => {
     const checkQrScanStatus = async () => {
+      // Guard: Prevent multiple simultaneous calls
+      if (isCheckingQrRef.current) {
+        console.log('[QR Check] Already checking, skipping...');
+        return;
+      }
+
       if (!deptId || !auditId || !scannerUserId) return;
       // Nếu phòng không sensitive thì không cần check QR
       if (isSensitiveDept === false) {
+        hasCheckedQrRef.current = true;
         return;
       }
       // Chờ xác định sensitive trước khi check QR
@@ -272,16 +283,12 @@ const DepartmentChecklist = () => {
         return;
       }
 
-      try {
-        // Check sessionStorage first
-        const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
-        const verified = sessionStorage.getItem(sessionKey);
-        if (verified === 'true') {
-          setQrScanned(true);
-          return;
-        }
+      // Set flag to prevent multiple calls
+      isCheckingQrRef.current = true;
 
+      try {
         // Check if QR has been scanned by checking access grants
+        console.log('[QR Check] Calling getAccessGrants...');
         const grants = await getAccessGrants({
           auditId: auditId,
           deptId: parseInt(deptId, 10),
@@ -314,6 +321,29 @@ const DepartmentChecklist = () => {
               scannerUserId: scannerUserId,
               verifyCode: activeGrant.verifyCode
             });
+            
+            // Check if verify code has been verified before
+            const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
+            const savedVerifyCode = sessionStorage.getItem(sessionKey);
+            const currentVerifyCode = activeGrant.verifyCode || '';
+            
+            // If verify code is the same as saved one, allow access
+            if (savedVerifyCode && savedVerifyCode === currentVerifyCode) {
+              console.log('[QR Check] Verify code unchanged, allowing access');
+              setQrScanned(true);
+              hasCheckedQrRef.current = true;
+              isCheckingQrRef.current = false;
+              return;
+            }
+            
+            // Verify code changed or not verified yet - show modal
+            if (savedVerifyCode && savedVerifyCode !== currentVerifyCode) {
+              console.log('[QR Check] Verify code changed, need to verify again', {
+                oldCode: savedVerifyCode,
+                newCode: currentVerifyCode
+              });
+            }
+            
             setQrToken(activeGrant.qrToken);
             setShowVerifyCodeModal(true);
           } else {
@@ -332,17 +362,35 @@ const DepartmentChecklist = () => {
           // No grants found, QR not scanned yet
           setShowQrScanModal(true);
         }
+        
+        hasCheckedQrRef.current = true;
       } catch (error) {
         console.error('Error checking QR scan status:', error);
         // On error, show QR scan modal
         setShowQrScanModal(true);
+      } finally {
+        isCheckingQrRef.current = false;
       }
     };
 
     if (deptId && auditId && scannerUserId) {
       checkQrScanStatus();
     }
+
+    // Cleanup: Reset check flag when dependencies change (but allow re-check if needed)
+    return () => {
+      // Reset flags when changing to a different dept/audit/user combination
+      // This allows the check to run again for new combinations
+      isCheckingQrRef.current = false;
+      // Note: We don't reset hasCheckedQrRef here because we want to remember
+      // the check status per combination. It will be reset when dept/audit/user changes
+    };
   }, [deptId, auditId, scannerUserId, isSensitiveDept]);
+
+  // Reset hasCheckedQrRef when deptId, auditId, or scannerUserId changes
+  useEffect(() => {
+    hasCheckedQrRef.current = false;
+  }, [deptId, auditId, scannerUserId]);
 
   // Set audit type from state or load from API
   useEffect(() => {
@@ -1874,6 +1922,12 @@ const DepartmentChecklist = () => {
 
   // Handle verify code
   const handleVerifyCode = async () => {
+    // Guard: Prevent multiple simultaneous calls
+    if (verifying) {
+      console.log('[Verify Code] Already verifying, skipping...');
+      return;
+    }
+
     if (!qrToken || !verifyCodeInput.trim() || !scannerUserId) {
       toast.error('Please enter verify code');
       return;
@@ -1881,6 +1935,7 @@ const DepartmentChecklist = () => {
 
     setVerifying(true);
     try {
+      console.log('[Verify Code] Calling verifyCode API...');
       const result = await verifyCode({
         qrToken: qrToken,
         scannerUserId: scannerUserId,
@@ -1891,10 +1946,31 @@ const DepartmentChecklist = () => {
         toast.success('Verify code is correct! Opening checklist...');
         setQrScanned(true);
         setShowVerifyCodeModal(false);
-        // Save to sessionStorage
+        hasCheckedQrRef.current = true; // Mark as checked
+        
+        // Save verify code to sessionStorage to detect when it changes
         if (deptId && auditId && scannerUserId) {
           const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
-          sessionStorage.setItem(sessionKey, 'true');
+          // Get current verify code from grant
+          try {
+            const grants = await getAccessGrants({
+              auditId: auditId,
+              deptId: parseInt(deptId, 10),
+              auditorId: scannerUserId,
+            });
+            const currentGrant = grants?.find(g => 
+              g.qrToken === qrToken && 
+              g.status === 'Active' && 
+              String(g.auditorId) === String(scannerUserId)
+            );
+            
+            if (currentGrant?.verifyCode) {
+              sessionStorage.setItem(sessionKey, currentGrant.verifyCode);
+              console.log('[Verify Code] Saved verify code:', currentGrant.verifyCode);
+            }
+          } catch (error) {
+            console.error('Failed to save verify code:', error);
+          }
         }
       } else {
         toast.error(result.reason || 'Verify code is incorrect');

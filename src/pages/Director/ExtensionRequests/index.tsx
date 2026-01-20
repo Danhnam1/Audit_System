@@ -12,15 +12,12 @@ import {
   getAllAuditPlanRevisionRequests,
   approveAuditPlanRevisionRequest,
   rejectAuditPlanRevisionRequest,
+  getMarkedItemsByRequestId,
   type ViewAuditPlanRevisionRequest,
 } from '../../../api/auditPlanRevisionRequest';
 import { 
   getOverdueChecklistItems, 
-  getChecklistTemplates, 
-  getMarkedChecklistItems,
-  getPendingMarkedChecklistItems,
-  getApprovedMarkedChecklistItems,
-  getRejectedMarkedChecklistItems
+  getChecklistTemplates
 } from '../../../api/checklists';
 import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
@@ -291,27 +288,12 @@ export default function DirectorExtensionRequestsPage() {
     setShowApproveModal(true);
     setMarkedChecklistItems([]);
     
-    // Load marked checklist items for this audit based on request status
+    // Load marked checklist items for this specific request using requestId
     setLoadingMarkedItems(true);
     try {
-      let markedItems: any[] = [];
-      const requestStatus = String(request.status || '').trim().toLowerCase();
-      
-      // Get items based on request status
-      if (requestStatus === 'pending') {
-        // For pending requests, get items with Pending mark status
-        markedItems = await getPendingMarkedChecklistItems(request.auditId);
-      } else if (requestStatus === 'approved') {
-        // For approved requests, get items with Approved mark status
-        markedItems = await getApprovedMarkedChecklistItems(request.auditId);
-      } else if (requestStatus === 'rejected') {
-        // For rejected requests, get items with Rejected mark status
-        markedItems = await getRejectedMarkedChecklistItems(request.auditId);
-      } else {
-        // Fallback: get all marked items (Pending, Marked, Approved)
-        markedItems = await getMarkedChecklistItems(request.auditId);
-      }
-      
+      // Use new API: GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
+      // This returns the marked items that were included in this specific request
+      const markedItems = await getMarkedItemsByRequestId(request.requestId);
       setMarkedChecklistItems(markedItems || []);
     } catch (err) {
       console.error('Failed to load marked checklist items:', err);
@@ -751,71 +733,60 @@ export default function DirectorExtensionRequestsPage() {
                   ) : (
                     <div className="space-y-3 max-h-96 overflow-y-auto">
                       {markedChecklistItems.map((item: any, idx: number) => {
-                        const findings = item.findings || [];
+                        // API returns: ViewAuditPlanRevisionRequestMarkedItem
+                        // Contains: questionTextSnapshot, section, auditItemId, status, itemStatus, markStatus, etc.
+                        const questionText = item.questionTextSnapshot || item.questionText || 'No question text';
+                        const section = item.section || 'Unknown Section';
+                        const itemStatus = item.itemStatus || item.status || '';
+                        const markStatus = item.markStatus || '';
+                        const requestStatus = item.status || selectedRequest?.status || '';
+                        const order = item.order !== undefined ? item.order : idx + 1;
+                        
                         return (
                           <div key={item.auditItemId || item.id || idx} className="bg-white border border-purple-200 rounded-lg p-3">
                             {/* Checklist Item */}
-                            <div className="flex items-start gap-2 mb-2">
+                            <div className="flex items-start gap-3">
                               <div className="flex-shrink-0 mt-0.5">
-                                <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                                 </svg>
                               </div>
-                              <div className="flex-1">
-                                <p className="text-sm font-semibold text-gray-900">{item.questionTextSnapshot || item.question || 'No question text'}</p>
-                                <div className="flex items-center gap-2 mt-1">
-                                  {item.section && (
-                                    <span className="text-xs text-gray-500">{item.section}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs font-semibold text-gray-500">#{order}</span>
+                                  <span className="text-xs font-medium text-purple-600">{section}</span>
+                                </div>
+                                <p className="text-sm font-semibold text-gray-900 line-clamp-3 mb-2">
+                                  {questionText}
+                                </p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {itemStatus && (
+                                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">
+                                      Item Status: {itemStatus}
+                                    </span>
                                   )}
-                                  {item.status && (
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                      item.status === 'Compliant' ? 'bg-green-100 text-green-700' :
-                                      item.status === 'Non-Compliant' ? 'bg-red-100 text-red-700' :
-                                      item.status === 'Overdue' ? 'bg-orange-100 text-orange-700' :
-                                      'bg-gray-100 text-gray-700'
+                                  {markStatus && (
+                                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
+                                      Mark: {markStatus}
+                                    </span>
+                                  )}
+                                  {requestStatus && (
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                      requestStatus === 'Approved' ? 'bg-green-100 text-green-700' :
+                                      requestStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                      'bg-amber-100 text-amber-700'
                                     }`}>
-                                      {item.status}
+                                      Request: {requestStatus}
                                     </span>
                                   )}
                                 </div>
+                                {item.comment && (
+                                  <p className="text-xs text-gray-600 mt-2 italic pt-2 border-t border-purple-100">
+                                    Comment: {item.comment}
+                                  </p>
+                                )}
                               </div>
                             </div>
-                            
-                            {/* Findings for this checklist item */}
-                            {findings.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-purple-100">
-                                <p className="text-xs font-medium text-gray-700 mb-1">Findings ({findings.length}):</p>
-                                <div className="space-y-1.5">
-                                  {findings.map((finding: any, fIdx: number) => (
-                                    <div key={finding.findingId || finding.id || fIdx} className="bg-purple-50 border border-purple-100 rounded p-2">
-                                      <div className="flex items-start gap-2">
-                                        <div className="flex-shrink-0 mt-0.5">
-                                          <svg className="w-3 h-3 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                          </svg>
-                                        </div>
-                                        <div className="flex-1">
-                                          <p className="text-xs font-medium text-gray-900">{finding.title || finding.findingTitle}</p>
-                                          {finding.description && (
-                                            <p className="text-xs text-gray-600 mt-0.5 line-clamp-1">{finding.description}</p>
-                                          )}
-                                          {finding.severity && (
-                                            <span className={`inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                                              finding.severity === 'Critical' ? 'bg-red-100 text-red-700' :
-                                              finding.severity === 'High' ? 'bg-orange-100 text-orange-700' :
-                                              finding.severity === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                                              'bg-blue-100 text-blue-700'
-                                            }`}>
-                                              {finding.severity}
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
                           </div>
                         );
                       })}

@@ -52,12 +52,13 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
   const [periodToLocal, setPeriodToLocal] = useState<string | undefined>(periodTo);
   const [availableAuditorIds, setAvailableAuditorIds] = useState<Set<string>>(new Set());
   const [initialAuditorIds, setInitialAuditorIds] = useState<Set<string>>(new Set());
+  const [initialEvidenceDueDate, setInitialEvidenceDueDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (show && auditId) {
       loadData();
       setEditMode('both'); // Reset to both when modal opens
-      setScheduleErrors({}); // Clear errors when modal opens
+      // Don't clear errors here - let computedScheduleErrors calculate them after data loads
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, auditId]);
@@ -112,18 +113,31 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
         }
       };
       
-      setSchedules(
-        schedulesList.map((s: any, idx: number) => {
-          const scheduleId = s.scheduleId || s.id || s.$id;
-          return {
-            scheduleId: scheduleId ? String(scheduleId) : undefined, // Ensure it's a string or undefined
-            milestoneName: s.milestoneName || s.milestone || `Schedule ${idx + 1}`,
-            dueDate: formatDateForInput(s.dueDate),
-              status: s.status || 'Active',
-            notes: s.notes || '', // Backend requires Notes field
-          };
-        })
-      );
+      const formattedSchedules = schedulesList.map((s: any, idx: number) => {
+        const scheduleId = s.scheduleId || s.id || s.$id;
+        return {
+          scheduleId: scheduleId ? String(scheduleId) : undefined, // Ensure it's a string or undefined
+          milestoneName: s.milestoneName || s.milestone || `Schedule ${idx + 1}`,
+          dueDate: formatDateForInput(s.dueDate),
+          status: s.status || 'Active',
+          notes: s.notes || '', // Backend requires Notes field
+        };
+      });
+      
+      setSchedules(formattedSchedules);
+      
+      // Save initial Evidence Due date for validation
+      const evidenceDueSchedule = formattedSchedules.find((s: any) => {
+        const name = String(s.milestoneName || '').toLowerCase().replace(/\s+/g, '');
+        return name.includes('evidencedue') || name.includes('evidence-due') || name === 'evidence due';
+      });
+      const initialEvidenceDate = evidenceDueSchedule?.dueDate || null;
+      setInitialEvidenceDueDate(initialEvidenceDate);
+      
+      // Debug: log initial evidence due date
+      if (initialEvidenceDate) {
+        console.log('[EditScheduleAndTeamModal] Initial Evidence Due date:', initialEvidenceDate);
+      }
 
       const teamData = unwrap(teamRes);
       const users = Array.isArray(usersRes) ? usersRes : [];
@@ -263,10 +277,16 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
     // Helper to get schedule index by milestone label (case-insensitive contains)
     const findIndexByMilestone = (label: string) => {
       const normLabel = label.toLowerCase().replace(/\s+/g, '');
-      return schedules.findIndex((s) => {
+      const idx = schedules.findIndex((s) => {
         const name = String(s.milestoneName || '').toLowerCase().replace(/\s+/g, '');
         return name === normLabel || name.includes(normLabel) || normLabel.includes(name);
       });
+      // Debug: log if milestone not found
+      if (idx === -1 && schedules.length > 0) {
+        console.warn(`[EditScheduleAndTeamModal] Milestone "${label}" not found. Available milestones:`, 
+          schedules.map(s => s.milestoneName));
+      }
+      return idx;
     };
 
     const kickoffIdx = findIndexByMilestone('Kickoff Meeting');
@@ -274,6 +294,18 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
     const evidenceIdx = findIndexByMilestone('Evidence Due');
     const capaIdx = findIndexByMilestone('CAPA Due');
     const draftIdx = findIndexByMilestone('Draft Report Due');
+    
+    // Debug: log found indices
+    if (evidenceIdx >= 0 || capaIdx >= 0 || draftIdx >= 0) {
+      console.log('[EditScheduleAndTeamModal] Milestone indices:', {
+        evidenceIdx,
+        capaIdx,
+        draftIdx,
+        evidenceDate: evidenceIdx >= 0 ? schedules[evidenceIdx]?.dueDate : null,
+        capaDate: capaIdx >= 0 ? schedules[capaIdx]?.dueDate : null,
+        draftDate: draftIdx >= 0 ? schedules[draftIdx]?.dueDate : null,
+      });
+    }
 
     const toDate = (d?: string) => (d ? new Date(d) : null);
     const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -322,11 +354,41 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
     addGapError(evidenceIdx, 'Evidence Due', fieldworkIdx, 5);
     // CAPA ≥ Evidence + 5 days
     addGapError(capaIdx, 'CAPA Due', evidenceIdx, 5);
-    // Draft Report Due ≥ CAPA + 3 days
-    addGapError(draftIdx, 'Draft Report Due', capaIdx, 3);
+    // Draft Report Due ≥ CAPA + 5 days (updated from 3 to 5 days)
+    addGapError(draftIdx, 'Draft Report Due', capaIdx, 5);
+
+    // 5) Draft Report Due must be within Period To (End Date)
+    if (draftIdx != null && draftIdx >= 0 && periodToLocal) {
+      const draftDate = toDate(schedules[draftIdx].dueDate);
+      const periodToDate = new Date(periodToLocal);
+      
+      if (draftDate) {
+        draftDate.setHours(0, 0, 0, 0);
+        periodToDate.setHours(0, 0, 0, 0);
+        
+        if (draftDate > periodToDate && !errs[draftIdx]) {
+          errs[draftIdx] = `Draft Report Due must be on or before Period To (${new Date(periodToLocal).toLocaleDateString()}).`;
+        }
+      }
+    }
+
+    // 6) Evidence Due cannot be earlier than initial date (only allow increasing, not decreasing)
+    if (evidenceIdx != null && evidenceIdx >= 0 && initialEvidenceDueDate) {
+      const currentEvidenceDate = toDate(schedules[evidenceIdx].dueDate);
+      const initialEvidenceDate = toDate(initialEvidenceDueDate);
+      
+      if (currentEvidenceDate && initialEvidenceDate) {
+        currentEvidenceDate.setHours(0, 0, 0, 0);
+        initialEvidenceDate.setHours(0, 0, 0, 0);
+        
+        if (currentEvidenceDate < initialEvidenceDate && !errs[evidenceIdx]) {
+          errs[evidenceIdx] = `Evidence Due cannot be earlier than the original date (${new Date(initialEvidenceDueDate).toLocaleDateString()}).`;
+        }
+      }
+    }
 
     return errs;
-  }, [schedules, periodFromLocal, periodToLocal]);
+  }, [schedules, periodFromLocal, periodToLocal, initialEvidenceDueDate]);
 
   const handleScheduleChange = (index: number, field: keyof ScheduleItem, value: any) => {
     // Không cho phép sửa 2 mốc đầu: Kickoff Meeting & Fieldwork Start
@@ -348,16 +410,15 @@ const EditScheduleAndTeamModal: React.FC<EditScheduleAndTeamModalProps> = ({
     const updated = [...schedules];
     updated[index] = { ...updated[index], [field]: value };
     setSchedules(updated);
-
-    // Re-sync errors from computedScheduleErrors (will recalculate automatically via useMemo)
-    // Use setTimeout to ensure state update completes first
-    setTimeout(() => {
-      setScheduleErrors(computedScheduleErrors);
-    }, 0);
+    // Note: scheduleErrors will be updated automatically via useEffect below when computedScheduleErrors recalculates
   };
   
   // Update scheduleErrors whenever computedScheduleErrors changes (including when periodToLocal changes)
   useEffect(() => {
+    // Debug: log validation errors
+    if (Object.keys(computedScheduleErrors).length > 0) {
+      console.log('[EditScheduleAndTeamModal] Validation errors:', computedScheduleErrors);
+    }
     setScheduleErrors(computedScheduleErrors);
   }, [computedScheduleErrors]);
 
