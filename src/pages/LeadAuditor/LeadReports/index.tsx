@@ -80,6 +80,8 @@ const AuditorLeadReports = () => {
   const [selectedFindings, setSelectedFindings] = useState<Set<string>>(new Set());
   // Required findings from approved extension requests (must be selected and disabled)
   const [requiredFindings, setRequiredFindings] = useState<Set<string>>(new Set());
+  // Selected compliant items for return or extension request
+  const [selectedCompliantItems, setSelectedCompliantItems] = useState<Set<string>>(new Set());
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
   
   // Extension request states
@@ -280,8 +282,13 @@ const AuditorLeadReports = () => {
         
         
         
-        // Backend returns "Returned" (capital R) when reject, normalize to lowercase for comparison
-        const finalStatus = rr.status || 'Pending';
+        // Backend returns "Returned", "RejectedFirstLevel", or "RejectedSecondLevel" when reject
+        // Normalize to "Returned" for display
+        let finalStatus = rr.status || 'Pending';
+        const statusLower = String(finalStatus).toLowerCase().trim();
+        if (statusLower.includes('reject') || statusLower.includes('return')) {
+          finalStatus = 'Returned';
+        }
         
        
         
@@ -538,7 +545,11 @@ const AuditorLeadReports = () => {
       } else if (normalizedStatus === 'approved' || normalizedStatus.includes('approved') || normalizedStatus.includes('approve')) {
         status = 'Approved';
         displayStatus = 'Approved';
-      } else if (normalizedStatus.includes('return') || normalizedStatus.includes('reject') || normalizedStatus === 'returned') {
+      } else if (normalizedStatus.includes('return') || 
+                 normalizedStatus.includes('reject') || 
+                 normalizedStatus === 'returned' ||
+                 normalizedStatus.includes('rejectedfirstlevel') ||
+                 normalizedStatus.includes('rejectedsecondlevel')) {
         status = 'Returned';
         displayStatus = 'Returned';
       } else {
@@ -547,7 +558,10 @@ const AuditorLeadReports = () => {
         if (rawNorm === 'approved' || rawNorm.includes('approve')) {
           status = 'Approved';
           displayStatus = 'Approved';
-        } else if (rawNorm.includes('return') || rawNorm.includes('reject')) {
+        } else if (rawNorm.includes('return') || 
+                   rawNorm.includes('reject') ||
+                   rawNorm.includes('rejectedfirstlevel') ||
+                   rawNorm.includes('rejectedsecondlevel')) {
           status = 'Returned';
           displayStatus = 'Returned';
         } else {
@@ -871,35 +885,75 @@ const AuditorLeadReports = () => {
   const handleDirectReturn = async (auditId: string) => {
     if (!auditId) return;
     
-    // Validate: must have at least one finding selected
-    if (selectedFindings.size === 0) {
-      toast.error('Please select at least one finding to return.');
+    // Validate: must have at least one finding or compliant item selected
+    if (selectedFindings.size === 0 && selectedCompliantItems.size === 0) {
+      toast.error('Please select at least one finding or compliant item to return.');
       return;
     }
     
     setActionLoading(`${auditId}:return`);
     try {
-      // Return selected findings
-      const returnNoteText = 'Returned findings with audit report';
-      const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
-        returnFinding(findingId, returnNoteText)
-      );
+      let findingsReturned = 0;
+      let compliantItemsReturned = 0;
       
-      try {
-        await Promise.all(returnFindingPromises);
-        toast.success(`Returned ${selectedFindings.size} finding(s) successfully.`);
-      } catch (err: any) {
-        console.error('Failed to return some findings', err);
-        toast.warning(`Some findings failed to return. Continuing with report return...`);
+      // Return selected findings
+      if (selectedFindings.size > 0) {
+        const returnNoteText = 'Returned findings with audit report';
+        const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
+          returnFinding(findingId, returnNoteText)
+        );
+        
+        try {
+          await Promise.all(returnFindingPromises);
+          findingsReturned = selectedFindings.size;
+        } catch (err: any) {
+          console.error('Failed to return some findings', err);
+          toast.warning(`Some findings failed to return. Continuing with report return...`);
+        }
       }
       
-      // Return the report with simple note
-      await rejectAuditReport(auditId, { note: `Returned with ${selectedFindings.size} finding(s)` });
+      // Return selected compliant items (mark as pending)
+      if (selectedCompliantItems.size > 0) {
+        const markPromises = Array.from(selectedCompliantItems).map(auditItemId => 
+          markChecklistItemPending(auditItemId).catch((err) => {
+            console.error(`Failed to mark item ${auditItemId} as pending:`, err);
+            return null;
+          })
+        );
+        
+        const results = await Promise.all(markPromises);
+        compliantItemsReturned = results.filter(r => r !== null).length;
+      }
       
+      // Build return note
+      const noteParts: string[] = [];
+      if (findingsReturned > 0) {
+        noteParts.push(`${findingsReturned} finding(s)`);
+      }
+      if (compliantItemsReturned > 0) {
+        noteParts.push(`${compliantItemsReturned} compliant item(s)`);
+      }
+      const returnNote = noteParts.length > 0 ? `Returned with ${noteParts.join(' and ')}` : 'Returned audit report';
+      
+      // Return the report
+      await rejectAuditReport(auditId, { note: returnNote });
+      
+      // Show success message
+      const successParts: string[] = [];
+      if (findingsReturned > 0) {
+        successParts.push(`${findingsReturned} finding(s)`);
+      }
+      if (compliantItemsReturned > 0) {
+        successParts.push(`${compliantItemsReturned} compliant item(s)`);
+      }
+      if (successParts.length > 0) {
+        toast.success(`Returned ${successParts.join(' and ')} successfully.`);
+      }
       toast.success('Returned the Audit Report successfully.');
       
-      // Clear selected findings
+      // Clear selected items
       setSelectedFindings(new Set());
+      setSelectedCompliantItems(new Set());
       
       // Wait a bit for backend to process
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -1004,6 +1058,9 @@ const AuditorLeadReports = () => {
         returnNoteText += changesNote;
       }
       
+      let findingsReturned = 0;
+      let compliantItemsReturned = 0;
+      
       // Return selected findings first
       if (selectedFindings.size > 0) {
         const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
@@ -1012,21 +1069,52 @@ const AuditorLeadReports = () => {
         
         try {
           await Promise.all(returnFindingPromises);
-          toast.success(`Returned ${selectedFindings.size} finding(s) successfully.`);
+          findingsReturned = selectedFindings.size;
         } catch (err: any) {
           console.error('Failed to return some findings', err);
           toast.warning(`Some findings failed to return. Continuing with report return...`);
         }
       }
       
+      // Return selected compliant items (mark as pending)
+      if (selectedCompliantItems.size > 0) {
+        const markPromises = Array.from(selectedCompliantItems).map(auditItemId => 
+          markChecklistItemPending(auditItemId).catch((err) => {
+            console.error(`Failed to mark item ${auditItemId} as pending:`, err);
+            return null;
+          })
+        );
+        
+        const results = await Promise.all(markPromises);
+        compliantItemsReturned = results.filter(r => r !== null).length;
+      }
+      
+      // Update return note with compliant items info
+      if (compliantItemsReturned > 0) {
+        const compliantNote = `\nCompliant Items: ${compliantItemsReturned} item(s) marked as pending`;
+        returnNoteText += compliantNote;
+      }
+      
       // Return the report
       await rejectAuditReport(returnAuditId, { note: returnNoteText });
       
+      // Show success messages
+      const successParts: string[] = [];
+      if (findingsReturned > 0) {
+        successParts.push(`${findingsReturned} finding(s)`);
+      }
+      if (compliantItemsReturned > 0) {
+        successParts.push(`${compliantItemsReturned} compliant item(s)`);
+      }
+      if (successParts.length > 0) {
+        toast.success(`Returned ${successParts.join(' and ')} successfully.`);
+      }
       toast.success('Returned the Audit Report successfully.');
       closeReturnModal();
       
-      // Clear selected findings
+      // Clear selected items
       setSelectedFindings(new Set());
+      setSelectedCompliantItems(new Set());
       
       // Clear return modal states
       setReturnSchedules([]);
@@ -1673,6 +1761,14 @@ const AuditorLeadReports = () => {
     setSelectedAuditId(auditId);
     setShowExtensionModal(true);
     setExtensionComment('');
+    // Merge selectedCompliantItems into selectedChecklistItems (if any)
+    if (selectedCompliantItems.size > 0) {
+      setSelectedChecklistItems(prev => {
+        const merged = new Set(prev);
+        selectedCompliantItems.forEach(id => merged.add(id));
+        return merged;
+      });
+    }
     // Don't reset selectedChecklistItems - items are selected outside the modal
     
     // Load checklist items for this audit (needed for handleRequestExtension to get full item details)
@@ -2226,11 +2322,17 @@ const AuditorLeadReports = () => {
                             openExtensionModal(selectedAuditId);
                           }}
                           className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-2"
+                          title={selectedCompliantItems.size > 0 ? `Request extension for ${selectedCompliantItems.size} compliant item(s)` : 'Request extension'}
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           Request Extension
+                          {selectedCompliantItems.size > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 bg-amber-400 rounded-full text-xs font-semibold">
+                              {selectedCompliantItems.size}
+                            </span>
+                          )}
                         </button>
                       );
                     })()}
@@ -2392,6 +2494,11 @@ const AuditorLeadReports = () => {
                             <div className="flex items-center justify-between mb-4">
                               <div className="text-sm font-semibold text-gray-700">
                                 Compliant Checklist Items
+                                {selectedCompliantItems.size > 0 && (
+                                  <span className="ml-2 text-xs text-primary-600 font-normal">
+                                    ({selectedCompliantItems.size} selected)
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-2">
                                 <select
@@ -2412,6 +2519,30 @@ const AuditorLeadReports = () => {
                               <table className="min-w-full text-xs">
                                 <thead className="bg-gray-50">
                                   <tr>
+                                    <th className="px-3 py-2 text-left text-gray-700 w-12">
+                                      <input
+                                        type="checkbox"
+                                        checked={compliantItemsOnly.length > 0 && selectedCompliantItems.size === compliantItemsOnly.filter((item: any) => {
+                                          const id = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '';
+                                          return id && id.trim();
+                                        }).length}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            const allIds = new Set<string>();
+                                            compliantItemsOnly.forEach((item: any) => {
+                                              const id = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '';
+                                              if (id && id.trim()) {
+                                                allIds.add(id);
+                                              }
+                                            });
+                                            setSelectedCompliantItems(allIds);
+                                          } else {
+                                            setSelectedCompliantItems(new Set());
+                                          }
+                                        }}
+                                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                      />
+                                    </th>
                                     <th className="px-3 py-2 text-left text-gray-700">#</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Department</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Question</th>
@@ -2437,11 +2568,34 @@ const AuditorLeadReports = () => {
                                       const statusColorClass = getStatusColor(status);
                                       // Try multiple field names: auditItemId (from backend AuditItemId), auditChecklistItemId, itemId, id, $id
                                       const auditChecklistItemId = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '';
+                                      const isSelected = auditChecklistItemId && selectedCompliantItems.has(auditChecklistItemId);
                                       return (
                                         <tr
                                           key={auditChecklistItemId || idx}
-                                          className="hover:bg-gray-50"
+                                          className={`hover:bg-gray-50 ${isSelected ? 'bg-primary-50' : ''}`}
                                         >
+                                          <td className="px-3 py-2 whitespace-nowrap">
+                                            {auditChecklistItemId && auditChecklistItemId.trim() ? (
+                                              <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={(e) => {
+                                                  setSelectedCompliantItems(prev => {
+                                                    const next = new Set(prev);
+                                                    if (e.target.checked) {
+                                                      next.add(auditChecklistItemId);
+                                                    } else {
+                                                      next.delete(auditChecklistItemId);
+                                                    }
+                                                    return next;
+                                                  });
+                                                }}
+                                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                              />
+                                            ) : (
+                                              <span className="text-gray-300">—</span>
+                                            )}
+                                          </td>
                                           <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
                                           <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
                                           <td className="px-3 py-2">
@@ -2474,7 +2628,7 @@ const AuditorLeadReports = () => {
                                     })
                                   ) : (
                                     <tr>
-                                      <td colSpan={5} className="px-3 py-4 text-center text-gray-500">
+                                      <td colSpan={6} className="px-3 py-4 text-center text-gray-500">
                                         No compliant checklist items.
                                       </td>
                                     </tr>
@@ -2661,7 +2815,7 @@ const AuditorLeadReports = () => {
                           }}
                           disabled={actionLoading === `${selectedAuditId}:approve` || actionLoading === `${selectedAuditId}:return`}
                           className={`px-4 py-2 ${hasApprovedExtension ? 'bg-orange-700 hover:bg-orange-800 ring-2 ring-orange-300' : 'bg-orange-600 hover:bg-orange-700'} disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm flex items-center gap-2`}
-                          title={hasApprovedExtension ? `Extension approved - You must Return to edit schedule and team${requiredFindings.size > 0 ? ` (${requiredFindings.size} required finding(s))` : ''}` : `Return report${selectedFindings.size > 0 ? ` and ${selectedFindings.size} finding(s)` : ''}`}
+                          title={hasApprovedExtension ? `Extension approved - You must Return to edit schedule and team${requiredFindings.size > 0 ? ` (${requiredFindings.size} required finding(s))` : ''}` : `Return report${selectedFindings.size > 0 ? ` and ${selectedFindings.size} finding(s)` : ''}${selectedCompliantItems.size > 0 ? ` and ${selectedCompliantItems.size} compliant item(s)` : ''}`}
                         >
                           {actionLoading === `${selectedAuditId}:return` ? (
                             <>
@@ -2674,9 +2828,9 @@ const AuditorLeadReports = () => {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                               </svg>
                               {hasApprovedExtension ? 'Return (Required)' : 'Return'}
-                              {selectedFindings.size > 0 && (
+                              {(selectedFindings.size > 0 || selectedCompliantItems.size > 0) && (
                                 <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs">
-                                  {selectedFindings.size}
+                                  {selectedFindings.size + selectedCompliantItems.size}
                                 </span>
                               )}
                             </>

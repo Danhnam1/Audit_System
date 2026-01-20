@@ -48,6 +48,9 @@ const SQAStaffReports = () => {
   const [rejectReasonText, setRejectReasonText] = useState<string>('');
   const [rejectSchedules, setRejectSchedules] = useState<any[]>([]);
   const [loadingRejectSchedules, setLoadingRejectSchedules] = useState(false);
+  const [rejectedFindings, setRejectedFindings] = useState<any[]>([]);
+  const [rejectedCompliantItems, setRejectedCompliantItems] = useState<any[]>([]);
+  const [loadingRejectedItems, setLoadingRejectedItems] = useState(false);
   const [_uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [_leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [creatorAuditIds, setCreatorAuditIds] = useState<Set<string>>(new Set()); // auditId -> creator can resubmit
@@ -1196,6 +1199,7 @@ const SQAStaffReports = () => {
       
       toast.success(`Submit successfully. Status: ${newStatus}`);
       setShowSubmitModal(false);
+      setShowSummary(false);
       
       // Dispatch event to notify LeadReports page to reload
       try {
@@ -1210,9 +1214,8 @@ const SQAStaffReports = () => {
         console.warn('[Reports] Failed to dispatch reportSubmitted event:', err);
       }
       
-      // Reload to sync with backend - state has already been updated above for immediate UI feedback
-      // reloadReports will merge with current state, so table won't disappear
-      await reloadReports();
+      // Reload page to sync with backend
+      window.location.reload();
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to submit to Lead Auditor. Please try again.'));
@@ -1832,22 +1835,81 @@ const SQAStaffReports = () => {
                                                   reasonText.includes('Schedules:') && 
                                                   reasonText.includes('updated');
                         
-                        if (hasScheduleChanges && selectedAuditId) {
-                          // Load schedules for this audit
-                          setLoadingRejectSchedules(true);
-                          try {
-                            const schedulesRes = await getAuditSchedules(selectedAuditId);
-                            const schedulesData = unwrap(schedulesRes);
-                            const schedulesList = Array.isArray(schedulesData) ? schedulesData : [];
-                            setRejectSchedules(schedulesList);
-                          } catch (err) {
-                            console.error('Failed to load schedules for rejection modal', err);
-                            setRejectSchedules([]);
-                          } finally {
-                            setLoadingRejectSchedules(false);
+                        // Parse rejection note to extract findings/compliant items info
+                        const hasFindings = reasonText.includes('finding(s)') || reasonText.includes('finding');
+                        const hasCompliantItems = reasonText.includes('compliant item(s)') || reasonText.includes('compliant');
+                        
+                        setLoadingRejectedItems(true);
+                        setRejectedFindings([]);
+                        setRejectedCompliantItems([]);
+                        
+                        try {
+                          // Load findings and compliant items if mentioned in rejection note
+                          if ((hasFindings || hasCompliantItems) && selectedAuditId && summary) {
+                            // Extract findings from summary
+                            const allFindings: any[] = [];
+                            const byAudit = unwrap((summary as any).findingsInAudit);
+                            byAudit.forEach((m: any) =>
+                              unwrap(m?.findings).forEach((f: any) => allFindings.push(f)),
+                            );
+                            const months = unwrap((summary as any).findingsByMonth);
+                            months.forEach((m: any) =>
+                              unwrap(m?.findings).forEach((f: any) => allFindings.push(f)),
+                            );
+                            unwrap((summary as any).findings).forEach((f: any) => allFindings.push(f));
+                            unwrap((summary as any).byDepartment).forEach((d: any) => {
+                              unwrap(d?.findings).forEach((f: any) => allFindings.push(f));
+                            });
+                            
+                            // Filter findings with "return" status
+                            if (hasFindings) {
+                              const returnedFindings = allFindings.filter((f: any) => {
+                                const findingStatus = String(f?.status || '').toLowerCase().trim();
+                                return findingStatus === 'return' || 
+                                       findingStatus === 'returned' || 
+                                       findingStatus.includes('return');
+                              });
+                              setRejectedFindings(returnedFindings);
+                            }
+                            
+                            // Load compliant items if mentioned
+                            if (hasCompliantItems) {
+                              try {
+                                const checklistItems = await getAuditChecklistItems(selectedAuditId);
+                                const compliantItems = (checklistItems || []).filter((item: any) => {
+                                  const rawStatus = String(item.status || '').toLowerCase();
+                                  const isCompliant = rawStatus === 'compliant' || rawStatus.includes('compliant');
+                                  // Check if markStatus is Pending (was returned)
+                                  const markStatus = String(item.markStatus || '').toLowerCase();
+                                  const isPending = markStatus === 'pending';
+                                  return isCompliant && isPending;
+                                });
+                                setRejectedCompliantItems(compliantItems);
+                              } catch (err) {
+                                console.error('Failed to load compliant items:', err);
+                              }
+                            }
                           }
-                        } else {
-                          setRejectSchedules([]);
+                          
+                          // Load schedules if needed
+                          if (hasScheduleChanges && selectedAuditId) {
+                            setLoadingRejectSchedules(true);
+                            try {
+                              const schedulesRes = await getAuditSchedules(selectedAuditId);
+                              const schedulesData = unwrap(schedulesRes);
+                              const schedulesList = Array.isArray(schedulesData) ? schedulesData : [];
+                              setRejectSchedules(schedulesList);
+                            } catch (err) {
+                              console.error('Failed to load schedules for rejection modal', err);
+                              setRejectSchedules([]);
+                            } finally {
+                              setLoadingRejectSchedules(false);
+                            }
+                          } else {
+                            setRejectSchedules([]);
+                          }
+                        } finally {
+                          setLoadingRejectedItems(false);
                         }
                         
                         setShowRejectReasonModal(true);
@@ -2514,12 +2576,120 @@ const SQAStaffReports = () => {
                       )}
                     </div>
                   )}
+                  
+                  {/* Show returned findings if available */}
+                  {(rejectedFindings.length > 0 || rejectedCompliantItems.length > 0) && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Returned Items:
+                      </label>
+                      {loadingRejectedItems ? (
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                          <div className="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                          <p className="text-xs text-gray-500">Loading returned items...</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {/* Returned Findings */}
+                          {rejectedFindings.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-700 mb-2">Findings ({rejectedFindings.length}):</p>
+                              <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg max-h-48 overflow-y-auto space-y-2">
+                                {rejectedFindings.map((finding: any, idx: number) => {
+                                  const findingId = finding.findingId || finding.id || idx;
+                                  const title = finding.title || `Finding ${idx + 1}`;
+                                  const severity = finding.severity || '—';
+                                  return (
+                                    <div 
+                                      key={findingId} 
+                                      className="p-2 bg-white rounded border border-orange-100 hover:bg-orange-50 cursor-pointer transition-colors"
+                                      onClick={() => {
+                                        setSelectedFinding(finding);
+                                        setShowFindingModal(true);
+                                        setShowRejectReasonModal(false);
+                                      }}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium text-gray-900 truncate">{title}</p>
+                                          <div className="flex items-center gap-2 mt-1">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getSeverityColor(severity)}`}>
+                                              {severity}
+                                            </span>
+                                            <span className="text-xs text-gray-500">Click to view details</span>
+                                          </div>
+                                        </div>
+                                        <svg className="w-4 h-4 text-orange-600 flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Returned Compliant Items */}
+                          {rejectedCompliantItems.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-700 mb-2">Compliant Items ({rejectedCompliantItems.length}):</p>
+                              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg max-h-48 overflow-y-auto space-y-2">
+                                {rejectedCompliantItems.map((item: any, idx: number) => {
+                                  const itemId = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || idx;
+                                  const question = item.questionTextSnapshot || item.questionText || item.title || `Item ${idx + 1}`;
+                                  const deptName = item.section || item.departmentName || item.deptName || item.department || '—';
+                                  return (
+                                    <div 
+                                      key={itemId} 
+                                      className="p-2 bg-white rounded border border-blue-100 hover:bg-blue-50 cursor-pointer transition-colors"
+                                      onClick={async () => {
+                                        if (itemId) {
+                                          try {
+                                            const compliantId = await getCompliantIdByAuditItemId(itemId);
+                                            if (compliantId) {
+                                              setSelectedCompliantId(compliantId);
+                                              setShowCompliantDetailModal(true);
+                                              setShowRejectReasonModal(false);
+                                            }
+                                          } catch (err) {
+                                            console.error('Failed to load compliant details:', err);
+                                          }
+                                        }
+                                      }}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium text-gray-900 truncate">{question}</p>
+                                          <p className="text-xs text-gray-500 mt-1">{deptName}</p>
+                                          <span className="text-xs text-gray-500">Click to view details</span>
+                                        </div>
+                                        <svg className="w-4 h-4 text-blue-600 flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="flex items-center justify-end gap-3">
                   <button
                     type="button"
-                    onClick={() => setShowRejectReasonModal(false)}
+                    onClick={() => {
+                      setShowRejectReasonModal(false);
+                      setRejectedFindings([]);
+                      setRejectedCompliantItems([]);
+                    }}
                     className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
                   >
                     Close
