@@ -74,7 +74,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
           children: [
             { icon: <ReportsIcon />, label: 'Reports', path: `${ROUTES.AUDITOR}/reports` },
             { icon: <HiOutlineUpload />, label: 'History Upload', path: `${ROUTES.AUDITOR}/history-upload` },
-            { icon: <DocumentIcon />, label: 'Final Summary', path: `${ROUTES.AUDITOR}/final-summary` },
+            // { icon: <DocumentIcon />, label: 'Final Summary', path: `${ROUTES.AUDITOR}/final-summary` },
           ],
         },
         {

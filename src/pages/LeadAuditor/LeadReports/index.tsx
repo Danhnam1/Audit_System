@@ -16,9 +16,10 @@ import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../../api/reportRequest';
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
-import { getAuditChecklistItems, markChecklistItemPending, getMarkedChecklistItems } from '../../../api/checklists';
+import { getAuditChecklistItems, markChecklistItemPending, getMarkedChecklistItems, getCompliantIdByAuditItemId } from '../../../api/checklists';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
+import CompliantDetailModal from '../../Shared/CompliantDetailModal';
 import { 
   createAuditPlanRevisionRequest, 
   getAuditPlanRevisionRequestsByAuditId,
@@ -107,6 +108,9 @@ const AuditorLeadReports = () => {
   const [showReturnFindingModal, setShowReturnFindingModal] = useState(false);
   const [returnFindingNote, setReturnFindingNote] = useState('');
   const [returningFindingId, setReturningFindingId] = useState<string | null>(null);
+  // Compliant detail modal states
+  const [showCompliantDetailModal, setShowCompliantDetailModal] = useState(false);
+  const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null);
   
   // Root causes map: findingId -> rootCauses[]
   const [rootCausesMap, setRootCausesMap] = useState<Record<string, any[]>>({});
@@ -304,8 +308,6 @@ const AuditorLeadReports = () => {
         
         combinedReports.push(reportObj);
       });
-      
-     
       
       // Filter chỉ lấy status: Pending, Approved, và Returned (Lead Auditor cần thấy Pending để approve/reject, Returned để theo dõi)
       // Chỉ lấy từ submitAudit API (luồng 3), không lấy từ final summary (luồng 5)
@@ -658,6 +660,29 @@ const AuditorLeadReports = () => {
   const openApproveModal = (auditId: string) => {
     setApproveAuditId(auditId);
     setShowApproveModal(true);
+  };
+
+  // Handler to open compliant detail modal
+  const handleViewCompliantDetail = async (auditChecklistItemId: string) => {
+    if (!auditChecklistItemId) {
+      toast.error('Invalid audit checklist item ID');
+      return;
+    }
+    
+    try {
+      // Get compliant ID from auditChecklistItemId
+      const compliantId = await getCompliantIdByAuditItemId(auditChecklistItemId);
+      if (!compliantId) {
+        toast.error('No compliant details found for this item');
+        return;
+      }
+      
+      setSelectedCompliantId(compliantId);
+      setShowCompliantDetailModal(true);
+    } catch (err: any) {
+      console.error('Failed to load compliant details:', err);
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to load compliant details'));
+    }
   };
 
   const openReturnModal = async (auditId: string) => {
@@ -2391,6 +2416,7 @@ const AuditorLeadReports = () => {
                                     <th className="px-3 py-2 text-left text-gray-700">Department</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Question</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Status</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">Actions</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -2409,9 +2435,11 @@ const AuditorLeadReports = () => {
                                         '—';
                                       const status = item.status || '—';
                                       const statusColorClass = getStatusColor(status);
+                                      // Try multiple field names: auditItemId (from backend AuditItemId), auditChecklistItemId, itemId, id, $id
+                                      const auditChecklistItemId = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '';
                                       return (
                                         <tr
-                                          key={item.auditChecklistItemId || item.itemId || idx}
+                                          key={auditChecklistItemId || idx}
                                           className="hover:bg-gray-50"
                                         >
                                           <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
@@ -2424,12 +2452,29 @@ const AuditorLeadReports = () => {
                                               {status}
                                             </span>
                                           </td>
+                                          <td className="px-3 py-2 whitespace-nowrap">
+                                            {auditChecklistItemId && auditChecklistItemId.trim() ? (
+                                              <button
+                                                onClick={() => handleViewCompliantDetail(auditChecklistItemId)}
+                                                className="px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50 border border-primary-200 rounded-lg transition-colors flex items-center gap-1.5"
+                                                title="View details"
+                                              >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                                View
+                                              </button>
+                                            ) : (
+                                              <span className="text-gray-400" title="No ID available">—</span>
+                                            )}
+                                          </td>
                                         </tr>
                                       );
                                     })
                                   ) : (
                                     <tr>
-                                      <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
+                                      <td colSpan={5} className="px-3 py-4 text-center text-gray-500">
                                         No compliant checklist items.
                                       </td>
                                     </tr>
@@ -3253,6 +3298,16 @@ const AuditorLeadReports = () => {
             />
           );
         })()}
+
+        {/* Compliant Detail Modal */}
+        <CompliantDetailModal
+          isOpen={showCompliantDetailModal}
+          onClose={() => {
+            setShowCompliantDetailModal(false);
+            setSelectedCompliantId(null);
+          }}
+          compliantId={selectedCompliantId}
+        />
 
         {/* Return Finding Modal */}
         {showReturnFindingModal && returningFindingId && createPortal(
