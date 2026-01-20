@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../contexts';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getAuditPlanById } from '../../../api/audits';
+import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { DataTable } from '../../../components/DataTable';
 import type { TableColumn } from '../../../components/DataTable';
 import { Pagination } from '../../../components';
@@ -22,6 +23,8 @@ interface AuditCard {
   createdBy?: string;
   objective?: string;
   isPublished?: boolean;
+  evidenceDueDate?: string;
+  capaDueDate?: string;
   rawData?: any; // Store raw data for debugging
 }
 
@@ -128,6 +131,41 @@ const AuditeeOwnerAuditList = () => {
             
             const auditData = await getAuditPlanById(auditId);
             
+            // Load audit schedule to get Evidence Due and CAPA Due dates
+            let evidenceDueDate: string | undefined;
+            let capaDueDate: string | undefined;
+            
+            try {
+              const unwrap = (data: any): any[] => {
+                if (!data) return [];
+                if (Array.isArray(data)) return data;
+                if (Array.isArray(data.$values)) return data.$values;
+                if (Array.isArray(data.values)) return data.values;
+                if (Array.isArray(data.data)) return data.data;
+                return [];
+              };
+              
+              const scheduleResponse = await getAuditScheduleByAudit(auditId);
+              const schedulesArray = unwrap(scheduleResponse);
+              
+              // Find "Evidence Due" and "CAPA Due" milestones
+              const evidenceDue = schedulesArray.find((s: any) => 
+                s.milestoneName?.toLowerCase().includes('evidence due')
+              );
+              const capaDue = schedulesArray.find((s: any) => 
+                s.milestoneName?.toLowerCase().includes('capa due')
+              );
+              
+              if (evidenceDue?.dueDate) {
+                evidenceDueDate = evidenceDue.dueDate;
+              }
+              if (capaDue?.dueDate) {
+                capaDueDate = capaDue.dueDate;
+              }
+            } catch (scheduleErr) {
+              console.warn(`Failed to load schedule for audit ${auditId}:`, scheduleErr);
+            }
+            
         
 
             // Try multiple possible field names for title (with nested audit data as fallback)
@@ -213,6 +251,8 @@ const AuditeeOwnerAuditList = () => {
               createdBy: createdBy,
               objective: objective,
               isPublished: auditData.isPublished,
+              evidenceDueDate: evidenceDueDate,
+              capaDueDate: capaDueDate,
               rawData: auditData,
             };
             return auditCard;
@@ -232,8 +272,23 @@ const AuditeeOwnerAuditList = () => {
         const auditResults = await Promise.all(auditPromises);
         const validAudits: AuditCard[] = auditResults.filter((audit): audit is AuditCard => audit !== null);
 
+        // Filter audits to show only those within Evidence Due and CAPA Due period
+        const now = new Date();
+        const auditsInActivePeriod = validAudits.filter((audit) => {
+          // If audit doesn't have Evidence Due or CAPA Due dates, exclude it
+          if (!audit.evidenceDueDate || !audit.capaDueDate) {
+            return false;
+          }
+          
+          const evidenceDue = new Date(audit.evidenceDueDate);
+          const capaDue = new Date(audit.capaDueDate);
+          
+          // Check if current date is between Evidence Due and CAPA Due (inclusive)
+          return now >= evidenceDue && now <= capaDue;
+        });
+
         // Filter out audits with status "Archived" or "Inactive"
-        const nonArchivedAudits = validAudits.filter((audit) => {
+        const nonArchivedAudits = auditsInActivePeriod.filter((audit) => {
           const status = audit.status || '';
           const statusLower = String(status).toLowerCase().trim();
 
@@ -338,7 +393,6 @@ const AuditeeOwnerAuditList = () => {
             <h1 className="text-2xl font-semibold text-black">Finding Management</h1>
 
           </div>
-        
         </div>
       </div>
 

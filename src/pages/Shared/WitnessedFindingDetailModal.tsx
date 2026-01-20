@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getFindingById, type Finding, witnessConfirmFinding, witnessDisagreeFinding } from '../../api/findings';
+import { getFindingById, type Finding, witnessConfirmFinding, witnessConfirmReturned, witnessDisagreeFinding } from '../../api/findings';
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { getDepartmentById } from '../../api/departments';
@@ -216,8 +216,15 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
     if (!finding) return;
     
     try {
-      await witnessConfirmFinding(finding.findingId);
-      toast.success('Finding confirmed successfully!');
+      // If status is Fixed, call witness-confirm-returned API
+      // If status is Open, call witness-confirmed API
+      if (finding.status === 'Fixed') {
+        await witnessConfirmReturned(finding.findingId);
+        toast.success('Finding confirmed successfully!');
+      } else {
+        await witnessConfirmFinding(finding.findingId);
+        toast.success('Finding approved successfully!');
+      }
       
       // Reload finding to get updated status
       await loadFinding();

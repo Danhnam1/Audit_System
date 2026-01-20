@@ -227,6 +227,11 @@ export const witnessConfirmFinding = async (findingId: string): Promise<void> =>
   await apiClient.put(`/Findings/${findingId}/witness-confirmed`);
 };
 
+// Witness confirm returned finding (when status is Fixed)
+export const witnessConfirmReturned = async (findingId: string): Promise<void> => {
+  await apiClient.put(`/Findings/${findingId}/witness-confirm-returned`);
+};
+
 // Witness disagree finding (reject with reason)
 export const witnessDisagreeFinding = async (findingId: string, reason: string): Promise<void> => {
   const payload = {
@@ -249,5 +254,6 @@ export default {
   returnFindingAction,
   rejectFindingActionHigherLevel,
   witnessConfirmFinding,
+  witnessConfirmReturned,
   witnessDisagreeFinding,
 };

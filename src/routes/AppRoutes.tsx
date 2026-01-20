@@ -63,8 +63,7 @@ const DepartmentStaffFindingsProgress = lazy(() => import("../pages/CAPAOwner/Fi
 const DepartmentStaffCheckDeadlines = lazy(() => import("../pages/CAPAOwner/CheckDeadlines"));
 
 // Auditee Owner pages (formerly Department Head)
-// Removed DepartmentHeadWelcome (file deleted)
-const AuditeeOwnerDashboard = lazy(() => import("../pages/AuditeeOwner/Dashboard"));
+
 const DepartmentHeadAuditPlans = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlans"));
 const DepartmentHeadAuditPlanDetail = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlanDetail"));
 const DepartmentHeadAuditPlanConfirm = lazy(() => import("../pages/AuditeeOwner/auditplan/AuditPlanConfirm"));
@@ -111,7 +110,7 @@ export function AppRoutes() {
             admin: ROUTES.ADMIN,
             auditor: ROUTES.AUDITOR,
             capaowner: '/capa-owner/tasks',
-            auditeeowner: '/auditee-owner/dashboard',
+            auditeeowner: '/auditee-owner/audit-plans',
             director: '/director/dashboard',
             leadauditor: '/lead-auditor/auditplanning',
         };
@@ -469,14 +468,7 @@ export function AppRoutes() {
 
             {/* Protected routes - Auditee Owner */}
             {/* Removed AuditeeOwner welcome route (component deleted) */}
-            <Route
-                path="/auditee-owner/dashboard"
-                element={
-                    <ProtectedRoute allowedRoles={["AuditeeOwner"]}>
-                        <AuditeeOwnerDashboard />
-                    </ProtectedRoute>
-                }
-            />
+           
             <Route
                 path="/auditee-owner/audit-plans"
                 element={

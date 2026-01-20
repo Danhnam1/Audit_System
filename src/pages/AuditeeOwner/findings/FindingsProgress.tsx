@@ -50,6 +50,7 @@ const FindingsProgress = () => {
   const [assignedUsersMap, setAssignedUsersMap] = useState<Record<string, string>>({}); // findingId -> assignedUserName
   const [returnedActionsMap, setReturnedActionsMap] = useState<Record<string, Action>>({}); // findingId -> returned action
   const [rejectedActionsMap, setRejectedActionsMap] = useState<Record<string, Action>>({}); // findingId -> rejected action
+  const [completedActionsMap, setCompletedActionsMap] = useState<Record<string, boolean>>({}); // findingId -> has completed/verified/approved action
   const [rootCauseStatusMap, setRootCauseStatusMap] = useState<Record<string, { hasApproved: boolean; hasPending: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }>>({}); // findingId -> root cause status
   const [_findingActionsMap, setFindingActionsMap] = useState<Record<string, Action[]>>({}); // findingId -> all actions
 
@@ -78,6 +79,10 @@ const FindingsProgress = () => {
   const [disagreedFindings, setDisagreedFindings] = useState<Finding[]>([]);
   const [loadingDisagreedFindings, setLoadingDisagreedFindings] = useState(false);
 
+  // Rejection reason modal
+  const [showRejectionReasonModal, setShowRejectionReasonModal] = useState(false);
+  const [selectedRejectionReason, setSelectedRejectionReason] = useState<string | null>(null);
+
   // Helper function to get status badge color
   const getStatusBadgeColor = (status: string) => {
     return getStatusColor(status) || 'bg-gray-100 text-gray-700';
@@ -90,11 +95,11 @@ const FindingsProgress = () => {
   const getDisplayStatus = (finding: Finding): string => {
     const originalStatus = finding.status || 'N/A';
     console.log('[GET DISPLAY STATUS] Finding:', finding.findingId, 'Status:', originalStatus);
-    
+
     // Map status to user-friendly text
     if (originalStatus === 'WitnessDisagreed') return 'Witness Disagreed';
     if (originalStatus === 'PendingWitnessConfirmation') return 'Pending Confirmation';
-    
+
     return originalStatus;
   };
 
@@ -123,7 +128,7 @@ const FindingsProgress = () => {
   // const getCurrentUserId = (): string | null => {
   //   // First try to get from user context
   //   console.log('[GET USER ID] 👤 User object from context:', user);
-    
+
   //   if (user?.userId) {
   //     console.log('[GET USER ID] ✅ Got userId from context:', user.userId);
   //     return user.userId;
@@ -139,18 +144,18 @@ const FindingsProgress = () => {
   //   try {
   //     const authData = JSON.parse(token);
   //     console.log('[GET USER ID] 📦 Auth data:', authData);
-      
+
   //     // Try to get token from user object first (already in context)
   //     const jwtToken = user?.token || authData?.state?.token;
-      
+
   //     if (jwtToken) {
   //       const base64Url = jwtToken.split('.')[1];
   //       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
   //       const payload = JSON.parse(window.atob(base64));
-        
+
   //       console.log('[GET USER ID] 🔍 JWT Payload (all claims):', payload);
   //       console.log('[GET USER ID] 🔍 All payload keys:', Object.keys(payload));
-        
+
   //       // Try multiple possible claim names for user ID
   //       // .NET uses these standard claims
   //       const userId = 
@@ -165,14 +170,14 @@ const FindingsProgress = () => {
   //         payload['Id'] ||
   //         payload['uid'] ||
   //         authData?.state?.user?.userId; // Try from auth state
-        
+
   //       if (userId) {
   //         console.log('[GET USER ID] ✅ Got userId from token:', userId);
   //       } else {
   //         console.warn('[GET USER ID] ⚠️ No userId found in token claims');
   //         console.warn('[GET USER ID] 📋 Available claims:', Object.keys(payload));
   //       }
-        
+
   //       return userId || null;
   //     }
   //   } catch (err) {
@@ -215,6 +220,7 @@ const FindingsProgress = () => {
     const usersMap: Record<string, string> = {};
     const returnedMap: Record<string, Action> = {};
     const rejectedMap: Record<string, Action> = {};
+    const completedMap: Record<string, boolean> = {};
     const actionsMap: Record<string, Action[]> = {};
 
     // Load actions for each finding and get assignedTo
@@ -236,6 +242,15 @@ const FindingsProgress = () => {
             const rejectedAction = actions.find(a => a.status?.toLowerCase() === 'rejected');
             if (rejectedAction) {
               rejectedMap[finding.findingId] = rejectedAction;
+            }
+
+            // Check for completed/verified/approved actions
+            const completedAction = actions.find(a => {
+              const statusLower = a.status?.toLowerCase() || '';
+              return statusLower === 'verified' || statusLower === 'approved' || statusLower === 'completed' || statusLower === 'closed';
+            });
+            if (completedAction) {
+              completedMap[finding.findingId] = true;
             }
 
             // Get all unique assignedTo users
@@ -282,6 +297,7 @@ const FindingsProgress = () => {
     setAssignedUsersMap(usersMap);
     setReturnedActionsMap(returnedMap);
     setRejectedActionsMap(rejectedMap);
+    setCompletedActionsMap(completedMap);
     setFindingActionsMap(actionsMap);
   };
 
@@ -495,10 +511,10 @@ const FindingsProgress = () => {
       const rootCauses = res.data.$values || [];
       console.log('[LOAD ROOT CAUSES] 📊 All root causes from backend:', rootCauses);
       console.log('[LOAD ROOT CAUSES] 📊 Root causes count:', rootCauses.length);
-      console.log('[LOAD ROOT CAUSES] 📊 Root cause statuses:', rootCauses.map((rc: any) => ({ 
-        id: rc.rootCauseId, 
-        name: rc.name, 
-        status: rc.status 
+      console.log('[LOAD ROOT CAUSES] 📊 Root cause statuses:', rootCauses.map((rc: any) => ({
+        id: rc.rootCauseId,
+        name: rc.name,
+        status: rc.status
       })));
 
       // Fetch actions for this finding to check which root causes are already assigned
@@ -512,11 +528,11 @@ const FindingsProgress = () => {
 
         if (actions && actions.length > 0) {
           console.log('[LOAD ROOT CAUSES] 🔍 Checking each action for rejection status...');
-          
+
           // Check for rejected actions - try multiple possible rejection indicators
           const rejectedActions = actions.filter((action: Action) => {
             const statusLower = action.status?.toLowerCase() || '';
-            
+
             // Check multiple possible rejection indicators:
             // 1. Status contains "reject"
             const hasRejectedStatus = statusLower.includes('reject');
@@ -526,9 +542,9 @@ const FindingsProgress = () => {
             const hasRejectionReason = !!(action as any).rejectionReason;
             // 4. ReviewFeedback exists and progress is reset to 0 (possible rejection pattern)
             const hasReviewFeedbackAndZeroProgress = !!action.reviewFeedback && action.progressPercent === 0;
-            
+
             const isRejected = (hasRejectedStatus || hasRejectedAt || hasRejectionReason) && action.rootCauseId && action.assignedTo;
-            
+
             console.log(`[LOAD ROOT CAUSES] Action ${action.actionId}:`, {
               status: action.status,
               statusLower,
@@ -544,7 +560,7 @@ const FindingsProgress = () => {
               assignedTo: action.assignedTo,
               isRejected
             });
-            
+
             return isRejected;
           });
 
@@ -585,7 +601,7 @@ const FindingsProgress = () => {
             return true;
           });
 
-          const fullyAssignedActions = validActions.filter((action: Action) => 
+          const fullyAssignedActions = validActions.filter((action: Action) =>
             action.rootCauseId && action.assignedTo
           );
 
@@ -612,7 +628,7 @@ const FindingsProgress = () => {
                 }
               }
 
-      
+
             })
           );
         }
@@ -673,7 +689,7 @@ const FindingsProgress = () => {
 
   // Assign single root cause immediately
   const handleAssignSingleRootCause = async () => {
-   
+
     // Prevent double submission
     if (submittingAssign) {
       console.warn('[REASSIGN] ⚠️ Already submitting, ignoring duplicate call');
@@ -704,22 +720,22 @@ const FindingsProgress = () => {
 
       const rcIdStr = String(selectedRootCause.rootCauseId);
       const rejectedInfo = rejectedRootCauseData[rcIdStr];
-      
-     
+
+
 
       // Check if there's an existing action for this root cause (with assignedTo = null or empty)
       const existingActions = await getActionsByRootCause(selectedRootCause.rootCauseId);
-      const unassignedAction = existingActions.find((action: Action) => 
+      const unassignedAction = existingActions.find((action: Action) =>
         !action.assignedTo || action.assignedTo.trim() === ''
       );
-      
+
       console.log('[REASSIGN] 🔍 Existing actions for root cause:', existingActions);
       console.log('[REASSIGN] 🔍 Unassigned action found:', unassignedAction);
 
       // Priority 1: Update rejected action if user wants to keep it
       if (rejectedInfo && keepExistingAssignment) {
         console.log('[REASSIGN] 🔄 Updating existing rejected action:', rejectedInfo.actionId);
-        
+
         // COMMENTED OUT: Using updateAction with assignedBy manually
         // const currentUserId = getCurrentUserId();
         // const updatePayload = {
@@ -731,11 +747,11 @@ const FindingsProgress = () => {
         // };
         // console.log('[REASSIGN] 📤 Update payload:', updatePayload);
         // await updateAction(rejectedInfo.actionId, updatePayload);
-        
+
         // NEW: Use assignActionTo API - Backend auto-sets assignedBy
         console.log('[REASSIGN] 🎯 Using /assigned-to API for rejected action');
         await assignActionTo(rejectedInfo.actionId, individualStaffId);
-        
+
         // COMMENTED OUT: Also update status and due date separately
         // const updatePayload = {
         //   status: 'Pending',
@@ -744,19 +760,19 @@ const FindingsProgress = () => {
         // };
         // console.log('[REASSIGN] 📤 Additional update payload:', updatePayload);
         // await updateAction(rejectedInfo.actionId, updatePayload);
-        
+
         console.log('[REASSIGN] ✅ Rejected action updated successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
         toast.success(`Action reassigned to ${staffName} (kept existing assignment)`);
-      } 
+      }
       // Priority 2: Update existing unassigned action (assignedTo = null)
       else if (unassignedAction) {
         console.log('[REASSIGN] 📝 Updating existing unassigned action:', unassignedAction.actionId);
-        
+
         // Use the specific assign API instead of generic update
         console.log('[REASSIGN] 🎯 Using /assigned-to API');
         await assignActionTo(unassignedAction.actionId, individualStaffId);
-        
+
         // COMMENTED OUT: Also update title, description, and due date if needed
         // const updatePayload = {
         //   title: selectedRootCause.name,
@@ -765,16 +781,16 @@ const FindingsProgress = () => {
         // };
         // console.log('[REASSIGN] 📤 Additional update payload:', updatePayload);
         // await updateAction(unassignedAction.actionId, updatePayload);
-        
+
         console.log('[REASSIGN] ✅ Unassigned action updated successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
         toast.success(`Action assigned to ${staffName}`);
-      } 
+      }
       // Priority 3: Create new action only if no existing action found
       else {
         console.log('[REASSIGN] 🆕 Creating new action');
         console.log('[REASSIGN] Reason: No existing unassigned action found');
-        
+
         // Step 1: Create action WITHOUT assignedTo (null initially)
         const createPayload = {
           findingId: selectedFindingForAssign.findingId,
@@ -789,11 +805,11 @@ const FindingsProgress = () => {
           rootCauseId: selectedRootCause.rootCauseId,
         };
         console.log('[REASSIGN] 📤 Create payload (without assignment):', createPayload);
-        
+
         const newAction = await createAction(createPayload);
         const newActionId = newAction.actionId;
         console.log('[REASSIGN] ✅ New action created with ID:', newActionId);
-        
+
         // Step 2: Use assignActionTo API to assign - Backend auto-sets assignedBy
         console.log('[REASSIGN] 🎯 Using /assigned-to API for new action');
         await assignActionTo(newActionId, individualStaffId);
@@ -882,11 +898,11 @@ const FindingsProgress = () => {
     setAssignedRootCauseData({});
     setRejectedRootCauseData({});
     setFindingRootCauses([]);
-    
+
     // Then set the finding and open modal
     setSelectedFindingForAssign(finding);
     setShowAssignModal(true);
-    
+
     // Load data
     loadStaffMembers(finding.deptId);
     loadFindingRootCauses(finding.findingId);
@@ -969,21 +985,19 @@ const FindingsProgress = () => {
                 <nav className="flex -mb-px">
                   <button
                     onClick={() => setActiveTab('findings')}
-                    className={`px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === 'findings'
-                        ? 'border-primary-600 text-primary-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
+                    className={`px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'findings'
+                      ? 'border-primary-600 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
                   >
                     Findings ({filteredFindings.length})
                   </button>
                   <button
                     onClick={() => setActiveTab('disagreed')}
-                    className={`px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-colors relative ${
-                      activeTab === 'disagreed'
-                        ? 'border-primary-600 text-primary-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
+                    className={`px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-colors relative ${activeTab === 'disagreed'
+                      ? 'border-primary-600 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
                   >
                     Witness Disagreed
                     {disagreedFindings.length > 0 && (
@@ -998,407 +1012,417 @@ const FindingsProgress = () => {
 
             {/* Findings Table */}
             {activeTab === 'findings' && (
-            <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
-              {/* Header with Search and Filters */}
-              <div className="border-b border-gray-200 bg-gray-50">
-                <div className="px-4 sm:px-6 py-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">
-                      Findings List ({filteredFindings.length})
-                    </h2>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    {/* Search Input */}
-                    <div className="flex-1">
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <svg className="h-5 w-5 text-primary-500 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                        </div>
-                        <input
-                          type="text"
-                          placeholder="Search findings..."
-                          value={searchQuery}
-                          onChange={(e) => {
-                            setSearchQuery(e.target.value);
-                            setCurrentPage(1);
-                          }}
-                          className="block w-full pl-10 pr-10 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 text-sm shadow-sm hover:border-gray-400"
-                        />
-                        {searchQuery && (
-                          <button
-                            onClick={() => {
-                              setSearchQuery('');
+              <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
+                {/* Header with Search and Filters */}
+                <div className="border-b border-gray-200 bg-gray-50">
+                  <div className="px-4 sm:px-6 py-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        Findings List ({filteredFindings.length})
+                      </h2>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      {/* Search Input */}
+                      <div className="flex-1">
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg className="h-5 w-5 text-primary-500 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Search findings..."
+                            value={searchQuery}
+                            onChange={(e) => {
+                              setSearchQuery(e.target.value);
                               setCurrentPage(1);
                             }}
-                            className="absolute inset-y-0 right-0 pr-3 flex items-center group"
-                          >
-                            <div className="p-1 rounded-full bg-gray-100 group-hover:bg-red-100 transition-colors duration-200">
-                              <svg className="h-4 w-4 text-gray-500 group-hover:text-red-600 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </div>
-                          </button>
-                        )}
+                            className="block w-full pl-10 pr-10 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all duration-200 text-sm shadow-sm hover:border-gray-400"
+                          />
+                          {searchQuery && (
+                            <button
+                              onClick={() => {
+                                setSearchQuery('');
+                                setCurrentPage(1);
+                              }}
+                              className="absolute inset-y-0 right-0 pr-3 flex items-center group"
+                            >
+                              <div className="p-1 rounded-full bg-gray-100 group-hover:bg-red-100 transition-colors duration-200">
+                                <svg className="h-4 w-4 text-gray-500 group-hover:text-red-600 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </div>
+                            </button>
+                          )}
+                        </div>
                       </div>
+
+                      {/* Status Filter */}
+                      <div className="w-full sm:w-40">
+                        <select
+                          value={statusFilter}
+                          onChange={(e) => {
+                            setStatusFilter(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          className="block w-full px-3 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                        >
+                          <option value="">All Status</option>
+                          <option value="Open">Open</option>
+                          <option value="Received">Received</option>
+                          <option value="Closed">Closed</option>
+                          <option value="Return">Return</option>
+                        </select>
+                      </div>
+
+                      {/* Date From */}
+                      <div className="w-full sm:w-48">
+                        <input
+                          type="date"
+                          value={dateFrom}
+                          onChange={(e) => {
+                            setDateFrom(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          className="block w-full px-3 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                        />
+                      </div>
+
+                      {/* Date To */}
+                      <div className="w-full sm:w-48">
+                        <input
+                          type="date"
+                          value={dateTo}
+                          onChange={(e) => {
+                            setDateTo(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          className="block w-full px-3 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
+                        />
+                      </div>
+
+                      {/* Clear Filters */}
+                      {(searchQuery || dateFrom || dateTo || statusFilter) && (
+                        <button
+                          onClick={() => {
+                            setSearchQuery('');
+                            setDateFrom(new Date().toISOString().split('T')[0]);
+                            setDateTo('');
+                            setStatusFilter('');
+                            setCurrentPage(1);
+                          }}
+                          className="px-4 py-2 text-gray-600 hover:text-gray-800 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap text-sm"
+                        >
+                          Clear
+                        </button>
+                      )}
                     </div>
-                    
-                    {/* Status Filter */}
-                    <div className="w-full sm:w-40">
-                      <select
-                        value={statusFilter}
-                        onChange={(e) => {
-                          setStatusFilter(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        className="block w-full px-3 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                      >
-                        <option value="">All Status</option>
-                        <option value="Open">Open</option>
-                        <option value="Received">Received</option>
-                        <option value="Closed">Closed</option>
-                        <option value="Return">Return</option>
-                      </select>
-                    </div>
-                    
-                    {/* Date From */}
-                    <div className="w-full sm:w-48">
-                      <input
-                        type="date"
-                        value={dateFrom}
-                        onChange={(e) => {
-                          setDateFrom(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        className="block w-full px-3 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                      />
-                    </div>
-                    
-                    {/* Date To */}
-                    <div className="w-full sm:w-48">
-                      <input
-                        type="date"
-                        value={dateTo}
-                        onChange={(e) => {
-                          setDateTo(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        className="block w-full px-3 py-2 border-2 border-gray-300 rounded-lg leading-5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
-                      />
-                    </div>
-                    
-                    {/* Clear Filters */}
-                    {(searchQuery || dateFrom || dateTo || statusFilter) && (
-                      <button
-                        onClick={() => {
-                          setSearchQuery('');
-                          setDateFrom(new Date().toISOString().split('T')[0]);
-                          setDateTo('');
-                          setStatusFilter('');
-                          setCurrentPage(1);
-                        }}
-                        className="px-4 py-2 text-gray-600 hover:text-gray-800 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap text-sm"
-                      >
-                        Clear
-                      </button>
-                    )}
                   </div>
                 </div>
-              </div>
 
-              {/* Findings Table */}
-              {filteredFindings.length === 0 ? (
-                <div className="p-8 text-center">
-                  <p className="text-gray-500">
-                    {searchQuery ? `No findings found matching "${searchQuery}"` : 'No findings found for your department'}
-                  </p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Title
-                        </th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Severity
-                        </th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Deadline
-                        </th>
-                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Assigned To
-                        </th>
-                        <th className="px-3 sm:px-6 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Actions
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {paginatedFindings.map((finding) => (
-                        <tr
-                          key={finding.findingId}
-                          className="hover:bg-gray-50 transition-colors cursor-pointer"
-                          onClick={async () => {
-                            setLoadingFindingActions(true);
-                            setShowActionsModal(true);
-                            try {
-                              const actions = await getActionsByFinding(finding.findingId);
-                              setSelectedFindingActions(Array.isArray(actions) ? actions : []);
-                              setSelectedFindingId(finding.findingId);
-                            } catch (err: any) {
-                              console.error('Error loading actions:', err);
-                              setSelectedFindingActions([]);
-                            } finally {
-                              setLoadingFindingActions(false);
-                            }
-                          }}
-                        >
-                          <td className="px-3 sm:px-6 py-3 sm:py-4">
-                            <div className="flex items-center gap-2">
-                              {returnedActionsMap[finding.findingId] && (
-                                <div className="relative group flex-shrink-0">
-                                  <div className="w-2 h-2 bg-red-500 rounded-full cursor-help"></div>
-                                  <div className="absolute left-0 bottom-full mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                                    <div className="font-semibold mb-1">Feedback:</div>
-                                    <div className="text-gray-300">
-                                      {returnedActionsMap[finding.findingId].reviewFeedback || 'No feedback provided'}
-                                    </div>
-                                    <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
-                                  </div>
-                                </div>
-                              )}
-                              <div className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">
-                                {finding.title}
-                              </div>
-                              {/* Root Cause Indicator Badge - Only show if not all approved */}
-                              {(() => {
-                                const rcStatus = rootCauseStatusMap[finding.findingId];
-                                const totalCount = rcStatus?.totalCount || 0;
-                                const allApproved = rcStatus?.allApproved || false;
-                                const hasPendingRC = rcStatus?.hasPending || false;
-                                const hasApprovedRC = rcStatus?.hasApproved || false;
-                                const hasRejectedRC = rcStatus?.hasRejected || false;
-
-                                // Only show badge if there are root causes AND not all are approved
-                                if (totalCount > 0 && !allApproved) {
-                                  return (
-                                    <div className="relative group flex-shrink-0">
-                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border flex items-center gap-1 ${hasPendingRC
-                                          ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
-                                          : hasRejectedRC
-                                            ? 'bg-red-100 text-red-700 border-red-300'
-                                            : hasApprovedRC
-                                              ? 'bg-blue-100 text-blue-700 border-blue-300'
-                                              : 'bg-blue-100 text-blue-700 border-blue-300'
-                                        }`}>
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                                        </svg>
-                                        {totalCount} RC
-                                      </span>
-                                      <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                                        <p className="font-semibold mb-1">Root Causes Status:</p>
-                                        <p className="text-gray-300">
-                                          Total: {totalCount} root cause{totalCount > 1 ? 's' : ''}
-                                        </p>
-                                        {hasApprovedRC && (
-                                          <p className="text-green-300 mt-1">✓ Has approved root cause{hasApprovedRC && totalCount > 1 ? 's' : ''}</p>
-                                        )}
-                                        {hasPendingRC && (
-                                          <p className="text-yellow-300 mt-1">⏳ Has pending root cause{hasPendingRC && totalCount > 1 ? 's' : ''}</p>
-                                        )}
-                                        {hasRejectedRC && (
-                                          <p className="text-red-300 mt-1">✗ Has rejected root cause{hasRejectedRC && totalCount > 1 ? 's' : ''}</p>
-                                        )}
-                                        <div className="absolute top-full left-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })()}
-                            </div>
-                          </td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(finding.severity || '')}`}>
-                              {finding.severity || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
-                              {getDisplayStatus(finding) || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
-                            {formatDate(finding.deadline)}
-                          </td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-700">
-                            {assignedUsersMap[finding.findingId] ? (
-                              <span className="font-medium">{assignedUsersMap[finding.findingId]}</span>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </td>
-                          <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2 justify-center" onClick={(e) => e.stopPropagation()}>
-                              {returnedActionsMap[finding.findingId] ? (
-                                <button
-                                  onClick={async () => {
-                                    const action = returnedActionsMap[finding.findingId];
-                                    if (!action) return;
-
-                                    try {
-                                      await rejectActionForResubmit(action.actionId);
-                                      toast.success('Action redone successfully');
-                                      // Reload findings and actions
-                                      const deptId = getUserDeptId();
-                                      if (deptId) {
-                                        const allFindings = await getFindingsByDepartment(deptId);
-
-                                        // Filter by auditId if needed
-                                        let filteredData = allFindings;
-                                        if (auditIdFromState) {
-                                          filteredData = allFindings.filter((finding: Finding) => {
-                                            const findingAuditId = finding.auditId ||
-                                              (finding as any).AuditId ||
-                                              (finding as any).auditPlanId ||
-                                              (finding as any).audit?.auditId;
-                                            return String(findingAuditId) === String(auditIdFromState);
-                                          });
-                                        }
-
-                                        setFindings(filteredData);
-                                        await loadAssignedUsers(filteredData);
-                                        await loadRootCauseStatus(filteredData);
-                                      }
-                                    } catch (err: any) {
-                                      console.error('Error resubmitting action:', err);
-                                      toast.error(getUserFriendlyErrorMessage(err, 'Failed to redo action. Please try again.'));
-                                    }
-                                  }}
-                                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95"
-                                  title="Redo Action"
-                                >
-                                  Redo
-                                </button>
-                              ) : rejectedActionsMap[finding.findingId] ? (
-                                <button
-                                  disabled
-                                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
-                                  title="Action Rejected"
-                                >
-                                  Rejected
-                                </button>
-                              ) : finding.status?.toLowerCase() === 'received' || finding.status?.toLowerCase() === 'closed' ? (
-                                // Don't show any button when already assigned or closed
-                                null
-                              ) : (() => {
-                                const rcStatus = rootCauseStatusMap[finding.findingId];
-                                const totalCount = rcStatus?.totalCount || 0;
-
-                                // NEW FLOW: Allow assign if there are root causes (no need to wait for approval)
-                                if (totalCount === 0) {
-                                  return (
-                                    <button
-                                      disabled
-                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
-                                      title="Please add root cause first"
-                                    >
-                                      No Root Cause
-                                    </button>
-                                  );
-                                } else {
-                                  // Has root causes - allow assign
-                                  return (
-                                    <button
-                                      onClick={() => handleOpenAssignModal(finding)}
-                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
-                                      title="Assign CAPA Owner for root causes"
-                                    >
-                                      Assign
-                                    </button>
-                                  );
-                                }
-                              })()}
-                              {/* View Action button - show if finding has actions */}
-                              {(() => {
-                                // Check if finding has any action (assigned, returned, or rejected)
-                                const hasAction = assignedUsersMap[finding.findingId] ||
-                                  returnedActionsMap[finding.findingId] ||
-                                  rejectedActionsMap[finding.findingId] ||
-                                  finding.status?.toLowerCase() === 'received';
-
-                                if (hasAction) {
-                                  return (
-                                    <button
-                                      onClick={async () => {
-                                        try {
-                                          // Load actions for this finding
-                                          const actions = await getActionsByFinding(finding.findingId);
-                                          const actionsList = Array.isArray(actions) ? actions : [];
-
-                                          if (actionsList.length > 0) {
-                                            // Get the first action (or most recent one)
-                                            const firstAction = actionsList[0];
-                                            setSelectedActionId(firstAction.actionId);
-                                            setSelectedActionFindingId(finding.findingId);
-                                            setShowActionDetailModal(true);
-                                          } else {
-                                            toast.info('No actions found for this finding');
-                                          }
-                                        } catch (err: any) {
-                                          console.error('Error loading actions:', err);
-                                          toast.error(getUserFriendlyErrorMessage(err, 'Failed to load actions. Please refresh the page.'));
-                                        }
-                                      }}
-                                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors active:scale-95"
-                                      title="View Action"
-                                    >
-                                      View Action
-                                    </button>
-                                  );
-                                }
-                                return null;
-                              })()}
-                              <button
-                                onClick={() => {
-                                  setSelectedFindingId(finding.findingId);
-                                  setShowDetailModal(true);
-                                }}
-                                className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
-                                title="View Details"
-                              >
-                                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                              </button>
-                            </div>
-                          </td>
+                {/* Findings Table */}
+                {filteredFindings.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-gray-500">
+                      {searchQuery ? `No findings found matching "${searchQuery}"` : 'No findings found for your department'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Title
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Severity
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Deadline
+                          </th>
+                          <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Assigned To
+                          </th>
+                          <th className="px-3 sm:px-6 py-3  text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {paginatedFindings.map((finding) => (
+                          <tr
+                            key={finding.findingId}
+                            className="hover:bg-gray-50 transition-colors cursor-pointer"
+                          // onClick={async () => {
+                          //   setLoadingFindingActions(true);
+                          //   setShowActionsModal(true);
+                          //   try {
+                          //     const actions = await getActionsByFinding(finding.findingId);
+                          //     setSelectedFindingActions(Array.isArray(actions) ? actions : []);
+                          //     setSelectedFindingId(finding.findingId);
+                          //   } catch (err: any) {
+                          //     console.error('Error loading actions:', err);
+                          //     setSelectedFindingActions([]);
+                          //   } finally {
+                          //     setLoadingFindingActions(false);
+                          //   }
+                          // }}
+                          >
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
+                              <div className="flex flex-col gap-2">
 
-              {/* Pagination */}
-              {filteredFindings.length > 0 && (
-                <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex justify-center">
-                  <Pagination
-                    currentPage={currentPage}
-                    totalPages={totalPages}
-                    onPageChange={setCurrentPage}
-                  />
-                </div>
-              )}
-            </div>
+                                {/* Title */}
+                                <div className="text-sm font-semibold text-gray-900 line-clamp-2">
+                                  {finding.title}
+                                </div>
+
+                                {/* Status Row */}
+                                <div className="flex flex-wrap items-center gap-2">
+
+                                  {/* Root Cause Badge */}
+                                  {(() => {
+                                    const rcStatus = rootCauseStatusMap[finding.findingId];
+                                    const totalCount = rcStatus?.totalCount || 0;
+                                    const allApproved = rcStatus?.allApproved || false;
+                                    const hasPendingRC = rcStatus?.hasPending || false;
+                                    const hasApprovedRC = rcStatus?.hasApproved || false;
+                                    const hasRejectedRC = rcStatus?.hasRejected || false;
+
+                                    if (totalCount > 0 && !allApproved) {
+                                      return (
+                                        <div className="relative group">
+                                          <span
+                                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold border
+                                               ${hasPendingRC
+                                                ? 'bg-yellow-100 text-yellow-700 border-yellow-300'
+                                                : hasRejectedRC
+                                                  ? 'bg-red-100 text-red-700 border-red-300'
+                                                  : 'bg-blue-100 text-blue-700 border-blue-300'
+                                              }`}
+                                          >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+                                            </svg>
+                                            {totalCount} RC
+                                          </span>
+
+                                          {/* Tooltip */}
+                                          <div className="absolute left-0 bottom-full mb-2 w-48 p-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg
+                              opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                                            <p className="font-semibold mb-1">Root Causes</p>
+                                            <p className="text-gray-300">Total: {totalCount}</p>
+                                            {hasApprovedRC && <p className="text-green-300 mt-1">✓ Approved</p>}
+                                            {hasPendingRC && <p className="text-yellow-300 mt-1">⏳ Pending</p>}
+                                            {hasRejectedRC && <p className="text-red-300 mt-1">✗ Rejected</p>}
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+
+                                  {/* Returned Badge */}
+                                  {returnedActionsMap[finding.findingId] && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-100 text-red-600 border border-red-300 text-[11px] font-semibold"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedRejectionReason(returnedActionsMap[finding.findingId]!.reviewFeedback || '');
+                                      setShowRejectionReasonModal(true);
+                                    }}>
+                                      <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd"
+                                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                                          clipRule="evenodd" />
+                                      </svg>
+                                      Returned
+                                    </span>
+                                  )}
+                                </div>
+
+
+                              </div>
+                            </td>
+
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(finding.severity || '')}`}>
+                                {finding.severity || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
+                                {getDisplayStatus(finding) || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatDate(finding.deadline)}
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-sm text-gray-700">
+                              {assignedUsersMap[finding.findingId] ? (
+                                <span className="font-medium">{assignedUsersMap[finding.findingId]}</span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2 justify-center" onClick={(e) => e.stopPropagation()}>
+                                {returnedActionsMap[finding.findingId] ? (
+                                  <button
+                                    onClick={async () => {
+                                      const action = returnedActionsMap[finding.findingId];
+                                      if (!action) return;
+
+                                      try {
+                                        await rejectActionForResubmit(action.actionId);
+                                        toast.success('Action redone successfully');
+                                        // Reload findings and actions
+                                        const deptId = getUserDeptId();
+                                        if (deptId) {
+                                          const allFindings = await getFindingsByDepartment(deptId);
+
+                                          // Filter by auditId if needed
+                                          let filteredData = allFindings;
+                                          if (auditIdFromState) {
+                                            filteredData = allFindings.filter((finding: Finding) => {
+                                              const findingAuditId = finding.auditId ||
+                                                (finding as any).AuditId ||
+                                                (finding as any).auditPlanId ||
+                                                (finding as any).audit?.auditId;
+                                              return String(findingAuditId) === String(auditIdFromState);
+                                            });
+                                          }
+
+                                          setFindings(filteredData);
+                                          await loadAssignedUsers(filteredData);
+                                          await loadRootCauseStatus(filteredData);
+                                        }
+                                      } catch (err: any) {
+                                        console.error('Error resubmitting action:', err);
+                                        toast.error(getUserFriendlyErrorMessage(err, 'Failed to redo action. Please try again.'));
+                                      }
+                                    }}
+                                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95"
+                                    title="Redo Action"
+                                  >
+                                    Redo
+                                  </button>
+                                ) : rejectedActionsMap[finding.findingId] ? (
+                                  <button
+                                    disabled
+                                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
+                                    title="Action Rejected"
+                                  >
+                                    Rejected
+                                  </button>
+                                ) : completedActionsMap[finding.findingId] || finding.status?.toLowerCase() === 'received' || finding.status?.toLowerCase() === 'closed' ? (
+                                  // Don't show any button when action is completed/verified/approved or finding is received/closed
+                                  null
+                                ) : (() => {
+                                  const rcStatus = rootCauseStatusMap[finding.findingId];
+                                  const totalCount = rcStatus?.totalCount || 0;
+
+                                  // NEW FLOW: Allow assign if there are root causes (no need to wait for approval)
+                                  if (totalCount === 0) {
+                                    return (
+                                      <button
+                                        disabled
+                                        className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-600 bg-gray-200 rounded-lg cursor-not-allowed opacity-60"
+                                        title="Please add root cause first"
+                                      >
+                                        No Root Cause
+                                      </button>
+                                    );
+                                  } else {
+                                    // Has root causes - allow assign
+                                    return (
+                                      <button
+                                        onClick={() => handleOpenAssignModal(finding)}
+                                        className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors active:scale-95"
+                                        title="Assign CAPA Owner for root causes"
+                                      >
+                                        Assign
+                                      </button>
+                                    );
+                                  }
+                                })()}
+                                {/* View Action button - show if finding has actions */}
+                                {(() => {
+                                  // Check if finding has any action (assigned, returned, or rejected)
+                                  const hasAction = assignedUsersMap[finding.findingId] ||
+                                    returnedActionsMap[finding.findingId] ||
+                                    rejectedActionsMap[finding.findingId] ||
+                                    finding.status?.toLowerCase() === 'received';
+
+                                  if (hasAction) {
+                                    return (
+                                      <button
+                                        onClick={async () => {
+                                          try {
+                                            // Load actions for this finding
+                                            const actions = await getActionsByFinding(finding.findingId);
+                                            const actionsList = Array.isArray(actions) ? actions : [];
+
+                                            if (actionsList.length > 0) {
+                                              // Get the first action (or most recent one)
+                                              const firstAction = actionsList[0];
+                                              setSelectedActionId(firstAction.actionId);
+                                              setSelectedActionFindingId(finding.findingId);
+                                              setShowActionDetailModal(true);
+                                            } else {
+                                              toast.info('No actions found for this finding');
+                                            }
+                                          } catch (err: any) {
+                                            console.error('Error loading actions:', err);
+                                            toast.error(getUserFriendlyErrorMessage(err, 'Failed to load actions. Please refresh the page.'));
+                                          }
+                                        }}
+                                        className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors active:scale-95"
+                                        title="View Action"
+                                      >
+                                        View Action
+                                      </button>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                                <button
+                                  onClick={() => {
+                                    setSelectedFindingId(finding.findingId);
+                                    setShowDetailModal(true);
+                                  }}
+                                  className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors active:scale-95"
+                                  title="View Details"
+                                >
+                                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Pagination */}
+                {filteredFindings.length > 0 && (
+                  <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex justify-center">
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                    />
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Disagreed Findings Tab */}
@@ -1573,7 +1597,7 @@ const FindingsProgress = () => {
                           const assignedData = assignedRootCauseData[rcId];
                           const actions = rootCause.actions || [];
                           const proposals = actions.length > 0 ? [actions[0]] : [];
-                          
+
                           // Check if there's ANY rejected action for this root cause
                           // Even if there are other non-rejected actions
                           const hasRejectedAction = actions.some((action: any) => {
@@ -1583,7 +1607,7 @@ const FindingsProgress = () => {
                             const hasRejectionReason = !!(action as any).rejectionReason;
                             return (hasRejectedStatus || hasRejectedAt || hasRejectionReason) && action.assignedTo;
                           });
-                          
+
                           // Check if there's an action with feedback that might indicate rejection
                           const hasActionWithFeedback = actions.some((action: any) => {
                             const statusLower = action.status?.toLowerCase() || '';
@@ -1592,11 +1616,11 @@ const FindingsProgress = () => {
                             const isActiveOrReviewed = statusLower === 'active' || statusLower === 'reviewed';
                             return hasReviewFeedback && hasLowProgress && isActiveOrReviewed && action.assignedTo;
                           });
-                          
+
                           // Priority: Show reassign if there's ANY rejection, regardless of other actions
                           const needsReassignment = rejectedInfo || hasRejectedAction || hasActionWithFeedback;
                           const isFullyAssigned = assignedData && !needsReassignment;
-                          
+
                           console.log(`[ROOT CAUSE ${rcId}] Status:`, {
                             rejectedInfo: !!rejectedInfo,
                             hasRejectedAction,
@@ -1608,11 +1632,10 @@ const FindingsProgress = () => {
                           });
 
                           return (
-                            <div key={rootCause.rootCauseId} className={`border rounded-lg ${
-                              needsReassignment ? 'border-red-300 bg-red-50' : 
-                              isFullyAssigned ? 'border-green-300 bg-green-50' : 
-                              'border-gray-300 bg-white'
-                            }`}>
+                            <div key={rootCause.rootCauseId} className={`border rounded-lg ${needsReassignment ? 'border-red-300 bg-red-50' :
+                              isFullyAssigned ? 'border-green-300 bg-green-50' :
+                                'border-gray-300 bg-white'
+                              }`}>
                               {/* Root Cause Header */}
                               <div className="px-4 py-3 border-b border-gray-200">
                                 <div className="flex items-start gap-3">
@@ -1689,20 +1712,20 @@ const FindingsProgress = () => {
                                   <div className="space-y-3">
                                     <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Remediation Proposal (1)</p>
                                     {proposals.map((action: any, idx: number) => (
-                                        <div key={action.actionId || idx} className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
-                                          {action.description && (
-                                            <div>
-                                              <p className="text-xs text-gray-600 break-words leading-relaxed whitespace-pre-wrap">
-                                                {action.description}
-                                              </p>
-                                            </div>
-                                          )}
-                                          <div className="flex items-center gap-3 pt-2 border-t border-gray-200 text-xs text-gray-500">
-                                            <span className="font-medium">Progress: {action.progressPercent || 0}%</span>
-                                            <span>•</span>
-                                            <span className="font-medium">Due: {formatDate(action.dueDate)}</span>
+                                      <div key={action.actionId || idx} className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
+                                        {action.description && (
+                                          <div>
+                                            <p className="text-xs text-gray-600 break-words leading-relaxed whitespace-pre-wrap">
+                                              {action.description}
+                                            </p>
                                           </div>
+                                        )}
+                                        <div className="flex items-center gap-3 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                                          <span className="font-medium">Progress: {action.progressPercent || 0}%</span>
+                                          <span>•</span>
+                                          <span className="font-medium">Due: {formatDate(action.dueDate)}</span>
                                         </div>
+                                      </div>
                                     ))}
                                   </div>
                                 )}
@@ -1743,9 +1766,8 @@ const FindingsProgress = () => {
                                         setIndividualDateError('');
                                         setShowIndividualAssignModal(true);
                                       }}
-                                      className={`px-3 py-1.5 text-xs font-medium text-white rounded ${
-                                        needsReassignment ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'
-                                      }`}
+                                      className={`px-3 py-1.5 text-xs font-medium text-white rounded ${needsReassignment ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700'
+                                        }`}
                                     >
                                       {needsReassignment ? 'Reassign' : 'Assign'}
                                     </button>
@@ -1801,7 +1823,7 @@ const FindingsProgress = () => {
                     const rcId = String(selectedRootCause.rootCauseId);
                     const rejectedInfo = rejectedRootCauseData[rcId];
                     if (!rejectedInfo) return null;
-                    
+
                     return (
                       <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 space-y-3">
                         <div className="flex items-start gap-3">
@@ -1814,7 +1836,7 @@ const FindingsProgress = () => {
                               <p><span className="font-medium">Previously assigned to:</span> {rejectedInfo.staffName}</p>
                               <p><span className="font-medium">Due date:</span> {new Date(rejectedInfo.dueDate).toLocaleDateString()}</p>
                               <p className="mt-2 pt-2 border-t border-red-200">
-                                <span className="font-medium">Rejection reason:</span><br/>
+                                <span className="font-medium">Rejection reason:</span><br />
                                 <span className="italic">{rejectedInfo.reviewFeedback}</span>
                               </p>
                             </div>
@@ -1843,8 +1865,8 @@ const FindingsProgress = () => {
                             <span>Keep same CAPA owner ({rejectedInfo.staffName})</span>
                           </label>
                           <p className="text-xs text-red-600 mt-1 ml-6">
-                            {keepExistingAssignment 
-                              ? 'The existing action will be updated and status reset to Pending' 
+                            {keepExistingAssignment
+                              ? 'The existing action will be updated and status reset to Pending'
                               : 'A new action will be created for the selected person'}
                           </p>
                         </div>
@@ -2277,6 +2299,79 @@ const FindingsProgress = () => {
                       </div>
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Rejection Reason Modal */}
+        {showRejectionReasonModal && selectedRejectionReason && (
+          <div className="fixed inset-0 z-[70] overflow-y-auto">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={() => {
+                setShowRejectionReasonModal(false);
+                setSelectedRejectionReason(null);
+              }}
+            />
+
+            {/* Modal */}
+            <div className="flex min-h-full items-center justify-center p-4">
+              <div
+                className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl mx-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-4 rounded-t-xl flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <h3 className="text-lg font-semibold text-white">Return Reason</h3>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowRejectionReasonModal(false);
+                      setSelectedRejectionReason(null);
+                    }}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="p-6">
+                  <div className="bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-red-900 mb-2">Feedback from Reviewer:</p>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                          {selectedRejectionReason}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end border-t">
+                  <button
+                    onClick={() => {
+                      setShowRejectionReasonModal(false);
+                      setSelectedRejectionReason(null);
+                    }}
+                    className="px-4 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             </div>

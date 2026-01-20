@@ -1240,7 +1240,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                 })()}
                                 
                                 {/* History - Inline Display - Only show if there are logs with actual changes */}
-                                {(() => {
+                                {/* Hide History for AuditeeOwner role */}
+                                {!isAuditeeOwner && (() => {
                                   // First, check if there are any logs with changes
                                   if (!rc.history || rc.history.length === 0) return null;
                                   

@@ -459,11 +459,11 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                       </div>
                       <h4 className="text-lg font-bold text-gray-900">Attachments</h4>
                       <span className="ml-auto bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-bold border border-purple-200">
-                        {attachments.filter(att => att.status?.toLowerCase() !== 'rejected' && att.status?.toLowerCase() !== 'inactive').length} {attachments.filter(att => att.status?.toLowerCase() !== 'rejected' && att.status?.toLowerCase() !== 'inactive').length === 1 ? 'file' : 'files'}
+                        {attachments.length} {attachments.length === 1 ? 'file' : 'files'}
                       </span>
                     </div>
                     
-                    {attachments.filter(att => att.status?.toLowerCase() !== 'rejected' && att.status?.toLowerCase() !== 'inactive').length === 0 ? (
+                    {attachments.length === 0 ? (
                       <div className="text-center py-8">
                         <div className="bg-gray-100 rounded-full p-4 inline-block mb-3">
                           <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -476,12 +476,9 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                       <div className="space-y-4">
                         {[...attachments]
                           .filter((att, index, self) => {
-                            // Remove duplicates by attachmentId
+                            // Remove duplicates by attachmentId only
                             const isUnique = index === self.findIndex((a) => a.attachmentId === att.attachmentId);
-                            // Filter out Rejected and Inactive attachments
-                            const isNotRejected = att.status?.toLowerCase() !== 'rejected';
-                            const isNotInactive = att.status?.toLowerCase() !== 'inactive';
-                            return isUnique && isNotRejected && isNotInactive;
+                            return isUnique;
                           })
                           .map((att) => {
                           const isImage = att.contentType?.toLowerCase().startsWith('image/');

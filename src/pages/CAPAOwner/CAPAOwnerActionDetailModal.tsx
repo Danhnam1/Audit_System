@@ -371,29 +371,7 @@ const CAPAOwnerActionDetailModal = ({
                   );
                 })()}
 
-                {/* Description */}
-                {action.description && (() => {
-                  // Clean up legacy descriptions that have embedded root cause info
-                  let cleanDescription = action.description;
-                  const rootCauseMatch = cleanDescription.match(/\n\nAssigned Root Cause:[\s\S]*/);
-                  if (rootCauseMatch) {
-                    cleanDescription = cleanDescription.substring(0, rootCauseMatch.index);
-                  }
-                  
-                  return (
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                        Description
-                      </label>
-                      <textarea
-                        value={cleanDescription}
-                        readOnly
-                        rows={4}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium resize-none"
-                      />
-                    </div>
-                  );
-                })()}
+             
 
                 {/* Details Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -402,7 +380,7 @@ const CAPAOwnerActionDetailModal = ({
                     className={`md:col-span-2 ${assignedToUser ? 'cursor-pointer' : ''}`}
                     onClick={() => assignedToUser && setShowResponsiblePersonModal(true)}
                   >
-                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide cursor-pointer">
                       Responsible Person
                     </label>
                     <input
@@ -565,7 +543,7 @@ const CAPAOwnerActionDetailModal = ({
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="bg-purple-600 text-white p-6 rounded-t-xl">
+            <div className="bg-blue-600 text-white p-6 rounded-t-xl">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
                   <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -624,7 +602,7 @@ const CAPAOwnerActionDetailModal = ({
             <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 rounded-b-xl flex justify-end">
               <button
                 onClick={() => setShowResponsiblePersonModal(false)}
-                className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
               >
                 Close
               </button>

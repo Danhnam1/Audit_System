@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { getAuditPlans, getAuditPlanById } from '../../../api/audits';
+import { getAuditPlans, getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
 import { getAuditScopeDepartmentsByAuditId } from '../../../api/audits';
 import { getFindingsByDepartment, type Finding } from '../../../api/findings';
 import { getActionsByFinding, type Action } from '../../../api/actions';
@@ -11,7 +11,7 @@ import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import FindingDetailModal from '../../Auditor/FindingManagement/FindingDetailModal';
 import LeadAuditorActionDetailsModal from './LeadAuditorActionDetailsModal';
-import { getStatusColor, getAuditTypeBadgeColor } from '../../../constants';
+import { getStatusColor, getAuditTypeBadgeColor, getSeverityColor } from '../../../constants';
 
 interface Audit {
   auditId: string;
@@ -31,6 +31,7 @@ interface Department {
   deptId: number;
   name: string;
   auditIds: string[];
+  isSensitive?: boolean;
 }
 
 const ActionReview = () => {
@@ -67,16 +68,6 @@ const ActionReview = () => {
   const [showDisagreedTab, setShowDisagreedTab] = useState(false);
   const [disagreedCount, setDisagreedCount] = useState(0);
   const [regularCount, setRegularCount] = useState(0);
-
-  // Use centralized badge color functions
-  const getStatusBadgeColor = (status: string) => {
-    return getStatusColor(status) || 'bg-gray-100 text-gray-700';
-  };
-  
-  // Use centralized getAuditTypeBadgeColor from constants with light variant
-  const getAuditTypeBadgeColorLocal = (auditType: string) => {
-    return getAuditTypeBadgeColor(auditType, 'light');
-  };
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
@@ -160,7 +151,34 @@ const ActionReview = () => {
       const deptData = await getAuditScopeDepartmentsByAuditId(auditId);
       const deptList = unwrap<Department>(deptData);
       const deptArray = Array.isArray(deptList) ? deptList : [];
-      setDepartments(deptArray);
+      
+      // Load sensitive departments to mark them
+      let sensitiveDeptIds = new Set<number>();
+      try {
+        const sensitiveRaw: any = await getSensitiveDepartments(auditId);
+        const sensitiveArr: any[] = Array.isArray(sensitiveRaw)
+          ? sensitiveRaw
+          : (sensitiveRaw?.$values as any[]) || [];
+
+        sensitiveArr.forEach((item: any) => {
+          const id = Number(
+            item.deptId ?? item.DeptId ?? item.departmentId ?? item.DepartmentId ?? NaN
+          );
+          if (!Number.isNaN(id)) {
+            sensitiveDeptIds.add(id);
+          }
+        });
+      } catch (sensErr) {
+        console.warn('[ActionReview] Failed to load sensitive departments:', sensErr);
+      }
+      
+      // Mark sensitive departments
+      const deptArrayWithSensitive = deptArray.map(dept => ({
+        ...dept,
+        isSensitive: sensitiveDeptIds.has(dept.deptId)
+      }));
+      
+      setDepartments(deptArrayWithSensitive);
     } catch (err: any) {
       console.error('Error loading departments:', err);
       toast.error('Failed to load departments');
@@ -183,101 +201,78 @@ const ActionReview = () => {
     });
   };
 
-  // Get display status for finding - override "Closed" if not all actions are closed
-  // Keep "Received" if there's at least one action not approved or verified
+  // Get display status for finding based on action states
   const getDisplayStatus = (finding: Finding): string => {
     const originalStatus = finding.status || '';
     const statusLower = originalStatus.toLowerCase();
+    const actions = findingActionsMap[finding.findingId] || [];
 
-    // If status is "Received", check if all actions are approved/verified
-    if (statusLower === 'received') {
-      const actions = findingActionsMap[finding.findingId] || [];
-      if (actions.length > 0) {
-        // Check if all actions are approved or verified
-        const allApprovedOrVerified = actions.every(a => {
-          const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'approved' || actionStatus === 'verified' || actionStatus === 'completed';
-        });
-        
-        // If not all actions are approved/verified, keep "Received" status
-        if (!allApprovedOrVerified) {
-          return 'Received';
-        }
-        
-        // If all actions are approved/verified, change status based on action states
-        // Check if all actions are closed
-        const allClosed = actions.every(a => {
-          const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'closed' || a.closedAt !== null;
-        });
-        
-        if (allClosed) {
-          return 'Closed';
-        }
-        
-        // All verified/approved but not all closed - show "Verified" or "Approved" status
-        // Check if all are verified
-        const allVerified = actions.every(a => {
-          const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'verified';
-        });
-        
-        if (allVerified) {
-          return 'Verified';
-        }
-        
-        // Check if all are approved
-        const allApproved = actions.every(a => {
-          const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'approved' || actionStatus === 'completed';
-        });
-        
-        if (allApproved) {
-          return 'Approved';
-        }
-        
-        // Mixed verified/approved - show "In Progress"
-        return 'In Progress';
-      }
-      // No actions yet, keep Received
-      return 'Received';
+    // If finding already has final status (Closed/Verified), return it directly
+    if (statusLower === 'closed' || statusLower === 'verified') {
+      return originalStatus;
     }
 
-    // If status is "Closed", check if all actions are actually closed
-    if (statusLower === 'closed') {
-      const allClosed = areAllActionsClosed(finding.findingId);
-      if (!allClosed) {
-        // Not all actions are closed, determine status based on actions
-        const actions = findingActionsMap[finding.findingId] || [];
-        if (actions.length === 0) {
-          return 'Open'; // No actions yet
-        }
-
-        // Check action statuses to determine finding status
-        const hasInProgress = actions.some(a => {
-          const status = a.status?.toLowerCase() || '';
-          return status === 'inprogress' || status === 'in progress' || (a.progressPercent > 0 && a.progressPercent < 100);
-        });
-
-        if (hasInProgress) {
-          return 'In Progress';
-        }
-
-        const hasReviewed = actions.some(a => a.status?.toLowerCase() === 'reviewed');
-        if (hasReviewed) {
-          return 'Review';
-        }
-
-        const hasApproved = actions.some(a => a.status?.toLowerCase() === 'approved');
-        if (hasApproved) {
-          return 'Approved';
-        }
-
-        // Default to Open if we can't determine
-        return 'Open';
-      }
+    // If no actions assigned yet, return original status
+    if (actions.length === 0) {
+      return originalStatus;
     }
+
+    // Check all action statuses to determine finding status
+    const actionStatuses = actions.map(a => a.status?.toLowerCase() || '');
     
+    // All actions closed -> Finding Closed
+    const allClosed = actions.every(a => {
+      const status = a.status?.toLowerCase() || '';
+      return status === 'closed' || a.closedAt !== null;
+    });
+    if (allClosed) {
+      return 'Closed';
+    }
+
+    // All actions verified -> Finding Verified
+    const allVerified = actionStatuses.every(s => s === 'verified');
+    if (allVerified) {
+      return 'Verified';
+    }
+
+    // All actions approved/completed -> Finding Approved
+    const allApproved = actionStatuses.every(s => 
+      s === 'approved' || 
+      s === 'completed' || 
+      s === 'complete'
+    );
+    if (allApproved) {
+      return 'Approved';
+    }
+
+    // Any action rejected/declined -> Finding Returned
+    const hasRejected = actionStatuses.some(s => s === 'rejected' || s === 'declined' || s === 'leadrejected' || s === 'returned');
+    if (hasRejected) {
+      return 'Returned';
+    }
+
+    // Any action in progress -> Finding In Progress
+    const hasInProgress = actionStatuses.some(s => 
+      s === 'inprogress' || 
+      s === 'in progress' || 
+      s === 'assigned'
+    );
+    if (hasInProgress) {
+      return 'InProgress';
+    }
+
+    // Any action under review -> Finding Under Review
+    const hasUnderReview = actionStatuses.some(s => 
+      s === 'underreview' || 
+      s === 'under review' || 
+      s === 'pendingreview' ||
+      s === 'pending review'
+    );
+    if (hasUnderReview) {
+      return 'UnderReview';
+    }
+
+    // Default: return original status
     return originalStatus;
   };
 
@@ -621,7 +616,7 @@ const ActionReview = () => {
                            
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getAuditTypeBadgeColorLocal(audit.type)}`}>
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getAuditTypeBadgeColor(audit.type, 'light')}`}>
                                 {audit.type || 'N/A'}
                               </span>
                             </td>
@@ -631,7 +626,7 @@ const ActionReview = () => {
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getStatusBadgeColor(audit.status)}`}>
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${getStatusColor(audit.status)}`}>
                                 {audit.status || 'Unknown'}
                               </span>
                             </td>
@@ -706,9 +701,16 @@ const ActionReview = () => {
 
                   >
                     <div className="flex items-center justify-between">
-                      <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700">
-                        {dept.name}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-700">
+                          {dept.name}
+                        </h3>
+                        {dept.isSensitive && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-200 uppercase tracking-wide">
+                            Sensitive Area
+                          </span>
+                        )}
+                      </div>
                       <svg className="w-5 h-5 text-gray-400 group-hover:text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
@@ -776,16 +778,10 @@ const ActionReview = () => {
                               {finding.title}
                             </h3>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                finding.severity?.toLowerCase() === 'high' || finding.severity?.toLowerCase() === 'major'
-                                  ? 'bg-red-100 text-red-700'
-                                  : finding.severity?.toLowerCase() === 'medium' || finding.severity?.toLowerCase() === 'normal'
-                                  ? 'bg-yellow-100 text-yellow-700'
-                                  : 'bg-green-100 text-green-700'
-                              }`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(finding.severity || 'Low')}`}>
                                 {finding.severity || 'N/A'}
                               </span>
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${getStatusColor(getDisplayStatus(finding))}`}>
                                 {getDisplayStatus(finding) || 'No status'}
                               </span>
                               {showDisagreedTab && (
@@ -894,21 +890,7 @@ const ActionReview = () => {
                             {action.dueDate ? formatDate(action.dueDate) : 'N/A'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold border-2 ${
-                              action.status?.toLowerCase() === 'complete'
-                                ? 'bg-green-100 text-green-700 border-green-200'
-                                : action.status?.toLowerCase() === 'rejected'
-                                ? 'bg-red-100 text-red-700 border-red-200'
-                                : action.status?.toLowerCase() === 'approved'
-                                ? 'bg-blue-100 text-blue-700 border-blue-200'
-                                : action.status?.toLowerCase() === 'verified'
-                                ? 'bg-purple-100 text-purple-700 border-purple-200'
-                                : action.status?.toLowerCase() === 'reviewed'
-                                ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
-                                : action.status?.toLowerCase() === 'approved'
-                                ? 'bg-cyan-100 text-cyan-700 border-cyan-200'
-                                : 'bg-gray-100 text-gray-700 border-gray-200'
-                            }`}>
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${getStatusColor(action.status || '')}`}>
                               {action.status || 'N/A'}
                             </span>
                           </td>
