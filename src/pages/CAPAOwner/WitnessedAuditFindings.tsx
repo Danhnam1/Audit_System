@@ -206,6 +206,7 @@ const CAPAOwnerWitnessedAuditFindings = () => {
               <option value="All">All</option>
               <option value="PendingWitnessConfirmation">Pending Confirmation</option>
               <option value="Confirmed">Confirmed</option>
+              <option value="WitnessDisagreed">Witness Disagreed</option>
               <option value="Rejected">Rejected</option>
               <option value="Open">Open</option>
               <option value="Received">Received</option>
@@ -282,11 +283,13 @@ const CAPAOwnerWitnessedAuditFindings = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
-                            className={`px-2 py-1 rounded text-xs font-medium ${
+                            className={`px-2 py-1 rounded-2xl text-xs font-medium ${
                               finding.status === 'PendingWitnessConfirmation'
                                 ? 'bg-purple-100 text-purple-700'
                                 : finding.status === 'Confirmed'
                                 ? 'bg-green-100 text-green-700'
+                                : finding.status === 'WitnessDisagreed'
+                                ? 'bg-red-100 text-red-700'
                                 : finding.status === 'Rejected'
                                 ? 'bg-red-100 text-red-700'
                                 : finding.status === 'Open'
@@ -302,6 +305,8 @@ const CAPAOwnerWitnessedAuditFindings = () => {
                           >
                             {finding.status === 'PendingWitnessConfirmation' 
                               ? 'Pending Confirmation' 
+                              : finding.status === 'WitnessDisagreed'
+                              ? 'Witness Disagreed'
                               : finding.status}
                           </span>
                         </td>

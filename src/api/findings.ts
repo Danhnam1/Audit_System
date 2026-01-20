@@ -49,7 +49,8 @@ export interface Finding {
   reviewerId?: string;
   source?: string;
   externalAuditorName?: string;
-  witnessDisagreementReason?: string; // Reason when witness rejects finding
+  witnessDisagreementReason?: string; // Reason when witness rejects finding (frontend name)
+  reasonReturn?: string; // API field name for witness rejection reason
   audit?: {
     auditId: string;
     title: string;
@@ -229,7 +230,7 @@ export const witnessConfirmFinding = async (findingId: string): Promise<void> =>
 // Witness disagree finding (reject with reason)
 export const witnessDisagreeFinding = async (findingId: string, reason: string): Promise<void> => {
   const payload = {
-    Reason: reason
+    ReasonReturn: reason
   };
   await apiClient.put(`/Findings/${findingId}/witness-disagreed`, payload);
 };

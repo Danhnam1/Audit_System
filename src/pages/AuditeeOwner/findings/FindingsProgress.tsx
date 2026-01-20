@@ -86,10 +86,15 @@ const FindingsProgress = () => {
   const formatVNDate = (date: Date) =>
     date.toLocaleDateString('en-CA');
 
-  // Get display status for finding - just return the finding's status directly
+  // Get display status for finding - map status to user-friendly text
   const getDisplayStatus = (finding: Finding): string => {
     const originalStatus = finding.status || 'N/A';
     console.log('[GET DISPLAY STATUS] Finding:', finding.findingId, 'Status:', originalStatus);
+    
+    // Map status to user-friendly text
+    if (originalStatus === 'WitnessDisagreed') return 'Witness Disagreed';
+    if (originalStatus === 'PendingWitnessConfirmation') return 'Pending Confirmation';
+    
     return originalStatus;
   };
 
@@ -1444,7 +1449,7 @@ const FindingsProgress = () => {
                                 <div className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">
                                   {finding.title}
                                 </div>
-                                <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-300 flex-shrink-0">
+                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor('WitnessDisagreed')} flex-shrink-0`}>
                                   Witness Disagreed
                                 </span>
                               </div>
