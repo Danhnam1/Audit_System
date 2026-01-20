@@ -245,22 +245,15 @@ export const NotificationToastContainer: React.FC = () => {
     }
   };
 
-  // Load notifications on mount and periodically
+  // Load notifications only once on mount (for initial toast if any)
+  // After that, rely on SignalR real-time updates only (no polling)
+  const hasLoadedRef = useRef(false);
   useEffect(() => {
-    if (userIdFromToken || user?.email) {
-      // Initial load
+    if ((userIdFromToken || user?.email) && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
       loadAndShowNewestNotification();
-      
-      // Poll for new notifications every 10 seconds
-      const intervalId = setInterval(() => {
-        loadAndShowNewestNotification();
-      }, 10000);
-
-      return () => {
-        clearInterval(intervalId);
-      };
     }
-  }, [userIdFromToken, user?.email]);
+  }, [userIdFromToken, user?.email]); // Remove polling - use SignalR real-time only
 
   // Also listen to SignalR notifications
   useEffect(() => {

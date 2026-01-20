@@ -4,9 +4,16 @@ import { useAuth } from '../../../contexts';
 import { getAuditPlans } from '../../../api/audits';
 import { getAuditDocuments, downloadAuditDocumentById } from '../../../api/auditDocuments';
 import { getAdminUsers, getUserById } from '../../../api/adminUsers';
-import { getAuditTeam } from '../../../api/auditTeam';
+import { getAuditTeam, getAuditorsByAuditId } from '../../../api/auditTeam';
+import { getDepartments } from '../../../api/departments';
+import { getAuditCriteria } from '../../../api/auditCriteria';
+import { getChecklistTemplates } from '../../../api/checklists';
+import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
 import { unwrap } from '../../../utils/normalize';
 import { exportFile } from '../../../utils/globalUtil';
+import { PlanDetailsModal } from '../AuditPlanning/components/PlanDetailsModal';
+import { getCriterionName, getDepartmentName } from '../../../helpers/auditPlanHelpers';
+import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from '../../../constants';
 
 interface AuditDocRow {
   auditId: string;
@@ -47,6 +54,18 @@ const HistoryUploadPage = () => {
   const [docsLoaded, setDocsLoaded] = useState(false);
   const lastDocFetchKeyRef = useRef<string>('');
 
+  // State for PlanDetailsModal
+  const [showPlanDetailsModal, setShowPlanDetailsModal] = useState(false);
+  const [selectedPlanDetails, setSelectedPlanDetails] = useState<any>(null);
+  const [templatesForSelectedPlan, setTemplatesForSelectedPlan] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [criteria, setCriteria] = useState<any[]>([]);
+  const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
+  const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
+  const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
+  const [auditTeamsForPlan, setAuditTeamsForPlan] = useState<any[]>([]);
+  const [currentUserIdForModal, setCurrentUserIdForModal] = useState<string | null>(null);
+
   // Load audits (Submitted + Completed) similar to reports page
   useEffect(() => {
     const loadAudits = async () => {
@@ -82,85 +101,97 @@ const HistoryUploadPage = () => {
         // Normalize currentUserId for comparison (lowercase, trim)
         const normalizedCurrentUserId = currentUserId ? String(currentUserId).toLowerCase().trim() : '';
         
-        // Build set of auditIds where current user is a team member
-        const userAuditIds = new Set<string>();
-        teams.forEach((t: any) => {
-          const teamUserId = String(t.userId || '').trim().toLowerCase();
-          if (teamUserId && teamUserId === normalizedCurrentUserId) {
-            const auditIdStr = String(t.auditId || '').trim();
-            if (auditIdStr) {
-              userAuditIds.add(auditIdStr);
-              userAuditIds.add(auditIdStr.toLowerCase());
-            }
-          }
-        });
-        
         const res = await getAuditPlans();
         const arr = unwrap(res);
         
-        // Get audit IDs where current user is the creator
-        const creatorAuditIds = new Set<string>();
-        if (normalizedCurrentUserId) {
-          (Array.isArray(arr) ? arr : []).forEach((a: any) => {
-            // Get createdBy from audit (try multiple fields)
-            const createdBy = a?.createdBy || a?.createdByUser?.userId || a?.createdByUser?.id || a?.createdByUser?.$id;
-            const createdByStr = createdBy ? String(createdBy).toLowerCase().trim() : null;
-            
-            if (createdByStr === normalizedCurrentUserId) {
-              // Add all possible auditId formats
-              const auditId = a?.auditId || a?.id || a?.$id;
-              if (auditId) {
-                const auditIdStr = String(auditId).trim();
-                if (auditIdStr) {
-                  creatorAuditIds.add(auditIdStr);
-                  creatorAuditIds.add(auditIdStr.toLowerCase());
-                }
-              }
-            }
-          });
-        }
-        
-        // Filter audits: show audits where user is in audit team OR is the creator
-        const filtered = (Array.isArray(arr) ? arr : []).filter((a: any) => {
-          // Check if user is in audit team OR is the creator
-          const hasTeamAccess = normalizedCurrentUserId && userAuditIds.size > 0;
-          const hasCreatorAccess = normalizedCurrentUserId && creatorAuditIds.size > 0;
+        // Build a map of auditId -> team members from global teams list for faster lookup
+        const auditTeamsMap = new Map<string, Set<string>>();
+        teams.forEach((t: any) => {
+          const teamAuditId = String(t.auditId || '').trim();
+          const teamUserId = String(t.userId || t.id || t.$id || '').trim().toLowerCase();
           
-          if (!hasTeamAccess && !hasCreatorAccess) {
+          if (teamAuditId && teamUserId) {
+            if (!auditTeamsMap.has(teamAuditId)) {
+              auditTeamsMap.set(teamAuditId, new Set());
+            }
+            auditTeamsMap.get(teamAuditId)!.add(teamUserId);
+            // Also add lowercase version
+            const lowerAuditId = teamAuditId.toLowerCase();
+            if (!auditTeamsMap.has(lowerAuditId)) {
+              auditTeamsMap.set(lowerAuditId, new Set());
+            }
+            auditTeamsMap.get(lowerAuditId)!.add(teamUserId);
+          }
+        });
+        
+        // Filter audits: show audits where user is in audit team
+        // All members of the audit team should be able to view history upload
+        const filtered = (Array.isArray(arr) ? arr : []).filter((a: any) => {
+          // If no current user ID, don't show any audits
+          if (!normalizedCurrentUserId) {
             return false;
           }
           
-          // Check if this audit is in user's audit list (team member) OR creator list
+          // Get all possible auditId formats for this audit
           const auditIdCandidates = [
             a.auditId,
             a.id,
             a.$id
           ].filter(Boolean).map(id => String(id).trim());
           
-          // Check if any auditId format matches (team member OR creator)
-          const isUserAudit = auditIdCandidates.some(auditId => {
-            // Check team membership
-            if (userAuditIds.has(auditId)) return true;
-            if (userAuditIds.has(auditId.toLowerCase())) return true;
+          // Method 1: Check auditTeams from audit plan data (if available)
+          let isInPlanTeam = false;
+          const auditTeams = a?.auditTeams;
+          if (auditTeams) {
+            const teamsArray = Array.isArray(auditTeams) 
+              ? auditTeams 
+              : (auditTeams?.values ? (Array.isArray(auditTeams.values) ? auditTeams.values : unwrap(auditTeams.values) || []) : []);
             
-            // Check creator access
-            if (creatorAuditIds.has(auditId)) return true;
-            if (creatorAuditIds.has(auditId.toLowerCase())) return true;
-            
-            // Try lowercase version for team
-            const lowerAuditId = auditId.toLowerCase();
-            if (Array.from(userAuditIds).some(uid => uid.toLowerCase() === lowerAuditId)) return true;
-            
-            // Try lowercase version for creator
-            if (Array.from(creatorAuditIds).some(uid => uid.toLowerCase() === lowerAuditId)) return true;
-            
-            return false;
-          });
+            isInPlanTeam = teamsArray.some((member: any) => {
+              const memberUserId = member?.userId || member?.id || member?.$id;
+              if (!memberUserId) return false;
+              
+              const normalizedMemberUserId = String(memberUserId).toLowerCase().trim();
+              
+              if (normalizedMemberUserId === normalizedCurrentUserId) {
+                // Verify this team member belongs to this audit
+                const memberAuditId = String(member?.auditId || '').trim();
+                if (memberAuditId) {
+                  return auditIdCandidates.some(candidate => {
+                    const candidateStr = String(candidate).trim();
+                    return memberAuditId === candidateStr || 
+                           memberAuditId.toLowerCase() === candidateStr.toLowerCase();
+                  });
+                }
+                // If no auditId in member, assume it's for this audit
+                return true;
+              }
+              return false;
+            });
+          }
           
-          return isUserAudit;
+          // Method 2: Check from global teams map (most reliable for getAuditPlans response)
+          let isInGlobalTeam = false;
+          for (const auditId of auditIdCandidates) {
+            const auditIdStr = String(auditId).trim();
+            const teamMembers = auditTeamsMap.get(auditIdStr) || auditTeamsMap.get(auditIdStr.toLowerCase());
+            if (teamMembers && teamMembers.has(normalizedCurrentUserId)) {
+              isInGlobalTeam = true;
+              break;
+            }
+          }
+          
+          // Method 3: Check if current user is the creator
+          const createdBy = a?.createdBy || a?.createdByUser?.userId || a?.createdByUser?.id || a?.createdByUser?.$id;
+          const createdByStr = createdBy ? String(createdBy).toLowerCase().trim() : null;
+          const isCreator = createdByStr === normalizedCurrentUserId;
+          
+          // Show audit if user is in team (from plan or global) OR is creator
+          return isInPlanTeam || isInGlobalTeam || isCreator;
         });
         
         setAudits(filtered);
+        
         // Preload users once for name mapping
         try {
           const users = await getAdminUsers();
@@ -200,8 +231,49 @@ const HistoryUploadPage = () => {
             }
           });
           setUserMap(map);
+          
+          // Set current user ID for modal
+          if (currentUserId) {
+            setCurrentUserIdForModal(currentUserId);
+          }
+          
+          // Separate users into auditors and owners for PlanDetailsModal
+          const auditors = users.filter((u: any) => 
+            String(u.roleName || '').toLowerCase().includes('auditor')
+          );
+          const owners = users.filter((u: any) => 
+            String(u.roleName || '').toLowerCase().includes('auditee') ||
+            String(u.roleName || '').toLowerCase().includes('owner')
+          );
+          setAuditorOptions(auditors);
+          setOwnerOptions(owners);
         } catch (e) {
           console.warn('Load users for upload history failed', e);
+        }
+        
+        // Load departments, criteria, and templates for PlanDetailsModal
+        try {
+          const [deptsRes, criteriaRes, templatesRes] = await Promise.all([
+            getDepartments().catch(() => []),
+            getAuditCriteria().catch(() => []),
+            getChecklistTemplates().catch(() => [])
+          ]);
+          
+          const deptList = Array.isArray(deptsRes)
+            ? deptsRes.map((d: any) => ({
+                deptId: d.deptId ?? d.id ?? d.$id,
+                name: d.name || d.code || String(d.deptId ?? d.id ?? d.$id ?? "N/A"),
+              }))
+            : [];
+          setDepartments(deptList);
+          
+          const criteriaArr = Array.isArray(criteriaRes) ? criteriaRes : [];
+          setCriteria(criteriaArr);
+          
+          const templatesArr = Array.isArray(templatesRes) ? templatesRes : [];
+          setChecklistTemplates(templatesArr);
+        } catch (e) {
+          console.warn('Load departments/criteria/templates failed', e);
         }
       } catch (e) {
         console.error('Load audits failed', e);
@@ -405,25 +477,90 @@ const HistoryUploadPage = () => {
     (Array.isArray(audits) ? audits : []).map((a: any, idx: number) => {
       const id = resolveAuditId(a, idx);
       const title = a.title || `Audit ${idx + 1}`;
-      return { auditId: id, title };
+      return { 
+        auditId: id, 
+        title,
+        type: a.type || 'N/A',
+        status: a.status || 'N/A',
+        startDate: a.startDate || null,
+        endDate: a.endDate || null,
+        scope: a.scope || 'N/A',
+        fullAuditData: a // Store full audit data for PlanDetailsModal
+      };
     })
   ), [audits]);
 
   const visibleAuditRows = useMemo(() => {
-    if (!docsLoaded) return auditRows;
+    // Only show audits that have uploaded documents
+    if (!docsLoaded) return [];
     return auditRows.filter((row) => (documentsMap[row.auditId]?.length || 0) > 0);
   }, [auditRows, documentsMap, docsLoaded]);
 
-  const handleViewDetails = (auditId: string, auditTitle: string) => {
+  const handleViewUploadHistory = (auditId: string, auditTitle: string) => {
     setSelectedAuditId(auditId);
     setSelectedAuditTitle(auditTitle);
     setShowDetailModal(true);
+  };
+
+  const handleViewPlanDetails = async (auditRow: any) => {
+    const auditId = auditRow.auditId;
+    const fullAuditData = auditRow.fullAuditData;
+    
+    try {
+      // Ensure auditId is set in the plan details data
+      // PlanDetailsModal needs auditId to load schedules, teams, and scope departments
+      const planDetailsWithId = {
+        ...fullAuditData,
+        auditId: auditId || fullAuditData.auditId || fullAuditData.id || fullAuditData.$id,
+        id: auditId || fullAuditData.auditId || fullAuditData.id || fullAuditData.$id,
+      };
+      
+      // Load required data for PlanDetailsModal
+      const [templatesRes, teamsRes] = await Promise.all([
+        getAuditChecklistTemplateMapsByAudit(auditId).catch(() => []),
+        getAuditorsByAuditId(auditId).catch(() => [])
+      ]);
+
+      const templates = Array.isArray(templatesRes) ? templatesRes : [];
+      const teams = Array.isArray(teamsRes) ? unwrap(teamsRes) || [] : [];
+
+      // Normalize templates
+      const normalizedTemplates = templates.map((map: any) => ({
+        raw: map,
+        templateId: map.templateId ?? map.checklistTemplateId ?? map.template?.templateId ?? map.template?.id,
+      })).filter((x: any) => x.templateId != null);
+
+      setTemplatesForSelectedPlan(normalizedTemplates);
+      setAuditTeamsForPlan(teams);
+      // Set plan details with ensured auditId - PlanDetailsModal will auto-load schedules, teams, and scope departments
+      setSelectedPlanDetails(planDetailsWithId);
+      setShowPlanDetailsModal(true);
+    } catch (error) {
+      console.error('Failed to load plan details:', error);
+      // Still show modal with basic data - PlanDetailsModal will try to load schedules, teams, and departments
+      const planDetailsWithId = {
+        ...fullAuditData,
+        auditId: auditId || fullAuditData.auditId || fullAuditData.id || fullAuditData.$id,
+        id: auditId || fullAuditData.auditId || fullAuditData.id || fullAuditData.$id,
+      };
+      setSelectedPlanDetails(planDetailsWithId);
+      setTemplatesForSelectedPlan([]);
+      setAuditTeamsForPlan([]);
+      setShowPlanDetailsModal(true);
+    }
   };
 
   const handleCloseModal = () => {
     setShowDetailModal(false);
     setSelectedAuditId('');
     setSelectedAuditTitle('');
+  };
+
+  const handleClosePlanDetailsModal = () => {
+    setShowPlanDetailsModal(false);
+    setSelectedPlanDetails(null);
+    setTemplatesForSelectedPlan([]);
+    setAuditTeamsForPlan([]);
   };
 
 
@@ -468,14 +605,19 @@ const HistoryUploadPage = () => {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Audit Title</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Type</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Start Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">End Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Scope</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Number of files</th>
                   <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {loadingAudits && (
-                  <tr><td colSpan={3} className="px-6 py-4 text-sm text-gray-500">Loading audits...</td></tr>
+                  <tr><td colSpan={8} className="px-6 py-4 text-sm text-gray-500">Loading audits...</td></tr>
                 )}
                 {!loadingAudits && visibleAuditRows.map(r => {
                   const docs = documentsMap[r.auditId] || [];
@@ -484,21 +626,69 @@ const HistoryUploadPage = () => {
                       <td className="px-6 py-4">
                         <span className="text-sm font-medium text-gray-900">{r.title}</span>
                       </td>
+                      <td className="px-6 py-4">
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getAuditTypeBadgeColor ? getAuditTypeBadgeColor(r.type || '', 'default') : getBadgeVariant('primary-light')}`}>
+                          {r.type}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`text-xs px-3 py-1 rounded-full font-semibold ${getStatusColor(r.status)}`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-700">
+                          {r.startDate
+                            ? new Date(r.startDate).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-700">
+                          {r.endDate
+                            ? new Date(r.endDate).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-medium')}`}>
+                          {r.scope}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center justify-center min-w-[2rem] h-8 rounded-full bg-primary-50 text-primary-700 text-sm font-semibold border border-primary-100">{docs.length}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => handleViewDetails(r.auditId, r.title)}
-                          className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-                        >View Details</button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleViewUploadHistory(r.auditId, r.title)}
+                            className="text-primary-600 hover:text-primary-700 text-sm font-medium hover:underline"
+                          >
+                            View Upload History
+                          </button>
+                          <span className="text-gray-300">|</span>
+                          <button
+                            onClick={() => handleViewPlanDetails(r)}
+                            className="text-primary-600 hover:text-primary-700 text-sm font-medium hover:underline"
+                          >
+                            View Plan Details
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
                 {!loadingAudits && visibleAuditRows.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-6 py-4 text-sm text-gray-500">
+                    <td colSpan={8} className="px-6 py-4 text-sm text-gray-500 text-center">
                       {loadingDocs || !docsLoaded
                         ? 'Checking upload history...'
                         : 'Only audits with uploaded documents are displayed.'}
@@ -610,6 +800,49 @@ const HistoryUploadPage = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Plan Details Modal */}
+      {showPlanDetailsModal && selectedPlanDetails && (
+        <PlanDetailsModal
+          showModal={showPlanDetailsModal}
+          selectedPlanDetails={selectedPlanDetails}
+          templatesForPlan={templatesForSelectedPlan}
+          onClose={handleClosePlanDetailsModal}
+          getCriterionName={(id: string) => getCriterionName(id, criteria)}
+          getDepartmentName={(id: string | number) => getDepartmentName(id, departments)}
+          getStatusColor={getStatusColor}
+          getBadgeVariant={getBadgeVariant}
+          getAuditTypeBadgeColor={getAuditTypeBadgeColor}
+          ownerOptions={ownerOptions}
+          auditorOptions={auditorOptions}
+          getTemplateName={(tid) => {
+            if (!tid) return "Unknown Template";
+            const template = checklistTemplates.find(
+              (t: any) =>
+                String(t.templateId || t.id || t.$id || "") === String(tid)
+            );
+            return (
+              template?.title || template?.name || `Template ${String(tid)}`
+            );
+          }}
+          getTemplateInfo={(tid) => {
+            if (!tid) return null;
+            const template = checklistTemplates.find(
+              (t: any) =>
+                String(t.templateId || t.id || t.$id || "") === String(tid)
+            );
+            if (!template) return null;
+            return {
+              name: template.title || template.name,
+              version: template.version,
+              description: template.description,
+            };
+          }}
+          currentUserId={currentUserIdForModal}
+          auditTeamsForPlan={auditTeamsForPlan}
+          hideSections={[]}
+        />
       )}
     </MainLayout>
   );

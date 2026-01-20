@@ -16,9 +16,10 @@ import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/au
 import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getAuditPlanRevisionRequestsByAuditId, type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
-import { getAuditChecklistItems, getCompliantIdByAuditItemId } from '../../../api/checklists';
+import { getAuditChecklistItems, getCompliantIdByAuditItemId, getChecklistItemCompliantDetails } from '../../../api/checklists';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
+import { getFindingsByAudit, getFindingById } from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
 import FilterBar, { type ActiveFilters } from '../../../components/filters/FilterBar';
 import { toast } from 'react-toastify';
@@ -48,9 +49,10 @@ const SQAStaffReports = () => {
   const [rejectReasonText, setRejectReasonText] = useState<string>('');
   const [rejectSchedules, setRejectSchedules] = useState<any[]>([]);
   const [loadingRejectSchedules, setLoadingRejectSchedules] = useState(false);
-  const [rejectedFindings, setRejectedFindings] = useState<any[]>([]);
-  const [rejectedCompliantItems, setRejectedCompliantItems] = useState<any[]>([]);
-  const [loadingRejectedItems, setLoadingRejectedItems] = useState(false);
+  // Returned findings and compliant items with reasonReturn
+  const [returnedFindings, setReturnedFindings] = useState<Array<{ id: string; title: string; reasonReturn?: string }>>([]);
+  const [returnedCompliantItems, setReturnedCompliantItems] = useState<Array<{ id: number; title: string; reasonReturn?: string }>>([]);
+  const [loadingReturnedItems, setLoadingReturnedItems] = useState(false);
   const [_uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [_leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [creatorAuditIds, setCreatorAuditIds] = useState<Set<string>>(new Set()); // auditId -> creator can resubmit
@@ -98,6 +100,8 @@ const SQAStaffReports = () => {
   // Root causes map: findingId -> rootCauses[]
   const [rootCausesMap, setRootCausesMap] = useState<Record<string, any[]>>({});
   const [loadingRootCauses, setLoadingRootCauses] = useState<Record<string, boolean>>({});
+  // All findings from API (to include WitnessConfirmReturned findings)
+  const [allFindingsFromAPI, setAllFindingsFromAPI] = useState<any[]>([]);
 
   // Derived datasets for summary rendering
   const severityEntries = useMemo(() => {
@@ -118,6 +122,49 @@ const SQAStaffReports = () => {
         : (summary as any)?.findingsInAudit;
 
     const raw = unwrap(src);
+    
+    // Create a map of findingId -> finding from summary to check for duplicates
+    const summaryFindingIds = new Set<string>();
+    raw.forEach((m: any) => {
+      const findings = unwrap(m?.findings) || [];
+      findings.forEach((f: any) => {
+        const findingId = String(f?.findingId || f?.id || '');
+        if (findingId) summaryFindingIds.add(findingId);
+      });
+    });
+    
+    // Get WitnessConfirmReturned findings that are not in summary
+    const witnessConfirmReturnedFindings = allFindingsFromAPI.filter((f: any) => {
+      const findingId = String(f?.findingId || f?.id || '');
+      const status = String(f?.status || '').toLowerCase();
+      return findingId && status === 'witnessconfirmreturned' && !summaryFindingIds.has(findingId);
+    });
+    
+    // If no months in summary but we have WitnessConfirmReturned findings, create a single entry
+    if (raw.length === 0 && witnessConfirmReturnedFindings.length > 0) {
+      return [{
+        key: 'all',
+        monthNum: 0,
+        label: 'All Findings',
+        total: witnessConfirmReturnedFindings.length,
+        open: 0,
+        overdue: 0,
+        items: witnessConfirmReturnedFindings,
+      }];
+    }
+    
+    // Group WitnessConfirmReturned findings by month (use created date)
+    const witnessFindingsByMonth = new Map<number, any[]>();
+    witnessConfirmReturnedFindings.forEach((f: any) => {
+      const createdDate = f?.createdAt ? new Date(f.createdAt) : new Date();
+      const month = createdDate.getMonth() + 1; // 1-12
+      if (!witnessFindingsByMonth.has(month)) {
+        witnessFindingsByMonth.set(month, []);
+      }
+      witnessFindingsByMonth.get(month)!.push(f);
+    });
+    
+    // Merge findings into existing months, or add to first month if no match
     return raw.map((m: any, idx: number) => {
       const mNum = Number(m?.month ?? m?.monthNumber ?? 0);
       const label =
@@ -128,17 +175,38 @@ const SQAStaffReports = () => {
       // Hiển thị TẤT CẢ findings (bao gồm cả Closed) để tổng số và chi tiết luôn khớp
       const allFindings = unwrap(m?.findings) || [];
       
+      // Add WitnessConfirmReturned findings for this month if any
+      const witnessFindings = witnessFindingsByMonth.get(mNum) || [];
+      const mergedFindings = [...allFindings, ...witnessFindings];
+      
       return {
         key: `${mNum || idx}`,
         monthNum: mNum,
         label,
-        total: Number(m?.total ?? 0),
+        total: Number(m?.total ?? 0) + witnessFindings.length,
         open: Number(m?.open ?? 0),
         overdue: Number(m?.overdue ?? 0),
-        items: allFindings,
+        items: mergedFindings,
       };
+    }).map((monthEntry, idx) => {
+      // If this is the first month and there are still unassigned WitnessConfirmReturned findings,
+      // add them to the first month to keep everything in one table
+      if (idx === 0) {
+        const unassignedWitnessFindings = Array.from(witnessFindingsByMonth.entries())
+          .filter(([month]) => !raw.some((m: any) => Number(m?.month ?? m?.monthNumber ?? 0) === month))
+          .flatMap(([, findings]) => findings);
+        
+        if (unassignedWitnessFindings.length > 0) {
+          return {
+            ...monthEntry,
+            items: [...monthEntry.items, ...unassignedWitnessFindings],
+            total: monthEntry.total + unassignedWitnessFindings.length,
+          };
+        }
+      }
+      return monthEntry;
     });
-  }, [summary]);
+  }, [summary, allFindingsFromAPI]);
 
 
   // Get unique departments from checklist items
@@ -970,15 +1038,17 @@ const SQAStaffReports = () => {
       const currentAuditId = selectedAuditId; // Capture current auditId to check for changes
       setSummaryTab('finding');
       try {
-        const [sum, requests] = await Promise.all([
+        const [sum, requests, allFindings] = await Promise.all([
           getAuditSummary(currentAuditId),
-          getAuditPlanRevisionRequestsByAuditId(currentAuditId).catch(() => [])
+          getAuditPlanRevisionRequestsByAuditId(currentAuditId).catch(() => []),
+          getFindingsByAudit(currentAuditId).catch(() => []) // Fetch all findings to include WitnessConfirmReturned
         ]);
         // Only update summary if selectedAuditId hasn't changed during the async call
         // This prevents race conditions where reloadReports() might change selectedAuditId
         if (String(selectedAuditId) === String(currentAuditId)) {
           setSummary(sum);
           setExtensionRequests(prev => ({ ...prev, [currentAuditId]: requests }));
+          setAllFindingsFromAPI(Array.isArray(allFindings) ? allFindings : []);
           const total = Number((sum as any)?.totalFindings ?? 0);
           if (!isNaN(total)) {
             setFindingsMap((prev) => ({ ...prev, [String(currentAuditId)]: total }));
@@ -1199,7 +1269,6 @@ const SQAStaffReports = () => {
       
       toast.success(`Submit successfully. Status: ${newStatus}`);
       setShowSubmitModal(false);
-      setShowSummary(false);
       
       // Dispatch event to notify LeadReports page to reload
       try {
@@ -1214,8 +1283,9 @@ const SQAStaffReports = () => {
         console.warn('[Reports] Failed to dispatch reportSubmitted event:', err);
       }
       
-      // Reload page to sync with backend
-      window.location.reload();
+      // Reload to sync with backend - state has already been updated above for immediate UI feedback
+      // reloadReports will merge with current state, so table won't disappear
+      await reloadReports();
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to submit to Lead Auditor. Please try again.'));
@@ -1600,13 +1670,13 @@ const SQAStaffReports = () => {
                           const exportTooltip = !approved
                             ? 'Export is available only after the report request is approved'
                             : !isCreator
-                              ? 'Only the creator can export reports'
+                              ? 'Only the Lead of the Auditor Team can export reports'
                               : 'Export PDF report';
                           
                           const uploadTooltip = !approved
                             ? 'Upload is available only after the report request is approved'
                             : !isCreator
-                              ? 'Only the creator can upload signed reports'
+                              ? 'Only the Lead of the Auditor Team can upload signed reports'
                               : uploadLoading[auditIdNorm]
                                 ? 'Upload in progress...'
                                 : 'Upload signed report';
@@ -1621,7 +1691,7 @@ const SQAStaffReports = () => {
                                     return;
                                   }
                                   if (!isCreator) {
-                                    toast.error('Only the creator can export reports.');
+                                    toast.error('Only the Lead of the Auditor Team can export reports.');
                                     return;
                                   }
                                   handleExportPdfForRow(auditIdStr, audit.title);
@@ -1647,7 +1717,7 @@ const SQAStaffReports = () => {
                                     return;
                                   }
                                   if (!isCreator) {
-                                    toast.error('Only the creator can upload reports.');
+                                    toast.error('Only the Lead of the Auditor Team can upload reports.');
                                     return;
                                   }
                                   onClickUpload(auditIdStr);
@@ -1757,7 +1827,7 @@ const SQAStaffReports = () => {
                               ? 'Resubmit to Lead Auditor'
                               : 'Loading reject reason...'
                             : !canSubmit
-                              ? 'Only the creator can submit reports'
+                              ? 'Only the Lead of the Auditor Team can submit reports'
                             : 'Submit to Lead Auditor';
 
                       return (
@@ -1773,7 +1843,7 @@ const SQAStaffReports = () => {
                             disabled && submitted && !rejected
                               ? 'Report has been submitted and is pending review'
                               : disabled && !canSubmit
-                              ? 'Only the creator can submit reports'
+                              ? 'Only the Lead of the Auditor Team can submit reports'
                               : undefined
                           }
                         >
@@ -1835,81 +1905,94 @@ const SQAStaffReports = () => {
                                                   reasonText.includes('Schedules:') && 
                                                   reasonText.includes('updated');
                         
-                        // Parse rejection note to extract findings/compliant items info
-                        const hasFindings = reasonText.includes('finding(s)') || reasonText.includes('finding');
-                        const hasCompliantItems = reasonText.includes('compliant item(s)') || reasonText.includes('compliant');
+                        if (hasScheduleChanges && selectedAuditId) {
+                          // Load schedules for this audit
+                          setLoadingRejectSchedules(true);
+                          try {
+                            const schedulesRes = await getAuditSchedules(selectedAuditId);
+                            const schedulesData = unwrap(schedulesRes);
+                            const schedulesList = Array.isArray(schedulesData) ? schedulesData : [];
+                            setRejectSchedules(schedulesList);
+                          } catch (err) {
+                            console.error('Failed to load schedules for rejection modal', err);
+                            setRejectSchedules([]);
+                          } finally {
+                            setLoadingRejectSchedules(false);
+                          }
+                        } else {
+                          setRejectSchedules([]);
+                        }
                         
-                        setLoadingRejectedItems(true);
-                        setRejectedFindings([]);
-                        setRejectedCompliantItems([]);
-                        
-                        try {
-                          // Load findings and compliant items if mentioned in rejection note
-                          if ((hasFindings || hasCompliantItems) && selectedAuditId && summary) {
-                            // Extract findings from summary
-                            const allFindings: any[] = [];
-                            const byAudit = unwrap((summary as any).findingsInAudit);
-                            byAudit.forEach((m: any) =>
-                              unwrap(m?.findings).forEach((f: any) => allFindings.push(f)),
-                            );
-                            const months = unwrap((summary as any).findingsByMonth);
-                            months.forEach((m: any) =>
-                              unwrap(m?.findings).forEach((f: any) => allFindings.push(f)),
-                            );
-                            unwrap((summary as any).findings).forEach((f: any) => allFindings.push(f));
-                            unwrap((summary as any).byDepartment).forEach((d: any) => {
-                              unwrap(d?.findings).forEach((f: any) => allFindings.push(f));
+                        // Load returned findings and compliant items with reasonReturn
+                        if (selectedAuditId) {
+                          setLoadingReturnedItems(true);
+                          try {
+                            // Get all findings and filter for Return status
+                            const allFindings = await getFindingsByAudit(selectedAuditId);
+                            const returnedFindingsList = allFindings.filter((f: any) => {
+                              const status = String(f?.status || '').toLowerCase();
+                              return status === 'return' || status === 'returned' || status.includes('return');
                             });
                             
-                            // Filter findings with "return" status
-                            if (hasFindings) {
-                              const returnedFindings = allFindings.filter((f: any) => {
-                                const findingStatus = String(f?.status || '').toLowerCase().trim();
-                                return findingStatus === 'return' || 
-                                       findingStatus === 'returned' || 
-                                       findingStatus.includes('return');
-                              });
-                              setRejectedFindings(returnedFindings);
-                            }
+                            // Fetch reasonReturn for each returned finding
+                            const findingsWithReason = await Promise.all(
+                              returnedFindingsList.map(async (f: any) => {
+                                try {
+                                  const findingDetail: any = await getFindingById(f.findingId || f.id);
+                                  return {
+                                    id: f.findingId || f.id,
+                                    title: f.title || findingDetail?.title || '—',
+                                    reasonReturn: (findingDetail as any)?.reasonReturn || null,
+                                  };
+                                } catch (err) {
+                                  console.error('Failed to load finding detail:', f.findingId || f.id, err);
+                                  return {
+                                    id: f.findingId || f.id,
+                                    title: f.title || '—',
+                                    reasonReturn: null,
+                                  };
+                                }
+                              })
+                            );
+                            setReturnedFindings(findingsWithReason);
                             
-                            // Load compliant items if mentioned
-                            if (hasCompliantItems) {
-                              try {
-                                const checklistItems = await getAuditChecklistItems(selectedAuditId);
-                                const compliantItems = (checklistItems || []).filter((item: any) => {
-                                  const rawStatus = String(item.status || '').toLowerCase();
-                                  const isCompliant = rawStatus === 'compliant' || rawStatus.includes('compliant');
-                                  // Check if markStatus is Pending (was returned)
-                                  const markStatus = String(item.markStatus || '').toLowerCase();
-                                  const isPending = markStatus === 'pending';
-                                  return isCompliant && isPending;
-                                });
-                                setRejectedCompliantItems(compliantItems);
-                              } catch (err) {
-                                console.error('Failed to load compliant items:', err);
-                              }
-                            }
+                            // Get all compliant items and filter for Return status
+                            const allCompliantItems = await getAuditChecklistItems(selectedAuditId);
+                            const compliantItemsArray = Array.isArray(allCompliantItems) ? allCompliantItems : unwrap(allCompliantItems);
+                            const returnedCompliantList = compliantItemsArray.filter((item: any) => {
+                              const status = String(item?.status || '').toLowerCase();
+                              return status === 'return' || status === 'returned' || status.includes('return');
+                            });
+                            
+                            // Fetch reasonReturn for each returned compliant item
+                            const compliantWithReason = await Promise.all(
+                              returnedCompliantList.map(async (item: any) => {
+                                try {
+                                  const auditItemId = item.auditItemId || item.auditChecklistItemId || item.id;
+                                  const compliantId = await getCompliantIdByAuditItemId(auditItemId);
+                                  if (compliantId) {
+                                    const compliantDetail = await getChecklistItemCompliantDetails(compliantId);
+                                    return {
+                                      id: compliantId,
+                                      title: item.questionTextSnapshot || item.questionText || item.title || compliantDetail?.title || '—',
+                                      reasonReturn: compliantDetail?.reasonReturn || null,
+                                    };
+                                  }
+                                  return null;
+                                } catch (err) {
+                                  console.error('Failed to load compliant detail:', item.auditItemId || item.id, err);
+                                  return null;
+                                }
+                              })
+                            );
+                            setReturnedCompliantItems(compliantWithReason.filter(Boolean) as Array<{ id: number; title: string; reasonReturn?: string }>);
+                          } catch (err) {
+                            console.error('Failed to load returned items:', err);
+                            setReturnedFindings([]);
+                            setReturnedCompliantItems([]);
+                          } finally {
+                            setLoadingReturnedItems(false);
                           }
-                          
-                          // Load schedules if needed
-                          if (hasScheduleChanges && selectedAuditId) {
-                            setLoadingRejectSchedules(true);
-                            try {
-                              const schedulesRes = await getAuditSchedules(selectedAuditId);
-                              const schedulesData = unwrap(schedulesRes);
-                              const schedulesList = Array.isArray(schedulesData) ? schedulesData : [];
-                              setRejectSchedules(schedulesList);
-                            } catch (err) {
-                              console.error('Failed to load schedules for rejection modal', err);
-                              setRejectSchedules([]);
-                            } finally {
-                              setLoadingRejectSchedules(false);
-                            }
-                          } else {
-                            setRejectSchedules([]);
-                          }
-                        } finally {
-                          setLoadingRejectedItems(false);
                         }
                         
                         setShowRejectReasonModal(true);
@@ -2116,8 +2199,10 @@ const SQAStaffReports = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {(filteredMonths.length ? m.items : m.items).map((f: any, idx: number) => (
-                              <tr key={f.findingId || idx} className="hover:bg-gray-50">
+                            {(filteredMonths.length ? m.items : m.items).map((f: any, idx: number) => {
+                              const isWitnessConfirmReturned = String(f?.status || '').toLowerCase() === 'witnessconfirmreturned';
+                              return (
+                              <tr key={f.findingId || idx} className={`hover:bg-gray-50 ${isWitnessConfirmReturned ? 'bg-yellow-50 border-l-4 border-yellow-500' : ''}`}>
                                 <td className="px-3 py-2">{idx + 1}</td>
                                 <td className="px-3 py-2 font-medium text-gray-900">
                                   {f.title || '—'}
@@ -2202,7 +2287,8 @@ const SQAStaffReports = () => {
                                   </button>
                                 </td>
                               </tr>
-                            ))}
+                            );
+                            })}
                             {m.items.length === 0 && (
                               <tr>
                                 <td
@@ -2536,6 +2622,69 @@ const SQAStaffReports = () => {
                   </div>
                   </div>
                   
+                  {/* Show returned findings and compliant items with reasonReturn */}
+                  {(returnedFindings.length > 0 || returnedCompliantItems.length > 0) && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Returned Items:
+                      </label>
+                      {loadingReturnedItems ? (
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                          <div className="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                          <p className="text-xs text-gray-500">Loading returned items...</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {/* Returned Findings */}
+                          {returnedFindings.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-700 mb-2">
+                                Returned Findings ({returnedFindings.length}):
+                              </p>
+                              <div className="space-y-2 max-h-48 overflow-y-auto">
+                                {returnedFindings.map((finding, idx) => (
+                                  <div key={finding.id} className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                    <p className="text-sm font-medium text-gray-900 mb-1">{idx + 1}. {finding.title}</p>
+                                    {finding.reasonReturn ? (
+                                      <p className="text-xs text-gray-700 mt-1">
+                                        <span className="font-semibold">Reason:</span> {finding.reasonReturn}
+                                      </p>
+                                    ) : (
+                                      <p className="text-xs text-gray-500 italic">No reason provided</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Returned Compliant Items */}
+                          {returnedCompliantItems.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-700 mb-2">
+                                Returned Compliant Items ({returnedCompliantItems.length}):
+                              </p>
+                              <div className="space-y-2 max-h-48 overflow-y-auto">
+                                {returnedCompliantItems.map((item, idx) => (
+                                  <div key={item.id} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <p className="text-sm font-medium text-gray-900 mb-1">{idx + 1}. {item.title}</p>
+                                    {item.reasonReturn ? (
+                                      <p className="text-xs text-gray-700 mt-1">
+                                        <span className="font-semibold">Reason:</span> {item.reasonReturn}
+                                      </p>
+                                    ) : (
+                                      <p className="text-xs text-gray-500 italic">No reason provided</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
                   {/* Show schedule changes if available */}
                   {rejectReasonText.includes('--- Changes Made ---') && rejectReasonText.includes('Schedules:') && (
                     <div>
@@ -2576,120 +2725,12 @@ const SQAStaffReports = () => {
                       )}
                     </div>
                   )}
-                  
-                  {/* Show returned findings if available */}
-                  {(rejectedFindings.length > 0 || rejectedCompliantItems.length > 0) && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Returned Items:
-                      </label>
-                      {loadingRejectedItems ? (
-                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                          <div className="w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                          <p className="text-xs text-gray-500">Loading returned items...</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {/* Returned Findings */}
-                          {rejectedFindings.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-700 mb-2">Findings ({rejectedFindings.length}):</p>
-                              <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg max-h-48 overflow-y-auto space-y-2">
-                                {rejectedFindings.map((finding: any, idx: number) => {
-                                  const findingId = finding.findingId || finding.id || idx;
-                                  const title = finding.title || `Finding ${idx + 1}`;
-                                  const severity = finding.severity || '—';
-                                  return (
-                                    <div 
-                                      key={findingId} 
-                                      className="p-2 bg-white rounded border border-orange-100 hover:bg-orange-50 cursor-pointer transition-colors"
-                                      onClick={() => {
-                                        setSelectedFinding(finding);
-                                        setShowFindingModal(true);
-                                        setShowRejectReasonModal(false);
-                                      }}
-                                    >
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-sm font-medium text-gray-900 truncate">{title}</p>
-                                          <div className="flex items-center gap-2 mt-1">
-                                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getSeverityColor(severity)}`}>
-                                              {severity}
-                                            </span>
-                                            <span className="text-xs text-gray-500">Click to view details</span>
-                                          </div>
-                                        </div>
-                                        <svg className="w-4 h-4 text-orange-600 flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                        </svg>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Returned Compliant Items */}
-                          {rejectedCompliantItems.length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-gray-700 mb-2">Compliant Items ({rejectedCompliantItems.length}):</p>
-                              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg max-h-48 overflow-y-auto space-y-2">
-                                {rejectedCompliantItems.map((item: any, idx: number) => {
-                                  const itemId = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || idx;
-                                  const question = item.questionTextSnapshot || item.questionText || item.title || `Item ${idx + 1}`;
-                                  const deptName = item.section || item.departmentName || item.deptName || item.department || '—';
-                                  return (
-                                    <div 
-                                      key={itemId} 
-                                      className="p-2 bg-white rounded border border-blue-100 hover:bg-blue-50 cursor-pointer transition-colors"
-                                      onClick={async () => {
-                                        if (itemId) {
-                                          try {
-                                            const compliantId = await getCompliantIdByAuditItemId(itemId);
-                                            if (compliantId) {
-                                              setSelectedCompliantId(compliantId);
-                                              setShowCompliantDetailModal(true);
-                                              setShowRejectReasonModal(false);
-                                            }
-                                          } catch (err) {
-                                            console.error('Failed to load compliant details:', err);
-                                          }
-                                        }
-                                      }}
-                                    >
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-sm font-medium text-gray-900 truncate">{question}</p>
-                                          <p className="text-xs text-gray-500 mt-1">{deptName}</p>
-                                          <span className="text-xs text-gray-500">Click to view details</span>
-                                        </div>
-                                        <svg className="w-4 h-4 text-blue-600 flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                        </svg>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
                 
                 <div className="flex items-center justify-end gap-3">
                   <button
                     type="button"
-                    onClick={() => {
-                      setShowRejectReasonModal(false);
-                      setRejectedFindings([]);
-                      setRejectedCompliantItems([]);
-                    }}
+                    onClick={() => setShowRejectReasonModal(false)}
                     className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
                   >
                     Close

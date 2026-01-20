@@ -808,15 +808,13 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Scope Departments */}
-          {(() => {
+          {!hideSections.includes('scopeDepartments') && (() => {
             // Use refreshed data if available, otherwise fallback to original prop data
             const scopeDeptsToDisplay = hasLoadedRefreshedData
               ? refreshedScopeDepartments
               : (selectedPlanDetails.scopeDepartments?.values || []);
             
-            if (hideSections.includes('scopeDepartments') || scopeDeptsToDisplay.length === 0) {
-              return null;
-            }
+            // Always show section, even if empty (will show empty state)
             
             return (
               <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
@@ -828,6 +826,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   </span>
                 </div>
                 
+                {scopeDeptsToDisplay.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {scopeDeptsToDisplay.map((dept: any, idx: number) => {
                 const deptName = dept.deptName || getDepartmentName(dept.deptId);
@@ -902,6 +901,16 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 );
               })}
               </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                <p className="text-sm text-gray-500">No departments assigned to this audit.</p>
+              </div>
+            )}
             </div>
             );
           })()}
@@ -956,12 +965,14 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Audit Team Section */}
-          {!hideSections.includes('auditTeam') && combinedAuditTeam.length > 0 && (
+          {!hideSections.includes('auditTeam') && (
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
                 <h3 className="text-lg font-bold text-primary-700">Team & Responsibilities</h3>
               </div>
               
+              {combinedAuditTeam.length > 0 ? (
+              <div>
               {/* Lead Of The Team */}
               {(() => {
                 // Helper function to enrich member with user data
@@ -1151,16 +1162,29 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   </div>
                 );
               })()}
+              </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-gray-500">No team members assigned to this audit.</p>
+                </div>
+              )}
             </div>
           )}
 
           {/* Schedule & Milestones Section */}
-          {schedulesToDisplay.length > 0 && (
+          {!hideSections.includes('schedule') && (
             <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
               <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
                 <h3 className="text-lg font-bold">Schedule & Milestones</h3>
               </div>
               
+              {schedulesToDisplay.length > 0 ? (
+              <div>
               {/* Schedule List - Vertical Layout */}
               <div className="space-y-3">
                 {(() => {
@@ -1217,6 +1241,17 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   });
                 })()}
               </div>
+              </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-gray-500">No schedule milestones set for this audit.</p>
+                </div>
+              )}
             </div>
           )}
           </div>

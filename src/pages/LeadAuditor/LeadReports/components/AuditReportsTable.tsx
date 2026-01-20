@@ -5,6 +5,7 @@ import { Button } from '../../../../components/Button';
 interface Row {
   auditId: string;
   title: string;
+  type?: string; // Audit type (e.g., internal, external)
   status: string; // Backend status (InProgress)
   displayStatus: string; // Frontend display (Waiting)
   createdBy: string;
@@ -104,6 +105,7 @@ const AuditReportsTable: React.FC<Props> = ({
               <tr>
                 <th className="px-4 py-4 text-left text-sm font-bold text-black">#</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-black">Audit Title</th>
+                <th className="px-6 py-4 text-center text-sm font-bold text-black">Type</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-black">Status</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-black">Created By</th>
                 <th className="px-6 py-4 text-center text-sm font-bold text-black">Actions</th>
@@ -114,6 +116,7 @@ const AuditReportsTable: React.FC<Props> = ({
                 <tr key={r.auditId} className="border-b border-gray-100 transition-colors hover:bg-gray-50">
                   <td className="px-4 py-4 text-sm text-gray-700 whitespace-nowrap">{idx + 1}</td>
                   <td className="px-6 py-4"><span className="text-ms font-bold text-black">{r.title}</span></td>
+                  <td className="px-6 py-4 text-center whitespace-nowrap"><span className="text-ms text-[#5b6166]">{r.type || '—'}</span></td>
                   <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>{r.displayStatus}</span></td>
                   <td className="px-6 py-4 whitespace-nowrap"><span className="text-ms text-[#5b6166]">{r.createdBy || '—'}</span></td>
                   <td className="px-6 py-4">
@@ -167,7 +170,7 @@ const AuditReportsTable: React.FC<Props> = ({
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td className="px-6 py-6 text-sm text-gray-500" colSpan={5}>No matching reports.</td>
+                  <td className="px-6 py-6 text-sm text-gray-500" colSpan={6}>No matching reports.</td>
                 </tr>
               )}
             </tbody>

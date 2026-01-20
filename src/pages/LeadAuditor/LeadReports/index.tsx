@@ -5,7 +5,7 @@ import { MainLayout } from '../../../layouts';
 import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { useAuth } from '../../../contexts';
 import { getAuditSummary, approveAuditReport, rejectAuditReport, getAuditFullDetail } from '../../../api/audits';
-import { returnFinding } from '../../../api/findings';
+import { returnFinding, getFindingsByAudit } from '../../../api/findings';
 import { unwrap } from '../../../utils/normalize';
 import { getStatusColor } from '../../../constants';
 import { Button } from '../../../components/Button';
@@ -16,7 +16,7 @@ import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../../api/reportRequest';
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
-import { getAuditChecklistItems, markChecklistItemPending, getMarkedChecklistItems, getCompliantIdByAuditItemId } from '../../../api/checklists';
+import { getAuditChecklistItems, markChecklistItemPending, getMarkedChecklistItems, getCompliantIdByAuditItemId, returnCompliantItem } from '../../../api/checklists';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
 import CompliantDetailModal from '../../Shared/CompliantDetailModal';
@@ -76,6 +76,12 @@ const AuditorLeadReports = () => {
   const [returnPeriodFrom, setReturnPeriodFrom] = useState<string | undefined>(undefined);
   const [returnPeriodTo, setReturnPeriodTo] = useState<string | undefined>(undefined);
   const [returnLoading, setReturnLoading] = useState(false);
+  // Reason return modal states
+  const [showReasonReturnModal, setShowReasonReturnModal] = useState(false);
+  const [reasonReturnAuditId, setReasonReturnAuditId] = useState<string | null>(null);
+  const [findingReasonReturn, setFindingReasonReturn] = useState('');
+  const [compliantReasonReturn, setCompliantReasonReturn] = useState('');
+  const [reasonReturnLoading, setReasonReturnLoading] = useState(false);
   // Selected findings for return
   const [selectedFindings, setSelectedFindings] = useState<Set<string>>(new Set());
   // Required findings from approved extension requests (must be selected and disabled)
@@ -126,6 +132,8 @@ const AuditorLeadReports = () => {
 
   // Force reloading summary data even if selectedAuditId doesn't change (e.g. after Director approves)
   const [summaryReloadKey, setSummaryReloadKey] = useState(0);
+  // All findings from API (to include WitnessConfirmReturned findings)
+  const [allFindingsFromAPI, setAllFindingsFromAPI] = useState<any[]>([]);
   
   // New tables: InProgress audits and their report requests
 
@@ -282,13 +290,8 @@ const AuditorLeadReports = () => {
         
         
         
-        // Backend returns "Returned", "RejectedFirstLevel", or "RejectedSecondLevel" when reject
-        // Normalize to "Returned" for display
-        let finalStatus = rr.status || 'Pending';
-        const statusLower = String(finalStatus).toLowerCase().trim();
-        if (statusLower.includes('reject') || statusLower.includes('return')) {
-          finalStatus = 'Returned';
-        }
+        // Backend returns "Returned" (capital R) when reject, normalize to lowercase for comparison
+        const finalStatus = rr.status || 'Pending';
         
        
         
@@ -302,6 +305,9 @@ const AuditorLeadReports = () => {
           approvalStatus: finalStatus,
           title: audit?.title || audit?.name || rr.title || `Audit ${auditId}`,
           name: audit?.title || audit?.name || rr.title,
+          type: audit?.type || audit?.auditType || audit?.category || audit?.auditPlan?.type || audit?.auditPlan?.auditType || audit?.auditPlan?.category || '—',
+          auditType: audit?.type || audit?.auditType || audit?.category || audit?.auditPlan?.type || audit?.auditPlan?.auditType || audit?.auditPlan?.category,
+          category: audit?.type || audit?.auditType || audit?.category || audit?.auditPlan?.type || audit?.auditPlan?.auditType || audit?.auditPlan?.category,
           startDate: audit?.startDate,
           createdAt: rr.requestedAt || audit?.createdAt,
           createdDate: rr.requestedAt || audit?.createdDate,
@@ -311,6 +317,7 @@ const AuditorLeadReports = () => {
           createdByUser: rr.requestedBy,
           reportRequestId: rr.reportRequestId,
           note: rr.note,
+          auditPlan: audit?.auditPlan, // Keep auditPlan for reference
         };
         
         combinedReports.push(reportObj);
@@ -460,14 +467,16 @@ const AuditorLeadReports = () => {
       if (!selectedAuditId) return;
       setLoadingRevisionRequests(true);
       try {
-        const [sum, requests, checklistItems] = await Promise.all([
+        const [sum, requests, checklistItems, allFindings] = await Promise.all([
           getAuditSummary(selectedAuditId),
           getAuditPlanRevisionRequestsByAuditId(selectedAuditId).catch(() => []),
-          getAuditChecklistItems(selectedAuditId).catch(() => [])
+          getAuditChecklistItems(selectedAuditId).catch(() => []),
+          getFindingsByAudit(selectedAuditId).catch(() => []) // Fetch all findings to include WitnessConfirmReturned
         ]);
         setSummary(sum);
         setRevisionRequests(requests);
         setAuditChecklistItems(Array.isArray(checklistItems) ? checklistItems : []);
+        setAllFindingsFromAPI(Array.isArray(allFindings) ? allFindings : []);
         setActiveTab('departmentsSummary');
         if (lastAuditIdRef.current !== selectedAuditId) {
           setSelectedDeptKey('');
@@ -545,11 +554,7 @@ const AuditorLeadReports = () => {
       } else if (normalizedStatus === 'approved' || normalizedStatus.includes('approved') || normalizedStatus.includes('approve')) {
         status = 'Approved';
         displayStatus = 'Approved';
-      } else if (normalizedStatus.includes('return') || 
-                 normalizedStatus.includes('reject') || 
-                 normalizedStatus === 'returned' ||
-                 normalizedStatus.includes('rejectedfirstlevel') ||
-                 normalizedStatus.includes('rejectedsecondlevel')) {
+      } else if (normalizedStatus.includes('return') || normalizedStatus.includes('reject') || normalizedStatus === 'returned') {
         status = 'Returned';
         displayStatus = 'Returned';
       } else {
@@ -558,10 +563,7 @@ const AuditorLeadReports = () => {
         if (rawNorm === 'approved' || rawNorm.includes('approve')) {
           status = 'Approved';
           displayStatus = 'Approved';
-        } else if (rawNorm.includes('return') || 
-                   rawNorm.includes('reject') ||
-                   rawNorm.includes('rejectedfirstlevel') ||
-                   rawNorm.includes('rejectedsecondlevel')) {
+        } else if (rawNorm.includes('return') || rawNorm.includes('reject')) {
           status = 'Returned';
           displayStatus = 'Returned';
         } else {
@@ -571,6 +573,10 @@ const AuditorLeadReports = () => {
       }
       
       const createdBy = getCreatedByLabel(a);
+      // Get type from audit object or auditPlan, with fallback
+      const rawType = a.type || a.auditType || a.category || a.auditPlan?.type || a.auditPlan?.auditType || a.auditPlan?.category;
+      // Format type: capitalize first letter
+      const type = rawType ? String(rawType).charAt(0).toUpperCase() + String(rawType).slice(1).toLowerCase() : '—';
       
       // Check if there's an approved extension request (revision request)
       // Backend returns revision status as "Approved" (with capital A)
@@ -588,7 +594,8 @@ const AuditorLeadReports = () => {
       
       return { 
         auditId, 
-        title, 
+        title,
+        type, // Audit type (internal, external, etc.)
         status, // Backend status (Pending, Approved, Returned)
         displayStatus, // Frontend display (same as status)
         createdBy, 
@@ -881,48 +888,124 @@ const AuditorLeadReports = () => {
     }
   };
 
-  // Handle direct return (without extension - no modal needed)
-  const handleDirectReturn = async (auditId: string) => {
-    if (!auditId) return;
-    
+  // Helper function to get audit type
+  const getAuditType = (auditId: string): string | null => {
+    const audit = audits.find((a: any) => {
+      const aId = String(a.auditId || a.id || a.$id || '');
+      return aId.toLowerCase() === auditId.toLowerCase();
+    });
+    if (audit) {
+      return String(audit.type || audit.auditType || audit.category || '').toLowerCase().trim();
+    }
+    return null;
+  };
+
+  // Open reason return modal
+  const openReasonReturnModal = (auditId: string) => {
     // Validate: must have at least one finding or compliant item selected
     if (selectedFindings.size === 0 && selectedCompliantItems.size === 0) {
       toast.error('Please select at least one finding or compliant item to return.');
       return;
     }
     
-    setActionLoading(`${auditId}:return`);
+    // Validate: external audits cannot have findings returned
+    const auditType = getAuditType(auditId);
+    if (auditType === 'external' && selectedFindings.size > 0) {
+      toast.error('Findings of external audits cannot be returned.');
+      return;
+    }
+    
+    setReasonReturnAuditId(auditId);
+    setFindingReasonReturn('');
+    setCompliantReasonReturn('');
+    setShowReasonReturnModal(true);
+  };
+
+  // Close reason return modal
+  const closeReasonReturnModal = () => {
+    setShowReasonReturnModal(false);
+    setReasonReturnAuditId(null);
+    setFindingReasonReturn('');
+    setCompliantReasonReturn('');
+  };
+
+  // Handle direct return (with reason from modal)
+  const handleDirectReturn = async () => {
+    if (!reasonReturnAuditId) return;
+    
+    // Validate: external audits cannot have findings returned
+    const auditType = getAuditType(reasonReturnAuditId);
+    if (auditType === 'external' && selectedFindings.size > 0) {
+      toast.error('Findings of external audits cannot be returned.');
+      return;
+    }
+    
+    // Validate reasons based on selected items
+    if (selectedFindings.size > 0 && !findingReasonReturn.trim()) {
+      toast.error('Please enter a reason for returning findings.');
+      return;
+    }
+    if (selectedCompliantItems.size > 0 && !compliantReasonReturn.trim()) {
+      toast.error('Please enter a reason for returning compliant items.');
+      return;
+    }
+    
+    setReasonReturnLoading(true);
+    setActionLoading(`${reasonReturnAuditId}:return`);
     try {
       let findingsReturned = 0;
       let compliantItemsReturned = 0;
       
-      // Return selected findings
-      if (selectedFindings.size > 0) {
-        const returnNoteText = 'Returned findings with audit report';
-        const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
-          returnFinding(findingId, returnNoteText)
-        );
-        
-        try {
-          await Promise.all(returnFindingPromises);
-          findingsReturned = selectedFindings.size;
-        } catch (err: any) {
-          console.error('Failed to return some findings', err);
-          toast.warning(`Some findings failed to return. Continuing with report return...`);
-        }
-      }
+      // Return selected findings and compliant items in parallel
+      const returnPromises: Promise<any>[] = [];
       
-      // Return selected compliant items (mark as pending)
-      if (selectedCompliantItems.size > 0) {
-        const markPromises = Array.from(selectedCompliantItems).map(auditItemId => 
-          markChecklistItemPending(auditItemId).catch((err) => {
-            console.error(`Failed to mark item ${auditItemId} as pending:`, err);
-            return null;
+      // Return selected findings
+      if (selectedFindings.size > 0 && findingReasonReturn.trim()) {
+        const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
+          returnFinding(findingId, findingReasonReturn.trim()).then(() => ({ type: 'finding', success: true })).catch((err) => {
+            console.error(`Failed to return finding ${findingId}:`, err);
+            return { type: 'finding', success: false };
           })
         );
-        
-        const results = await Promise.all(markPromises);
-        compliantItemsReturned = results.filter(r => r !== null).length;
+        returnPromises.push(...returnFindingPromises);
+      }
+      
+      // Return selected compliant items using PUT /api/ChecklistItemNoFinding/{id}/return
+      if (selectedCompliantItems.size > 0 && compliantReasonReturn.trim()) {
+        const returnCompliantPromises = Array.from(selectedCompliantItems).map(async (auditItemId) => {
+          try {
+            // Get compliant ID (numeric) from auditChecklistItemId (GUID)
+            const compliantId = await getCompliantIdByAuditItemId(auditItemId);
+            if (!compliantId) {
+              console.error(`No compliant ID found for auditItemId: ${auditItemId}`);
+              return { type: 'compliant', success: false };
+            }
+            
+            // Call PUT /api/ChecklistItemNoFinding/{id}/return
+            await returnCompliantItem(compliantId, compliantReasonReturn.trim());
+            return { type: 'compliant', success: true };
+          } catch (err: any) {
+            console.error(`Failed to return compliant item ${auditItemId}:`, err);
+            return { type: 'compliant', success: false };
+          }
+        });
+        returnPromises.push(...returnCompliantPromises);
+      }
+      
+      // Execute all return operations in parallel
+      if (returnPromises.length > 0) {
+        try {
+          const results = await Promise.all(returnPromises);
+          findingsReturned = results.filter(r => r.type === 'finding' && r.success).length;
+          compliantItemsReturned = results.filter(r => r.type === 'compliant' && r.success).length;
+          
+          if (findingsReturned < selectedFindings.size || compliantItemsReturned < selectedCompliantItems.size) {
+            toast.warning(`Some items failed to return. ${findingsReturned} finding(s) and ${compliantItemsReturned} compliant item(s) returned successfully.`);
+          }
+        } catch (err: any) {
+          console.error('Failed to return some items', err);
+          toast.warning(`Some items failed to return. Continuing with report return...`);
+        }
       }
       
       // Build return note
@@ -936,7 +1019,7 @@ const AuditorLeadReports = () => {
       const returnNote = noteParts.length > 0 ? `Returned with ${noteParts.join(' and ')}` : 'Returned audit report';
       
       // Return the report
-      await rejectAuditReport(auditId, { note: returnNote });
+      await rejectAuditReport(reasonReturnAuditId, { note: returnNote });
       
       // Show success message
       const successParts: string[] = [];
@@ -951,6 +1034,9 @@ const AuditorLeadReports = () => {
       }
       toast.success('Returned the Audit Report successfully.');
       
+      // Close modal
+      closeReasonReturnModal();
+      
       // Clear selected items
       setSelectedFindings(new Set());
       setSelectedCompliantItems(new Set());
@@ -964,13 +1050,21 @@ const AuditorLeadReports = () => {
       console.error('Direct return failed', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to return audit report. Please try again.'));
     } finally {
+      setReasonReturnLoading(false);
       setActionLoading('');
     }
   };
-
   // Handle return with extension (opens modal to edit schedule & team)
   const handleReturn = async () => {
     if (!returnAuditId) return;
+    
+    // Validate: external audits cannot have findings returned
+    const auditType = getAuditType(returnAuditId);
+    if (auditType === 'external' && selectedFindings.size > 0) {
+      toast.error('Findings of external audits cannot be returned.');
+      return;
+    }
+    
     if (!returnNote.trim()) {
       toast.error('Please enter a reason for returning.');
       return;
@@ -1061,37 +1155,61 @@ const AuditorLeadReports = () => {
       let findingsReturned = 0;
       let compliantItemsReturned = 0;
       
-      // Return selected findings first
+      // Return selected findings and compliant items in parallel
+      const returnPromises: Promise<any>[] = [];
+      
+      // Return selected findings
       if (selectedFindings.size > 0) {
         const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
-          returnFinding(findingId, returnNoteText || 'Returned with audit report')
-        );
-        
-        try {
-          await Promise.all(returnFindingPromises);
-          findingsReturned = selectedFindings.size;
-        } catch (err: any) {
-          console.error('Failed to return some findings', err);
-          toast.warning(`Some findings failed to return. Continuing with report return...`);
-        }
-      }
-      
-      // Return selected compliant items (mark as pending)
-      if (selectedCompliantItems.size > 0) {
-        const markPromises = Array.from(selectedCompliantItems).map(auditItemId => 
-          markChecklistItemPending(auditItemId).catch((err) => {
-            console.error(`Failed to mark item ${auditItemId} as pending:`, err);
-            return null;
+          returnFinding(findingId, returnNoteText || 'Returned with audit report').then(() => ({ type: 'finding', success: true })).catch((err) => {
+            console.error(`Failed to return finding ${findingId}:`, err);
+            return { type: 'finding', success: false };
           })
         );
-        
-        const results = await Promise.all(markPromises);
-        compliantItemsReturned = results.filter(r => r !== null).length;
+        returnPromises.push(...returnFindingPromises);
+      }
+      
+      // Return selected compliant items using PUT /api/ChecklistItemNoFinding/{id}/return
+      if (selectedCompliantItems.size > 0) {
+        const returnCompliantPromises = Array.from(selectedCompliantItems).map(async (auditItemId) => {
+          try {
+            // Get compliant ID (numeric) from auditChecklistItemId (GUID)
+            const compliantId = await getCompliantIdByAuditItemId(auditItemId);
+            if (!compliantId) {
+              console.error(`No compliant ID found for auditItemId: ${auditItemId}`);
+              return { type: 'compliant', success: false };
+            }
+            
+            // Call PUT /api/ChecklistItemNoFinding/{id}/return
+            await returnCompliantItem(compliantId, returnNoteText || 'Returned with audit report');
+            return { type: 'compliant', success: true };
+          } catch (err: any) {
+            console.error(`Failed to return compliant item ${auditItemId}:`, err);
+            return { type: 'compliant', success: false };
+          }
+        });
+        returnPromises.push(...returnCompliantPromises);
+      }
+      
+      // Execute all return operations in parallel
+      if (returnPromises.length > 0) {
+        try {
+          const results = await Promise.all(returnPromises);
+          findingsReturned = results.filter(r => r.type === 'finding' && r.success).length;
+          compliantItemsReturned = results.filter(r => r.type === 'compliant' && r.success).length;
+          
+          if (findingsReturned < selectedFindings.size || compliantItemsReturned < selectedCompliantItems.size) {
+            toast.warning(`Some items failed to return. ${findingsReturned} finding(s) and ${compliantItemsReturned} compliant item(s) returned successfully.`);
+          }
+        } catch (err: any) {
+          console.error('Failed to return some items', err);
+          toast.warning(`Some items failed to return. Continuing with report return...`);
+        }
       }
       
       // Update return note with compliant items info
       if (compliantItemsReturned > 0) {
-        const compliantNote = `\nCompliant Items: ${compliantItemsReturned} item(s) marked as pending`;
+        const compliantNote = `\nCompliant Items: ${compliantItemsReturned} item(s) returned`;
         returnNoteText += compliantNote;
       }
       
@@ -1758,6 +1876,13 @@ const AuditorLeadReports = () => {
 
   // Handle opening extension modal
   const openExtensionModal = async (auditId: string) => {
+    // Validate: external audits cannot request extension
+    const auditType = getAuditType(auditId);
+    if (auditType === 'external') {
+      toast.error('External audits cannot request extension.');
+      return;
+    }
+    
     setSelectedAuditId(auditId);
     setShowExtensionModal(true);
     setExtensionComment('');
@@ -1796,6 +1921,28 @@ const AuditorLeadReports = () => {
   // Handle request extension (Lead Auditor)
   const handleRequestExtension = async () => {
     if (!selectedAuditId) return;
+    
+    // Validate: external audits cannot request extension
+    const auditType = getAuditType(selectedAuditId);
+    if (auditType === 'external') {
+      toast.error('External audits cannot request extension.');
+      return;
+    }
+    
+    // Check if there's already a pending or approved request
+    const pendingRequest = revisionRequests.find(r => r.status === 'Pending');
+    const approvedRequest = revisionRequests.find(r => r.status === 'Approved');
+    
+    if (pendingRequest) {
+      toast.error('An extension request is already pending. Please wait for Director\'s response.');
+      return;
+    }
+    
+    if (approvedRequest) {
+      toast.error('An extension request has already been approved. You can now edit schedule and team.');
+      return;
+    }
+    
     if (!extensionComment.trim()) {
       toast.error('Please enter a comment explaining why you need an extension.');
       return;
@@ -1935,31 +2082,47 @@ const AuditorLeadReports = () => {
   };
 
   const allFindings = useMemo(() => {
-    if (!summary) return [] as any[];
     const items: any[] = [];
+    
+    if (summary) {
+      // New backend shape: findingsInAudit.$values[].findings.$values[]
+      const byAudit = unwrapValues((summary as any).findingsInAudit);
+      byAudit.forEach((m: any) =>
+        unwrapValues(m?.findings).forEach((f: any) => items.push(f)),
+      );
 
-    // New backend shape: findingsInAudit.$values[].findings.$values[]
-    const byAudit = unwrapValues((summary as any).findingsInAudit);
-    byAudit.forEach((m: any) =>
-      unwrapValues(m?.findings).forEach((f: any) => items.push(f)),
-    );
+      // Legacy: findingsByMonth -> months[].findings[]
+      const months = unwrapValues((summary as any).findingsByMonth);
+      months.forEach((m: any) =>
+        unwrapValues(m?.findings).forEach((f: any) => items.push(f)),
+      );
 
-    // Legacy: findingsByMonth -> months[].findings[]
-    const months = unwrapValues((summary as any).findingsByMonth);
-    months.forEach((m: any) =>
-      unwrapValues(m?.findings).forEach((f: any) => items.push(f)),
-    );
+      // direct summary.findings[]
+      unwrapValues((summary as any).findings).forEach((f: any) => items.push(f));
 
-    // direct summary.findings[]
-    unwrapValues((summary as any).findings).forEach((f: any) => items.push(f));
+      // byDepartment[].findings[]
+      unwrapValues((summary as any).byDepartment).forEach((d: any) => {
+        unwrapValues(d?.findings).forEach((f: any) => items.push(f));
+      });
+    }
 
-    // byDepartment[].findings[]
-    unwrapValues((summary as any).byDepartment).forEach((d: any) => {
-      unwrapValues(d?.findings).forEach((f: any) => items.push(f));
+    // Create a map of findingId -> finding from summary to check for duplicates
+    const summaryFindingIds = new Set<string>();
+    items.forEach((f: any) => {
+      const findingId = String(f?.findingId || f?.id || '');
+      if (findingId) summaryFindingIds.add(findingId);
     });
 
-    return items;
-  }, [summary]);
+    // Add WitnessConfirmReturned findings that are not in summary
+    const witnessConfirmReturnedFindings = allFindingsFromAPI.filter((f: any) => {
+      const findingId = String(f?.findingId || f?.id || '');
+      const status = String(f?.status || '').toLowerCase();
+      return findingId && status === 'witnessconfirmreturned' && !summaryFindingIds.has(findingId);
+    });
+
+    // Merge WitnessConfirmReturned findings into items
+    return [...items, ...witnessConfirmReturnedFindings];
+  }, [summary, allFindingsFromAPI]);
 
   const departmentEntries = useMemo(() => {
     const list: Array<{ key: string; name: string; count: number; deptId?: any }> = [];
@@ -2296,9 +2459,12 @@ const AuditorLeadReports = () => {
                       </button>
                     )}
                     
-                    {/* Request Extension Button - Only show if no pending request */}
+                    {/* Request Extension Button - Only show if no pending or approved request */}
                     {(() => {
                       const pendingRequest = revisionRequests.find(r => r.status === 'Pending');
+                      const approvedRequest = revisionRequests.find(r => r.status === 'Approved');
+                      const auditType = selectedAuditId ? getAuditType(selectedAuditId) : null;
+                      const isExternal = auditType === 'external';
                       
                       if (pendingRequest) {
                         // Show disabled button when pending
@@ -2312,6 +2478,38 @@ const AuditorLeadReports = () => {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             Request Pending
+                          </button>
+                        );
+                      }
+                      
+                      if (approvedRequest) {
+                        // Show disabled button when approved (Director has already approved an extension)
+                        return (
+                          <button
+                            disabled
+                            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-400 text-white cursor-not-allowed flex items-center gap-2"
+                            title="Extension request has been approved. You can now edit schedule and team."
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Extension Approved
+                          </button>
+                        );
+                      }
+                      
+                      if (isExternal) {
+                        // Show disabled button for external audits
+                        return (
+                          <button
+                            disabled
+                            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-400 text-white cursor-not-allowed flex items-center gap-2"
+                            title="External audits cannot request extension"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Request Extension
                           </button>
                         );
                       }
@@ -2801,41 +2999,54 @@ const AuditorLeadReports = () => {
                           </Button>
                         )}
                         {/* Return button - always show when needs decision */}
-                        <button
-                          onClick={async () => {
-                            setShowViewModal(false);
-                            
-                            // If has approved extension → open modal to edit schedule & team
-                            if (hasApprovedExtension) {
-                              openReturnModal(selectedAuditId);
-                            } else {
-                              // No extension → return directly without modal
-                              await handleDirectReturn(selectedAuditId);
-                            }
-                          }}
-                          disabled={actionLoading === `${selectedAuditId}:approve` || actionLoading === `${selectedAuditId}:return`}
-                          className={`px-4 py-2 ${hasApprovedExtension ? 'bg-orange-700 hover:bg-orange-800 ring-2 ring-orange-300' : 'bg-orange-600 hover:bg-orange-700'} disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm flex items-center gap-2`}
-                          title={hasApprovedExtension ? `Extension approved - You must Return to edit schedule and team${requiredFindings.size > 0 ? ` (${requiredFindings.size} required finding(s))` : ''}` : `Return report${selectedFindings.size > 0 ? ` and ${selectedFindings.size} finding(s)` : ''}${selectedCompliantItems.size > 0 ? ` and ${selectedCompliantItems.size} compliant item(s)` : ''}`}
-                        >
-                          {actionLoading === `${selectedAuditId}:return` ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                              Returning...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                              {hasApprovedExtension ? 'Return (Required)' : 'Return'}
-                              {(selectedFindings.size > 0 || selectedCompliantItems.size > 0) && (
-                                <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs">
-                                  {selectedFindings.size + selectedCompliantItems.size}
-                                </span>
+                        {(() => {
+                          const auditType = getAuditType(selectedAuditId);
+                          const isExternal = auditType === 'external';
+                          const isDisabled = actionLoading === `${selectedAuditId}:approve` || actionLoading === `${selectedAuditId}:return` || isExternal;
+                          const disabledTitle = isExternal 
+                            ? 'External audits cannot be returned' 
+                            : hasApprovedExtension 
+                              ? `Extension approved - You must Return to edit schedule and team${requiredFindings.size > 0 ? ` (${requiredFindings.size} required finding(s))` : ''}` 
+                              : `Return report${selectedFindings.size > 0 ? ` and ${selectedFindings.size} finding(s)` : ''}${selectedCompliantItems.size > 0 ? ` and ${selectedCompliantItems.size} compliant item(s)` : ''}`;
+                          
+                          return (
+                            <button
+                              onClick={async () => {
+                                setShowViewModal(false);
+                                
+                                // If has approved extension → open modal to edit schedule & team
+                                if (hasApprovedExtension) {
+                                  openReturnModal(selectedAuditId);
+                                } else {
+                                  // No extension → open reason return modal
+                                  openReasonReturnModal(selectedAuditId);
+                                }
+                              }}
+                              disabled={isDisabled}
+                              className={`px-4 py-2 ${hasApprovedExtension ? 'bg-orange-700 hover:bg-orange-800 ring-2 ring-orange-300' : 'bg-orange-600 hover:bg-orange-700'} disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm flex items-center gap-2`}
+                              title={disabledTitle}
+                            >
+                              {actionLoading === `${selectedAuditId}:return` ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                  Returning...
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                  {hasApprovedExtension ? 'Return (Required)' : 'Return'}
+                                  {(selectedFindings.size > 0 || selectedCompliantItems.size > 0) && (
+                                    <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded text-xs">
+                                      {selectedFindings.size + selectedCompliantItems.size}
+                                    </span>
+                                  )}
+                                </>
                               )}
-                            </>
-                          )}
-                        </button>
+                            </button>
+                          );
+                        })()}
                       </>
                     );
                   })()}
@@ -3462,6 +3673,156 @@ const AuditorLeadReports = () => {
           }}
           compliantId={selectedCompliantId}
         />
+
+        {/* Reason Return Modal */}
+        {showReasonReturnModal && reasonReturnAuditId && createPortal(
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+              onClick={closeReasonReturnModal}
+            />
+            
+            {/* Modal */}
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-orange-600 to-orange-700 p-6 border-b border-orange-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-xl font-bold text-white">Return Items</h2>
+                    <p className="text-sm text-orange-100 mt-0.5">
+                      Please provide reason(s) for returning the selected items
+                    </p>
+                  </div>
+                  <button
+                    onClick={closeReasonReturnModal}
+                    className="flex-shrink-0 w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors flex items-center justify-center"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+                <div className="space-y-6">
+                  {/* Selected Items Summary */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm font-medium text-blue-900 mb-2">Selected Items:</p>
+                    <div className="space-y-1 text-sm text-blue-700">
+                      {selectedFindings.size > 0 && (
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span>{selectedFindings.size} Finding(s)</span>
+                        </div>
+                      )}
+                      {selectedCompliantItems.size > 0 && (
+                        <div className="flex items-center gap-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>{selectedCompliantItems.size} Compliant Item(s)</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Finding Reason (if findings selected) */}
+                  {selectedFindings.size > 0 && (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Reason for Returning Findings <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={findingReasonReturn}
+                        onChange={(e) => setFindingReasonReturn(e.target.value)}
+                        placeholder="Enter reason for returning findings..."
+                        rows={4}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none text-sm"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        This reason will be used for all selected findings
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Compliant Item Reason (if compliant items selected) */}
+                  {selectedCompliantItems.size > 0 && (
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Reason for Returning Compliant Items <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={compliantReasonReturn}
+                        onChange={(e) => setCompliantReasonReturn(e.target.value)}
+                        placeholder="Enter reason for returning compliant items..."
+                        rows={4}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none text-sm"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        This reason will be used for all selected compliant items
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Single Reason (if both selected and user wants to use same reason) */}
+                  {selectedFindings.size > 0 && selectedCompliantItems.size > 0 && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-xs text-yellow-800">
+                        <strong>Note:</strong> You can enter different reasons for findings and compliant items above, or use the same reason for both.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-white">
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={closeReasonReturnModal}
+                  className="rounded-md font-semibold shadow-sm"
+                  disabled={reasonReturnLoading}
+                >
+                  Cancel
+                </Button>
+                <button
+                  onClick={handleDirectReturn}
+                  disabled={reasonReturnLoading || 
+                    (selectedFindings.size > 0 && !findingReasonReturn.trim()) ||
+                    (selectedCompliantItems.size > 0 && !compliantReasonReturn.trim())
+                  }
+                  className="px-6 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all shadow-sm flex items-center gap-2"
+                >
+                  {reasonReturnLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Returning...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Return
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
         {/* Return Finding Modal */}
         {showReturnFindingModal && returningFindingId && createPortal(

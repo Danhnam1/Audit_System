@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import useAuthStore, { useUserId } from '../store/useAuthStore';
 import { useSignalR } from '../contexts/SignalRContext';
 import { getNotifications, markNotificationRead, deleteNotification, type AdminNotificationDTO } from '../api/notifications.ts';
@@ -15,6 +16,7 @@ export const NotificationBell: React.FC = () => {
   const userIdFromToken = useUserId(); // Get userId from JWT token
   const { isConnected: _isConnected, onNotification, offNotification } = useSignalR();
   const [open, setOpen] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -122,12 +124,15 @@ export const NotificationBell: React.FC = () => {
     }
   }, [userIdFromToken, user?.email]);
 
-  // Load notifications from API when user ID is ready or email changes
+  // Load notifications only once when component mounts and user is ready
+  // After that, rely on SignalR real-time updates only
+  const hasLoadedRef = useRef(false);
   useEffect(() => {
-    if (userIdFromToken || user?.email) {
+    if ((userIdFromToken || user?.email) && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
       void load();
     }
-  }, [load, userIdFromToken, user?.email]);
+  }, [userIdFromToken, user?.email]); // Remove 'load' from dependencies to prevent re-loading
 
   // Handle click outside to close dropdown
   useEffect(() => {
@@ -146,32 +151,13 @@ export const NotificationBell: React.FC = () => {
     };
   }, [open]);
 
-  // Handle real-time notifications from SignalR
-  // Use sessionStorage to track if we've already shown a notification to prevent duplicates across page navigations
-  const getShownNotificationIds = (): Set<string> => {
-    try {
-      const stored = sessionStorage.getItem('shown_notification_ids');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
-  };
-
-  const saveShownNotificationIds = (ids: Set<string>) => {
-    try {
-      sessionStorage.setItem('shown_notification_ids', JSON.stringify(Array.from(ids)));
-    } catch (error) {
-      console.error('Failed to save shown notification IDs:', error);
-    }
-  };
-
+  // Handle real-time notifications from SignalR only (no polling)
+  // Use ref to avoid re-registering handler when load function changes
   const loadRef = useRef(load);
-  
-  // Keep loadRef updated
   useEffect(() => {
     loadRef.current = load;
   }, [load]);
-  
+
   useEffect(() => {
     const handleNewNotification = async (data: NotificationData) => {
       // Check if this notification is for the current user
@@ -182,41 +168,20 @@ export const NotificationBell: React.FC = () => {
         return; // Not for this user, ignore
       }
 
-      // Create a unique ID for this notification to prevent duplicates
-      const notificationId = `${data.notificationId || data.title || ''}_${data.createdAt || Date.now()}`;
-      
-      // Check if we've already shown this notification (from sessionStorage)
-      const shownIds = getShownNotificationIds();
-      if (shownIds.has(notificationId)) {
-        return;
-      }
-      
-      // Mark as shown
-      shownIds.add(notificationId);
-      
-      // Clean up old IDs (keep only last 100 to prevent memory leak)
-      if (shownIds.size > 100) {
-        const idsArray = Array.from(shownIds);
-        const trimmedIds = new Set(idsArray.slice(-50));
-        saveShownNotificationIds(trimmedIds);
-      } else {
-        saveShownNotificationIds(shownIds);
-      }
-      
-      // Reload notifications from API to get the latest data
-      // This ensures we have complete and up-to-date information from the server
-      // No toast notification - users can check notification bell for new notifications
+      // Always reload notifications list when receiving SignalR notification
+      // This ensures the list is updated even if toast was already shown
+      // Use ref to avoid dependency on load function
       await loadRef.current(true); // Silent reload (don't show loading spinner)
     };
 
-    // Register callback - this will also trigger any pending notification
+    // Register callback for real-time notifications
     onNotification(handleNewNotification);
 
     // Cleanup
     return () => {
       offNotification();
     };
-  }, [onNotification, offNotification, user]); // Added 'user' to check role for filtering notifications
+  }, [onNotification, offNotification, userIdFromToken]); // Remove load from dependencies to prevent re-registration
 
   const handleMarkRead = async (id: string) => {
     try {
@@ -322,14 +287,25 @@ export const NotificationBell: React.FC = () => {
                   </span>
                 )}
               </div>
-              {unreadCount > 0 && (
+              <div className="flex items-center gap-3">
                 <button 
-                  onClick={handleMarkAllRead} 
+                  onClick={() => {
+                    setOpen(false);
+                    setShowModal(true);
+                  }}
                   className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors"
                 >
-                  Mark all read
+                  View All
                 </button>
-              )}
+                {unreadCount > 0 && (
+                  <button 
+                    onClick={handleMarkAllRead} 
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
             </div>
             {/* Status filters */}
             <div className="flex gap-2">
@@ -455,6 +431,179 @@ export const NotificationBell: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* Modal to view all notifications */}
+      {showModal && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+            onClick={() => setShowModal(false)}
+          />
+
+          {/* Modal container */}
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden border border-primary-100">
+            {/* Modal header */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-semibold text-gray-900">All Notifications</h2>
+                  {unreadCount > 0 && (
+                    <span className="bg-red-500 text-white text-xs font-semibold rounded-full px-2.5 py-1">
+                      {unreadCount} new
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {unreadCount > 0 && (
+                    <button 
+                      onClick={handleMarkAllRead} 
+                      className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowModal(false)}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    aria-label="Close"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              {/* Status filters */}
+              <div className="flex gap-2">
+                {(['All', 'Unread', 'Read'] as const).map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      statusFilter === status
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                  >
+                    {status === 'All' ? 'All' : status === 'Unread' ? 'Unread' : 'Read'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Notifications list */}
+            <div className="overflow-y-auto max-h-[calc(90vh-180px)]">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+                    <p className="text-sm text-gray-500">Loading notifications...</p>
+                  </div>
+                </div>
+              ) : filteredItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 px-4">
+                  <svg className="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V4a2 2 0 10-4 0v1.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  <p className="text-base font-medium text-gray-500">No notifications</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    {statusFilter === 'Unread' ? 'All notifications are read' : statusFilter === 'Read' ? 'No read notifications' : "You're all caught up!"}
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {filteredItems.map((n) => {
+                    const unread = isUnread(n);
+
+                    return (
+                      <div 
+                        key={String((n as any).notificationId || Math.random())} 
+                        className={`px-6 py-4 hover:bg-gray-50 transition-colors group ${
+                          unread ? 'bg-blue-50/30' : ''
+                        }`}
+                      >
+                        <div className="flex items-start gap-4">
+                          {/* Unread indicator */}
+                          {unread && (
+                            <div className="mt-2 w-2.5 h-2.5 bg-blue-600 rounded-full flex-shrink-0"></div>
+                          )}
+                          {!unread && (
+                            <div className="mt-2 w-2.5 h-2.5 flex-shrink-0"></div>
+                          )}
+                          
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-base font-semibold ${unread ? 'text-gray-900' : 'text-gray-700'}`}>
+                                  {(n as any).title || 'Notification'}
+                                </p>
+                                <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">
+                                  {(n as any).message}
+                                </p>
+                                
+                                {/* Category and time */}
+                                <div className="flex items-center gap-3 mt-3 flex-wrap">
+                                  {(n as any).category && (
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
+                                      {(n as any).category}
+                                    </span>
+                                  )}
+                                  <span className="text-xs text-gray-400">
+                                    {(n as any).createdAt ? new Date((n as any).createdAt).toLocaleString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    }) : ''}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Actions */}
+                              <div className="flex items-start gap-2 flex-shrink-0">
+                                {unread && (
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      (n as any).notificationId && handleMarkRead(String((n as any).notificationId));
+                                    }} 
+                                    className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                                    title="Mark as read"
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </button>
+                                )}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    (n as any).notificationId && handleDelete(String((n as any).notificationId));
+                                  }}
+                                  className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                                  title="Delete notification"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

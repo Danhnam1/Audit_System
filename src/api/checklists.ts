@@ -408,6 +408,15 @@ export const getChecklistItemCompliantDetails = async (compliantItemId: string |
   return res.data;
 };
 
+// Return compliant item (ChecklistItemNoFinding)
+export const returnCompliantItem = async (compliantItemId: number, reasonReturn: string): Promise<any> => {
+  // Convert to PascalCase for .NET API
+  const payload = {
+    ReasonReturn: reasonReturn
+  };
+  return apiClient.put(`/ChecklistItemNoFinding/${compliantItemId}/return`, payload) as any;
+};
+
 // Get compliant record ID for an audit item (by auditItemId/auditChecklistItemId GUID)
 // Returns the numeric 'id' field of the compliant record
 export const getCompliantIdByAuditItemId = async (auditItemId: string): Promise<number | null> => {
@@ -471,6 +480,7 @@ export default {
   deleteAuditChecklistItem,
   getChecklistItemCompliantDetails,
   getCompliantIdByAuditItemId,
+  returnCompliantItem,
   updateOverdueToActiveByAuditId,
   toggleMarkChecklistItem,
   markChecklistItemPending,
