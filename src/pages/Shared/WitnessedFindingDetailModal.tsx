@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getFindingById, type Finding, witnessConfirmFinding, witnessDisagreeFinding } from '../../api/findings';
+import { getFindingById, type Finding, witnessConfirmFinding, witnessConfirmReturned, witnessDisagreeFinding } from '../../api/findings';
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { getDepartmentById } from '../../api/departments';
@@ -216,8 +216,15 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
     if (!finding) return;
     
     try {
-      await witnessConfirmFinding(finding.findingId);
-      toast.success('Finding confirmed successfully!');
+      // If status is Fixed, call witness-confirm-returned API
+      // If status is Open, call witness-confirmed API
+      if (finding.status === 'Fixed') {
+        await witnessConfirmReturned(finding.findingId);
+        toast.success('Finding confirmed successfully!');
+      } else {
+        await witnessConfirmFinding(finding.findingId);
+        toast.success('Finding approved successfully!');
+      }
       
       // Reload finding to get updated status
       await loadFinding();
@@ -506,8 +513,8 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
                         {rc.actions && rc.actions.length > 0 && (
                           <div className="mt-6 pt-6 border-t-2 border-gray-200">
                             <div className="flex items-center gap-3 mb-4">
-                              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                                 </svg>
                               </div>

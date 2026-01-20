@@ -206,95 +206,9 @@ export default function AuditAssignment() {
           setAssignmentRequests([]);
         }
 
-        // Fetch departments for selected audit
+        // Fetch departments for selected audit with sensitive flags merged
         try {
-          const deptData = await getAuditScopeDepartmentsByAuditId(selectedAuditId);
-          
-          // Check if response is an error message
-          if (deptData && typeof deptData === 'object' && 'message' in deptData && !Array.isArray(deptData)) {
-            setDepartments([]);
-            return;
-          }
-          
-          const deptList = unwrap<Department>(deptData);
-          const deptArray = Array.isArray(deptList) ? deptList : [];
-
-          // Load sensitive flags for this audit and build a quick lookup by deptId
-          let sensitiveByDept: Record<
-            number,
-            { sensitiveFlag: boolean; areas?: string[]; notes?: string }
-          > = {};
-
-          try {
-            const sensitiveRaw: any = await getSensitiveDepartments(selectedAuditId);
-            const sensitiveArr: any[] = Array.isArray(sensitiveRaw)
-              ? (sensitiveRaw as any[])
-              : (sensitiveRaw?.$values as any[]) || [];
-
-            sensitiveByDept = sensitiveArr.reduce(
-              (acc: typeof sensitiveByDept, item: any) => {
-                const deptId: number =
-                  Number(item.deptId ?? item.DeptId ?? NaN);
-                if (!Number.isNaN(deptId)) {
-                  acc[deptId] = {
-                    sensitiveFlag: Boolean(
-                      item.sensitiveFlag ?? item.SensitiveFlag ?? false
-                    ),
-                    areas:
-                      item.areas ??
-                      item.Areas ??
-                      (Array.isArray(item.sensitiveAreas)
-                        ? item.sensitiveAreas
-                        : undefined),
-                    notes: item.notes ?? item.Notes,
-                  };
-                }
-                return acc;
-              },
-              {} as typeof sensitiveByDept
-            );
-          } catch (sensErr) {
-            console.warn(
-              '[AuditAssignment] Failed to load sensitive departments:',
-              sensErr
-            );
-          }
-
-          // Map departments with auditIds + merged sensitive info
-          const mappedDepartments: Department[] = deptArray.map((dept: any) => {
-            const backendSensitive = sensitiveByDept[dept.deptId];
-
-            // Normalize sensitive areas from department or sensitive map
-            const sensitiveAreas: string[] | undefined =
-              backendSensitive?.areas ??
-              (Array.isArray(dept?.sensitiveAreas)
-                ? dept.sensitiveAreas
-                : Array.isArray(dept?.areas)
-                ? dept.areas
-                : Array.isArray(dept?.SensitiveAreas)
-                ? dept.SensitiveAreas
-                : undefined);
-
-            const sensitiveFlag =
-              !!backendSensitive?.sensitiveFlag ||
-              !!dept?.sensitiveFlag ||
-              !!dept?.isSensitive ||
-              !!dept?.sensitive ||
-              !!dept?.sensitiveArea ||
-              !!dept?.hasSensitiveAreas ||
-              !!dept?.HasSensitiveAreas ||
-              (!!sensitiveAreas && sensitiveAreas.length > 0);
-
-            return {
-              ...dept,
-              auditIds: [selectedAuditId],
-              sensitiveFlag,
-              hasSensitiveAreas:
-                sensitiveFlag || !!(sensitiveAreas && sensitiveAreas.length),
-              sensitiveAreas,
-            } as Department;
-          });
-
+          const mappedDepartments = await loadDepartmentsWithSensitiveFlags(selectedAuditId);
           setDepartments(mappedDepartments);
 
           // Load audit schedule to determine QR validity window from backend configuration
@@ -418,12 +332,11 @@ export default function AuditAssignment() {
     setQrGrantResults([]);
     handleCloseModal();
     
-    // Refresh assignments and departments
+    // Refresh assignments and departments with sensitive flags merged
     if (selectedAuditId) {
       getAuditAssignments().then(data => setAssignments(data || [])).catch(() => {});
-      getAuditScopeDepartmentsByAuditId(selectedAuditId).then(deptData => {
-        const deptList = Array.isArray(deptData) ? deptData : (deptData?.$values || []);
-        setDepartments(deptList);
+      loadDepartmentsWithSensitiveFlags(selectedAuditId).then(mappedDepts => {
+        setDepartments(mappedDepts);
       }).catch(() => {});
     }
   };
@@ -731,14 +644,13 @@ export default function AuditAssignment() {
       // Non-sensitive or missing audit dates -> just close
       handleCloseModal();
       
-      // Refresh assignments and departments
+      // Refresh assignments and departments with sensitive flags merged
       const assignmentsData = await getAuditAssignments().catch(() => []);
       setAssignments(assignmentsData || []);
       
       if (selectedAuditId) {
-        const deptData = await getAuditScopeDepartmentsByAuditId(selectedAuditId);
-        const deptList = Array.isArray(deptData) ? deptData : (deptData?.$values || []);
-        setDepartments(deptList);
+        const mappedDepartments = await loadDepartmentsWithSensitiveFlags(selectedAuditId);
+        setDepartments(mappedDepartments);
       }
     } catch (error: any) {
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to assign auditors. Please try again.'));
@@ -773,6 +685,103 @@ export default function AuditAssignment() {
 
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
+  // Helper function to load departments with sensitive flags merged
+  const loadDepartmentsWithSensitiveFlags = async (auditId: string): Promise<Department[]> => {
+    try {
+      // Fetch departments for selected audit
+      const deptData = await getAuditScopeDepartmentsByAuditId(auditId);
+      
+      // Check if response is an error message
+      if (deptData && typeof deptData === 'object' && 'message' in deptData && !Array.isArray(deptData)) {
+        console.error('[AuditAssignment] Error fetching departments:', deptData);
+        return [];
+      }
+      
+      const deptList = unwrap<Department>(deptData);
+      const deptArray = Array.isArray(deptList) ? deptList : [];
+
+      // Load sensitive flags for this audit and build a quick lookup by deptId
+      let sensitiveByDept: Record<
+        number,
+        { sensitiveFlag: boolean; areas?: string[]; notes?: string }
+      > = {};
+
+      try {
+        const sensitiveRaw: any = await getSensitiveDepartments(auditId);
+        const sensitiveArr: any[] = Array.isArray(sensitiveRaw)
+          ? (sensitiveRaw as any[])
+          : (sensitiveRaw?.$values as any[]) || [];
+
+        sensitiveByDept = sensitiveArr.reduce(
+          (acc: typeof sensitiveByDept, item: any) => {
+            const deptId: number =
+              Number(item.deptId ?? item.DeptId ?? NaN);
+            if (!Number.isNaN(deptId)) {
+              acc[deptId] = {
+                sensitiveFlag: Boolean(
+                  item.sensitiveFlag ?? item.SensitiveFlag ?? false
+                ),
+                areas:
+                  item.areas ??
+                  item.Areas ??
+                  (Array.isArray(item.sensitiveAreas)
+                    ? item.sensitiveAreas
+                    : undefined),
+                notes: item.notes ?? item.Notes,
+              };
+            }
+            return acc;
+          },
+          {} as typeof sensitiveByDept
+        );
+      } catch (sensErr) {
+        console.warn(
+          '[AuditAssignment] Failed to load sensitive departments:',
+          sensErr
+        );
+      }
+
+      // Map departments with auditIds + merged sensitive info
+      const mappedDepartments: Department[] = deptArray.map((dept: any) => {
+        const backendSensitive = sensitiveByDept[dept.deptId];
+
+        // Normalize sensitive areas from department or sensitive map
+        const sensitiveAreas: string[] | undefined =
+          backendSensitive?.areas ??
+          (Array.isArray(dept?.sensitiveAreas)
+            ? dept.sensitiveAreas
+            : Array.isArray(dept?.areas)
+            ? dept.areas
+            : Array.isArray(dept?.SensitiveAreas)
+            ? dept.SensitiveAreas
+            : undefined);
+
+        const sensitiveFlag =
+          !!backendSensitive?.sensitiveFlag ||
+          !!dept?.sensitiveFlag ||
+          !!dept?.isSensitive ||
+          !!dept?.sensitive ||
+          !!dept?.sensitiveArea ||
+          !!dept?.hasSensitiveAreas ||
+          !!dept?.HasSensitiveAreas ||
+          (!!sensitiveAreas && sensitiveAreas.length > 0);
+
+        return {
+          ...dept,
+          auditIds: [auditId],
+          sensitiveFlag,
+          hasSensitiveAreas:
+            sensitiveFlag || !!(sensitiveAreas && sensitiveAreas.length),
+          sensitiveAreas,
+        } as Department;
+      });
+
+      return mappedDepartments;
+    } catch (err: any) {
+      console.error('[AuditAssignment] Failed to load departments with sensitive flags:', err);
+      return [];
+    }
+  };
 
   // Check if audit is pending (audits with status "Approved")
   const isPendingAudit = (audit: Audit): boolean => {

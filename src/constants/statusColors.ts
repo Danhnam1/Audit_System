@@ -1,8 +1,4 @@
-/**
- * Status Color System - Aviation Blue Theme
- * Uses primary (sky) colors for consistent branding
- * Based on Audit State Diagrams workflow
- */
+
 
 // Status color mapping using primary colors
 export const STATUS_COLORS = {
@@ -13,6 +9,8 @@ export const STATUS_COLORS = {
   'Verified': 'bg-teal-100 text-teal-800',
   'WitnessConfirmed': 'bg-teal-100 text-teal-800',
   'Published': 'bg-blue-100 text-blue-800',
+  "WitnessDisagreed": 'bg-red-100 text-red-800',
+  'WitnessConfirmReturned': 'bg-teal-100 text-teal-800',
   
   // In Progress/Active States - Medium primary/sky tone
   'In Progress': 'bg-sky-500 text-white',

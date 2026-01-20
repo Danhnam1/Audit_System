@@ -354,7 +354,7 @@ const SQAStaffFindingManagement = () => {
         }
       }
 
-      // Merge schedules into rawDetails
+      // Merge schedules into Department AuditrawDetails
       const detailsWithSchedules = {
         ...rawDetails,
         schedules: schedulesData,

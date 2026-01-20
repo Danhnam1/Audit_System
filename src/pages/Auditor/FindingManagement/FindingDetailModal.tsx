@@ -841,7 +841,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                 </div>
 
                 {/* Witness Disagreement Reason - Show prominently if finding was rejected */}
-                {finding.status?.toLowerCase() === 'witnessdisagreed' && finding.witnessDisagreementReason && (
+                {finding.status?.toLowerCase() === 'witnessdisagreed' && (finding.reasonReturn || finding.witnessDisagreementReason) && (
                   <div className="bg-red-50 border-2 border-red-300 rounded-xl p-5 shadow-md">
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 bg-red-200 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -853,7 +853,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                         <h3 className="text-lg font-bold text-red-900 mb-2">Witness Disagreement Reason</h3>
                         <p className="text-sm text-red-800 font-medium mb-1">The witness has rejected this finding. Please review and address the concerns below:</p>
                         <div className="mt-3 p-4 bg-white border border-red-200 rounded-lg">
-                          <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words">{finding.witnessDisagreementReason}</p>
+                          <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words">{finding.reasonReturn || finding.witnessDisagreementReason}</p>
                         </div>
                         <div className="mt-3 text-xs text-red-700 font-medium">
                           ⚠️ You may need to edit this finding to address the witness's concerns before resubmitting.
@@ -1240,7 +1240,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                 })()}
                                 
                                 {/* History - Inline Display - Only show if there are logs with actual changes */}
-                                {(() => {
+                                {/* Hide History for AuditeeOwner role */}
+                                {!isAuditeeOwner && (() => {
                                   // First, check if there are any logs with changes
                                   if (!rc.history || rc.history.length === 0) return null;
                                   

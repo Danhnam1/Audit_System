@@ -21,6 +21,7 @@ import { getActionsByFinding, getActionsByRootCause, createAction, type Action }
 
 // import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
+import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 
 import AuditorActionReviewModal from './AuditorActionReviewModal';
 import ActionDetailsModal from '../../LeadAuditor/auditplanning/components/ActionDetailsModal';
@@ -79,6 +80,7 @@ const DepartmentChecklist = () => {
   const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null); // Compliant record ID from API response
   const [loadingCompliantId, setLoadingCompliantId] = useState(false); // Loading state for fetching compliant ID
   const [compliantIdMap, setCompliantIdMap] = useState<Record<string, string | number>>({}); // auditItemId -> compliant record id (persisted to sessionStorage)
+  const [compliantStatusMap, setCompliantStatusMap] = useState<Record<string, { status?: string; returnReason?: string }>>({}); // auditItemId -> { status, returnReason }
   
   // Edit finding modal state (for Return status)
   const [showEditFindingModal, setShowEditFindingModal] = useState(false);
@@ -103,6 +105,11 @@ const DepartmentChecklist = () => {
 
   // Audit info state
   const [auditType, setAuditType] = useState<string>('');
+  
+  // Schedule data for deadline constraints
+  const [fieldworkStartDate, setFieldworkStartDate] = useState<Date | null>(null);
+  const [evidenceDueDate, setEvidenceDueDate] = useState<Date | null>(null);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
 
   // Add checklist item modal state
   const [showAddItemModal, setShowAddItemModal] = useState(false);
@@ -171,6 +178,10 @@ const DepartmentChecklist = () => {
   const [newEditFiles, setNewEditFiles] = useState<File[]>([]);
   const generateTempId = () => `temp-${Math.random().toString(36).slice(2, 9)}`;
   const [deletedRootCauseIds, setDeletedRootCauseIds] = useState<string[]>([]);
+
+  // Rejection Reason Modal state
+  const [showRejectionReasonModal, setShowRejectionReasonModal] = useState(false);
+  const [selectedRejectionReason, setSelectedRejectionReason] = useState<{ reason: string; findingTitle: string } | null>(null);
 
   // QR Scan & Verify Code state
   const [qrScanned, setQrScanned] = useState<boolean>(false);
@@ -407,13 +418,13 @@ const DepartmentChecklist = () => {
     return (statusLower === 'compliant' || statusLower.includes('compliant')) && !isNonCompliant(status);
   };
 
-  // Check if item is returned - check both checklist item status and finding status
+  // Check if item is returned - check checklist item status, finding status, AND compliant status
   const isReturned = (item: ChecklistItem, statusToCheck?: string) => {
     // Use provided status or item status
     const statusLower = (statusToCheck || item.status || '').toLowerCase().trim();
     
     // Check if status contains "return" (case-insensitive, handles "Return", "returned", "Returned", etc.)
-    if (statusLower === 'return' || statusLower === 'returned' || statusLower.includes('return')) {
+    if (statusLower === 'return' || statusLower === 'returned' || statusLower.includes('return') || statusLower.includes('WitnessConfirmReturned')) {
       return true;
     }
     
@@ -425,9 +436,18 @@ const DepartmentChecklist = () => {
       const finding = myFindings.find(f => f.findingId === findingId);
       if (finding) {
         const findingStatusLower = (finding.status || '').toLowerCase().trim();
-        if (findingStatusLower === 'return' || findingStatusLower === 'returned' || findingStatusLower.includes('return')) {
+        if (findingStatusLower === 'return' || findingStatusLower === 'returned' || findingStatusLower.includes('return') || findingStatusLower.includes('witnessconfirmreturned')) {
           return true;
         }
+      }
+    }
+    
+    // Also check compliant record status (ChecklistItemNoFinding)
+    const compliantData = compliantStatusMap[item.auditItemId];
+    if (compliantData?.status) {
+      const compliantStatusLower = compliantData.status.toLowerCase().trim();
+      if (compliantStatusLower === 'return' || compliantStatusLower === 'returned' || compliantStatusLower.includes('return')) {
+        return true;
       }
     }
     
@@ -504,12 +524,55 @@ const DepartmentChecklist = () => {
     }
   };
 
+  // Load audit schedule for deadline constraints
+  const loadSchedule = async () => {
+    if (!auditId) return;
+    
+    setLoadingSchedule(true);
+    try {
+      const unwrap = (data: any): any[] => {
+        if (!data) return [];
+        if (Array.isArray(data)) return data;
+        if (Array.isArray(data.$values)) return data.$values;
+        if (Array.isArray(data.values)) return data.values;
+        if (Array.isArray(data.data)) return data.data;
+        return [];
+      };
+      
+      const scheduleResponse = await getAuditScheduleByAudit(auditId);
+      const schedulesArray = unwrap(scheduleResponse);
+      
+      // Find "Fieldwork Start" and "Evidence Due" milestones
+      const fieldworkStart = schedulesArray.find((s: any) => 
+        s.milestoneName?.toLowerCase().includes('fieldwork start')
+      );
+      const evidenceDue = schedulesArray.find((s: any) => 
+        s.milestoneName?.toLowerCase().includes('evidence due')
+      );
+      
+      if (fieldworkStart?.dueDate) {
+        setFieldworkStartDate(new Date(fieldworkStart.dueDate));
+      }
+      if (evidenceDue?.dueDate) {
+        setEvidenceDueDate(new Date(evidenceDue.dueDate));
+      }
+    } catch (err) {
+      console.error('Error loading schedule:', err);
+    } finally {
+      setLoadingSchedule(false);
+    }
+  };
+
   const filterActiveAttachments = (items: Attachment[]) =>
     (items || []).filter(att => (att.status || '').toLowerCase() !== 'inactive');
 
   // Load root causes, actions, and attachments for edit modal
   const loadEditFindingExtras = async (findingId: string, finding?: Finding) => {
     setLoadingEditExtras(true);
+    
+    // Load schedule data for deadline constraints
+    await loadSchedule();
+    
     try {
       const rootCauses = await getRootCausesByFinding(findingId);
       setEditRootCauses(rootCauses || []);
@@ -966,16 +1029,22 @@ const DepartmentChecklist = () => {
               const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
               const allCompliantRecords = unwrapArray(compliantRes.data);
               
-              // Build compliantIdMap: auditChecklistItemId -> compliant record id
+              // Build compliantIdMap and compliantStatusMap
               const compliantMap: Record<string, string | number> = {};
+              const statusMap: Record<string, { status?: string; returnReason?: string }> = {};
               allCompliantRecords.forEach((record: any) => {
                 if (record.auditChecklistItemId && record.id) {
                   compliantMap[record.auditChecklistItemId] = record.id;
+                  statusMap[record.auditChecklistItemId] = {
+                    status: record.status || '',
+                    returnReason: record.returnReason || record.reasonReturn || ''
+                  };
                 }
               });
               
-              // Update compliantIdMap state
+              // Update compliantIdMap and compliantStatusMap state
               setCompliantIdMap(compliantMap);
+              setCompliantStatusMap(statusMap);
               
               // Update checklist items status: if item has compliant record, set status to "Compliant"
               const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
@@ -1725,6 +1794,11 @@ const DepartmentChecklist = () => {
     const originalStatus = finding.status || '';
     const statusLower = originalStatus.toLowerCase();
 
+    // If finding already has final status (Closed/Verified), return it directly
+    if (statusLower === 'closed' || statusLower === 'verified') {
+      return originalStatus;
+    }
+
     // If status is "Received", check if all actions are approved/verified
     if (statusLower === 'received') {
       const actions = findingActionsMap[finding.findingId] || [];
@@ -1732,7 +1806,7 @@ const DepartmentChecklist = () => {
         // Check if all actions are approved or verified
         const allApprovedOrVerified = actions.every(a => {
           const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'approved' || actionStatus === 'verified' || actionStatus === 'completed';
+          return actionStatus === 'approved' || actionStatus === 'verified' || actionStatus === 'completed' || actionStatus === 'complete';
         });
         
         // If not all actions are approved/verified, keep "Received" status
@@ -1765,7 +1839,7 @@ const DepartmentChecklist = () => {
         // Check if all are approved
         const allApproved = actions.every(a => {
           const actionStatus = a.status?.toLowerCase() || '';
-          return actionStatus === 'approved' || actionStatus === 'completed';
+          return actionStatus === 'approved' || actionStatus === 'completed' || actionStatus === 'complete';
         });
         
         if (allApproved) {
@@ -1777,17 +1851,6 @@ const DepartmentChecklist = () => {
       }
       // No actions yet, keep Received
       return 'Received';
-    }
-
-    // If status is "Closed", check if all actions are actually closed
-    if (statusLower === 'closed') {
-      const allClosed = areAllActionsClosed(finding.findingId);
-      if (!allClosed) {
-        // Not all actions are closed, so don't show "Closed"
-        // Return a status based on actions or keep original if no actions
-        const actionStatus = getFindingStatus(finding.findingId);
-        return actionStatus?.status || 'Open';
-      }
     }
     
     return originalStatus;
@@ -1950,7 +2013,7 @@ const DepartmentChecklist = () => {
               {departmentName || 'Checklist Items'}
             </h1>
           </div>
-          <p className="text-gray-600 text-xs sm:text-sm ml-11">Review and respond to checklist items</p>
+          <p className="text-gray-600 text-xs sm:text-sm ml-11"></p>
         </div>
       </div>
 
@@ -2089,6 +2152,16 @@ const DepartmentChecklist = () => {
                         }
                       }
                       
+                      // Also check if compliant is returned
+                      const compliantData = compliantStatusMap[item.auditItemId];
+                      const compliantStatus = compliantData?.status?.toLowerCase();
+                      const isCompliantReturned = compliantStatus === 'return' || compliantStatus === 'returned';
+                      
+                      // If compliant is returned and no finding status override, use compliant status for coloring
+                      if (isCompliantReturned && itemStatusToCheck === item.status) {
+                        itemStatusToCheck = 'Returned';
+                      }
+                      
                       return (
                         <div
                           key={item.auditItemId}
@@ -2114,12 +2187,53 @@ const DepartmentChecklist = () => {
                                     Witness Rejected
                                   </span>
                                   {disagreedFinding.witnessDisagreementReason && (
-                                    <span className="text-[10px] text-red-600 italic line-clamp-1 flex-1">
+                                    <span className="text-[Review and respond to checklist items10px] text-red-600 italic line-clamp-1 flex-1">
                                       "{disagreedFinding.witnessDisagreementReason}"
                                     </span>
                                   )}
                                 </div>
                               )}
+                              {/* Show rejection reason for returned findings OR returned compliant items */}
+                              {isReturned(item, itemStatusToCheck) && (() => {
+                                // Check if it's a returned finding
+                                const returnedFinding = myFindings.find(f => f.auditItemId === item.auditItemId);
+                                const findingReason = returnedFinding?.reasonReturn || returnedFinding?.witnessDisagreementReason;
+                                
+                                // Check if it's a returned compliant item
+                                const compliantData = compliantStatusMap[item.auditItemId];
+                                const compliantReason = compliantData?.returnReason;
+                                
+                                // Use whichever reason is available
+                                const rejectionReason = findingReason || compliantReason;
+                                const title = returnedFinding?.title || item.questionTextSnapshot;
+                                
+                                if (rejectionReason) {
+                                  return (
+                                    <div 
+                                      className="mt-2 flex items-start gap-2 cursor-pointer p-2 rounded-lg transition-colors"
+                                     
+                                      title="Click to view full rejection reason"
+                                    >
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold  text-orange-700 border border-orange-300 whitespace-nowrap flex-shrink-0"
+                                       onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedRejectionReason({
+                                          reason: rejectionReason,
+                                          findingTitle: title
+                                        });
+                                        setShowRejectionReasonModal(true);
+                                      }}>
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                        Rejection Reason
+                                      </span>
+                                    
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </div>
                           </div>
                           <div className="flex items-center justify-end sm:justify-start gap-2 sm:gap-3 flex-shrink-0">
@@ -2159,14 +2273,32 @@ const DepartmentChecklist = () => {
                               const findingData = findingsMap[item.auditItemId];
                               const findingStatus = findingData?.status?.toLowerCase();
                               const isFixedStatus = findingStatus === 'fixed';
+                              const isWitnessConfirmed = findingStatus === 'witnessconfirmed';
+                              const isWitnessConfirmReturned = findingStatus === 'witnessconfirmreturned';
                               const isEditedInSession = editedFindingIds.has(findingData?.findingId || '');
                               
-                              // Show Fixed badge with View icon if status is Fixed or already edited in this session
-                              if (isReturned(item, itemStatusToCheck) && (isFixedStatus || isEditedInSession)) {
+                              // Check if compliant item is returned
+                              const compliantData = compliantStatusMap[item.auditItemId];
+                              const compliantStatus = compliantData?.status?.toLowerCase();
+                              const isCompliantReturned = compliantStatus === 'return' || compliantStatus === 'returned';
+                              
+                              // Get the full finding object to access reasonReturn
+                              const returnedFinding = isReturned(item, itemStatusToCheck) 
+                                ? myFindings.find(f => f.auditItemId === item.auditItemId)
+                                : null;
+                              
+                              // Show Fixed badge with View icon if status is Fixed, WitnessConfirmed, or already edited in this session
+                              if (isReturned(item, itemStatusToCheck) && (isFixedStatus || isWitnessConfirmed || isEditedInSession || isWitnessConfirmReturned)) {
                                 return (
                                   <div className="flex items-center gap-2">
-                                    <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-green-100 text-green-700 border border-green-300">
-                                      Fixed
+                                    <span className={`px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap ${
+                                      isWitnessConfirmReturned
+                                        ? 'bg-purple-100 text-purple-700 border border-purple-300'
+                                        : isWitnessConfirmed 
+                                        ? 'bg-teal-100 text-teal-700 border border-teal-300' 
+                                        : 'bg-green-100 text-green-700 border border-green-300'
+                                    }`}>
+                                      {isWitnessConfirmReturned ? 'Witness Confirm Returned' : isWitnessConfirmed ? 'Confirmed' : 'Fixed'}
                                     </span>
                                     <button
                                       onClick={(e) => {
@@ -2189,61 +2321,115 @@ const DepartmentChecklist = () => {
                                 );
                               }
                               
-                              // Show Edit button only if status is not Fixed and not edited yet
-                              if (isReturned(item, itemStatusToCheck) && !isFixedStatus && !isEditedInSession) {
+                              // Check if item is returned (from any source: item status, finding status, or compliant status)
+                              if (isReturned(item, itemStatusToCheck) && !isFixedStatus && !isWitnessConfirmed && !isEditedInSession && !isWitnessConfirmReturned) {
+                                // Case 1: Compliant item returned and no finding exists yet
+                                if (isCompliantReturned && !findingData?.findingId) {
+                                  return (
+                                    <div className="flex items-center gap-2">
+                                      <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-orange-100 text-orange-700 border border-orange-300">
+                                        Compliant Returned
+                                      </span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedItem(item);
+                                          setShowCreateModal(true);
+                                        }}
+                                        className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors active:scale-95"
+                                        title="Create Finding"
+                                      >
+                                        Create Finding
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleMarkCompliant(item);
+                                        }}
+                                        className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors active:scale-95"
+                                        title="Re-submit as Compliant"
+                                      >
+                                        Re-submit Compliant
+                                      </button>
+                                    </div>
+                                  );
+                                }
+                                
+                                // Case 2: Finding returned - show edit button
+                                if (findingData?.findingId) {
+                                  return (
+                                    <div className="flex items-center gap-2">
+                                      <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-orange-100 text-orange-700 border border-orange-300">
+                                        Returned
+                                      </span>
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          const findingId = findingData.findingId;
+                                          if (!findingId) {
+                                            toast.warning('Finding not found for this item');
+                                            return;
+                                          }
+
+                                          setLoadingFinding(true);
+                                          try {
+                                            const finding = await getFindingById(findingId);
+                                            setEditingFinding(finding);
+                                            setEditFormData({
+                                              title: finding.title || '',
+                                              description: finding.description || '',
+                                              severity: finding.severity || '',
+                                              deadline: finding.deadline ? new Date(finding.deadline).toISOString().split('T')[0] : '',
+                                              externalAuditorName: finding.externalAuditorName || '',
+                                              witnessId: finding.witnessId || '',
+                                            });
+                                            setShowEditFindingModal(true);
+                                            await loadSeverities();
+                                            await loadEditFindingExtras(findingId, finding);
+                                          } catch (err: any) {
+                                            console.error('Error loading finding:', err);
+                                            toast.error('Failed to load finding details');
+                                          } finally {
+                                            setLoadingFinding(false);
+                                          }
+                                        }}
+                                        disabled={loadingFinding}
+                                        className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                        title="Edit Finding"
+                                      >
+                                        {loadingFinding ? (
+                                          <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
+                                        ) : (
+                                          <>
+                                            <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                            </svg>
+                                            <span>Edit</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    </div>
+                                  );
+                                }
+                                
+                                // Case 3: Item itself has Return status but no finding/compliant - offer to create finding
                                 return (
                                   <div className="flex items-center gap-2">
                                     <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-orange-100 text-orange-700 border border-orange-300">
                                       Returned
                                     </span>
-                                <button
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    const findingData = findingsMap[item.auditItemId];
-                                    const findingId = findingData?.findingId;
-                                    if (!findingId) {
-                                      toast.warning('Finding not found for this item');
-                                      return;
-                                    }
-
-                                    setLoadingFinding(true);
-                                    try {
-                                      const finding = await getFindingById(findingId);
-                                      setEditingFinding(finding);
-                                      setEditFormData({
-                                        title: finding.title || '',
-                                        description: finding.description || '',
-                                        severity: finding.severity || '',
-                                        deadline: finding.deadline ? new Date(finding.deadline).toISOString().split('T')[0] : '',
-                                        externalAuditorName: finding.externalAuditorName || '',
-                                        witnessId: finding.witnessId || '',
-                                      });
-                                      setShowEditFindingModal(true);
-                                      await loadSeverities();
-                                      await loadEditFindingExtras(findingId, finding);
-                                    } catch (err: any) {
-                                      console.error('Error loading finding:', err);
-                                      toast.error('Failed to load finding details');
-                                    } finally {
-                                      setLoadingFinding(false);
-                                    }
-                                  }}
-                                  disabled={loadingFinding}
-                                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                                  title="Edit Finding"
-                                >
-                                  {loadingFinding ? (
-                                    <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
-                                  ) : (
-                                    <>
-                                      <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                      </svg>
-                                      <span>Edit</span>
-                                    </>
-                                  )}
-                                </button>
-                              </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedItem(item);
+                                        setShowCreateModal(true);
+                                      }}
+                                      className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors active:scale-95"
+                                      title="Create Finding"
+                                    >
+                                      Create Finding
+                                    </button>
+                                  </div>
                                 );
                               }
                               
@@ -2418,9 +2604,11 @@ const DepartmentChecklist = () => {
                               </h3>
                               {getFindingStatus(finding.findingId) && (() => {
                                 const statusInfo = getFindingStatus(finding.findingId);
+                              
                                 return statusInfo ? (
-                                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusInfo.color}`}>
+                                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColorFromConstants(statusInfo.status || '')}`}>
                                     {statusInfo.status}
+                                    
                                   </span>
                                 ) : null;
                               })()}
@@ -2473,9 +2661,9 @@ const DepartmentChecklist = () => {
                               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(finding.severity || '')}`}>
                                 {finding.severity || 'N/A'}
                               </span>
-                              <p className={`text-xs  sm:text-sm line-clamp-2 font-medium ${getStatusBadgeColor(getDisplayStatus(finding))}`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusColorFromConstants(getDisplayStatus(finding) || '')}`}>
                                 {getDisplayStatus(finding) || 'No status'}
-                              </p>
+                              </span>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -2544,19 +2732,24 @@ const DepartmentChecklist = () => {
                               <h3 className="text-sm sm:text-base font-medium text-gray-900">
                                 {finding.title}
                               </h3>
-                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
-                                Witness Disagreed
-                              </span>
+                             
                               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(finding.status || 'WitnessDisagreed')}`}>
-                                {finding.status || 'WitnessDisagreed'}
+                                {finding.status === 'WitnessDisagreed' ? 'Witness Disagreed' : finding.status === 'PendingWitnessConfirmation' ? 'Pending Confirmation' : finding.status}
                               </span>
                             </div>
-                            {finding.witnessDisagreementReason && (
-                              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                                <p className="text-xs font-semibold text-red-800 mb-1">Rejection Reason:</p>
-                                <p className="text-xs text-red-700 leading-relaxed whitespace-pre-wrap break-words line-clamp-2">
-                                  {finding.witnessDisagreementReason}
-                                </p>
+                            {(finding.reasonReturn || finding.witnessDisagreementReason) && (
+                              <div className="mt-2 p-4 bg-gradient-to-r from-red-50 to-orange-50 border-2 border-red-300 rounded-lg shadow-sm">
+                                <div className="flex items-start gap-2">
+                                  <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                  </svg>
+                                  <div className="flex-1">
+                                    <p className="text-xs font-bold text-red-900 mb-1.5 uppercase tracking-wide">Witness Rejection Reason:</p>
+                                    <p className="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap break-words">
+                                      {finding.reasonReturn || finding.witnessDisagreementReason}
+                                    </p>
+                                  </div>
+                                </div>
                               </div>
                             )}
                             <div className="flex items-center gap-6 mt-2 flex-wrap">
@@ -2657,6 +2850,29 @@ const DepartmentChecklist = () => {
                             <h3 className="text-base font-semibold text-gray-900">{action.title}</h3>
                             {action.dueDate && (
                               <p className="text-xs text-gray-500 mt-1">Due: {new Date(action.dueDate).toLocaleDateString()}</p>
+                            )}
+                            {/* Progress Bar */}
+                            {typeof action.progressPercent === 'number' && (
+                              <div className="mt-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-medium text-gray-600">Progress</span>
+                                  <span className="text-xs font-semibold text-blue-600">{action.progressPercent}%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full transition-all duration-300 ${
+                                      action.progressPercent === 100 
+                                        ? 'bg-green-500' 
+                                        : action.progressPercent >= 75 
+                                        ? 'bg-blue-500' 
+                                        : action.progressPercent >= 50 
+                                        ? 'bg-yellow-500' 
+                                        : 'bg-orange-500'
+                                    }`}
+                                    style={{ width: `${action.progressPercent}%` }}
+                                  />
+                                </div>
+                              </div>
                             )}
                           </div>
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${action.status?.toLowerCase() === 'verified'
@@ -2810,16 +3026,22 @@ const DepartmentChecklist = () => {
                   const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
                   const allCompliantRecords = unwrapArray(compliantRes.data);
                   
-                  // Build compliantIdMap: auditChecklistItemId -> compliant record id
+                  // Build compliantIdMap and compliantStatusMap
                   const compliantMap: Record<string, string | number> = {};
+                  const statusMap: Record<string, { status?: string; returnReason?: string }> = {};
                   allCompliantRecords.forEach((record: any) => {
                     if (record.auditChecklistItemId && record.id) {
                       compliantMap[record.auditChecklistItemId] = record.id;
+                      statusMap[record.auditChecklistItemId] = {
+                        status: record.status || '',
+                        returnReason: record.returnReason || record.reasonReturn || ''
+                      };
                     }
                   });
                   
-                  // Update compliantIdMap state
+                  // Update compliantIdMap and compliantStatusMap state
                   setCompliantIdMap(compliantMap);
+                  setCompliantStatusMap(statusMap);
                   
                   // Update checklist items status: if item has compliant record, set status to "Compliant"
                   const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
@@ -3181,12 +3403,40 @@ const DepartmentChecklist = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Deadline <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="date"
-                    value={editFormData.deadline}
-                    onChange={(e) => setEditFormData(prev => ({ ...prev, deadline: e.target.value }))}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  />
+                  {loadingSchedule ? (
+                    <div className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
+                      <span className="text-sm text-gray-500">Loading schedule...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="date"
+                        value={editFormData.deadline}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, deadline: e.target.value }))}
+                        min={fieldworkStartDate ? (() => {
+                          const minDate = Math.max(fieldworkStartDate.getTime(), new Date().getTime());
+                          return new Date(minDate).toISOString().split('T')[0];
+                        })() : new Date().toISOString().split('T')[0]}
+                        max={evidenceDueDate ? (() => {
+                          const maxDeadline = new Date(evidenceDueDate);
+                          maxDeadline.setDate(maxDeadline.getDate() - 1);
+                          return maxDeadline.toISOString().split('T')[0];
+                        })() : undefined}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      />
+                      {fieldworkStartDate && evidenceDueDate && (() => {
+                        const maxDeadline = new Date(evidenceDueDate);
+                        maxDeadline.setDate(maxDeadline.getDate() - 1);
+                        const maxDeadlineStr = maxDeadline.toISOString().split('T')[0];
+                        return (
+                          <p className="mt-1 text-xs text-gray-500">
+                            Deadline must be between {fieldworkStartDate.toISOString().split('T')[0]} (Fieldwork Start) and {maxDeadlineStr} (Evidence Due)
+                          </p>
+                        );
+                      })()}
+                    </>
+                  )}
                 </div>
 
                 {/* Witness - Single select dropdown */}
@@ -3748,6 +3998,103 @@ const DepartmentChecklist = () => {
                     )}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rejection Reason Modal */}
+      {showRejectionReasonModal && selectedRejectionReason && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 transition-opacity" 
+            onClick={() => {
+              setShowRejectionReasonModal(false);
+              setSelectedRejectionReason(null);
+            }} 
+          />
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div 
+              className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-orange-600 to-red-600 px-6 py-4 rounded-t-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-white">Rejection Reason</h2>
+                      <p className="text-sm text-orange-100 mt-0.5">Finding was returned for revision</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowRejectionReasonModal(false);
+                      setSelectedRejectionReason(null);
+                    }}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-6">
+                {/* Finding Title */}
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                    Finding
+                  </label>
+                  <p className="text-sm text-gray-900 font-medium">
+                    {selectedRejectionReason.findingTitle}
+                  </p>
+                </div>
+
+                {/* Rejection Reason */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                    Reason for Rejection
+                  </label>
+                  <div className="bg-gradient-to-br from-orange-50 to-red-50 border-2 border-orange-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center mt-0.5">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">
+                          {selectedRejectionReason.reason}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Help Text */}
+               
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowRejectionReasonModal(false);
+                    setSelectedRejectionReason(null);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>

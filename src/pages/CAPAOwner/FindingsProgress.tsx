@@ -256,7 +256,7 @@ const FindingsProgress = () => {
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-lg font-semibold text-gray-800">{finding.title}</h3>
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(normalizeStatus(finding.status))}`}>
-                          {finding.status}
+                          {finding.status === 'WitnessDisagreed' ? 'Witness Disagreed' : finding.status === 'PendingWitnessConfirmation' ? 'Pending Confirmation' : finding.status}
                         </span>
                       </div>
                       <p className="text-sm text-gray-600">Finding ID: {finding.findingId}</p>

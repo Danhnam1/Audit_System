@@ -193,10 +193,10 @@ const AssignedTasks = () => {
         // Filter out actions with status "Archived"
         const statusLower = task.originalStatus?.toLowerCase() || '';
         if (statusLower === 'archived') return false;
-        // Filter actions with status "Rejected" or "LeadRejected" (case-insensitive)
-        const isRejected = statusLower === 'rejected' || statusLower === 'leadrejected';
+        // Filter actions with status "Rejected", "LeadRejected", or "Declined" (case-insensitive)
+        const isRejected = statusLower === 'rejected' || statusLower === 'leadrejected' || statusLower === 'declined';
         if (isRejected) {
-          console.log('[REJECT TAB] Found rejected action:', {
+          console.log('[REJECT TAB] Found rejected/declined action:', {
             actionId: task.actionId,
             status: task.originalStatus,
             statusLower,
@@ -217,9 +217,9 @@ const AssignedTasks = () => {
         // Filter out actions with status "Archived"
         const statusLower = task.originalStatus?.toLowerCase() || '';
         if (statusLower === 'archived') return false;
-        // For action tab, filter actions with status "Reviewed", "Approved", "Active", or "InProgress"
+        // For action tab, filter actions with status "Reviewed", "Approved", "Active", "InProgress", or "Verified"
         // NOTE: Rejected actions should NOT appear in action tab, they should be in reject tab
-        return statusLower === 'reviewed' || statusLower === 'approved' || statusLower === 'active' || statusLower === 'inprogress';
+        return statusLower === 'reviewed' || statusLower === 'approved' || statusLower === 'active' || statusLower === 'inprogress' || statusLower === 'verified';
       });
   
   // Debug logging for filtered tasks

@@ -94,12 +94,7 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
 
     case 'auditeeowner':
       return [
-        {
-          label: 'Main',
-          children: [
-            { icon: <DashboardIcon />, label: 'Dashboard', path: `${ROUTES.AUDITEE_OWNER}/dashboard` },
-          ],
-        },
+        
         {
           label: 'Audit Management',
           children: [

@@ -231,8 +231,8 @@ const CAPAOwnerMyWitnessed = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm text-gray-700">{audit.auditType}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(audit.status || '')}`}>
+                      <td className="px-6 py-4 whitespace-nowrap ">
+                        <span className={`px-2 py-1 rounded-2xl text-xs font-medium  ${getStatusColor(audit.status || '')}`}>
                           {audit.status || 'N/A'}
                         </span>
                       </td>

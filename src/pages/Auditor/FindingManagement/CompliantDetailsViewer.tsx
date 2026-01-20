@@ -16,9 +16,14 @@ const CompliantDetailsViewer = ({
 }: CompliantDetailsViewerProps) => {
   const [compliantData, setCompliantData] = useState<any>(null);
   const [witnessName, setWitnessName] = useState<string>('');
+  const [witnessData, setWitnessData] = useState<any>(null);
+  const [createdByName, setCreatedByName] = useState<string>('');
+  const [createdByData, setCreatedByData] = useState<any>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showWitnessModal, setShowWitnessModal] = useState(false);
+  const [showCreatedByModal, setShowCreatedByModal] = useState(false);
 
   useEffect(() => {
     if (isOpen && compliantId) {
@@ -42,9 +47,24 @@ const CompliantDetailsViewer = ({
         try {
           const witnessUser = await getUserById(data.witnessId);
           setWitnessName(witnessUser?.fullName || '');
+          setWitnessData(witnessUser);
         } catch (err) {
           console.error('Failed to fetch witness name:', err);
           setWitnessName('Unknown');
+          setWitnessData(null);
+        }
+      }
+      
+      // Fetch createdBy user details
+      if (data?.createdBy) {
+        try {
+          const createdByUser = await getUserById(data.createdBy);
+          setCreatedByName(createdByUser?.fullName || '');
+          setCreatedByData(createdByUser);
+        } catch (err) {
+          console.error('Failed to fetch createdBy name:', err);
+          setCreatedByName('Unknown');
+          setCreatedByData(null);
         }
       }
 
@@ -221,17 +241,40 @@ Downloady-center py-20">
                     />
                   </div>
 
+                  {/* Created By */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                      Created By
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => createdByData && setShowCreatedByModal(true)}
+                      disabled={!createdByData}
+                      className="w-full flex items-center justify-between px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-left text-gray-700 font-medium hover:bg-gray-100 transition-colors disabled:cursor-not-allowed disabled:hover:bg-gray-50"
+                    >
+                      {createdByName || 'Loading...'}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                    </button>
+                  </div>
+
                   {/* Witness */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
                       Witness
                     </label>
-                    <input
-                      type="text"
-                      value={witnessName || 'Loading...'}
-                      readOnly
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => witnessData && setShowWitnessModal(true)}
+                      disabled={!witnessData}
+                      className="w-full flex items-center justify-between px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-left text-gray-700 font-medium hover:bg-gray-100 transition-colors disabled:cursor-not-allowed disabled:hover:bg-gray-50"
+                    >
+                      {witnessName || 'Loading...'}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                    </button>
                   </div>
 
                   {/* Reason */}
@@ -341,6 +384,276 @@ Downloady-center py-20">
           </div>
         </div>
       </div>
+
+      {/* Created By Detail Modal */}
+      {showCreatedByModal && createdByData && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+            onClick={() => setShowCreatedByModal(false)}
+            
+          />
+
+          {/* Modal */}
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div
+              className="relative bg-white rounded-xl shadow-lg w-full max-w-2xl mx-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 rounded-t-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                      <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-2xl font-bold text-white">Creator Information</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowCreatedByModal(false)}
+                    className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                {/* Full Name */}
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-2 border-blue-200 rounded-xl p-5">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <label className="text-xs font-bold text-blue-700 uppercase tracking-wide">Full Name</label>
+                  </div>
+                  <p className="text-lg font-bold text-blue-900 pl-[52px]">{createdByData?.fullName || 'N/A'}</p>
+                </div>
+
+                {/* Email */}
+                {createdByData?.email && (
+                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Email</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px] break-all">{createdByData.email}</p>
+                  </div>
+                )}
+
+                {/* Phone Number */}
+                {createdByData?.phoneNumber && (
+                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Phone Number</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{createdByData.phoneNumber}</p>
+                  </div>
+                )}
+
+                {/* Username */}
+                {createdByData?.userName && (
+                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Username</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{createdByData.userName}</p>
+                  </div>
+                )}
+
+                {/* Department */}
+                {createdByData?.departmentName && (
+                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Department</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{createdByData.departmentName}</p>
+                  </div>
+                )}
+
+                {/* Role */}
+                {(createdByData?.roleName || createdByData?.role) && (
+                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Role</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{createdByData?.roleName || createdByData?.role}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-50 border-t-2 border-gray-200 px-6 py-4 rounded-b-2xl flex justify-end">
+                <button
+                  onClick={() => setShowCreatedByModal(false)}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Witness Detail Modal */}
+      {showWitnessModal && witnessData && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+            onClick={() => setShowWitnessModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div
+              className="relative bg-white rounded-xl shadow-lg w-full max-w-2xl mx-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 rounded-t-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                      <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-2xl font-bold text-white">Witness Information</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowWitnessModal(false)}
+                    className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                {/* Full Name */}
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 border-2 border-blue-200 rounded-xl p-5">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 bg-blue-200 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                    </div>
+                    <label className="text-xs font-bold text-blue-700 uppercase tracking-wide">Full Name</label>
+                  </div>
+                  <p className="text-lg font-bold text-blue-900 pl-[52px]">{witnessData.fullName || 'N/A'}</p>
+                </div>
+
+                {/* Email */}
+                {witnessData.email && (
+                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Email</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px] break-all">{witnessData.email}</p>
+                  </div>
+                )}
+
+                {/* Phone Number */}
+                {witnessData.phoneNumber && (
+                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Phone Number</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{witnessData.phoneNumber}</p>
+                  </div>
+                )}
+
+                {/* Department */}
+                {witnessData.department && (
+                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Department</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{witnessData.department}</p>
+                  </div>
+                )}
+
+                {/* Role */}
+                {witnessData.roleName && (
+                  <div className="bg-white border-2 border-gray-200 rounded-xl p-5 hover:shadow-lg transition-shadow">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                        </svg>
+                      </div>
+                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">Role</label>
+                    </div>
+                    <p className="text-base font-semibold text-gray-900 pl-[52px]">{witnessData.roleName}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="bg-gray-50 border-t-2 border-gray-200 px-6 py-4 rounded-b-2xl flex justify-end">
+                <button
+                  onClick={() => setShowWitnessModal(false)}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
