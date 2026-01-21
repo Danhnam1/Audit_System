@@ -15,6 +15,7 @@ interface PlanTableProps {
   onUpload?: (auditId: string) => void;
   getStatusColor: (status: string) => string;
   getBadgeVariant: (variant: BadgeVariant) => string;
+  getAuditTypeBadgeColor?: (auditType: string, variant?: 'default' | 'light') => string;
   // Optional start index to compute global row numbers (useful for pagination)
   startIndex?: number;
 }
@@ -29,6 +30,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
   onUpload,
   getStatusColor,
   getBadgeVariant,
+  getAuditTypeBadgeColor,
   startIndex = 0,
 }) => {
   const formatDate = (dateStr: string) => {
@@ -64,7 +66,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         header: 'Type',
         cellClassName: 'whitespace-nowrap',
         render: (plan) => (
-          <span className="text-ms text-[#5b6166]">
+          <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getAuditTypeBadgeColor ? getAuditTypeBadgeColor(plan.type || 'General', 'default') : getBadgeVariant('primary-light')}`}>
             {plan.type || 'General'}
           </span>
         ),
@@ -160,7 +162,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         },
       },
     ],
-    [getBadgeVariant, getStatusColor, onDeletePlan, onEditPlan, onViewDetails, onUpload, startIndex],
+    [getBadgeVariant, getStatusColor, getAuditTypeBadgeColor, onDeletePlan, onEditPlan, onViewDetails, onUpload, startIndex],
   );
 
   const emptyStateMessage = loadingPlans

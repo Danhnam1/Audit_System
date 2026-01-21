@@ -1115,6 +1115,7 @@ const SQAStaffAuditPlanning = () => {
               onDeletePlan={handleDeletePlan}
               getStatusColor={getStatusColor}
               getBadgeVariant={getBadgeVariant}
+              getAuditTypeBadgeColor={getAuditTypeBadgeColor}
               startIndex={0}
               currentUserId={currentUserIdForModal}
               currentUserEmail={user?.email || null}

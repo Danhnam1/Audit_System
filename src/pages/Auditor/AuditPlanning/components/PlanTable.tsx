@@ -14,6 +14,7 @@ interface PlanTableProps {
   onDeletePlan?: (auditId: string) => void;
   getStatusColor: (status: string) => string;
   getBadgeVariant: (variant: BadgeVariant) => string;
+  getAuditTypeBadgeColor?: (auditType: string, variant?: 'default' | 'light') => string;
   // Optional start index to compute global row numbers (useful for pagination)
   startIndex?: number;
   // User info for checking if user is creator
@@ -30,6 +31,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
   onDeletePlan,
   getStatusColor,
   getBadgeVariant,
+  getAuditTypeBadgeColor,
   startIndex = 0,
   currentUserId,
   currentUserEmail,
@@ -67,7 +69,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         header: 'Type',
         cellClassName: 'whitespace-nowrap',
         render: (plan) => (
-          <span className="text-ms text-[#5b6166]">
+          <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getAuditTypeBadgeColor ? getAuditTypeBadgeColor(plan.type || 'General', 'default') : getBadgeVariant('primary-light')}`}>
             {plan.type || 'General'}
           </span>
         ),
@@ -206,7 +208,7 @@ export const PlanTable: React.FC<PlanTableProps> = ({
         },
       },
     ],
-    [getBadgeVariant, getStatusColor, onViewDetails, onEditPlan, onDeletePlan, currentUserId, currentUserEmail, startIndex],
+    [getBadgeVariant, getStatusColor, getAuditTypeBadgeColor, onViewDetails, onEditPlan, onDeletePlan, currentUserId, currentUserEmail, startIndex],
   );
 
   const emptyStateMessage = loadingPlans

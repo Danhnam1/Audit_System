@@ -126,6 +126,7 @@ const HistoryUploadPage = () => {
         
         // Filter audits: show audits where user is in audit team
         // All members of the audit team should be able to view history upload
+        // Include audits with "archived" status (History Upload should show all audits including archived)
         const filtered = (Array.isArray(arr) ? arr : []).filter((a: any) => {
           // If no current user ID, don't show any audits
           if (!normalizedCurrentUserId) {
@@ -477,15 +478,17 @@ const HistoryUploadPage = () => {
     (Array.isArray(audits) ? audits : []).map((a: any, idx: number) => {
       const id = resolveAuditId(a, idx);
       const title = a.title || `Audit ${idx + 1}`;
+      // Get status - ensure it's properly extracted (including archived status)
+      const status = a.status || a.auditStatus || 'N/A';
       return { 
         auditId: id, 
         title,
-        type: a.type || 'N/A',
-        status: a.status || 'N/A',
-        startDate: a.startDate || null,
-        endDate: a.endDate || null,
-        scope: a.scope || 'N/A',
-        fullAuditData: a // Store full audit data for PlanDetailsModal
+        type: a.type || a.auditType || 'N/A',
+        status: status,
+        startDate: a.startDate || a.periodFrom || null,
+        endDate: a.endDate || a.periodTo || null,
+        scope: a.scope || a.auditScope || 'N/A',
+        fullAuditData: a // Store full audit data for PlanDetailsModal (includes all info: departments, teams, schedules)
       };
     })
   ), [audits]);
@@ -509,13 +512,18 @@ const HistoryUploadPage = () => {
     try {
       // Ensure auditId is set in the plan details data
       // PlanDetailsModal needs auditId to load schedules, teams, and scope departments
+      // This works for both active and archived audits
       const planDetailsWithId = {
         ...fullAuditData,
         auditId: auditId || fullAuditData.auditId || fullAuditData.id || fullAuditData.$id,
         id: auditId || fullAuditData.auditId || fullAuditData.id || fullAuditData.$id,
+        // Ensure status is included (including archived status)
+        status: fullAuditData.status || auditRow.status || 'N/A',
       };
       
       // Load required data for PlanDetailsModal
+      // PlanDetailsModal will auto-load: Departments, Audit Team, and Schedule & Milestones
+      // Backend now supports both archived and active status
       const [templatesRes, teamsRes] = await Promise.all([
         getAuditChecklistTemplateMapsByAudit(auditId).catch(() => []),
         getAuditorsByAuditId(auditId).catch(() => [])
@@ -532,16 +540,23 @@ const HistoryUploadPage = () => {
 
       setTemplatesForSelectedPlan(normalizedTemplates);
       setAuditTeamsForPlan(teams);
-      // Set plan details with ensured auditId - PlanDetailsModal will auto-load schedules, teams, and scope departments
+      // Set plan details with ensured auditId - PlanDetailsModal will auto-load:
+      // - Departments (getAuditScopeDepartments)
+      // - Audit Team & Responsibilities (getAuditorsByAuditId) 
+      // - Schedule & Milestones (getAuditSchedules)
+      // This works for archived audits as well
       setSelectedPlanDetails(planDetailsWithId);
       setShowPlanDetailsModal(true);
     } catch (error) {
       console.error('Failed to load plan details:', error);
       // Still show modal with basic data - PlanDetailsModal will try to load schedules, teams, and departments
+      // This ensures archived audits can still be viewed
       const planDetailsWithId = {
         ...fullAuditData,
         auditId: auditId || fullAuditData.auditId || fullAuditData.id || fullAuditData.$id,
         id: auditId || fullAuditData.auditId || fullAuditData.id || fullAuditData.$id,
+        // Ensure status is included (including archived status)
+        status: fullAuditData.status || auditRow.status || 'N/A',
       };
       setSelectedPlanDetails(planDetailsWithId);
       setTemplatesForSelectedPlan([]);

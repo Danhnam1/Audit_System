@@ -6,7 +6,7 @@ import { getUserFriendlyErrorMessage } from '../../../../utils/errorMessages';
 import { getAuditCriterionById } from '../../../../api/auditCriteria';
 import { getAuditSchedules } from '../../../../api/auditSchedule';
 import { getAuditorsByAuditId } from '../../../../api/auditTeam';
-import { getAuditScopeDepartments } from '../../../../api/audits';
+import { getAuditScopeDepartments, getAuditScopeDepartmentsByAuditId } from '../../../../api/audits';
 import { unwrap } from '../../../../utils/normalize';
 import { useAuth } from '../../../../contexts';
 import { Button } from '../../../../components';
@@ -299,25 +299,44 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
       try {
         console.log(`[PlanDetailsModal] Reloading data for auditId: ${auditId}, refreshKey: ${refreshKey}`);
-        const [schedulesRes, teamsRes, scopeDeptsRes] = await Promise.all([
-          getAuditSchedules(String(auditId)),
+        
+        // Backend may block schedules for archived audits, so handle gracefully
+        const [schedulesRes, teamsRes, scopeDeptsRes] = await Promise.allSettled([
+          getAuditSchedules(String(auditId)).catch((err) => {
+            // If schedule API fails (e.g., blocked for archived), fallback to original data
+            console.warn(`[PlanDetailsModal] Failed to load schedules for audit ${auditId}, will use original data:`, err);
+            return null; // Return null to indicate failure
+          }),
           getAuditorsByAuditId(String(auditId)),
-          getAuditScopeDepartments(),
+          getAuditScopeDepartmentsByAuditId(String(auditId)).catch(() => getAuditScopeDepartments()),
         ]);
 
-        const schedules = unwrap(schedulesRes) || [];
-        const teams = unwrap(teamsRes) || [];
-        const allScopeDepts = unwrap(scopeDeptsRes) || [];
+        // Handle schedules: if API failed, use original data from selectedPlanDetails
+        let schedulesArray: any[] = [];
+        if (schedulesRes.status === 'fulfilled' && schedulesRes.value !== null) {
+          const schedules = unwrap(schedulesRes.value) || [];
+          schedulesArray = Array.isArray(schedules) ? schedules : [];
+        } else {
+          // Fallback to original schedules from selectedPlanDetails
+          const originalSchedules = selectedPlanDetails.schedules?.values || selectedPlanDetails.schedules || [];
+          schedulesArray = Array.isArray(originalSchedules) ? originalSchedules : [];
+          console.log(`[PlanDetailsModal] Using original schedules from selectedPlanDetails: ${schedulesArray.length} items`);
+        }
 
-        const schedulesArray = Array.isArray(schedules) ? schedules : [];
+        const teams = teamsRes.status === 'fulfilled' ? (unwrap(teamsRes.value) || []) : [];
+        const allScopeDepts = scopeDeptsRes.status === 'fulfilled' ? (unwrap(scopeDeptsRes.value) || []) : [];
+
         const teamsArray = Array.isArray(teams) ? teams : [];
         
-        console.log(`[PlanDetailsModal] Loaded ${schedulesArray.length} schedules, ${teamsArray.length} teams`);
-        
-        // Filter scope departments by auditId and only Active status
+        // Filter scope departments by auditId and include both Active and Archived status
         const scopeDeptsArray = (Array.isArray(allScopeDepts) ? allScopeDepts : [])
           .filter((sd: any) => String(sd.auditId || sd.$auditId || sd.AuditId) === String(auditId))
-          .filter((sd: any) => (sd.status || sd.Status) === "Active");
+          .filter((sd: any) => {
+            const status = (sd.status || sd.Status || '').toLowerCase();
+            return status === 'active' || status === 'archived';
+          });
+        
+        console.log(`[PlanDetailsModal] Loaded ${schedulesArray.length} schedules, ${teamsArray.length} teams, ${scopeDeptsArray.length} scope departments`);
 
         // Force state update to trigger re-render by creating new array references
         setRefreshedSchedules([...schedulesArray]); // Create new array reference
@@ -328,8 +347,9 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         console.log(`[PlanDetailsModal] State updated with refreshed data`);
       } catch (error) {
         console.error('PlanDetailsModal: Failed to reload schedules, teams, and departments:', error);
-        // Fallback to original data
-        setRefreshedSchedules([]);
+        // Fallback to original data from selectedPlanDetails
+        const originalSchedules = selectedPlanDetails?.schedules?.values || selectedPlanDetails?.schedules || [];
+        setRefreshedSchedules(Array.isArray(originalSchedules) ? originalSchedules : []);
         setRefreshedTeams([]);
         setRefreshedScopeDepartments([]);
         setHasLoadedRefreshedData(false);

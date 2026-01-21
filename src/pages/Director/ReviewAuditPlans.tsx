@@ -21,6 +21,7 @@ interface AuditPlan {
   id: string; // use string to preserve GUIDs
   planId: string;
   title: string;
+  type?: string;
   department: string;
   scope: string;
   startDate: string;
@@ -211,6 +212,7 @@ const ReviewAuditPlans = () => {
           id: String(p.auditId ?? p.id ?? p.$id ?? ''),
           planId: String(p.auditId ?? p.id ?? p.$id ?? ''),
           title: p.title || p.name || 'Untitled',
+          type: p.type || p.auditType || '',
           department,
           scope: p.scope || '—',
           startDate: p.startDate || p.periodFrom || '',
@@ -312,6 +314,7 @@ const ReviewAuditPlans = () => {
             id: String(p.auditId ?? p.id ?? p.$id ?? ''),
             planId: String(p.auditId ?? p.id ?? p.$id ?? ''),
             title: p.title || p.name || 'Untitled',
+            type: p.type || p.auditType || '',
             department,
             scope: p.scope || '—',
             startDate: p.startDate || p.periodFrom || '',
@@ -711,6 +714,7 @@ const ReviewAuditPlans = () => {
                 <tr>
                   <th className="px-6 py-4 text-left text-sm font-bold text-black">No.</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-black">Title</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-black">Type</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-black">Department</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-black">Start Date</th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-black">End Date</th>
@@ -722,7 +726,7 @@ const ReviewAuditPlans = () => {
               <tbody className="bg-white">
                 {filteredPlans.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center text-[#5b6166]">
+                    <td colSpan={9} className="px-6 py-8 text-center text-[#5b6166]">
                       No audit plans found
                     </td>
                   </tr>
@@ -734,6 +738,11 @@ const ReviewAuditPlans = () => {
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-ms font-bold text-black">{plan.title}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getAuditTypeBadgeColor(plan.type || 'General', 'default')}`}>
+                          {plan.type || 'General'}
+                        </span>
                       </td>
                       <td className="px-6 py-4  max-w-xs">
                         {(() => {

@@ -179,10 +179,20 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         };
 
         // Show ALL audits - Lead Auditor can view any audit without waiting for submit
+        // Exclude audits with "archived" status
         const allAudits = (Array.isArray(plans) ? plans : [])
           .filter((a: any) => {
             const auditId = String(a.auditId || a.id || "").trim();
-            return auditId && auditId !== "";
+            if (!auditId || auditId === "") return false;
+            
+            // Get status from report request if exists, otherwise show audit status
+            const status = auditStatusMap.get(auditId) || a.status || "";
+            const statusLower = String(status).toLowerCase().trim();
+            
+            // Exclude archived audits
+            if (statusLower === 'archived') return false;
+            
+            return true;
           })
           .map((a: any) => {
             const auditId = String(a.auditId || a.id || "").trim();

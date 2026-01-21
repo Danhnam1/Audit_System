@@ -594,6 +594,7 @@ const LeadAuditorAuditPlanning = () => {
             onUpload={undefined}
             getStatusColor={getStatusColor}
             getBadgeVariant={getBadgeVariant}
+            getAuditTypeBadgeColor={getAuditTypeBadgeColor}
             startIndex={(activePlansTab - 1) * pageSize}
           />
 
