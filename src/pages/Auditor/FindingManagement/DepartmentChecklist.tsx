@@ -274,6 +274,7 @@ const DepartmentChecklist = () => {
       }
 
       if (!deptId || !auditId || !scannerUserId) return;
+      
       // Nếu phòng không sensitive thì không cần check QR
       if (isSensitiveDept === false) {
         hasCheckedQrRef.current = true;
@@ -325,12 +326,26 @@ const DepartmentChecklist = () => {
             
             // Check if verify code has been verified before
             const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
+            const verificationStatusKey = `qr_verification_status_${auditId}_${deptId}_${scannerUserId}`;
             const savedVerifyCode = sessionStorage.getItem(sessionKey);
+            const verificationStatus = sessionStorage.getItem(verificationStatusKey); // 'verified' or null
             const currentVerifyCode = activeGrant.verifyCode || '';
             
-            // If verify code is the same as saved one, allow access
-            if (savedVerifyCode && savedVerifyCode === currentVerifyCode) {
-              console.log('[QR Check] Verify code unchanged, allowing access');
+            // First, check if verify code has changed (this takes priority)
+            if (savedVerifyCode && savedVerifyCode !== currentVerifyCode) {
+              console.log('[QR Check] Verify code changed, need to verify again', {
+                oldCode: savedVerifyCode,
+                newCode: currentVerifyCode
+              });
+              // Clear verification status since verify code changed
+              // Don't update savedVerifyCode yet - wait until user verifies successfully
+              sessionStorage.removeItem(verificationStatusKey);
+              // Continue to show modal below to require re-verification
+            }
+            
+            // If verify code is the same as saved one AND already verified, allow access
+            if (savedVerifyCode && savedVerifyCode === currentVerifyCode && verificationStatus === 'verified') {
+              console.log('[QR Check] Verify code unchanged and already verified, allowing access');
               setQrScanned(true);
               hasCheckedQrRef.current = true;
               hasOpenedVerifyModalRef.current = false; // Reset modal flag since we don't need to show it
@@ -338,13 +353,8 @@ const DepartmentChecklist = () => {
               return;
             }
             
-            // Verify code changed or not verified yet - show modal
-            if (savedVerifyCode && savedVerifyCode !== currentVerifyCode) {
-              console.log('[QR Check] Verify code changed, need to verify again', {
-                oldCode: savedVerifyCode,
-                newCode: currentVerifyCode
-              });
-            }
+            // If verify code is the same but not verified yet, or verify code changed, show modal
+            // (This handles both: new verify code that needs verification, and changed verify code)
             
             // Guard: Only open modal once per check cycle
             if (!hasOpenedVerifyModalRef.current) {
@@ -1943,9 +1953,15 @@ const DepartmentChecklist = () => {
         hasCheckedQrRef.current = true; // Mark as checked
         hasOpenedVerifyModalRef.current = false; // Reset modal flag after successful verification
         
-        // Save verify code to sessionStorage to detect when it changes
+        // Save verify code and verification status to sessionStorage
         if (deptId && auditId && scannerUserId) {
           const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
+          const verificationStatusKey = `qr_verification_status_${auditId}_${deptId}_${scannerUserId}`;
+          
+          // Mark verification as successful in this session
+          sessionStorage.setItem(verificationStatusKey, 'verified');
+          console.log('[Verify Code] Saved verification status: verified');
+          
           // Get current verify code from grant
           try {
             const grants = await getAccessGrants({
