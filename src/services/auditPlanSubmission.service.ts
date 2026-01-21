@@ -5,7 +5,7 @@ import { addCriterionToAudit, getCriteriaForAudit, removeCriterionFromAudit } fr
 import { addTeamMember, deleteTeamMember, getAuditTeam } from "../api/auditTeam";
 import { addAuditSchedule, updateAuditSchedule, getAuditSchedules } from "../api/auditSchedule";
 import { syncAuditChecklistTemplateMaps, getAuditChecklistTemplateMapsByAudit, deleteAuditChecklistTemplateMap, addAuditChecklistTemplateMap } from "../api/auditChecklistTemplateMaps";
-import { MILESTONE_NAMES, SCHEDULE_STATUS } from "../constants/audit";
+import { MILESTONE_NAMES } from "../constants/audit";
 import {
   validateBeforeCreateAudit,
   validateBeforeAddDepartment,
@@ -616,7 +616,7 @@ export const postSchedulesToAudit = async (
               milestoneName: pair.name,
               dueDate: new Date(pair.date!).toISOString(),
               notes: "",
-              status: SCHEDULE_STATUS.PLANNED,
+              status: 'Active',
             });
             console.log(`[Create Schedule] Updated ${pair.name} (${scheduleId}) using PUT:`, result);
             return result;
@@ -629,7 +629,7 @@ export const postSchedulesToAudit = async (
               milestoneName: pair.name,
               dueDate: new Date(pair.date!).toISOString(),
               notes: "",
-              status: SCHEDULE_STATUS.PLANNED,
+              status: 'Active',
             });
             console.log(`[Create Schedule] Created ${pair.name} using POST:`, result);
             return result;
@@ -973,7 +973,7 @@ export const submitAuditPlan = async (
                 milestoneName: pair.name,
                 dueDate: new Date(pair.date!).toISOString(),
                 notes: "",
-                status: SCHEDULE_STATUS.PLANNED,
+                status: 'Active',
               });
               console.log(`[Update Schedule] Updated ${pair.name} (${scheduleId}):`, result);
               return result;
@@ -986,7 +986,7 @@ export const submitAuditPlan = async (
                 milestoneName: pair.name,
                 dueDate: new Date(pair.date!).toISOString(),
                 notes: "",
-                status: SCHEDULE_STATUS.PLANNED,
+                status: 'Active',
               });
               console.log(`[Update Schedule] Created ${pair.name} using POST:`, result);
               return result;

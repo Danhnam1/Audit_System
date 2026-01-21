@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { getAuditPlans } from '../../../api/audits';
+import { getAuditPlans, getSensitiveDepartments } from '../../../api/audits';
 import { getAuditDocuments, downloadAuditDocumentById } from '../../../api/auditDocuments';
 import { getAdminUsers, getUserById } from '../../../api/adminUsers';
 import { getAuditTeam, getAuditorsByAuditId } from '../../../api/auditTeam';
@@ -524,13 +524,15 @@ const HistoryUploadPage = () => {
       // Load required data for PlanDetailsModal
       // PlanDetailsModal will auto-load: Departments, Audit Team, and Schedule & Milestones
       // Backend now supports both archived and active status
-      const [templatesRes, teamsRes] = await Promise.all([
+      const [templatesRes, teamsRes, sensitiveDeptsRes] = await Promise.all([
         getAuditChecklistTemplateMapsByAudit(auditId).catch(() => []),
-        getAuditorsByAuditId(auditId).catch(() => [])
+        getAuditorsByAuditId(auditId).catch(() => []),
+        getSensitiveDepartments(auditId).catch(() => [])
       ]);
 
       const templates = Array.isArray(templatesRes) ? templatesRes : [];
       const teams = Array.isArray(teamsRes) ? unwrap(teamsRes) || [] : [];
+      const sensitiveDepts = Array.isArray(sensitiveDeptsRes) ? sensitiveDeptsRes : [];
 
       // Normalize templates
       const normalizedTemplates = templates.map((map: any) => ({
@@ -538,14 +540,74 @@ const HistoryUploadPage = () => {
         templateId: map.templateId ?? map.checklistTemplateId ?? map.template?.templateId ?? map.template?.id,
       })).filter((x: any) => x.templateId != null);
 
+      // Load sensitive areas
+      let sensitiveFlag = false;
+      let sensitiveAreas: string[] = [];
+      let sensitiveAreasByDept: Record<number, string[]> = {};
+      
+      if (sensitiveDepts && sensitiveDepts.length > 0) {
+        sensitiveFlag = sensitiveDepts.some((sd: any) => sd.sensitiveFlag === true);
+        
+        const allAreas = new Set<string>();
+        
+        sensitiveDepts.forEach((sd: any) => {
+          const deptId = Number(sd.deptId);
+          let areasArray: string[] = [];
+          
+          // Try 'Areas' first (C# convention - backend returns List<string> as Areas)
+          if (Array.isArray(sd.Areas)) {
+            areasArray = sd.Areas;
+          } else if (sd.Areas && typeof sd.Areas === 'string') {
+            try {
+              const parsed = JSON.parse(sd.Areas);
+              areasArray = Array.isArray(parsed) ? parsed : [sd.Areas];
+            } catch {
+              areasArray = [sd.Areas];
+            }
+          } else if (sd.Areas && typeof sd.Areas === 'object' && sd.Areas.$values) {
+            areasArray = Array.isArray(sd.Areas.$values) ? sd.Areas.$values : [];
+          } else if (Array.isArray(sd.areas)) {
+            areasArray = sd.areas;
+          } else if (sd.areas && typeof sd.areas === 'string') {
+            try {
+              const parsed = JSON.parse(sd.areas);
+              areasArray = Array.isArray(parsed) ? parsed : [sd.areas];
+            } catch {
+              areasArray = [sd.areas];
+            }
+          } else if (sd.areas && typeof sd.areas === 'object' && sd.areas.$values) {
+            areasArray = Array.isArray(sd.areas.$values) ? sd.areas.$values : [];
+          }
+          
+          // Store areas by deptId
+          if (deptId && areasArray.length > 0) {
+            sensitiveAreasByDept[deptId] = areasArray.filter((area: string) => area && typeof area === 'string' && area.trim()).map((a: string) => a.trim());
+          }
+          
+          areasArray.forEach((area: string) => {
+            if (area && typeof area === 'string' && area.trim()) {
+              allAreas.add(area.trim());
+            }
+          });
+        });
+        
+        sensitiveAreas = Array.from(allAreas);
+      }
+
       setTemplatesForSelectedPlan(normalizedTemplates);
       setAuditTeamsForPlan(teams);
-      // Set plan details with ensured auditId - PlanDetailsModal will auto-load:
+      // Set plan details with ensured auditId and sensitive areas - PlanDetailsModal will auto-load:
       // - Departments (getAuditScopeDepartments)
       // - Audit Team & Responsibilities (getAuditorsByAuditId) 
       // - Schedule & Milestones (getAuditSchedules)
+      // - Sensitive Areas (loaded here)
       // This works for archived audits as well
-      setSelectedPlanDetails(planDetailsWithId);
+      setSelectedPlanDetails({
+        ...planDetailsWithId,
+        sensitiveFlag,
+        sensitiveAreas,
+        sensitiveAreasByDept,
+      });
       setShowPlanDetailsModal(true);
     } catch (error) {
       console.error('Failed to load plan details:', error);
@@ -557,6 +619,10 @@ const HistoryUploadPage = () => {
         id: auditId || fullAuditData.auditId || fullAuditData.id || fullAuditData.$id,
         // Ensure status is included (including archived status)
         status: fullAuditData.status || auditRow.status || 'N/A',
+        // Set default values for sensitive areas if loading fails
+        sensitiveFlag: false,
+        sensitiveAreas: [],
+        sensitiveAreasByDept: {},
       };
       setSelectedPlanDetails(planDetailsWithId);
       setTemplatesForSelectedPlan([]);
