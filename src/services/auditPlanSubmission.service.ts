@@ -770,7 +770,10 @@ export const submitAuditPlan = async (
       const allScopeDepts = await getAuditScopeDepartments();
       const existingScopeDepts = (Array.isArray(allScopeDepts) ? allScopeDepts : [])
         .filter((sd: any) => String(sd.auditId || sd.$auditId || sd.AuditId) === String(auditId))
-        .filter((sd: any) => (sd.status || sd.Status) === "Active");
+        .filter((sd: any) => {
+          const status = String(sd.status || sd.Status || '').toLowerCase();
+          return status === 'active';
+        });
 
       // Step 1: DELETE all existing departments by ID
       const deleteDeptResults = await Promise.allSettled(
@@ -814,6 +817,34 @@ export const submitAuditPlan = async (
       if (successfulDepts.length > 0) {
         await setSensitiveFlagsForDepartments(auditId, formState, successfulDepts, departments);
       }
+
+      // Trigger refresh in modal by dispatching event and updating localStorage
+      // Do this after all department operations complete
+      // Add a small delay to ensure database has committed the changes
+      setTimeout(() => {
+        try {
+          console.log(`[Update Departments] Dispatching refresh event for auditId: ${auditId}`);
+          const event = new CustomEvent('auditPlanUpdated', {
+            detail: { auditId },
+            bubbles: true,
+            cancelable: true,
+          });
+          window.dispatchEvent(event);
+          document.dispatchEvent(event);
+          
+          // Also update localStorage for cross-tab communication
+          localStorage.setItem(
+            'auditPlanUpdated',
+            JSON.stringify({
+              auditId,
+              _timestamp: Date.now(),
+            })
+          );
+          console.log(`[Update Departments] Refresh event dispatched and localStorage updated`);
+        } catch (eventErr) {
+          console.error('[Update Departments] Failed to dispatch refresh event', eventErr);
+        }
+      }, 500); // 500ms delay to ensure database commit
     } catch (scopeErr) {
       console.error("Update departments failed", scopeErr);
       toast.error("Failed to update departments. Please try again.");
@@ -1090,6 +1121,34 @@ export const submitAuditPlan = async (
     } catch (scheduleErr) {
       console.error("Failed to post schedules", scheduleErr);
     }
+
+    // Trigger refresh in modal by dispatching event and updating localStorage
+    // Do this after all operations complete in create mode
+    // Add a small delay to ensure database has committed all changes
+    setTimeout(() => {
+      try {
+        console.log(`[Create Plan] Dispatching refresh event for auditId: ${auditId}`);
+        const event = new CustomEvent('auditPlanUpdated', {
+          detail: { auditId },
+          bubbles: true,
+          cancelable: true,
+        });
+        window.dispatchEvent(event);
+        document.dispatchEvent(event);
+        
+        // Also update localStorage for cross-tab communication
+        localStorage.setItem(
+          'auditPlanUpdated',
+          JSON.stringify({
+            auditId,
+            _timestamp: Date.now(),
+          })
+        );
+        console.log(`[Create Plan] Refresh event dispatched and localStorage updated`);
+      } catch (eventErr) {
+        console.error('[Create Plan] Failed to dispatch refresh event', eventErr);
+      }
+    }, 500); // 500ms delay to ensure database commit
   }
 
   return { success: true, auditId };

@@ -298,11 +298,15 @@ export const NotificationToastContainer: React.FC = () => {
     };
 
     // Register callback
-    onNotification(handleNewNotification);
+    const cleanup = onNotification(handleNewNotification);
 
-    // Cleanup
+    // Cleanup - use the returned cleanup function if available, otherwise use offNotification
     return () => {
-      offNotification();
+      if (cleanup && typeof cleanup === 'function') {
+        cleanup();
+      } else {
+        offNotification(handleNewNotification);
+      }
     };
   }, [onNotification, offNotification, userIdFromToken, user]);
 

@@ -168,18 +168,58 @@ export const NotificationBell: React.FC = () => {
         return; // Not for this user, ignore
       }
 
-      // Always reload notifications list when receiving SignalR notification
-      // This ensures the list is updated even if toast was already shown
-      // Use ref to avoid dependency on load function
-      await loadRef.current(true); // Silent reload (don't show loading spinner)
+      // Optimize: Add notification directly to state instead of reloading entire list
+      // This avoids unnecessary API calls
+      const notificationId = String(data.notificationId || '');
+      if (notificationId) {
+        // Check if notification already exists in the list
+        setItems(prev => {
+          const exists = prev.some((n: any) => String((n as any).notificationId) === notificationId);
+          if (exists) {
+            return prev; // Already in list, no need to add
+          }
+          
+          // Add new notification to the top of the list
+          const newNotification: NotificationItem = {
+            ...data,
+            notificationId: data.notificationId,
+            userId: data.userId,
+            title: data.title || 'Notification',
+            message: data.message || '',
+            category: data.category,
+            isRead: data.isRead || false,
+            readAt: data.readAt || null,
+            createdAt: data.createdAt || new Date().toISOString(),
+            createdAtDate: data.createdAt ? new Date(data.createdAt) : new Date(),
+          } as NotificationItem;
+          
+          // Add to beginning and sort by date (newest first)
+          const updated = [newNotification, ...prev].sort((a: any, b: any) => {
+            const aDate = a.createdAtDate || (a.createdAt ? new Date(a.createdAt) : null);
+            const bDate = b.createdAtDate || (b.createdAt ? new Date(b.createdAt) : null);
+            const aTime = aDate?.getTime() || 0;
+            const bTime = bDate?.getTime() || 0;
+            return bTime - aTime;
+          });
+          
+          return updated;
+        });
+      } else {
+        // If no notificationId, fallback to reload (shouldn't happen normally)
+        await loadRef.current(true);
+      }
     };
 
     // Register callback for real-time notifications
-    onNotification(handleNewNotification);
+    const cleanup = onNotification(handleNewNotification);
 
-    // Cleanup
+    // Cleanup - use the returned cleanup function if available, otherwise use offNotification
     return () => {
-      offNotification();
+      if (cleanup && typeof cleanup === 'function') {
+        cleanup();
+      } else {
+        offNotification(handleNewNotification);
+      }
     };
   }, [onNotification, offNotification, userIdFromToken]); // Remove load from dependencies to prevent re-registration
 

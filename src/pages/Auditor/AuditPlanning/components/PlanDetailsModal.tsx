@@ -6,7 +6,7 @@ import { getUserFriendlyErrorMessage } from '../../../../utils/errorMessages';
 import { getAuditCriterionById } from '../../../../api/auditCriteria';
 import { getAuditSchedules } from '../../../../api/auditSchedule';
 import { getAuditorsByAuditId } from '../../../../api/auditTeam';
-import { getAuditScopeDepartments, getAuditScopeDepartmentsByAuditId } from '../../../../api/audits';
+import { getAuditScopeDepartments } from '../../../../api/audits';
 import { unwrap } from '../../../../utils/normalize';
 import { useAuth } from '../../../../contexts';
 import { Button } from '../../../../components';
@@ -301,6 +301,8 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         console.log(`[PlanDetailsModal] Reloading data for auditId: ${auditId}, refreshKey: ${refreshKey}`);
         
         // Backend may block schedules for archived audits, so handle gracefully
+        // Note: getAuditScopeDepartmentsByAuditId returns ViewDepartment[] (missing auditId, status)
+        // So we use getAuditScopeDepartments() (get all) and filter by auditId in frontend
         const [schedulesRes, teamsRes, scopeDeptsRes] = await Promise.allSettled([
           getAuditSchedules(String(auditId)).catch((err) => {
             // If schedule API fails (e.g., blocked for archived), fallback to original data
@@ -308,7 +310,11 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
             return null; // Return null to indicate failure
           }),
           getAuditorsByAuditId(String(auditId)),
-          getAuditScopeDepartmentsByAuditId(String(auditId)).catch(() => getAuditScopeDepartments()),
+          getAuditScopeDepartments().catch((err) => {
+            // If get all fails, return empty array instead of throwing
+            console.warn(`[PlanDetailsModal] Failed to load all scope departments, will use empty array:`, err);
+            return [];
+          }),
         ]);
 
         // Handle schedules: if API failed, use original data from selectedPlanDetails
@@ -324,17 +330,37 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         }
 
         const teams = teamsRes.status === 'fulfilled' ? (unwrap(teamsRes.value) || []) : [];
-        const allScopeDepts = scopeDeptsRes.status === 'fulfilled' ? (unwrap(scopeDeptsRes.value) || []) : [];
+        // Handle scope departments: if API failed, use empty array (will fallback to original data below)
+        let allScopeDepts: any[] = [];
+        if (scopeDeptsRes.status === 'fulfilled') {
+          const unwrapped = unwrap(scopeDeptsRes.value);
+          allScopeDepts = Array.isArray(unwrapped) ? unwrapped : [];
+        } else {
+          console.warn(`[PlanDetailsModal] Failed to load scope departments for audit ${auditId}, will use original data or empty array`);
+          allScopeDepts = [];
+        }
 
         const teamsArray = Array.isArray(teams) ? teams : [];
         
         // Filter scope departments by auditId and include both Active and Archived status
-        const scopeDeptsArray = (Array.isArray(allScopeDepts) ? allScopeDepts : [])
+        let scopeDeptsArray = (Array.isArray(allScopeDepts) ? allScopeDepts : [])
           .filter((sd: any) => String(sd.auditId || sd.$auditId || sd.AuditId) === String(auditId))
           .filter((sd: any) => {
             const status = (sd.status || sd.Status || '').toLowerCase();
             return status === 'active' || status === 'archived';
           });
+        
+        // If no departments found from API, fallback to original data from selectedPlanDetails
+        if (scopeDeptsArray.length === 0 && selectedPlanDetails?.scopeDepartments) {
+          const originalScopeDepts = selectedPlanDetails.scopeDepartments?.values || selectedPlanDetails.scopeDepartments || [];
+          if (Array.isArray(originalScopeDepts) && originalScopeDepts.length > 0) {
+            scopeDeptsArray = originalScopeDepts.filter((sd: any) => {
+              const status = (sd.status || sd.Status || '').toLowerCase();
+              return status === 'active' || status === 'archived';
+            });
+            console.log(`[PlanDetailsModal] Using original scope departments from selectedPlanDetails: ${scopeDeptsArray.length} items`);
+          }
+        }
         
         console.log(`[PlanDetailsModal] Loaded ${schedulesArray.length} schedules, ${teamsArray.length} teams, ${scopeDeptsArray.length} scope departments`);
 
@@ -349,9 +375,10 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         console.error('PlanDetailsModal: Failed to reload schedules, teams, and departments:', error);
         // Fallback to original data from selectedPlanDetails
         const originalSchedules = selectedPlanDetails?.schedules?.values || selectedPlanDetails?.schedules || [];
+        const originalScopeDepts = selectedPlanDetails?.scopeDepartments?.values || selectedPlanDetails?.scopeDepartments || [];
         setRefreshedSchedules(Array.isArray(originalSchedules) ? originalSchedules : []);
         setRefreshedTeams([]);
-        setRefreshedScopeDepartments([]);
+        setRefreshedScopeDepartments(Array.isArray(originalScopeDepts) ? originalScopeDepts : []);
         setHasLoadedRefreshedData(false);
       }
     };
