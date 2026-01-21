@@ -9,7 +9,6 @@ import {
   getPendingRevisionRequestsForDirector,
   getApprovedRevisionRequestsForDirector,
   getRejectedRevisionRequestsForDirector,
-  getAllAuditPlanRevisionRequests,
   approveAuditPlanRevisionRequest,
   rejectAuditPlanRevisionRequest,
   getMarkedItemsByRequestId,
@@ -58,24 +57,22 @@ export default function DirectorExtensionRequestsPage() {
   const [markedChecklistItems, setMarkedChecklistItems] = useState<any[]>([]);
   const [loadingMarkedItems, setLoadingMarkedItems] = useState(false);
 
-  const loadRequests = async (status?: string) => {
+  // Helper function to load all requests and remove duplicates
+  const loadAllRequestsUnique = async () => {
     setLoading(true);
     try {
-      // Use 3 separate APIs for 3 different statuses
-      let data: ViewAuditPlanRevisionRequest[] = [];
+      const [pending, approved, rejected] = await Promise.all([
+        getPendingRevisionRequestsForDirector().catch(() => []),
+        getApprovedRevisionRequestsForDirector().catch(() => []),
+        getRejectedRevisionRequestsForDirector().catch(() => [])
+      ]);
       
-      if (status === 'Pending') {
-        data = await getPendingRevisionRequestsForDirector();
-      } else if (status === 'Approved') {
-        data = await getApprovedRevisionRequestsForDirector();
-      } else if (status === 'Rejected') {
-        data = await getRejectedRevisionRequestsForDirector();
-      } else {
-        // Load all requests (fallback)
-        data = await getAllAuditPlanRevisionRequests();
-      }
-      
-      setAllRequests(data || []);
+      // Combine and remove duplicates by requestId
+      const allData = [...(pending || []), ...(approved || []), ...(rejected || [])];
+      const uniqueRequests = Array.from(
+        new Map(allData.map(r => [r.requestId, r])).values()
+      );
+      setAllRequests(uniqueRequests);
     } catch (error) {
       console.error('Failed to load extension requests:', error);
       toast.error('Failed to load extension requests');
@@ -100,16 +97,41 @@ export default function DirectorExtensionRequestsPage() {
 
   // Note: Both modals can be open at the same time - reject modal appears on top
 
-  // Load requests when tab changes
+  // Load all requests on mount
   useEffect(() => {
-    const statusMap: Record<string, string> = {
-      'pending': 'Pending',
-      'approved': 'Approved',
-      'rejected': 'Rejected'
+    loadAllRequestsUnique();
+  }, []);
+
+  // Note: Tab changes don't trigger API calls anymore - we use client-side filtering
+  // This ensures badge counts remain accurate when switching tabs
+
+  // Load all requests on initial mount
+  useEffect(() => {
+    const loadAllRequests = async () => {
+      setLoading(true);
+      try {
+        const [pending, approved, rejected] = await Promise.all([
+          getPendingRevisionRequestsForDirector().catch(() => []),
+          getApprovedRevisionRequestsForDirector().catch(() => []),
+          getRejectedRevisionRequestsForDirector().catch(() => [])
+        ]);
+        
+        // Combine all requests and remove duplicates by requestId
+        const allData = [...(pending || []), ...(approved || []), ...(rejected || [])];
+        const uniqueRequests = Array.from(
+          new Map(allData.map(r => [r.requestId, r])).values()
+        );
+        setAllRequests(uniqueRequests);
+      } catch (error) {
+        console.error('Failed to load extension requests:', error);
+        toast.error('Failed to load extension requests');
+      } finally {
+        setLoading(false);
+      }
     };
-    const status = statusMap[activeTab];
-    loadRequests(status);
-  }, [activeTab]);
+    
+    loadAllRequests();
+  }, []);
 
   useEffect(() => {
     // Load all necessary data
@@ -164,17 +186,12 @@ export default function DirectorExtensionRequestsPage() {
     loadAllData();
     
     // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      const statusMap: Record<string, string> = {
-        'pending': 'Pending',
-        'approved': 'Approved',
-        'rejected': 'Rejected'
-      };
-      const status = statusMap[activeTab];
-      loadRequests(status);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [activeTab]);
+      const interval = setInterval(() => {
+        // Refresh all requests to keep counts accurate and remove duplicates
+        loadAllRequestsUnique();
+      }, 30000);
+      return () => clearInterval(interval);
+    }, []);
 
   // Load overdue items and template maps when request is selected
   useEffect(() => {
@@ -213,14 +230,7 @@ export default function DirectorExtensionRequestsPage() {
     
     setSubmitting(true);
     try {
-      const res = await approveAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
-      
-      // Update request in allRequests
-      setAllRequests(prev => prev.map(req => 
-        req.requestId === selectedRequest.requestId 
-          ? { ...req, ...res, status: 'Approved' }
-          : req
-      ));
+      await approveAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
       
       toast.success('Extension request approved successfully.');
       setShowApproveModal(false);
@@ -228,14 +238,25 @@ export default function DirectorExtensionRequestsPage() {
       setResponseComment('');
       // Switch to Approved tab
       setActiveTab('approved');
-      await loadRequests('Approved');
+      // Refresh all requests to update counts and remove duplicates
+      const [pending, approved, rejected] = await Promise.all([
+        getPendingRevisionRequestsForDirector().catch(() => []),
+        getApprovedRevisionRequestsForDirector().catch(() => []),
+        getRejectedRevisionRequestsForDirector().catch(() => [])
+      ]);
+      // Combine and remove duplicates by requestId
+      const allData = [...(pending || []), ...(approved || []), ...(rejected || [])];
+      const uniqueRequests = Array.from(
+        new Map(allData.map(r => [r.requestId, r])).values()
+      );
+      setAllRequests(uniqueRequests);
 
       // Notify other screens (e.g. Lead Reports) so "Edit Schedule & Team" button appears immediately
       try {
         const eventDetail = {
           auditId: selectedRequest.auditId,
           requestId: selectedRequest.requestId,
-          status: res?.status || 'Approved',
+          status: 'Approved',
           timestamp: Date.now(),
         };
         const evt = new CustomEvent('auditExtensionApproved', { detail: eventDetail });
@@ -256,14 +277,7 @@ export default function DirectorExtensionRequestsPage() {
     
     setSubmitting(true);
     try {
-      const res = await rejectAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
-      
-      // Update request in allRequests
-      setAllRequests(prev => prev.map(req => 
-        req.requestId === selectedRequest.requestId 
-          ? { ...req, ...res, status: 'Rejected' }
-          : req
-      ));
+      await rejectAuditPlanRevisionRequest(selectedRequest.requestId, responseComment);
       
       toast.success('Extension request rejected.');
       // Close both modals after successful rejection
@@ -273,7 +287,8 @@ export default function DirectorExtensionRequestsPage() {
       setResponseComment('');
       // Switch to Rejected tab
       setActiveTab('rejected');
-      await loadRequests('Rejected');
+      // Refresh all requests to update counts and remove duplicates
+      await loadAllRequestsUnique();
     } catch (error: any) {
       console.error('Failed to reject request:', error);
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to reject request. Please try again.'));
@@ -620,18 +635,16 @@ export default function DirectorExtensionRequestsPage() {
                             </svg>
                             View Audit
                           </button>
-                          {activeTab === 'pending' && (
-                            <button
-                              onClick={() => openReviewModal(request)}
-                              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
-                              title="Review Extension Request"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                              </svg>
-                              Review Request
-                            </button>
-                          )}
+                          <button
+                            onClick={() => openReviewModal(request)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                            title="Review Extension Request"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                            </svg>
+                            Review Request
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -751,9 +764,7 @@ export default function DirectorExtensionRequestsPage() {
                         const questionText = item.questionTextSnapshot || item.questionText || 'No question text';
                         const section = item.section || 'Unknown Section';
                         const itemStatus = item.itemStatus || item.status || '';
-                        const markStatus = item.markStatus || '';
                         const requestStatus = item.status || selectedRequest?.status || '';
-                        const order = item.order !== undefined ? item.order : idx + 1;
                         
                         return (
                           <div key={item.auditItemId || item.id || idx} className="bg-white border border-purple-200 rounded-lg p-3">
@@ -820,27 +831,36 @@ export default function DirectorExtensionRequestsPage() {
                   >
                     Cancel
                   </Button>
-                  <Button
-                    onClick={() => {
-                      // Close approve modal and open reject modal
-                      if (selectedRequest) {
-                        openRejectModal(selectedRequest);
-                      }
-                    }}
-                    disabled={submitting}
-                    variant="danger"
-                    size="md"
-                  >
-                    Reject Request
-                  </Button>
-                  <Button
-                    onClick={handleApprove}
-                    disabled={submitting}
-                    variant="success"
-                    size="md"
-                  >
-                    {submitting ? 'Approving...' : 'Approve Request'}
-                  </Button>
+                  {selectedRequest?.status?.toLowerCase() !== 'approved' && selectedRequest?.status?.toLowerCase() !== 'rejected' && (
+                    <>
+                      <Button
+                        onClick={() => {
+                          // Close approve modal and open reject modal
+                          if (selectedRequest) {
+                            openRejectModal(selectedRequest);
+                          }
+                        }}
+                        disabled={submitting}
+                        variant="danger"
+                        size="md"
+                      >
+                        Reject Request
+                      </Button>
+                      <Button
+                        onClick={handleApprove}
+                        disabled={submitting}
+                        variant="success"
+                        size="md"
+                      >
+                        {submitting ? 'Approving...' : 'Approve Request'}
+                      </Button>
+                    </>
+                  )}
+                  {(selectedRequest?.status?.toLowerCase() === 'approved' || selectedRequest?.status?.toLowerCase() === 'rejected') && (
+                    <div className="text-sm text-gray-600 italic">
+                      
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

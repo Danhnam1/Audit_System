@@ -441,7 +441,6 @@ const AuditorLeadReports = () => {
       const detail: any = (event as CustomEvent).detail || {};
       const auditId: string | undefined = detail.auditId;
       if (!auditId) return;
-
       try {
         const requests = await getAuditPlanRevisionRequestsByAuditId(auditId).catch(() => []);
         setRevisionRequestsMap((prev) => ({
@@ -495,8 +494,6 @@ const AuditorLeadReports = () => {
     };
     loadSummary();
   }, [selectedAuditId, summaryReloadKey]);
-
-
   const rows = useMemo(() => {
     const getCreatedByLabel = (a: any): string => {
       const src =
@@ -2108,9 +2105,22 @@ const AuditorLeadReports = () => {
       setExtensionComment('');
       // Clear selected checklist items after successful submission
       setSelectedChecklistItems(new Set());
-      // Reload revision requests
+      // Reload revision requests and update map
       const requests = await getAuditPlanRevisionRequestsByAuditId(selectedAuditId);
       setRevisionRequests(requests);
+      // Update revisionRequestsMap to keep other parts of UI in sync
+      setRevisionRequestsMap(prev => ({
+        ...prev,
+        [selectedAuditId]: requests
+      }));
+      // Clear marked items cache for this audit to force reload when viewing history
+      setMarkedItemsByRequest(prev => {
+        const updated = { ...prev };
+        requests.forEach((req: ViewAuditPlanRevisionRequest) => {
+          delete updated[req.requestId];
+        });
+        return updated;
+      });
     } catch (err: any) {
       console.error('Request extension failed', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to request extension. Please try again.'));
@@ -2549,6 +2559,20 @@ const AuditorLeadReports = () => {
                       <button
                         onClick={async () => {
                           console.log('[Request History Button] Opening history modal, selectedAuditId:', selectedAuditId);
+                          // Reload revision requests to get latest data
+                          if (selectedAuditId) {
+                            try {
+                              const requests = await getAuditPlanRevisionRequestsByAuditId(selectedAuditId);
+                              setRevisionRequests(requests);
+                              // Update revisionRequestsMap to keep other parts of UI in sync
+                              setRevisionRequestsMap(prev => ({
+                                ...prev,
+                                [selectedAuditId]: requests
+                              }));
+                            } catch (err) {
+                              console.error('Failed to reload revision requests:', err);
+                            }
+                          }
                           setShowRequestHistoryModal(true);
                           // Marked items will be loaded on-demand when each request is rendered
                         }}
@@ -3681,7 +3705,6 @@ const AuditorLeadReports = () => {
                                       const section = item.section || 'Unknown Section';
                                       const itemStatus = item.itemStatus || item.status || '';
                                       const requestStatus = item.status || req.status || '';
-                                      const order = item.order !== undefined ? item.order : idx + 1;
                                       
                                       return (
                                         <div key={item.auditItemId || item.findingId || item.id || idx} className="bg-white border border-purple-200 rounded-lg p-3">
