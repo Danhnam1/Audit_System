@@ -1,4 +1,7 @@
+import { useState, useEffect } from 'react';
 import { getSeverityColor } from '../../../constants/statusColors';
+import { getRootCausesByFinding } from '../../../api/rootCauses';
+import { getActionsByRootCause } from '../../../api/actions';
 
 interface FindingsTableProps {
   findings: any[];
@@ -25,6 +28,52 @@ export const FindingsTable = ({
   handleFileAction,
   isActionCompleted,
 }: FindingsTableProps) => {
+  // State to store root causes for each finding
+  const [rootCausesMap, setRootCausesMap] = useState<Record<string, any[]>>({});
+  const [loadingRootCauses, setLoadingRootCauses] = useState<Record<string, boolean>>({});
+
+  // Load root causes when a finding is expanded
+  useEffect(() => {
+    if (!expandedFindingId) return;
+
+    const loadRootCauses = async () => {
+      // Check if already loaded
+      if (rootCausesMap[expandedFindingId]) return;
+
+      setLoadingRootCauses(prev => ({ ...prev, [expandedFindingId]: true }));
+      try {
+        const rootCauses = await getRootCausesByFinding(expandedFindingId);
+        
+        // Load actions (proposed solutions) for each root cause
+        const rootCausesWithActions = await Promise.all(
+          rootCauses.map(async (rc: any) => {
+            try {
+              const actions = await getActionsByRootCause(rc.rootCauseId);
+              // Filter out rejected/returned actions
+              const activeActions = (actions || []).filter((a: any) => {
+                const st = (a.status || '').toLowerCase();
+                return st !== 'rejected' && st !== 'leadrejected' && st !== 'return';
+              });
+              return { ...rc, actions: activeActions };
+            } catch (err) {
+              console.error('Failed to load actions for root cause:', rc.rootCauseId, err);
+              return { ...rc, actions: [] };
+            }
+          })
+        );
+        
+        setRootCausesMap(prev => ({ ...prev, [expandedFindingId]: rootCausesWithActions || [] }));
+      } catch (err) {
+        console.error('Failed to load root causes:', err);
+        setRootCausesMap(prev => ({ ...prev, [expandedFindingId]: [] }));
+      } finally {
+        setLoadingRootCauses(prev => ({ ...prev, [expandedFindingId]: false }));
+      }
+    };
+
+    loadRootCauses();
+  }, [expandedFindingId, rootCausesMap]);
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full border border-gray-200 rounded-lg">
@@ -135,10 +184,104 @@ export const FindingsTable = ({
                             </div>
                           )}
 
+                          {/* Root Causes and Proposed Solutions */}
+                          {loadingRootCauses[findingId] ? (
+                            <div className="flex items-center gap-2 text-sm text-gray-500">
+                              <div className="h-4 w-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                              <span>Loading root causes...</span>
+                            </div>
+                          ) : (
+                            (() => {
+                              const rootCauses = rootCausesMap[findingId] || [];
+                              if (rootCauses.length === 0) return null;
+
+                              return (
+                                <div>
+                                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Root Causes & Proposed Solutions</h4>
+                                  <div className="space-y-4">
+                                    {rootCauses.map((rc: any, idx: number) => (
+                                      <div key={rc.rootCauseId || idx} className="border border-gray-200 rounded-lg p-4 bg-white">
+                                        {/* Root Cause */}
+                                        <div className="mb-3">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                            </svg>
+                                            <h5 className="text-sm font-semibold text-gray-900">
+                                              Root Cause {idx + 1}: {rc.name || rc.rootCauseName || `Root Cause ${idx + 1}`}
+                                            </h5>
+                                          </div>
+                                          {rc.description && (
+                                            <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap ml-6">
+                                              {rc.description}
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        {/* Proposed Solutions (Actions) */}
+                                        {rc.actions && rc.actions.length > 0 && (
+                                          <div className="mt-3 pt-3 border-t border-gray-300">
+                                            <div className="flex items-center gap-2 mb-2">
+                                              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                              </svg>
+                                              <h6 className="text-xs font-semibold text-blue-700">
+                                                Proposed Solutions ({rc.actions.length})
+                                              </h6>
+                                            </div>
+                                            <div className="space-y-2 ml-6">
+                                              {rc.actions.map((action: any, actionIdx: number) => (
+                                                <div
+                                                  key={action.actionId || actionIdx}
+                                                  className="border border-blue-100 rounded-md p-2 bg-blue-50"
+                                                >
+                                                  <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex-1">
+                                                      <p className="text-xs font-medium text-gray-900 mb-1">
+                                                        {action.title || `Solution ${actionIdx + 1}`}
+                                                      </p>
+                                                      {action.description && (
+                                                        <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                                          {action.description}
+                                                        </p>
+                                                      )}
+                                                    </div>
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${
+                                                      isActionCompleted(action) ? 'bg-green-100 text-green-700' :
+                                                      String(action.status || '').toLowerCase().includes('overdue') ? 'bg-red-100 text-red-700' :
+                                                      'bg-amber-100 text-amber-700'
+                                                    }`}>
+                                                      {action.status || "—"}
+                                                    </span>
+                                                  </div>
+                                                  {(action.dueDate || action.assignedDeptId) && (
+                                                    <div className="mt-2 flex items-center gap-4 text-[10px] text-gray-600">
+                                                      {action.dueDate && (
+                                                        <span>Due: {new Date(action.dueDate).toLocaleDateString()}</span>
+                                                      )}
+                                                      {action.assignedDeptId && (
+                                                        <span>Dept: {getDeptName(action.assignedDeptId)}</span>
+                                                      )}
+                                                      
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })()
+                          )}
+
                           {/* Actions for this finding */}
                           {relatedActions.length > 0 && (
                             <div>
-                              <h4 className="text-sm font-semibold text-gray-700 mb-2">Actions ({relatedActions.length})</h4>
+                              <h4 className="text-sm font-semibold text-gray-700 mb-2">All Actions ({relatedActions.length})</h4>
                               <div className="overflow-x-auto">
                                 <table className="min-w-full border border-gray-200 rounded-lg">
                                   <thead className="bg-gray-50">
