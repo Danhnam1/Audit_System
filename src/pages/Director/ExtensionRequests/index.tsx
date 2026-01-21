@@ -293,10 +293,23 @@ export default function DirectorExtensionRequestsPage() {
     try {
       // Use new API: GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
       // This returns the marked items that were included in this specific request
+      console.log('[Director ExtensionRequests] Loading marked items for requestId:', request.requestId);
       const markedItems = await getMarkedItemsByRequestId(request.requestId);
+      console.log('[Director ExtensionRequests] API response:', markedItems);
+      console.log('[Director ExtensionRequests] Marked items count:', markedItems?.length || 0);
+      
+      if (markedItems && markedItems.length > 0) {
+        console.log('[Director ExtensionRequests] First item sample:', markedItems[0]);
+      }
+      
       setMarkedChecklistItems(markedItems || []);
     } catch (err) {
-      console.error('Failed to load marked checklist items:', err);
+      console.error('[Director ExtensionRequests] Failed to load marked checklist items:', err);
+      console.error('[Director ExtensionRequests] Error details:', {
+        message: (err as any)?.message,
+        response: (err as any)?.response,
+        requestId: request.requestId
+      });
       setMarkedChecklistItems([]);
     } finally {
       setLoadingMarkedItems(false);
@@ -753,7 +766,7 @@ export default function DirectorExtensionRequestsPage() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-xs font-semibold text-gray-500">#{order}</span>
+                                  {/* <span className="text-xs font-semibold text-gray-500">#{order}</span> */}
                                   <span className="text-xs font-medium text-purple-600">{section}</span>
                                 </div>
                                 <p className="text-sm font-semibold text-gray-900 line-clamp-3 mb-2">
@@ -761,15 +774,15 @@ export default function DirectorExtensionRequestsPage() {
                                 </p>
                                 <div className="flex items-center gap-2 flex-wrap">
                                   {itemStatus && (
-                                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">
-                                      Item Status: {itemStatus}
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${getStatusColor(itemStatus)}`}>
+                                       {itemStatus}
                                     </span>
                                   )}
-                                  {markStatus && (
+                                  {/* {markStatus && (
                                     <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
                                       Mark: {markStatus}
                                     </span>
-                                  )}
+                                  )} */}
                                   {requestStatus && (
                                     <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
                                       requestStatus === 'Approved' ? 'bg-green-100 text-green-700' :
@@ -794,21 +807,7 @@ export default function DirectorExtensionRequestsPage() {
                   )}
                 </div>
 
-                <div className="mb-6">
-                  <label className="block text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                    </svg>
-                    Response Comment (optional)
-                  </label>
-                  <textarea
-                    value={responseComment}
-                    onChange={(e) => setResponseComment(e.target.value)}
-                    placeholder="Add any comments about the approval decision..."
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none shadow-sm"
-                    rows={3}
-                  />
-                </div>
+                
                 <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
                   <Button
                     onClick={() => {

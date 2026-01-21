@@ -198,6 +198,7 @@ const DepartmentChecklist = () => {
   // Ref to track if QR check is in progress to prevent multiple calls
   const isCheckingQrRef = useRef(false);
   const hasCheckedQrRef = useRef(false);
+  const hasOpenedVerifyModalRef = useRef(false);
 
   // Get auditId and auditType from location state (passed from parent component)
   const auditId = (location.state as any)?.auditId || '';
@@ -332,6 +333,7 @@ const DepartmentChecklist = () => {
               console.log('[QR Check] Verify code unchanged, allowing access');
               setQrScanned(true);
               hasCheckedQrRef.current = true;
+              hasOpenedVerifyModalRef.current = false; // Reset modal flag since we don't need to show it
               isCheckingQrRef.current = false;
               return;
             }
@@ -344,8 +346,12 @@ const DepartmentChecklist = () => {
               });
             }
             
-            setQrToken(activeGrant.qrToken);
-            setShowVerifyCodeModal(true);
+            // Guard: Only open modal once per check cycle
+            if (!hasOpenedVerifyModalRef.current) {
+              setQrToken(activeGrant.qrToken);
+              setShowVerifyCodeModal(true);
+              hasOpenedVerifyModalRef.current = true;
+            }
           } else {
             console.warn('No active grant found for current user', {
               scannerUserId,
@@ -387,9 +393,10 @@ const DepartmentChecklist = () => {
     };
   }, [deptId, auditId, scannerUserId, isSensitiveDept]);
 
-  // Reset hasCheckedQrRef when deptId, auditId, or scannerUserId changes
+  // Reset hasCheckedQrRef and hasOpenedVerifyModalRef when deptId, auditId, or scannerUserId changes
   useEffect(() => {
     hasCheckedQrRef.current = false;
+    hasOpenedVerifyModalRef.current = false;
   }, [deptId, auditId, scannerUserId]);
 
   // Set audit type from state or load from API
@@ -1934,6 +1941,7 @@ const DepartmentChecklist = () => {
         setQrScanned(true);
         setShowVerifyCodeModal(false);
         hasCheckedQrRef.current = true; // Mark as checked
+        hasOpenedVerifyModalRef.current = false; // Reset modal flag after successful verification
         
         // Save verify code to sessionStorage to detect when it changes
         if (deptId && auditId && scannerUserId) {

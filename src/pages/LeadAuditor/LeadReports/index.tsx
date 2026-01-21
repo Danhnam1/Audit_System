@@ -1895,41 +1895,28 @@ const AuditorLeadReports = () => {
     }
   };
 
-  // Load marked findings for extension requests
-  const loadMarkedFindingsForRequests = async (_auditId: string, requests: ViewAuditPlanRevisionRequest[]) => {
+  // Load marked items for a specific request (simplified like Director)
+  const loadMarkedItemsForRequest = async (requestId: string) => {
     // Only load if we don't already have the data in state
-    const requestsToLoad = requests.filter(r => !markedItemsByRequest[r.requestId]);
-    
-    if (requestsToLoad.length === 0) {
-      console.log(`[Extension Request History] All requests already have findings loaded`);
+    if (markedItemsByRequest[requestId]) {
       return;
     }
     
-    for (const req of requestsToLoad) {
-      setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: true }));
-      try {
-        // Use new API: GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
-        // This returns the marked checklist items that were included in this specific request
-        console.log(`[Extension Request History] Loading marked items for request ${req.requestId}`);
-        const markedItems = await getMarkedItemsByRequestId(req.requestId).catch((err) => {
-          console.error(`[Extension Request History] API call failed for request ${req.requestId}:`, err);
-          return [];
-        });
-        
-        console.log(`[Extension Request History] API response for request ${req.requestId}:`, markedItems);
-        
-        // Store marked items directly (these are checklist items, not findings)
-        // Each marked item contains: questionTextSnapshot, section, auditItemId, status, etc.
-        setMarkedItemsByRequest(prev => ({ ...prev, [req.requestId]: markedItems || [] }));
-        
-        console.log(`[Extension Request History] Stored ${(markedItems || []).length} marked items for request ${req.requestId}`);
-      } catch (err) {
-        console.error(`[Extension Request History] Failed to load marked items for request ${req.requestId}:`, err);
-        // Store empty array to indicate loading is complete
-        setMarkedItemsByRequest(prev => ({ ...prev, [req.requestId]: [] }));
-      } finally {
-        setLoadingMarkedItems(prev => ({ ...prev, [req.requestId]: false }));
-      }
+    setLoadingMarkedItems(prev => ({ ...prev, [requestId]: true }));
+    try {
+      // Use new API: GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
+      // This returns the marked items that were included in this specific request
+      // API returns: { "$id": "1", "$values": [...] } which is unwrapped by getMarkedItemsByRequestId
+      const markedItems = await getMarkedItemsByRequestId(requestId);
+      
+      // Store marked items directly - API returns array after unwrap
+      setMarkedItemsByRequest(prev => ({ ...prev, [requestId]: markedItems || [] }));
+    } catch (err) {
+      console.error(`[Extension Request History] Failed to load marked items for request ${requestId}:`, err);
+      // Store empty array to indicate loading is complete
+      setMarkedItemsByRequest(prev => ({ ...prev, [requestId]: [] }));
+    } finally {
+      setLoadingMarkedItems(prev => ({ ...prev, [requestId]: false }));
     }
   };
 
@@ -1969,8 +1956,7 @@ const AuditorLeadReports = () => {
       const requests = await getAuditPlanRevisionRequestsByAuditId(auditId);
       setRevisionRequests(requests);
       
-      // Load marked findings for all requests
-      await loadMarkedFindingsForRequests(auditId, requests);
+      // Marked items will be loaded on-demand when Extension Request History modal is opened
     } catch (err) {
       console.error('Failed to load revision requests:', err);
       setRevisionRequests([]);
@@ -2026,47 +2012,77 @@ const AuditorLeadReports = () => {
       }
     }
     
-    // Validate: must have at least one checklist item selected (either directly or from findings)
-    if (selectedChecklistItems.size === 0) {
-      toast.error('Please select at least one checklist item (by selecting findings) to request extension for.');
+    // Validate: must have at least one item selected (checklist items or findings)
+    if (selectedChecklistItems.size === 0 && selectedFindings.size === 0) {
+      toast.error('Please select at least one checklist item or finding to request extension for.');
       return;
     }
     
     setExtensionLoading(true);
     try {
       // Mark all selected checklist items as Pending (for extension requests)
-      const markPromises = Array.from(selectedChecklistItems).map(auditItemId => 
-        markChecklistItemPending(auditItemId)
-      );
-      
-      try {
-        await Promise.all(markPromises);
-        toast.success(`Marked ${selectedChecklistItems.size} checklist item(s) as Pending for extension request.`);
-      } catch (markErr: any) {
-        console.error('Failed to mark some checklist items:', markErr);
-        toast.warning('Some checklist items failed to mark. Continuing with request...');
+      if (selectedChecklistItems.size > 0) {
+        const markPromises = Array.from(selectedChecklistItems).map(auditItemId => 
+          markChecklistItemPending(auditItemId)
+        );
+        
+        try {
+          await Promise.all(markPromises);
+          toast.success(`Marked ${selectedChecklistItems.size} checklist item(s) as Pending for extension request.`);
+        } catch (markErr: any) {
+          console.error('Failed to mark some checklist items:', markErr);
+          toast.warning('Some checklist items failed to mark. Continuing with request...');
+        }
       }
       
-      // Extract findings from selected checklist items
+      // Collect findings from two sources:
+      // 1. Findings from selected checklist items
+      // 2. Findings directly selected (selectedFindings)
       const findingIds: string[] = [];
-      const selectedItemsList = allChecklistItems.filter((item: any) => 
-        selectedChecklistItems.has(item.auditItemId || item.id)
-      );
-      
-      // Get findings from allFindings that belong to selected checklist items
       const findingsForRequest: any[] = [];
-      selectedItemsList.forEach((item: any) => {
-        const itemId = item.auditItemId || item.id;
-        allFindings.forEach((finding: any) => {
-          const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
-          if (String(findingItemId) === String(itemId)) {
-            const findingId = String(finding.findingId || finding.id || '');
-            if (findingId && !findingIds.includes(findingId)) {
-              findingIds.push(findingId);
+      
+      // Source 1: Get findings from selected checklist items
+      if (selectedChecklistItems.size > 0) {
+        const selectedItemsList = allChecklistItems.filter((item: any) => 
+          selectedChecklistItems.has(item.auditItemId || item.id)
+        );
+        
+        selectedItemsList.forEach((item: any) => {
+          const itemId = item.auditItemId || item.id;
+          allFindings.forEach((finding: any) => {
+            const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
+            if (String(findingItemId) === String(itemId)) {
+              const findingId = String(finding.findingId || finding.id || '');
+              if (findingId && !findingIds.includes(findingId)) {
+                findingIds.push(findingId);
+                findingsForRequest.push(finding);
+              }
+            }
+          });
+        });
+      }
+      
+      // Source 2: Add findings directly selected (selectedFindings)
+      if (selectedFindings.size > 0) {
+        selectedFindings.forEach(findingId => {
+          const finding = allFindings.find((f: any) => 
+            String(f.findingId || f.id || '') === findingId
+          );
+          if (finding) {
+            const findingIdStr = String(finding.findingId || finding.id || '');
+            if (findingIdStr && !findingIds.includes(findingIdStr)) {
+              findingIds.push(findingIdStr);
               findingsForRequest.push(finding);
             }
           }
         });
+      }
+      
+      console.log(`[Extension Request] Total findings to send: ${findingIds.length}`, {
+        fromChecklistItems: selectedChecklistItems.size,
+        fromSelectedFindings: selectedFindings.size,
+        totalFindings: findingIds.length,
+        findingIds
       });
       
       // Create extension request with findings
@@ -2086,7 +2102,8 @@ const AuditorLeadReports = () => {
         }));
       }
       
-      toast.success('Extension request sent to Director successfully.');
+      const totalItemsCount = selectedChecklistItems.size + selectedFindings.size;
+      toast.success(`Extension request sent to Director successfully for ${totalItemsCount} item(s) (${selectedChecklistItems.size} checklist items, ${selectedFindings.size} findings).`);
       setShowExtensionModal(false);
       setExtensionComment('');
       // Clear selected checklist items after successful submission
@@ -2276,19 +2293,41 @@ const AuditorLeadReports = () => {
         return;
       }
       
-      // Get marked checklist items for this approved request
+      // Get marked items for this approved request (use same logic as Extension Request History)
       let markedItems = markedItemsByRequest[approvedRequest.requestId] || [];
       
-      // If not in state, try to load from API using requestId
+      // If not in state, load from API using the same function as Extension Request History
       if (markedItems.length === 0) {
         try {
-          // Use new API: GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
+          // Use same API and logic as loadMarkedItemsForRequest (for consistency)
+          // GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
           const markedItemsFromApi = await getMarkedItemsByRequestId(approvedRequest.requestId);
+          
           if (markedItemsFromApi && markedItemsFromApi.length > 0) {
-            // Extract findings from allFindings that belong to these marked checklist items
+            // Store marked items directly (same as Extension Request History)
+            // API returns array after unwrap: can contain both checklist items and findings
+            setMarkedItemsByRequest(prev => ({
+              ...prev,
+              [approvedRequest.requestId]: markedItemsFromApi
+            }));
+            
+            // Extract findings from marked items (for auto-selection)
+            // Marked items can be: checklist items (with auditItemId) or findings (with findingId)
             const markedItemIds = new Set(markedItemsFromApi.map((item: any) => String(item.auditItemId || item.id)));
             const findingsFromMarkedItems: any[] = [];
             
+            // First, add direct findings from marked items
+            markedItemsFromApi.forEach((item: any) => {
+              if (item.findingId || item.title) {
+                // This is a finding
+                const findingId = String(item.findingId || item.id || '');
+                if (findingId && !findingsFromMarkedItems.find(f => String(f.findingId || f.id) === findingId)) {
+                  findingsFromMarkedItems.push(item);
+                }
+              }
+            });
+            
+            // Then, find findings associated with marked checklist items
             allFindings.forEach((finding: any) => {
               const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
               if (findingItemId && markedItemIds.has(String(findingItemId))) {
@@ -2300,16 +2339,38 @@ const AuditorLeadReports = () => {
             });
             
             markedItems = findingsFromMarkedItems;
-            if (markedItems.length > 0) {
-              setMarkedItemsByRequest(prev => ({
-                ...prev,
-                [approvedRequest.requestId]: markedItems
-              }));
-            }
           }
         } catch (err) {
           console.error('Failed to load marked items for required findings:', err);
         }
+      } else {
+        // If already in state, extract findings from stored marked items
+        const markedItemIds = new Set(markedItems.map((item: any) => String(item.auditItemId || item.id)));
+        const findingsFromMarkedItems: any[] = [];
+        
+        // First, add direct findings from marked items
+        markedItems.forEach((item: any) => {
+          if (item.findingId || item.title) {
+            // This is a finding
+            const findingId = String(item.findingId || item.id || '');
+            if (findingId && !findingsFromMarkedItems.find(f => String(f.findingId || f.id) === findingId)) {
+              findingsFromMarkedItems.push(item);
+            }
+          }
+        });
+        
+        // Then, find findings associated with marked checklist items
+        allFindings.forEach((finding: any) => {
+          const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
+          if (findingItemId && markedItemIds.has(String(findingItemId))) {
+            const findingId = String(finding.findingId || finding.id || '');
+            if (findingId && !findingsFromMarkedItems.find(f => String(f.findingId || f.id) === findingId)) {
+              findingsFromMarkedItems.push(finding);
+            }
+          }
+        });
+        
+        markedItems = findingsFromMarkedItems;
       }
       
       // Extract findings from marked items (which are already findings)
@@ -2489,13 +2550,7 @@ const AuditorLeadReports = () => {
                         onClick={async () => {
                           console.log('[Request History Button] Opening history modal, selectedAuditId:', selectedAuditId);
                           setShowRequestHistoryModal(true);
-                          // Load marked findings for all requests when opening history modal
-                          if (selectedAuditId && revisionRequests.length > 0) {
-                            console.log('[Request History Button] Loading marked findings for', revisionRequests.length, 'requests');
-                            await loadMarkedFindingsForRequests(selectedAuditId, revisionRequests);
-                          } else {
-                            console.log('[Request History Button] Skipping load - no auditId or no requests');
-                          }
+                          // Marked items will be loaded on-demand when each request is rendered
                         }}
                         className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition-colors flex items-center gap-2"
                         title="View request history"
@@ -2584,15 +2639,19 @@ const AuditorLeadReports = () => {
                             openExtensionModal(selectedAuditId);
                           }}
                           className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-2"
-                          title={selectedCompliantItems.size > 0 ? `Request extension for ${selectedCompliantItems.size} compliant item(s)` : 'Request extension'}
+                          title={
+                            (selectedFindings.size > 0 || selectedChecklistItems.size > 0)
+                              ? `Request extension for ${selectedFindings.size + selectedChecklistItems.size} item(s) (${selectedFindings.size} findings, ${selectedChecklistItems.size} checklist items)`
+                              : 'Request extension'
+                          }
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           Request Extension
-                          {selectedCompliantItems.size > 0 && (
+                          {(selectedFindings.size > 0 || selectedChecklistItems.size > 0) && (
                             <span className="ml-1 px-1.5 py-0.5 bg-amber-400 rounded-full text-xs font-semibold">
-                              {selectedCompliantItems.size}
+                              {selectedFindings.size + selectedChecklistItems.size}
                             </span>
                           )}
                         </button>
@@ -3496,23 +3555,18 @@ const AuditorLeadReports = () => {
                         return dateB - dateA;
                       })
                       .map((req) => {
-                        // markedItemsByRequest stores marked checklist items from API
-                        // API returns: ViewAuditPlanRevisionRequestMarkedItem[]
-                        // Each item contains: questionTextSnapshot, section, auditItemId, status, etc.
-                        const markedItems = markedItemsByRequest[req.requestId] || [];
+                        // Load marked items on-demand when rendering each request (like Director does)
+                        if (!markedItemsByRequest[req.requestId] && !loadingMarkedItems[req.requestId]) {
+                          loadMarkedItemsForRequest(req.requestId);
+                        }
+                        // Get marked items from state (loaded on-demand like Director)
+                        const markedItems = Array.isArray(markedItemsByRequest[req.requestId]) 
+                          ? markedItemsByRequest[req.requestId] 
+                          : [];
                         const isLoading = loadingMarkedItems[req.requestId];
                         const isApproved = req.status === 'Approved';
                         const isRejected = req.status === 'Rejected';
                         const isPending = req.status === 'Pending';
-                        
-                        // Debug logging
-                        if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-                          console.log(`[Extension Request History] Request ${req.requestId}:`, {
-                            markedItems,
-                            isLoading,
-                            requestStatus: req.status
-                          });
-                        }
                         
                         return (
                           <div key={req.requestId} className="bg-white border-2 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -3598,85 +3652,80 @@ const AuditorLeadReports = () => {
                                 </div>
                               )}
 
-                              {/* Selected Checklist Items - Show marked items from API */}
-                              <div>
-                                <p className="text-xs font-semibold text-gray-700 mb-2">Selected Checklist Items:</p>
+                              {/* Selected Checklist Items and Findings - Show marked items from API (same logic as Director) */}
+                              <div className="mb-6 p-4 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl">
+                                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                  <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  Marked Checklist Items ({markedItems.length})
+                                </h4>
+                                
                                 {isLoading ? (
                                   <div className="flex items-center justify-center py-4">
-                                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                                      <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                                      Loading checklist items...
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                                      <span className="text-sm text-gray-600">Loading marked items...</span>
                                     </div>
                                   </div>
-                                ) : markedItems.length > 0 ? (
-                                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                                ) : markedItems.length === 0 ? (
+                                  <div className="text-center py-4">
+                                    <p className="text-xs text-gray-500">No checklist items were marked for this request</p>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3 max-h-96 overflow-y-auto">
                                     {markedItems.map((item: any, idx: number) => {
                                       // API returns: ViewAuditPlanRevisionRequestMarkedItem
-                                      // Contains: questionTextSnapshot, section, auditItemId, status, itemStatus, etc.
-                                      const questionText = item.questionTextSnapshot || item.questionText || 'No question text';
+                                      // Contains: questionTextSnapshot, section, auditItemId, status, itemStatus, markStatus, etc.
+                                      const questionText = item.questionTextSnapshot || item.questionText || item.title || 'No question text';
                                       const section = item.section || 'Unknown Section';
                                       const itemStatus = item.itemStatus || item.status || '';
-                                      const markStatus = item.markStatus || '';
+                                      const requestStatus = item.status || req.status || '';
                                       const order = item.order !== undefined ? item.order : idx + 1;
                                       
                                       return (
-                                        <div key={item.auditItemId || item.id || idx} className={`flex items-start gap-3 p-3 rounded-lg border ${
-                                          isApproved 
-                                            ? 'bg-green-50 border-green-200' 
-                                            : isRejected
-                                            ? 'bg-red-50 border-red-200'
-                                            : 'bg-amber-50 border-amber-200'
-                                        }`}>
-                                          <svg className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
-                                            isApproved ? 'text-green-600' : 
-                                            isRejected ? 'text-red-600' : 
-                                            'text-amber-600'
-                                          }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                                          </svg>
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-1">
-                                              <span className="text-xs font-semibold text-gray-500">#{order}</span>
-                                              <span className="text-xs font-medium text-gray-600">{section}</span>
+                                        <div key={item.auditItemId || item.findingId || item.id || idx} className="bg-white border border-purple-200 rounded-lg p-3">
+                                          {/* Checklist Item */}
+                                          <div className="flex items-start gap-3">
+                                            <div className="flex-shrink-0 mt-0.5">
+                                              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                              </svg>
                                             </div>
-                                            <p className="text-sm font-medium text-gray-900 line-clamp-3">
-                                              {questionText}
-                                            </p>
-                                            <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                              {itemStatus && (
-                                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700">
-                                                  Status: {itemStatus}
-                                                </span>
-                                              )}
-                                              {markStatus && (
-                                                <span className="inline-block px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
-                                                  Mark: {markStatus}
-                                                </span>
-                                              )}
-                                              {item.status && (
-                                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                                  item.status === 'Approved' ? 'bg-green-100 text-green-700' :
-                                                  item.status === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                  'bg-amber-100 text-amber-700'
-                                                }`}>
-                                                  Request: {item.status}
-                                                </span>
-                                              )}
-                                            </div>
-                                            {item.comment && (
-                                              <p className="text-xs text-gray-600 mt-2 italic">
-                                                Comment: {item.comment}
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-xs font-medium text-purple-600">{section}</span>
+                                              </div>
+                                              <p className="text-sm font-semibold text-gray-900 line-clamp-3 mb-2">
+                                                {questionText}
                                               </p>
-                                            )}
+                                              <div className="flex items-center gap-2 flex-wrap">
+                                                {itemStatus && (
+                                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${getStatusColor(itemStatus)}`}>
+                                                     {itemStatus}
+                                                  </span>
+                                                )}
+                                                {requestStatus && (
+                                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                                    requestStatus === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                    requestStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                    'bg-amber-100 text-amber-700'
+                                                  }`}>
+                                                    Request: {requestStatus}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {item.comment && (
+                                                <p className="text-xs text-gray-600 mt-2 italic pt-2 border-t border-purple-100">
+                                                  Comment: {item.comment}
+                                                </p>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
                                       );
                                     })}
                                   </div>
-                                ) : (
-                                  <p className="text-xs text-gray-500 italic text-center py-2">
-                                    No checklist items selected for this request
-                                  </p>
                                 )}
                               </div>
                             </div>
