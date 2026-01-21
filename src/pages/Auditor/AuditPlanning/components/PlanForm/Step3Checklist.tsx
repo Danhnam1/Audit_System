@@ -134,19 +134,11 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
         // Unwrap response to handle different formats
         let auditsToCheck = unwrap(auditsInPeriod);
         
-        // Filter out inactive, deleted, rejected, declined, pending review, and pending director approval audits
-        // These statuses should not be considered when checking for used templates
+        // Only consider audits with status 'Approved' or 'InProgress' when checking for used templates
+        // Draft, PendingReview, PendingDirectorApproval and other statuses should not be considered
         auditsToCheck = auditsToCheck.filter((a: any) => {
           const status = String(a.status || '').toLowerCase().replace(/\s+/g, '');
-          const isActive = status !== 'inactive' 
-            && status !== 'deleted' 
-            && status !== 'rejected' 
-            && status !== 'declined'
-            && status !== 'pendingreview'
-            && status !== 'pendingdirectorapproval';
-          if (!isActive) {
-          }
-          return isActive;
+          return status === 'approved' || status === 'inprogress';
         });
         
         

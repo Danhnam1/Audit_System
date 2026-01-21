@@ -8,7 +8,6 @@ export const STATUS_COLORS = {
   'Closed': 'bg-green-600 text-white',
   'Verified': 'bg-teal-100 text-teal-800',
   'WitnessConfirmed': 'bg-teal-100 text-teal-800',
-  'Published': 'bg-blue-100 text-blue-800',
   "WitnessDisagreed": 'bg-red-100 text-red-800',
   'WitnessConfirmReturned': 'bg-teal-100 text-teal-800',
   
@@ -47,7 +46,6 @@ export const STATUS_COLORS = {
   'Cancelled': 'bg-red-200 text-red-800',
   
   // Special States
-  'Reopened': 'bg-purple-100 text-purple-800',
   'Overdue': 'bg-red-500 text-white',
   'Archived': 'bg-orange-500 text-white',
   
@@ -59,15 +57,11 @@ export const STATUS_COLORS = {
   // User/System States
   'Active': 'bg-teal-500 text-white',
   'Inactive': 'bg-gray-400 text-white',
-  'Suspended': 'bg-gray-500 text-white',
   'Expired': 'bg-gray-400 text-white',
   'Revoked': 'bg-red-300 text-red-900',
   
   // Schedule/Planning States
   'Planned': 'bg-blue-100 text-blue-800',
-  
-  // Notification States
-  'Sent': 'bg-blue-100 text-blue-700',
   
   // Action/Review States
   'Reviewed': 'bg-teal-100 text-teal-800',
@@ -147,15 +141,7 @@ export type StatusType = keyof typeof STATUS_COLORS;
 export type PriorityType = keyof typeof PRIORITY_COLORS;
 export type BadgeVariantType = keyof typeof BADGE_VARIANTS;
 
-// Workflow Stage Groups (for filtering and logic)
-export const STATUS_GROUPS = {
-  INITIAL: ['Draft', 'Pending', 'Submitted', 'Open', 'Assigned'],
-  PROCESSING: ['Under Review', 'UnderReview', 'Pending Review', 'PendingReview', 'In Progress', 'InProgress', 'PendingDirectorApproval', 'Pending Director Approval', 'PendingLeadApproval', 'Pending Lead Approval'],
-  SUCCESS: ['Approved', 'Completed', 'Resolved', 'Closed', 'Reviewed'],
-  NEGATIVE: ['Rejected', 'Declined', 'Returned', 'Return', 'Cancelled'],
-  SPECIAL: ['Reopened', 'Overdue'],
-  CHECKLIST: ['Compliant', 'NonCompliant', 'Non-Compliant', 'Overdue'],
-} as const;export const getStatusBadgeColor = (status: string): string => {
+export const getStatusBadgeColor = (status: string): string => {
   const statusLower = status?.toLowerCase() || '';
   switch (statusLower) {
     case 'assigned':
@@ -169,20 +155,6 @@ export const STATUS_GROUPS = {
     default:
       return 'bg-gray-100 text-gray-800 border border-gray-300';
   }
-};
-
-// Helper to check if status is in a group
-export const isStatusInGroup = (status: string, group: keyof typeof STATUS_GROUPS): boolean => {
-  return (STATUS_GROUPS[group] as readonly string[]).includes(status);
-};
-
-// Helper to get status progress percentage (for progress bars)
-export const getStatusProgress = (status: string): number => {
-  if (isStatusInGroup(status, 'INITIAL')) return 20;
-  if (isStatusInGroup(status, 'PROCESSING')) return 50;
-  if (isStatusInGroup(status, 'SUCCESS')) return 100;
-  if (isStatusInGroup(status, 'NEGATIVE')) return 0;
-  return 0;
 };
 
 /**

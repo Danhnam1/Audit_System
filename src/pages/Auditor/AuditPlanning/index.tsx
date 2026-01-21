@@ -1274,51 +1274,51 @@ const SQAStaffAuditPlanning = () => {
                     {/* Show validation error for period if exists */}
                     {formState.periodFrom &&
                       formState.periodTo &&
-                      !validateStep1 && (
-                        <div className="mt-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
-                          <p className="text-sm font-medium text-red-800">
-                          You need to select the time again.
-                          </p>
-                          {(() => {
-                            const fromDate = new Date(formState.periodFrom);
-                            const toDate = new Date(formState.periodTo);
-                            if (
-                              isNaN(fromDate.getTime()) ||
-                              isNaN(toDate.getTime())
-                            ) {
-                              return (
-                                <p className="text-sm text-red-700 mt-1">
-                                  Invalid date format. Please check your dates.
-                                </p>
-                              );
-                            }
-                            if (fromDate.getTime() > toDate.getTime()) {
-                              return (
-                                <p className="text-sm text-red-700 mt-1">
-                                  Start date must be earlier than or equal to
-                                  end date.
-                                </p>
-                              );
-                            }
-                            const MS_PER_DAY = 24 * 60 * 60 * 1000;
-                            const daysDiff = Math.floor(
-                              (toDate.getTime() - fromDate.getTime()) /
-                                MS_PER_DAY
+                      !validateStep1 && (() => {
+                        const fromDate = new Date(formState.periodFrom);
+                        const toDate = new Date(formState.periodTo);
+                        let errorMessage = null;
+                        
+                        if (
+                          isNaN(fromDate.getTime()) ||
+                          isNaN(toDate.getTime())
+                        ) {
+                          errorMessage = (
+                            <p className="text-sm text-red-700">
+                              Invalid date format. Please check your dates.
+                            </p>
+                          );
+                        } else if (fromDate.getTime() > toDate.getTime()) {
+                          errorMessage = (
+                            <p className="text-sm text-red-700">
+                              Start date must be earlier than or equal to
+                              end date.
+                            </p>
+                          );
+                        } else {
+                          const MS_PER_DAY = 24 * 60 * 60 * 1000;
+                          const daysDiff = Math.floor(
+                            (toDate.getTime() - fromDate.getTime()) /
+                              MS_PER_DAY
+                          );
+                          const MIN_PERIOD_DAYS = 16;
+                          if (daysDiff < MIN_PERIOD_DAYS) {
+                            errorMessage = (
+                              <p className="text-sm text-red-700">
+                                Audit period must be at least{" "}
+                                {MIN_PERIOD_DAYS} days. Current period is{" "}
+                                {daysDiff} day(s). Please extend the end date.
+                              </p>
                             );
-                            const MIN_PERIOD_DAYS = 16;
-                            if (daysDiff < MIN_PERIOD_DAYS) {
-                              return (
-                                <p className="text-sm text-red-700 mt-1">
-                                  Audit period must be at least{" "}
-                                  {MIN_PERIOD_DAYS} days. Current period is{" "}
-                                  {daysDiff} day(s). Please extend the end date.
-                                </p>
-                              );
-                            }
-                            return null;
-                          })()}
-                        </div>
-                      )}
+                          }
+                        }
+                        
+                        return errorMessage ? (
+                          <div className="mt-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
+                            {errorMessage}
+                          </div>
+                        ) : null;
+                      })()}
                   </>
                 )}
 
