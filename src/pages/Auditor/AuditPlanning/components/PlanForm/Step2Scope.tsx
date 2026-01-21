@@ -106,7 +106,7 @@ export const Step2Scope: React.FC<Step2ScopeProps> = ({
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Standards (shared for all departments)
+          Standards
         </label>
         {criteria.length === 0 ? (
           <p className="text-sm text-gray-500">No standards available.</p>

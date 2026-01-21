@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { Sidebar } from '../components/Sidebar.tsx';
 import type { SidebarMenuItem, SidebarTheme } from '../components/Sidebar.tsx';
 import { Navigation, PageTransition } from '../components';
-import { ChatBot } from '../components/ChatBot';
 import { NotificationToastContainer } from '../components/NotificationToast';
 import './icons.tsx';
 import useAuthStore, { useUserId } from '../store/useAuthStore';

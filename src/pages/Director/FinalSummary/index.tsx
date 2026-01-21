@@ -198,6 +198,7 @@ const lastCalculatedAuditRef = useRef<string>("");
         };
 
         // Only show audits that have a report request sent to Director
+        // Exclude archived audits
         const filteredAudits = (Array.isArray(plans) ? plans : [])
           .map((a: any) => {
             let title = a.title || a.auditTitle || "Untitled audit";
@@ -210,10 +211,18 @@ const lastCalculatedAuditRef = useRef<string>("");
               startDate: formatDate(a.startDate || a.periodFrom),
               endDate: formatDate(a.endDate || a.periodTo),
               scope: formatScope(a.scope),
+              status: a.status || "", // Include status for filtering
             };
           })
           .filter((x: any) => {
             if (!x.auditId) return false;
+            
+            // Exclude archived audits
+            const auditStatus = String(x.status || "").trim().toLowerCase();
+            if (auditStatus === 'archived') {
+              return false;
+            }
+            
             const idLower = x.auditId.toLowerCase();
             return relevantAuditIds.has(x.auditId) || relevantAuditIds.has(idLower);
           });
@@ -615,13 +624,32 @@ const lastCalculatedAuditRef = useRef<string>("");
   };
 
 // Auto-calculate effectiveness once when audit is selected
+// Only calculate if:
+// 1. Audit result doesn't exist yet, OR
+// 2. Audit result exists but has no percentage (not saved by manager yet)
+// Don't recalculate if audit is archived or already has saved percentage
 useEffect(() => {
   if (!selectedAuditId) return;
   if (calculatingEffectiveness || loadingEffectiveness) return;
   if (lastCalculatedAuditRef.current === selectedAuditId) return;
+  
+  // Check if audit is archived
+  const auditStatus = detail?.audit?.status?.toLowerCase() || '';
+  if (auditStatus === 'archived') {
+    console.log('[Auto-calculate] Skipping - audit is archived');
+    return;
+  }
+  
+  // Check if audit result already exists with saved percentage
+  // If percentage exists, it means manager has already saved it, don't recalculate
+  if (auditResult?.percentage != null) {
+    console.log('[Auto-calculate] Skipping - audit result already has saved percentage:', auditResult.percentage);
+    return;
+  }
+  
   lastCalculatedAuditRef.current = selectedAuditId;
   handleCalculateEffectiveness();
-}, [selectedAuditId, calculatingEffectiveness, loadingEffectiveness]);
+}, [selectedAuditId, calculatingEffectiveness, loadingEffectiveness, detail?.audit?.status, auditResult?.percentage]);
 
   // Derived values to display (API returns percentage/result)
   const effectivenessValue = auditResult?.effectivenessScore != null
