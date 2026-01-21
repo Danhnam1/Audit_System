@@ -1929,15 +1929,8 @@ const AuditorLeadReports = () => {
     setSelectedAuditId(auditId);
     setShowExtensionModal(true);
     setExtensionComment('');
-    // Merge selectedCompliantItems into selectedChecklistItems (if any)
-    if (selectedCompliantItems.size > 0) {
-      setSelectedChecklistItems(prev => {
-        const merged = new Set(prev);
-        selectedCompliantItems.forEach(id => merged.add(id));
-        return merged;
-      });
-    }
-    // Don't reset selectedChecklistItems - items are selected outside the modal
+    // Use selectedCompliantItems directly (same as Return logic)
+    // Don't reset selectedCompliantItems - items are selected outside the modal
     
     // Load checklist items for this audit (needed for handleRequestExtension to get full item details)
     try {
@@ -2010,38 +2003,38 @@ const AuditorLeadReports = () => {
     }
     
     // Validate: must have at least one item selected (checklist items or findings)
-    if (selectedChecklistItems.size === 0 && selectedFindings.size === 0) {
-      toast.error('Please select at least one checklist item or finding to request extension for.');
+    if (selectedCompliantItems.size === 0 && selectedFindings.size === 0) {
+      toast.error('Please select at least one compliant item or finding to request extension for.');
       return;
     }
     
     setExtensionLoading(true);
     try {
-      // Mark all selected checklist items as Pending (for extension requests)
-      if (selectedChecklistItems.size > 0) {
-        const markPromises = Array.from(selectedChecklistItems).map(auditItemId => 
+      // Mark all selected compliant items as Pending (for extension requests)
+      if (selectedCompliantItems.size > 0) {
+        const markPromises = Array.from(selectedCompliantItems).map(auditItemId => 
           markChecklistItemPending(auditItemId)
         );
         
         try {
           await Promise.all(markPromises);
-          toast.success(`Marked ${selectedChecklistItems.size} checklist item(s) as Pending for extension request.`);
+          toast.success(`Marked ${selectedCompliantItems.size} compliant item(s) as Pending for extension request.`);
         } catch (markErr: any) {
-          console.error('Failed to mark some checklist items:', markErr);
-          toast.warning('Some checklist items failed to mark. Continuing with request...');
+          console.error('Failed to mark some compliant items:', markErr);
+          toast.warning('Some compliant items failed to mark. Continuing with request...');
         }
       }
       
       // Collect findings from two sources:
-      // 1. Findings from selected checklist items
+      // 1. Findings from selected compliant items
       // 2. Findings directly selected (selectedFindings)
       const findingIds: string[] = [];
       const findingsForRequest: any[] = [];
       
-      // Source 1: Get findings from selected checklist items
-      if (selectedChecklistItems.size > 0) {
+      // Source 1: Get findings from selected compliant items
+      if (selectedCompliantItems.size > 0) {
         const selectedItemsList = allChecklistItems.filter((item: any) => 
-          selectedChecklistItems.has(item.auditItemId || item.id)
+          selectedCompliantItems.has(item.auditItemId || item.id)
         );
         
         selectedItemsList.forEach((item: any) => {
@@ -2076,7 +2069,7 @@ const AuditorLeadReports = () => {
       }
       
       console.log(`[Extension Request] Total findings to send: ${findingIds.length}`, {
-        fromChecklistItems: selectedChecklistItems.size,
+        fromCompliantItems: selectedCompliantItems.size,
         fromSelectedFindings: selectedFindings.size,
         totalFindings: findingIds.length,
         findingIds
@@ -2099,12 +2092,12 @@ const AuditorLeadReports = () => {
         }));
       }
       
-      const totalItemsCount = selectedChecklistItems.size + selectedFindings.size;
-      toast.success(`Extension request sent to Director successfully for ${totalItemsCount} item(s) (${selectedChecklistItems.size} checklist items, ${selectedFindings.size} findings).`);
+      const totalItemsCount = selectedCompliantItems.size + selectedFindings.size;
+      toast.success(`Extension request sent to Director successfully for ${totalItemsCount} item(s) (${selectedCompliantItems.size} compliant items, ${selectedFindings.size} findings).`);
       setShowExtensionModal(false);
       setExtensionComment('');
-      // Clear selected checklist items after successful submission
-      setSelectedChecklistItems(new Set());
+      // Clear selected compliant items after successful submission
+      setSelectedCompliantItems(new Set());
       // Reload revision requests and update map
       const requests = await getAuditPlanRevisionRequestsByAuditId(selectedAuditId);
       setRevisionRequests(requests);
@@ -2664,8 +2657,8 @@ const AuditorLeadReports = () => {
                           }}
                           className="px-4 py-2 text-sm font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-2"
                           title={
-                            (selectedFindings.size > 0 || selectedChecklistItems.size > 0)
-                              ? `Request extension for ${selectedFindings.size + selectedChecklistItems.size} item(s) (${selectedFindings.size} findings, ${selectedChecklistItems.size} checklist items)`
+                            (selectedFindings.size > 0 || selectedCompliantItems.size > 0)
+                              ? `Request extension for ${selectedFindings.size + selectedCompliantItems.size} item(s) (${selectedFindings.size} findings, ${selectedCompliantItems.size} compliant items)`
                               : 'Request extension'
                           }
                         >
@@ -2673,9 +2666,9 @@ const AuditorLeadReports = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                           Request Extension
-                          {(selectedFindings.size > 0 || selectedChecklistItems.size > 0) && (
+                          {(selectedFindings.size > 0 || selectedCompliantItems.size > 0) && (
                             <span className="ml-1 px-1.5 py-0.5 bg-amber-400 rounded-full text-xs font-semibold">
-                              {selectedFindings.size + selectedChecklistItems.size}
+                              {selectedFindings.size + selectedCompliantItems.size}
                             </span>
                           )}
                         </button>
