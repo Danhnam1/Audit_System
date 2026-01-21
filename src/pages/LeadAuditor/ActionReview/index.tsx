@@ -188,18 +188,6 @@ const ActionReview = () => {
     }
   };
 
-  // Check if all actions for a finding are closed
-  const areAllActionsClosed = (findingId: string): boolean => {
-    const actions = findingActionsMap[findingId] || [];
-    if (actions.length === 0) return false; // No actions means not all closed
-    
-    // Check if all actions are closed
-    return actions.every(action => {
-      const status = action.status?.toLowerCase() || '';
-      const isClosed = status === 'closed' || action.closedAt !== null;
-      return isClosed;
-    });
-  };
 
   // Get display status for finding based on action states
   const getDisplayStatus = (finding: Finding): string => {

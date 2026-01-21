@@ -13,10 +13,6 @@ export interface UpdateAuditResultPayload {
   comment?: string | null;
 }
 
-export interface CalculateAuditResultRequest {
-  passThreshold?: number;
-}
-
 // GET /api/AuditResult/audit/{auditId}
 export const getAuditResultByAuditId = async (auditId: string): Promise<AuditResult | null> => {
   if (!auditId) return null;
@@ -28,21 +24,15 @@ export const getAuditResultByAuditId = async (auditId: string): Promise<AuditRes
 
 // POST /api/AuditResult/calculate/{auditId}
 export const calculateAuditResult = async (
-  auditId: string,
-  passThreshold?: number
+  auditId: string
 ): Promise<AuditResult> => {
   if (!auditId) {
     throw new Error("auditId is required to calculate audit result");
   }
 
-  const body: CalculateAuditResultRequest = {};
-  if (typeof passThreshold === "number") {
-    body.passThreshold = passThreshold;
-  }
-
   const res: any = await apiClient.post(
     `/AuditResult/calculate/${encodeURIComponent(auditId)}`,
-    body
+    {}
   );
   return res?.data ?? res;
 };

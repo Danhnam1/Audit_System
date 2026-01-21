@@ -1798,19 +1798,6 @@ const DepartmentChecklist = () => {
     }
   };
 
-  // Check if all actions for a finding are closed
-  const areAllActionsClosed = (findingId: string): boolean => {
-    const actions = findingActionsMap[findingId] || [];
-    if (actions.length === 0) return false; // No actions means not all closed
-    
-    // Check if all actions are closed
-    return actions.every(action => {
-      const status = action.status?.toLowerCase() || '';
-      const isClosed = status === 'closed' || action.closedAt !== null;
-      return isClosed;
-    });
-  };
-
   // Get finding status based on actions
   const getFindingStatus = (findingId: string): { status: string; color: string } | null => {
     const actions = findingActionsMap[findingId] || [];
@@ -2357,11 +2344,6 @@ const DepartmentChecklist = () => {
                               const compliantData = compliantStatusMap[item.auditItemId];
                               const compliantStatus = compliantData?.status?.toLowerCase();
                               const isCompliantReturned = compliantStatus === 'return' || compliantStatus === 'returned';
-                              
-                              // Get the full finding object to access reasonReturn
-                              const returnedFinding = isReturned(item, itemStatusToCheck) 
-                                ? myFindings.find(f => f.auditItemId === item.auditItemId)
-                                : null;
                               
                               // Show Fixed badge with View icon if status is Fixed, WitnessConfirmed, or already edited in this session
                               if (isReturned(item, itemStatusToCheck) && (isFixedStatus || isWitnessConfirmed || isEditedInSession || isWitnessConfirmReturned)) {

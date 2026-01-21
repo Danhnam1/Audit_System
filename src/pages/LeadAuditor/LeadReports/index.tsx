@@ -16,7 +16,7 @@ import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../../api/reportRequest';
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
-import { getAuditChecklistItems, markChecklistItemPending, getMarkedChecklistItems, getCompliantIdByAuditItemId, returnCompliantItem } from '../../../api/checklists';
+import { getAuditChecklistItems, markChecklistItemPending, getCompliantIdByAuditItemId, returnCompliantItem } from '../../../api/checklists';
 import { getMarkedItemsByRequestId } from '../../../api/auditPlanRevisionRequest';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
@@ -1896,7 +1896,7 @@ const AuditorLeadReports = () => {
   };
 
   // Load marked findings for extension requests
-  const loadMarkedFindingsForRequests = async (auditId: string, requests: ViewAuditPlanRevisionRequest[]) => {
+  const loadMarkedFindingsForRequests = async (_auditId: string, requests: ViewAuditPlanRevisionRequest[]) => {
     // Only load if we don't already have the data in state
     const requestsToLoad = requests.filter(r => !markedItemsByRequest[r.requestId]);
     

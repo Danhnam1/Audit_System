@@ -24,7 +24,6 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
   const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [loadingAction, setLoadingAction] = useState(false);
-  const [actionStatus, setActionStatus] = useState<string>(''); // Track action status
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Validation: Must have progress selected and at least one file
@@ -40,9 +39,7 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
           // Load action to get current progress
           const action = await getActionById(actionId);
           const progress = action.progressPercent || 0;
-          const status = action.status || '';
           setCurrentProgress(progress);
-          setActionStatus(status);
           
           // Set selected progress to next available value or current if at 100%
           if (progress >= 100) {
@@ -79,7 +76,6 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
     } else {
       setExistingAttachments([]);
       setCurrentProgress(0);
-      setActionStatus('');
     }
   }, [isOpen, actionId]);
 
@@ -226,7 +222,6 @@ const StartActionModal = ({ isOpen, onClose, onSuccess, actionId }: StartActionM
     setSelectedProgress(25);
     setError(null);
     setExistingAttachments([]);
-    setActionStatus('');
     onClose();
   };
 

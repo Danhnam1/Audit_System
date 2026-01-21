@@ -199,7 +199,7 @@ export const MainLayout = ({
         </main>
       </div>
       {/* ChatBot - Available on all pages */}
-      <ChatBot />
+      {/* <ChatBot /> */}
       {/* Notification Toast Container - Shows new notifications at bottom left */}
       <NotificationToastContainer />
     </div>

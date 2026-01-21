@@ -7,7 +7,7 @@ interface Finding {
   id: number;
   findingId: string;
   title: string;
-  status: 'Not Started' | 'In Progress' | 'Completed' | 'Overdue';
+  status: 'Not Started' | 'In Progress' | 'Completed' | 'Overdue' | 'WitnessDisagreed' | 'PendingWitnessConfirmation';
   progress: number;
   dueDate: string;
   assignedTasks: number;

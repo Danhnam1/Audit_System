@@ -40,7 +40,7 @@ const FindingsProgress = () => {
   const [showActionDetailModal, setShowActionDetailModal] = useState(false);
 
   const [selectedFindingActions, setSelectedFindingActions] = useState<Action[]>([]);
-  const [loadingFindingActions, setLoadingFindingActions] = useState(false);
+  const [loadingFindingActions] = useState(false); // Reserved for future use
   const [showActionsModal, setShowActionsModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
