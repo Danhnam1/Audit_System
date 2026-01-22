@@ -594,7 +594,6 @@ const SQAStaffAuditPlanning = () => {
       try {
         await refreshPlans();
       } catch (refreshErr) {
-        console.error("Failed to refresh plans list", refreshErr);
       }
 
       const wasEditMode = formState.isEditMode;
@@ -611,10 +610,7 @@ const SQAStaffAuditPlanning = () => {
           try {
             await handleViewDetails(String(currentAuditId));
           } catch (refreshErr) {
-            console.error(
-              "Failed to refresh plan details after update:",
-              refreshErr
-            );
+           
           }
         }
       }
@@ -627,9 +623,7 @@ const SQAStaffAuditPlanning = () => {
         : "Create Audit plan successfully.";
       toast.success(successMsg);
     } catch (err: any) {
-      const serverMsg =
-        err?.response?.data || err?.response || err?.message || err;
-      console.error("Create audit failed", err, serverMsg);
+      
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to create audit plan. Please try again.'));
     } finally {
       setIsSubmittingPlan(false);
@@ -651,7 +645,6 @@ const SQAStaffAuditPlanning = () => {
       // Close modal
       planDetails.closeDetailsModal();
     } catch (err: any) {
-      console.error("Failed to submit to Lead Auditor", err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to submit to Lead Auditor. Please try again.'));
       throw new Error(getUserFriendlyErrorMessage(err, 'Failed to submit plan. Please try again.'));
     }
@@ -712,7 +705,6 @@ const SQAStaffAuditPlanning = () => {
           formState.setSensitiveNotes("");
         }
       } catch (sensitiveErr) {
-        console.error("Failed to load sensitive areas", sensitiveErr);
         formState.setSensitiveFlag(false);
         formState.setSensitiveAreas([]);
         formState.setSensitiveNotes("");
@@ -746,7 +738,6 @@ const SQAStaffAuditPlanning = () => {
             }
           }
         } catch (e) {
-          console.warn("Failed to parse startDate:", detailsWithId.startDate);
           periodFrom =
             typeof detailsWithId.startDate === "string"
               ? detailsWithId.startDate.split("T")[0]
@@ -777,7 +768,6 @@ const SQAStaffAuditPlanning = () => {
             }
           }
         } catch (e) {
-          console.warn("Failed to parse endDate:", detailsWithId.endDate);
           periodTo =
             typeof detailsWithId.endDate === "string"
               ? detailsWithId.endDate.split("T")[0]
@@ -867,7 +857,6 @@ const SQAStaffAuditPlanning = () => {
           .map((id: any) => String(id));
         formState.setSelectedTemplateIds(templateIds);
       } catch (templateErr) {
-        console.error("Failed to load templates", templateErr);
         formState.setSelectedTemplateIds([]);
       }
 
@@ -968,7 +957,6 @@ const SQAStaffAuditPlanning = () => {
       formState.setCurrentStep(1);
       formState.setShowForm(true);
     } catch (err: any) {
-      console.error("Failed to load plan for editing", err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to load plan. Please refresh the page.'));
     }
   };
@@ -998,7 +986,6 @@ const SQAStaffAuditPlanning = () => {
       closeDeleteModal();
       planDetails.closeDetailsModal();
     } catch (err: any) {
-      console.error("Failed to delete plan", err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to delete plan. Please try again.'));
     }
   };

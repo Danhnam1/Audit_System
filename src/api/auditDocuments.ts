@@ -39,7 +39,6 @@ export async function getAuditDocuments(auditId: string) {
     if (Array.isArray(data?.$values)) return data.$values;
     return data ? [data] : [];
   } catch (err) {
-    console.error('getAuditDocuments failed', err);
     return [];
   }
 }

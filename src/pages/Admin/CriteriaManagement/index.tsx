@@ -97,7 +97,6 @@ const AdminCriteriaManagement = () => {
       toast.success('Criteria updated successfully!');
       await fetchCriteria();
     } catch (err: any) {
-      console.error('Failed to update criteria', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to update criteria: ' + errorMessage);
     } finally {
@@ -123,7 +122,6 @@ const AdminCriteriaManagement = () => {
       closeDeleteModal();
       await fetchCriteria();
     } catch (err: any) {
-      console.error('Failed to delete criteria', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to delete criteria: ' + errorMessage);
     }

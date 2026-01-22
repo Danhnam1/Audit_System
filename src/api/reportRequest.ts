@@ -69,7 +69,6 @@ export const getReportRequestById = async (id: string): Promise<ViewReportReques
     const res = await apiClient.get(`/ReportRequest/${encodeURIComponent(id)}`);
     return res?.data ?? res;
   } catch (error) {
-    console.error('Failed to get report request:', error);
     return null;
   }
 };
@@ -109,7 +108,6 @@ export const getReportRequestByAuditId = async (auditId: string): Promise<ViewRe
     
     return latest;
   } catch (error) {
-    console.error('Failed to get report request by audit ID:', error);
     return null;
   }
 };
@@ -148,7 +146,6 @@ export const getReportRequestFromSubmitAudit = async (auditId: string): Promise<
     
     return latest;
   } catch (error) {
-    console.error('Failed to get report request from submitAudit:', error);
     return null;
   }
 };
@@ -187,7 +184,6 @@ export const getReportRequestFromFinalSubmit = async (auditId: string): Promise<
     
     return latest;
   } catch (error) {
-    console.error('Failed to get report request from final submit:', error);
     return null;
   }
 };

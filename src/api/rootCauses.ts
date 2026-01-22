@@ -84,7 +84,6 @@ export const getRootCauseByFindingId = async (findingId: string): Promise<RootCa
     
     return null;
   } catch (err) {
-    console.error('Error getting root cause by finding ID:', err);
     return null;
   }
 };
@@ -143,7 +142,6 @@ export const getRootCauseLogs = async (entityId: string): Promise<RootCauseLog[]
     const res = await apiClient.get(`/RootCauses/${entityId}/audit-logs/update`);
     return res.data.$values || [];
   } catch (err) {
-    console.error('Error fetching root cause logs:', err);
     return [];
   }
 };
@@ -158,7 +156,6 @@ export const getRootCausesByFinding = async (findingId: string): Promise<RootCau
     if (Array.isArray(data?.values)) return data.values;
     return [];
   } catch (err) {
-    console.error('Error getting root causes by finding ID:', err);
     return [];
   }
 };
@@ -170,7 +167,6 @@ export const getRemediationProposalsByRootCause = async (rootCauseId: string): P
     const proposals = unwrap<RemediationProposal>(res.data);
     return proposals;
   } catch (err) {
-    console.error('Error fetching remediation proposals:', err);
     return [];
   }
 };

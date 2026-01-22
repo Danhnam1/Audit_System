@@ -108,7 +108,6 @@ export const SensitiveAreaForm: React.FC<SensitiveAreaFormProps> = ({
                 areas,
               };
             } catch (error) {
-              console.error(`Failed to load sensitive areas for department ${deptId}`, error);
               return {
                 deptId: String(deptId),
                 deptName,
@@ -120,7 +119,6 @@ export const SensitiveAreaForm: React.FC<SensitiveAreaFormProps> = ({
           const results = await Promise.all(areasPromises);
           setDepartmentAreas(results.filter((r) => r.areas.length > 0));
         } catch (error) {
-          console.error('Failed to load suggested sensitive areas', error);
           setDepartmentAreas([]);
         } finally {
           setLoadingSuggestions(false);
@@ -180,7 +178,6 @@ export const SensitiveAreaForm: React.FC<SensitiveAreaFormProps> = ({
           onNotesChange(defaultNotes);
         }
       } catch (error) {
-        console.error('Failed to load default notes', error);
       } finally {
         notesLoadingRef.current = false;
       }

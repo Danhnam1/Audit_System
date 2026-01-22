@@ -32,7 +32,6 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
       // Show all attachments, including old evidence when action is rejected
       setAttachments(Array.isArray(attachmentsData) ? attachmentsData : []);
     } catch (err: any) {
-      console.error('Failed to load action details', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to load action details. Please refresh the page.'));
     } finally {
       setLoading(false);
@@ -333,7 +332,6 @@ const AuditorActionDetailsModal = ({ isOpen, onClose, actionId }: AuditorActionD
                                   alt={att.fileName}
                                   className="w-full h-auto max-h-96 object-contain"
                                   onError={(e) => {
-                                    console.error('Image load error:', att.filePath);
                                     e.currentTarget.parentElement!.style.display = 'none';
                                   }}
                                 />

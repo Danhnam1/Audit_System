@@ -240,7 +240,6 @@ export default function AuditorFinalSummaryPage() {
         const res = await getAuditFullDetail(selectedAuditId);
         setDetail(res as FullDetailResponse);
       } catch (error) {
-        console.error('Failed to load full detail:', error);
       } finally {
         setLoadingDetail(false);
       }
@@ -251,7 +250,6 @@ export default function AuditorFinalSummaryPage() {
         const summaryRes = await getAuditSummary(selectedAuditId);
         setSummaryData(summaryRes);
       } catch (error) {
-        console.error('Failed to load summary:', error);
       } finally {
         setLoadingSummary(false);
       }
@@ -262,7 +260,6 @@ export default function AuditorFinalSummaryPage() {
         const fasRes = await getAuditFindingsActionsSummary(selectedAuditId);
         setFindingsActionsSummary(fasRes);
       } catch (error) {
-        console.error('Failed to load findings-actions-summary:', error);
       } finally {
         setLoadingFindingsActionsSummary(false);
       }
@@ -284,7 +281,6 @@ export default function AuditorFinalSummaryPage() {
         const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
         setReportRequest(rr || null);
       } catch (err) {
-        console.error('Failed to load report request:', err);
         setReportRequest(null);
       } finally {
         setLoadingReportRequest(false);
@@ -659,13 +655,11 @@ export default function AuditorFinalSummaryPage() {
           const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
           setReportRequest(rr || null);
         } catch (err) {
-          console.error('Failed to reload report request:', err);
         }
       }
       
       alert("Report submitted successfully! Lead Auditor will be notified.");
     } catch (error: any) {
-      console.error("Failed to submit report:", error);
       const errorMessage = error?.response?.data?.message || error?.message || "Failed to submit report. Please try again.";
       alert(errorMessage);
     } finally {

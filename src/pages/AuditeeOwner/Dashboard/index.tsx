@@ -34,7 +34,6 @@ const AuditeeOwnerDashboard: React.FC = () => {
           const dept = await getDepartmentById(deptId);
           setDepartmentName(dept?.name || `Department ${deptId}`);
         } catch (err) {
-          console.error('Failed to load department:', err);
           setDepartmentName(`Department ${deptId}`);
         }
 
@@ -52,7 +51,6 @@ const AuditeeOwnerDashboard: React.FC = () => {
         setFindings(findingsArray);
         setActions(actionsArray);
       } catch (error) {
-        console.error('Failed to load dashboard data:', error);
       } finally {
         setLoading(false);
       }

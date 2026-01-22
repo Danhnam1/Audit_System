@@ -88,7 +88,6 @@ const ReviewEvidence = () => {
                     const user = await getUserById(action.assignedTo);
                     assignedUserName = user.fullName || user.email || action.assignedTo;
                   } catch (err) {
-                    console.warn(`Failed to fetch user info for ${action.assignedTo}`, err);
                   }
                 }
                 return { ...action, assignedUserName };
@@ -105,7 +104,6 @@ const ReviewEvidence = () => {
                 const attachments = await getAttachments('Action', action.actionId);
                 actionAttachments[action.actionId] = attachments;
               } catch (err) {
-                console.warn(`Failed to fetch attachments for action ${action.actionId}`, err);
                 actionAttachments[action.actionId] = [];
               }
             }
@@ -117,7 +115,6 @@ const ReviewEvidence = () => {
               actionAttachments,
             };
           } catch (err) {
-            console.error(`Error fetching details for finding ${finding.findingId}`, err);
             return {
               ...finding,
               actions: [],
@@ -139,12 +136,10 @@ const ReviewEvidence = () => {
               setAuditSummaries(prev => ({ ...prev, ...result }));
             }
           })
-          .catch(err => {
-            console.warn('[ReviewEvidence] Failed to load audit summaries', err);
+          .catch(() => {
           });
       }
     } catch (err: any) {
-      console.error('Failed to fetch findings', err);
       toast.error('Unable to load findings');
     } finally {
       setLoading(false);
@@ -182,7 +177,6 @@ const ReviewEvidence = () => {
         });
         setDepartmentsLookup(map);
       } catch (err) {
-        console.warn('Unable to load departments', err);
       }
     };
     loadDepartments();
@@ -205,7 +199,6 @@ const ReviewEvidence = () => {
         }
         return name;
       } catch (err) {
-        console.warn('Unable to load user info', userId, err);
         return '';
       }
     },
@@ -331,7 +324,6 @@ const ReviewEvidence = () => {
         setModalAuditDetail(null);
       }
     } catch (err) {
-      console.warn('Failed to load audit details', err);
       setModalAuditDetail(null);
     } finally {
       setLoadingAuditDetail(false);
@@ -419,7 +411,6 @@ const ReviewEvidence = () => {
       // Update modal findings with fresh data (findings state will be updated by fetchFindings)
       // Use useEffect to watch for findings changes and update modal
     } catch (err: any) {
-      console.error('Failed to process action', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Unable to process action. Please try again.'));
     } finally {
       setProcessingActionId(null);

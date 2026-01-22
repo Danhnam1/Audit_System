@@ -141,39 +141,15 @@ export const getMarkedItemsByRequestId = async (
 ): Promise<ViewAuditPlanRevisionRequestMarkedItem[]> => {
   const res: any = await apiClient.get(`/AuditPlanRevisionRequest/${requestId}/marked-items`);
   const data = res?.data ?? res;
-  console.log('[getMarkedItemsByRequestId] Raw API response:', { requestId, res, data });
-  console.log('[getMarkedItemsByRequestId] Data structure:', {
-    isArray: Array.isArray(data),
-    has$values: Array.isArray(data?.$values),
-    hasValues: Array.isArray(data?.values),
-    $valuesLength: data?.$values?.length,
-    valuesLength: data?.values?.length
-  });
+  
   
   // Unwrap handles: array, { $values: [...] }, { values: [...] }
   const unwrapped = unwrap<ViewAuditPlanRevisionRequestMarkedItem>(data);
-  console.log('[getMarkedItemsByRequestId] Unwrapped data:', { requestId, unwrapped, count: unwrapped?.length || 0 });
-  console.log('[getMarkedItemsByRequestId] Unwrapped is array?', Array.isArray(unwrapped));
   
-  // Log each item in unwrapped array
-  if (Array.isArray(unwrapped) && unwrapped.length > 0) {
-    console.log('[getMarkedItemsByRequestId] Unwrapped items details:');
-    unwrapped.forEach((item: any, idx: number) => {
-      console.log(`  Item ${idx + 1}:`, {
-        $id: item.$id,
-        auditItemId: item.auditItemId,
-        findingId: item.findingId,
-        status: item.status,
-        questionTextSnapshot: item.questionTextSnapshot?.substring(0, 50),
-        title: item.title?.substring(0, 50)
-      });
-    });
-  }
+  
   
   // Ensure we always return an array
   if (!Array.isArray(unwrapped)) {
-    console.warn('[getMarkedItemsByRequestId] Unwrapped data is not an array, returning empty array');
-    console.warn('[getMarkedItemsByRequestId] Unwrapped type:', typeof unwrapped, unwrapped);
     return [];
   }
   

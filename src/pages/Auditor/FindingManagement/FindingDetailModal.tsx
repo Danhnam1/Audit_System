@@ -263,37 +263,24 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
         const rootCausesList = res.data.$values || [];
         
         // Fetch history and actions for each root cause
-        console.log('[FindingDetailModal] 📋 Loading root causes:', rootCausesList.length);
         const rootCausesWithHistory = await Promise.all(
-          rootCausesList.map(async (rc: any, index: number) => {
+          rootCausesList.map(async (rc: any) => {
             try {
-              console.log(`[FindingDetailModal] 🔄 Processing root cause ${index + 1}:`, {
-                rootCauseId: rc.rootCauseId,
-                name: rc.name,
-                type: typeof rc.rootCauseId
-              });
+            
               const logs = await getRootCauseLogs(rc.rootCauseId);
               // Fetch actions (remediation proposals) for this root cause
               let actions: Action[] = [];
               try {
-                console.log(`[FindingDetailModal] 🎯 Calling getActionsByRootCause for:`, rc.rootCauseId);
                 actions = await getActionsByRootCause(rc.rootCauseId);
-                console.log(`[FindingDetailModal] ✅ Actions loaded for ${rc.name}:`, actions.length, 'actions');
               } catch (actionErr) {
-                console.error('[FindingDetailModal] ❌ Error loading actions for root cause:', {
-                  rootCauseId: rc.rootCauseId,
-                  name: rc.name,
-                  error: actionErr
-                });
+              
               }
               return { ...rc, history: logs, actions: actions };
             } catch (err) {
-              console.error('Error loading history for root cause:', rc.rootCauseId, err);
               return { ...rc, history: [], actions: [] };
             }
           })
         );
-        console.log('[FindingDetailModal] 🎉 All root causes loaded with actions:', rootCausesWithHistory);
         
         setRootCauses(rootCausesWithHistory);
       } catch (err) {
@@ -393,16 +380,12 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const rootCausesWithHistory = await Promise.all(
         rootCausesList.map(async (rc: any) => {
           try {
-            console.log('[handleSaveRootCause] 🔄 Processing root cause:', rc.rootCauseId, rc.name);
             const logs = await getRootCauseLogs(rc.rootCauseId);
             // Fetch actions (remediation proposals) for this root cause
             let actions: Action[] = [];
             try {
-              console.log('[handleSaveRootCause] 🎯 Calling getActionsByRootCause for:', rc.rootCauseId);
               actions = await getActionsByRootCause(rc.rootCauseId);
-              console.log('[handleSaveRootCause] ✅ Actions loaded:', actions.length);
             } catch (actionErr) {
-              console.error('[handleSaveRootCause] ❌ Error loading actions:', rc.rootCauseId, actionErr);
             }
             return { ...rc, history: logs, actions: actions };
           } catch (err) {
@@ -524,14 +507,11 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const rootCausesWithHistory = await Promise.all(
         rootCausesList.map(async (rc: any) => {
           try {
-            console.log('[confirmDeleteRootCause] 🔄 Processing root cause:', rc.rootCauseId, rc.name);
             const logs = await getRootCauseLogs(rc.rootCauseId);
             // Fetch actions (remediation proposals) for this root cause
             let actions: Action[] = [];
             try {
-              console.log('[confirmDeleteRootCause] 🎯 Calling getActionsByRootCause for:', rc.rootCauseId);
               actions = await getActionsByRootCause(rc.rootCauseId);
-              console.log('[confirmDeleteRootCause] ✅ Actions loaded:', actions.length);
             } catch (actionErr) {
               console.error('[confirmDeleteRootCause] ❌ Error loading actions:', rc.rootCauseId, actionErr);
             }
@@ -1164,21 +1144,8 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                                     return st !== 'rejected' && st !== 'leadrejected' && st !== 'return';
                                   });
                                   
-                                  console.log(`[UI] 📊 Root Cause "${rc.name}" has ${proposals.length} active actions:`, proposals);
-                                  console.log('[UI] 🔍 Detailed actions data:', JSON.stringify(proposals, null, 2));
                                   
-                                  // Debug each action
-                                  proposals.forEach((action: Action, idx: number) => {
-                                    console.log(`[UI] Action #${idx + 1}:`, {
-                                      actionId: action.actionId,
-                                      title: action.title,
-                                      description: action.description,
-                                      status: action.status,
-                                      rootCauseId: action.rootCauseId,
-                                      assignedTo: action.assignedTo,
-                                      assignedBy: (action as any).assignedBy
-                                    });
-                                  });
+                                
                                   
                                   if (proposals.length === 0) return null;
                                   

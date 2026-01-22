@@ -130,7 +130,6 @@ export const createFinding = async (payload: CreateFindingPayload): Promise<Find
     return result;
   } catch (error: any) {
   
-    console.error('Full error:', error);
     
     // Try to extract more detailed error message
     const errorData = error?.response?.data;
@@ -152,11 +151,9 @@ export const createFinding = async (payload: CreateFindingPayload): Promise<Find
       
       if (validationErrors.length > 0) {
         errorMessage = `Validation Errors:\n${validationErrors.join('\n')}`;
-        console.error('Validation errors:', validationErrors);
       }
     }
     
-    console.error('Full error data:', errorData);
     throw new Error(errorMessage);
   }
 };

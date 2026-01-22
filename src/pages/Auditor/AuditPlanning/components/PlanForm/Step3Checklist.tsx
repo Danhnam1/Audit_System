@@ -180,13 +180,11 @@ export const Step3Checklist: React.FC<Step3ChecklistProps> = ({
               });
             }
           } catch (err) {
-            console.warn(`[Step3Checklist] Failed to get templates for audit ${audit.auditId}:`, err);
           }
         }
 
         setUsedTemplateIds(usedTemplateSet);
       } catch (error) {
-        console.error('[Step3Checklist] Error loading used templates:', error);
         setUsedTemplateIds(new Set());
       }
     };

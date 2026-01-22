@@ -184,7 +184,6 @@ const AdminUserManagement = () => {
 
       setShowCreateForm(false);
     } catch (err: any) {
-      console.error('Registration error:', err);
       toast.error(err.response?.data?.message || err.message || 'An error occurred while creating the user.');
     } finally {
       setIsSubmitting(false);
@@ -249,7 +248,6 @@ const AdminUserManagement = () => {
 
       setUsers(mapped)
     } catch (err: any) {
-      console.error('Failed to load admin users', err)
     } finally {
       setLoadingUsers(false)
     }
@@ -297,7 +295,6 @@ const AdminUserManagement = () => {
       // Hide inactive users by default so the deleted (now inactive) user disappears
       setFilterStatus('Active')
     } catch (err: any) {
-      console.error('Delete user failed', err)
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to delete user. Please try again.'))
     }
   }
@@ -375,7 +372,6 @@ const AdminUserManagement = () => {
       // Refresh user list
       await fetchUsers();
     } catch (err: any) {
-      console.error('Bulk import error:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Failed to import users. Please check your file format.';
       toast.error(errorMessage);
     } finally {
@@ -446,7 +442,6 @@ const AdminUserManagement = () => {
       toast.success(`Password reset successfully for ${selectedUserForReset.fullName}`);
       handleCloseResetPasswordModal();
     } catch (err: any) {
-      console.error('Reset password error:', err);
       toast.error(err.response?.data?.message || err.message || 'Failed to reset password');
     } finally {
       setIsResettingPassword(false);

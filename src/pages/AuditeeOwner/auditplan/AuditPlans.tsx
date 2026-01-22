@@ -70,7 +70,6 @@ const AuditPlans = () => {
 						const userData = await getUserById(userId);
 						effDeptId = userData?.deptId ?? null;
 					} catch (err) {
-						console.warn('Failed to get user by ID:', err);
 					}
 				}
 				setEffectiveDeptId(effDeptId);
@@ -115,7 +114,6 @@ const AuditPlans = () => {
 				});
 				setPlans(withScopes);
 			} catch (err) {
-				console.error('Failed to load audit plans for AuditeeOwner', err);
 				setPlans([]);
 			} finally {
 				setLoading(false);
@@ -192,7 +190,6 @@ const AuditPlans = () => {
 			const normalized = normalizePlanDetails(raw, { departments, criteriaList, users: allUsers });
 			setSelectedDetails(normalized);
 		} catch (err) {
-			console.warn('Failed to load full details, using mapped summary', err);
 			// Fallback: basic shape from list
 			setSelectedDetails({
 				...plan,

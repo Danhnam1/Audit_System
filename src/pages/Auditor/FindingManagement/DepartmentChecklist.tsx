@@ -249,10 +249,7 @@ const DepartmentChecklist = () => {
           setShowVerifyCodeModal(false);
         }
       } catch (error) {
-        console.error(
-          '[DepartmentChecklist] Failed to check sensitive department:',
-          error
-        );
+    
         // Nếu không xác định được, không chặn auditor: cho phép tiếp tục mà không cần QR
         setIsSensitiveDept(null);
         setQrScanned(true);
@@ -269,7 +266,6 @@ const DepartmentChecklist = () => {
     const checkQrScanStatus = async () => {
       // Guard: Prevent multiple simultaneous calls
       if (isCheckingQrRef.current) {
-        console.log('[QR Check] Already checking, skipping...');
         return;
       }
 
@@ -290,23 +286,13 @@ const DepartmentChecklist = () => {
 
       try {
         // Check if QR has been scanned by checking access grants
-        console.log('[QR Check] Calling getAccessGrants...');
         const grants = await getAccessGrants({
           auditId: auditId,
           deptId: parseInt(deptId, 10),
           auditorId: scannerUserId,
         });
 
-        console.log('getAccessGrants response:', {
-          scannerUserId,
-          grantsCount: grants?.length,
-          grants: grants?.map(g => ({
-            qrToken: g.qrToken,
-            auditorId: g.auditorId,
-            status: g.status,
-            verifyCode: g.verifyCode
-          }))
-        });
+       
 
         if (grants && grants.length > 0) {
           // QR has been issued, check if it's been scanned
@@ -317,12 +303,7 @@ const DepartmentChecklist = () => {
             String(g.auditorId) === String(scannerUserId)
           );
           if (activeGrant) {
-            console.log('Found active grant for current user:', {
-              qrToken: activeGrant.qrToken,
-              auditorId: activeGrant.auditorId,
-              scannerUserId: scannerUserId,
-              verifyCode: activeGrant.verifyCode
-            });
+          
             
             // Check if verify code has been verified before
             const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
@@ -333,10 +314,7 @@ const DepartmentChecklist = () => {
             
             // First, check if verify code has changed (this takes priority)
             if (savedVerifyCode && savedVerifyCode !== currentVerifyCode) {
-              console.log('[QR Check] Verify code changed, need to verify again', {
-                oldCode: savedVerifyCode,
-                newCode: currentVerifyCode
-              });
+             
               // Clear verification status since verify code changed
               // Don't update savedVerifyCode yet - wait until user verifies successfully
               sessionStorage.removeItem(verificationStatusKey);
@@ -345,7 +323,6 @@ const DepartmentChecklist = () => {
             
             // If verify code is the same as saved one AND already verified, allow access
             if (savedVerifyCode && savedVerifyCode === currentVerifyCode && verificationStatus === 'verified') {
-              console.log('[QR Check] Verify code unchanged and already verified, allowing access');
               setQrScanned(true);
               hasCheckedQrRef.current = true;
               hasOpenedVerifyModalRef.current = false; // Reset modal flag since we don't need to show it
@@ -363,14 +340,7 @@ const DepartmentChecklist = () => {
               hasOpenedVerifyModalRef.current = true;
             }
           } else {
-            console.warn('No active grant found for current user', {
-              scannerUserId,
-              availableGrants: grants.map(g => ({
-                qrToken: g.qrToken,
-                auditorId: g.auditorId,
-                status: g.status
-              }))
-            });
+          
             // No active grant, show QR scan required message
             setShowQrScanModal(true);
           }
@@ -381,7 +351,6 @@ const DepartmentChecklist = () => {
         
         hasCheckedQrRef.current = true;
       } catch (error) {
-        console.error('Error checking QR scan status:', error);
         // On error, show QR scan modal
         setShowQrScanModal(true);
       } finally {
@@ -424,7 +393,6 @@ const DepartmentChecklist = () => {
             auditData.audit?.type || auditData.audit?.Type || auditData.audit?.auditType || '';
           setAuditType(type);
         } catch (err: any) {
-          console.error('Error loading audit info:', err);
           // Don't show error, just log it
         }
       };
@@ -547,7 +515,6 @@ const DepartmentChecklist = () => {
             totalCount: totalCount,
           };
         } catch (err) {
-          console.warn(`Failed to load root causes for finding ${finding.findingId}`, err);
           statusMap[finding.findingId] = { hasPending: false, pendingCount: 0, hasApproved: false, hasRejected: false, allApproved: false, totalCount: 0 };
         }
       })
@@ -570,7 +537,6 @@ const DepartmentChecklist = () => {
       setSelectedFindingId(findingData.findingId);
       setShowDetailModal(true);
     } else {
-      console.warn('Finding not found for auditItemId:', item.auditItemId);
       toast.warning('Finding not found for this item');
     }
   };
@@ -583,7 +549,6 @@ const DepartmentChecklist = () => {
       const data = await getFindingSeverities();
       setSeverities(data.map(item => ({ severity: item.severity || item.name || '' })));
     } catch (err) {
-      console.error('Error loading severities:', err);
     } finally {
       setLoadingSeverities(false);
     }
@@ -622,7 +587,6 @@ const DepartmentChecklist = () => {
         setEvidenceDueDate(new Date(evidenceDue.dueDate));
       }
     } catch (err) {
-      console.error('Error loading schedule:', err);
     } finally {
       setLoadingSchedule(false);
     }
@@ -647,10 +611,8 @@ const DepartmentChecklist = () => {
         (rootCauses || []).map(async (rc) => {
           const actions = await getActionsByRootCause(rc.rootCauseId);
           actionsMap[String(rc.rootCauseId)] = actions || [];
-          console.log(`Loaded ${(actions || []).length} actions for root cause ${rc.rootCauseId}`);
         })
       );
-      console.log('Final editActionsMap to be set:', actionsMap);
       setEditActionsMap(actionsMap);
 
       try {
@@ -658,7 +620,6 @@ const DepartmentChecklist = () => {
         setEditAttachments(filterActiveAttachments(Array.isArray(attachments) ? attachments : []));
         setNewEditFiles([]);
       } catch (err) {
-        console.warn('Failed to load attachments for edit:', err);
         setEditAttachments([]);
       }
 
@@ -667,23 +628,18 @@ const DepartmentChecklist = () => {
       if (deptId) {
         setLoadingUsers(true);
         try {
-          console.log('Loading users for department:', deptId);
           const users = await getAdminUsersByDepartment(deptId);
-          console.log('Loaded users:', users);
           const potentialWitnesses = users.filter(
             (user) => user.roleName === 'AuditeeOwner' || user.roleName === 'CAPAOwner'
           );
-          console.log('Filtered potential witnesses:', potentialWitnesses);
           setDepartmentUsers(potentialWitnesses);
         } catch (err) {
-          console.error('Error loading department users:', err);
           setDepartmentUsers([]);
         } finally {
           setLoadingUsers(false);
         }
       }
     } catch (err) {
-      console.error('Error loading edit extras:', err);
       setEditRootCauses([]);
       setEditActionsMap({});
       setEditAttachments([]);
@@ -724,11 +680,7 @@ const DepartmentChecklist = () => {
 
   // Handle edit finding submit
   const handleEditFindingSubmit = async () => {
-    console.log('========== EDIT FINDING SUBMIT START ==========');
-    console.log('editingFinding:', editingFinding);
-    console.log('editFormData:', editFormData);
-    console.log('editRootCauses:', editRootCauses);
-    console.log('editActionsMap:', editActionsMap);
+
     
     if (!editingFinding) return;
 
@@ -755,11 +707,9 @@ const DepartmentChecklist = () => {
     //   return;
     // }
 
-    console.log('Validation passed! Proceeding with submit...');
     setSubmittingEdit(true);
     try {
       // ===== STEP 1: Handle root causes FIRST (create/update/delete) =====
-      console.log('===== STEP 1: Processing root causes =====');
       const tempIdMap: Record<string, number> = {};
       const rootCausePromises: Promise<void>[] = [];
       editRootCauses.forEach((rc: any) => {
@@ -793,7 +743,6 @@ const DepartmentChecklist = () => {
                   tempIdMap[String(rc.rootCauseId)] = Number(newId);
                 }
               } catch (err: any) {
-                console.warn('Failed to create root cause', rc, err);
               }
             })()
           );
@@ -823,7 +772,6 @@ const DepartmentChecklist = () => {
               try {
                 await updateRootCause(rc.rootCauseId, dto);
               } catch (err: any) {
-                console.warn('Failed to update root cause', rc.rootCauseId, err);
               }
             })()
           );
@@ -837,24 +785,15 @@ const DepartmentChecklist = () => {
             try {
               await deleteRootCause(id as any);
             } catch (err: any) {
-              console.warn('Failed to delete root cause', id, err);
             }
           })()
         );
       });
 
       await Promise.all(rootCausePromises);
-      console.log('✓ STEP 1 completed. tempIdMap:', tempIdMap);
 
-      // ===== STEP 2: Determine primary rootCauseId (existing or newly created) =====
-      console.log('===== STEP 2: Determining primary rootCauseId =====');
-      const firstExistingRc = (editRootCauses || []).find((rc: any) => !String(rc.rootCauseId || '').startsWith('temp-'));
-      const firstCreatedRcId = Object.values(tempIdMap)[0];
-      const primaryRootCauseId = firstExistingRc?.rootCauseId || firstCreatedRcId || editingFinding.rootCauseId || null;
-      console.log('Primary rootCauseId:', primaryRootCauseId);
 
       // ===== STEP 3: Update finding with all info (including valid rootCauseId) =====
-      console.log('===== STEP 3: Updating finding =====');
       // Backend API schema - ONLY include these fields:
       const isReturned = editingFinding.status?.toLowerCase() === 'return' || editingFinding.status?.toLowerCase() === 'returned';
       const findingPayload: any = {
@@ -879,13 +818,8 @@ const DepartmentChecklist = () => {
       // reviewerId should be empty/null as per user requirement
       // Do not include reviewerId in payload
 
-      console.log('Updating finding with payload:', findingPayload);
       await updateFinding(editingFinding.findingId, findingPayload);
-      console.log('✓ STEP 3 completed - Finding updated successfully');
 
-      // ===== STEP 4: Update/create actions for each root cause =====
-      console.log('STEP 4: Processing actions. editActionsMap:', editActionsMap);
-      console.log('tempIdMap for resolving root cause IDs:', tempIdMap);
       
       const actionUpdatePromises: Promise<void>[] = [];
       Object.keys(editActionsMap).forEach((rcIdStr) => {
@@ -893,7 +827,6 @@ const DepartmentChecklist = () => {
         const resolvedRcId = tempIdMap[rcIdStr] ?? rcIdStr;
         const actions = editActionsMap[rcIdStr] || [];
         
-        console.log(`Processing actions for RC key="${rcIdStr}", resolved to "${resolvedRcId}", count=${actions.length}`);
         
         actions.forEach((action) => {
           const isNew = action.actionId?.startsWith('temp-');
@@ -910,7 +843,6 @@ const DepartmentChecklist = () => {
 
           if (isNew) {
             // Create new action - use resolved root cause ID
-            console.log(`Creating NEW action for RC ${resolvedRcId}:`, { actionId: action.actionId, description: action.description });
             const dto: any = {
               findingId: editingFinding.findingId,
               description: payload.description,
@@ -930,35 +862,28 @@ const DepartmentChecklist = () => {
               dto.rootCauseId = String(resolvedRcId);
             }
             
-            console.log('POST /api/Action payload:', dto);
             actionUpdatePromises.push(
               createAction(dto).then(() => {
-                console.log('✓ Created action for root cause', resolvedRcId);
-              }).catch((err: any) => {
-                console.error('✗ Failed to create action for RC', resolvedRcId, err);
+              }).catch(() => {
               })
             );
           } else {
             // Update existing action - include findingId and rootCauseId
-            console.log(`Updating EXISTING action ${action.actionId} for RC ${resolvedRcId}`);
             const updatePayload = {
               ...payload,
               findingId: editingFinding.findingId,
               rootCauseId: resolvedRcId, // Use resolved root cause ID
             };
             actionUpdatePromises.push(
-              updateActionInline(action.actionId, updatePayload).catch((err: any) => {
-                console.warn('✗ Failed to update action', action.actionId, err);
+              updateActionInline(action.actionId, updatePayload).catch(() => {
               })
             );
           }
         });
       });
       await Promise.all(actionUpdatePromises);
-      console.log('✓ STEP 4 completed - All actions processed');
 
       // ===== STEP 5: Process attachments (delete + upload) =====
-      console.log('===== STEP 5: Processing attachments =====');
       
       // Delete tracked attachments first
       if (deletedAttachmentIds.length > 0) {
@@ -974,15 +899,13 @@ const DepartmentChecklist = () => {
       
       // Upload new attachments
       if (newEditFiles.length > 0) {
-        console.log(`Uploading ${newEditFiles.length} new attachments`);
         const uploadPromises = newEditFiles.map((file) =>
           uploadAttachment({
             entityType: 'Finding',
             entityId: editingFinding.findingId,
             status: 'Active',
             file,
-          }).catch((err) => {
-            console.warn('Failed to upload attachment', err);
+          }).catch(() => {
           })
         );
         await Promise.all(uploadPromises);
@@ -991,7 +914,6 @@ const DepartmentChecklist = () => {
         setNewEditFiles([]);
       }
 
-      console.log('✓ All steps completed successfully!');
       toast.success('Finding updated successfully');
       
       // Mark this finding as edited
@@ -1121,21 +1043,14 @@ const DepartmentChecklist = () => {
               
               setChecklistItems(itemsWithCompliantStatus);
             } catch (compliantErr: any) {
-              console.error('Error loading compliant records:', compliantErr);
               setChecklistItems(sortedItems);
             }
           }
         } catch (err) {
-          console.error('Error reloading findings:', err);
         }
       };
       await reloadFindings();
     } catch (err: any) {
-      console.error('========== ERROR in handleEditFindingSubmit ==========');
-      console.error('Error object:', err);
-      console.error('Error message:', err?.message);
-      console.error('Error response:', err?.response);
-      console.error('Error response data:', err?.response?.data);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to update finding. Please try again.'));
     } finally {
       setSubmittingEdit(false);
@@ -1232,12 +1147,10 @@ const DepartmentChecklist = () => {
           
           setChecklistItems(itemsWithCompliantStatus);
         } catch (compliantErr: any) {
-          console.error('Error loading compliant records:', compliantErr);
           setChecklistItems(sortedItems);
         }
       }
     } catch (err: any) {
-      console.error('Error updating checklist item:', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to update checklist item. Please try again.'));
     } finally {
       setSubmittingEditItem(false);
@@ -1314,12 +1227,10 @@ const DepartmentChecklist = () => {
           
           setChecklistItems(itemsWithCompliantStatus);
         } catch (compliantErr: any) {
-          console.error('Error loading compliant records:', compliantErr);
           setChecklistItems(sortedItems);
         }
       }
     } catch (err: any) {
-      console.error('Error deleting checklist item:', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to delete checklist item. Please try again.'));
     } finally {
       setDeletingItem(false);
@@ -1420,7 +1331,6 @@ const DepartmentChecklist = () => {
         // Update state with fresh data from API (with compliant status applied to all items)
         setChecklistItems(updatedItems);
       } catch (compliantErr: any) {
-        console.error('Error loading compliant records in handleConfirmMarkCompliant:', compliantErr);
         // Fallback: at least update the item we just marked
         const updatedItems = sortedItems.map((item: ChecklistItem) => {
           if (item.auditItemId === compliantItemId && newCompliantId) {

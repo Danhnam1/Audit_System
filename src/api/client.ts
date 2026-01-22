@@ -66,7 +66,6 @@ apiClient.interceptors.request.use(
       const fullUrl = config.url.startsWith('http') ? config.url : config.baseURL + config.url;
      
       if (fullUrl.includes(':80')) {
-        console.warn('[apiClient] WARNING: Full URL still contains :80:', fullUrl);
       }
     }
     

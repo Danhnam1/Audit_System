@@ -112,7 +112,6 @@ const CompliantModal = ({
         setSelectedWitnesses(potentialWitnesses[0].userId || '');
       }
     } catch (err: any) {
-      console.error('Error loading department users:', err);
     } finally {
       setLoadingUsers(false);
     }
@@ -279,13 +278,7 @@ const CompliantModal = ({
       onSuccess?.(response);
       onClose();
     } catch (err: any) {
-      console.error('Error marking item as compliant:', err);
-      console.error('Error details:', {
-        message: err?.message,
-        response: err?.response,
-        data: err?.response?.data,
-        status: err?.response?.status,
-      });
+      
       
       // Handle validation errors from backend
       const errorData = err?.response?.data;

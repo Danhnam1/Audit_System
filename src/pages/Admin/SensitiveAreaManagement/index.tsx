@@ -98,7 +98,6 @@ const SensitiveAreaManagement = () => {
                 });
               }
             } else {
-              console.warn('[SensitiveAreaManagement] No matching department found for deptId:', normalizedDeptId, 'item:', item);
             }
           });
         }
@@ -108,13 +107,11 @@ const SensitiveAreaManagement = () => {
         if (sensitiveErr?.response?.status === 404) {
           setDepartmentSensitiveAreas(new Map()); // Initialize empty map - no data yet
         } else {
-          console.error('[SensitiveAreaManagement] Error loading sensitive areas:', sensitiveErr);
           toast.error(getUserFriendlyErrorMessage(sensitiveErr, 'Failed to load sensitive areas. Please refresh the page.'));
           setDepartmentSensitiveAreas(new Map());
         }
       }
     } catch (err) {
-      console.error('Failed to load data', err);
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
@@ -222,13 +219,11 @@ const SensitiveAreaManagement = () => {
       setShowEditModal(false);
       setEditingData(null);
     } catch (error: any) {
-      console.error('[SensitiveAreaManagement] Failed to save sensitive areas:', error);
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to save sensitive areas. Please try again.'));
       // Reload data to get latest state
       try {
         await loadData();
       } catch (reloadErr) {
-        console.error('[SensitiveAreaManagement] Failed to reload after save error:', reloadErr);
       }
     } finally {
       setLoading(false);
@@ -271,13 +266,11 @@ const SensitiveAreaManagement = () => {
         }
       }
     } catch (error: any) {
-      console.error('Failed to delete sensitive area', error);
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to delete sensitive area. Please try again.'));
       // Reload data to get latest state
       try {
         await loadData();
       } catch (reloadErr) {
-        console.error('Failed to reload after delete error:', reloadErr);
       }
     } finally {
       setLoading(false);
@@ -301,13 +294,11 @@ const SensitiveAreaManagement = () => {
       setShowDeleteModal(false);
       setDeleteModalContent(null);
     } catch (error: any) {
-      console.error('Failed to delete all sensitive areas', error);
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to delete sensitive areas. Please try again.'));
       // Reload data to get latest state
       try {
         await loadData();
       } catch (reloadErr) {
-        console.error('Failed to reload after delete error:', reloadErr);
       }
     } finally {
       setLoading(false);

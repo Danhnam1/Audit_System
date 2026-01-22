@@ -683,7 +683,6 @@ export const AuditDashboard: React.FC<AuditDashboardProps> = () => {
           inProgressCount: response.data.inProgressCount || 0,
         });
       } catch (error) {
-        console.error('Failed to fetch audit dashboard:', error);
       }
     };
 
@@ -701,7 +700,6 @@ export const AuditDashboard: React.FC<AuditDashboardProps> = () => {
           inProgress: (data.inProgress && data.inProgress.$values) || [],
         });
       } catch (err) {
-        console.error(err);
       }
     };
 
@@ -764,7 +762,6 @@ export const AuditDashboard: React.FC<AuditDashboardProps> = () => {
             }
           });
         } catch (err) {
-          console.warn('Failed to fetch departments list, falling back to deptId labels', err);
         }
 
         // If some deptIds from findings are missing in the list, fetch them individually
@@ -782,11 +779,9 @@ export const AuditDashboard: React.FC<AuditDashboardProps> = () => {
                 deptMap[String(r.id)] = (r.data && (r.data.name || r.data.code)) || `Dept ${r.id}`;
               } else {
                 deptMap[String(r.id)] = `Dept ${r.id}`;
-                console.warn('Failed to fetch department for id', r.id, r.err || r.data);
               }
             });
           } catch (e) {
-            console.warn('Error fetching missing departments', e);
           }
         }
 
@@ -835,7 +830,6 @@ export const AuditDashboard: React.FC<AuditDashboardProps> = () => {
         arr.sort((a, b) => (b.Findings || 0) - (a.Findings || 0));
         setFindingsData(arr);
       } catch (err) {
-        console.error('Failed to fetch findings:', err);
       }
     };
 

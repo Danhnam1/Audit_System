@@ -70,7 +70,6 @@ const AuditChecklist = () => {
 
         setItems(filtered);
       } catch (err: any) {
-        console.error('Failed to load audit checklist items:', err);
         const msg =
           err?.response?.data?.message ||
           err?.message ||

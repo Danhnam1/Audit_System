@@ -123,7 +123,6 @@ const AdminChecklistManagement = () => {
           })).filter((d: any) => d.deptId != null)
         );
       } catch (err) {
-        console.error('Failed to load departments', err);
       }
     };
     loadDepartments();
@@ -325,7 +324,6 @@ const AdminChecklistManagement = () => {
       toast.success('Checklist item created successfully!');
       await fetchItems(String(templateId));
     } catch (err: any) {
-      console.error('Failed to create item', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to create item: ' + errorMessage);
     } finally {

@@ -126,7 +126,6 @@ export const loadSensitiveAreas = async (
         sensitiveAreas = Array.from(allAreas);
       }
     } catch (sensitiveErr: any) {
-      console.error("Failed to load sensitive flag data:", sensitiveErr);
     }
   }
 
@@ -178,7 +177,6 @@ export const loadSensitiveAreas = async (
         sensitiveAreasByDept = mergedSensitiveAreasByDept;
       }
     } catch (fallbackErr) {
-      console.error("Fallback load sensitive areas by departmentSensitiveAreaIds failed:", fallbackErr);
     }
   }
 

@@ -45,7 +45,6 @@ const MyWitnessed = () => {
         setFindings(findingsWithAudit);
         setError(null);
       } catch (err: any) {
-        console.error('Error fetching witnessed findings:', err);
         setError(err?.message || 'Failed to load findings');
       } finally {
         setLoading(false);
@@ -64,7 +63,6 @@ const MyWitnessed = () => {
       const auditId = finding.audit?.auditId || finding.auditId;
       
       if (!auditId) {
-        console.warn('Finding missing auditId:', finding);
         return;
       }
 

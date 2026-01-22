@@ -118,7 +118,6 @@ export const NotificationBell: React.FC = () => {
         .sort((a: any, b: any) => (b.createdAtDate?.getTime() || 0) - (a.createdAtDate?.getTime() || 0));
       setItems(sorted);
     } catch (error) {
-      console.error('Failed to load notifications:', error);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -240,7 +239,6 @@ export const NotificationBell: React.FC = () => {
         return n;
       }));
     } catch (error) {
-      console.error('Failed to mark notification as read:', error);
       toast.error('Failed to mark notification as read');
     }
   };
@@ -259,8 +257,7 @@ export const NotificationBell: React.FC = () => {
       await Promise.all(
         unread.map(n => 
           markNotificationRead(String((n as any).notificationId || ''))
-            .catch(err => {
-              console.error(`Failed to mark notification ${(n as any).notificationId} as read:`, err);
+            .catch(() => {
               return null;
             })
         )
@@ -282,7 +279,6 @@ export const NotificationBell: React.FC = () => {
 
       toast.success(`Marked ${unread.length} notification(s) as read`);
     } catch (error) {
-      console.error('Failed to mark all notifications as read:', error);
       toast.error('Failed to mark all notifications as read');
     }
   };

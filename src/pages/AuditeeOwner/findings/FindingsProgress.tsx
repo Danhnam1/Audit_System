@@ -94,7 +94,6 @@ const FindingsProgress = () => {
   // Get display status for finding - map status to user-friendly text
   const getDisplayStatus = (finding: Finding): string => {
     const originalStatus = finding.status || 'N/A';
-    console.log('[GET DISPLAY STATUS] Finding:', finding.findingId, 'Status:', originalStatus);
 
     // Map status to user-friendly text
     if (originalStatus === 'WitnessDisagreed') return 'Witness Disagreed';
@@ -119,73 +118,11 @@ const FindingsProgress = () => {
         return deptId ? parseInt(deptId) : null;
       }
     } catch (err) {
-      console.error('Error parsing token:', err);
     }
     return null;
   };
 
-  // // Get current user's ID from token
-  // const getCurrentUserId = (): string | null => {
-  //   // First try to get from user context
-  //   console.log('[GET USER ID] 👤 User object from context:', user);
-
-  //   if (user?.userId) {
-  //     console.log('[GET USER ID] ✅ Got userId from context:', user.userId);
-  //     return user.userId;
-  //   }
-
-  //   // User object doesn't have userId, decode token
-  //   const token = localStorage.getItem('auth-storage');
-  //   if (!token) {
-  //     console.warn('[GET USER ID] ⚠️ No token found');
-  //     return null;
-  //   }
-
-  //   try {
-  //     const authData = JSON.parse(token);
-  //     console.log('[GET USER ID] 📦 Auth data:', authData);
-
-  //     // Try to get token from user object first (already in context)
-  //     const jwtToken = user?.token || authData?.state?.token;
-
-  //     if (jwtToken) {
-  //       const base64Url = jwtToken.split('.')[1];
-  //       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-  //       const payload = JSON.parse(window.atob(base64));
-
-  //       console.log('[GET USER ID] 🔍 JWT Payload (all claims):', payload);
-  //       console.log('[GET USER ID] 🔍 All payload keys:', Object.keys(payload));
-
-  //       // Try multiple possible claim names for user ID
-  //       // .NET uses these standard claims
-  //       const userId = 
-  //         payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'] || // .NET standard
-  //         payload['nameidentifier'] ||
-  //         payload['sub'] || 
-  //         payload['userId'] || 
-  //         payload['UserId'] || 
-  //         payload['nameid'] || 
-  //         payload['unique_name'] ||
-  //         payload['id'] ||
-  //         payload['Id'] ||
-  //         payload['uid'] ||
-  //         authData?.state?.user?.userId; // Try from auth state
-
-  //       if (userId) {
-  //         console.log('[GET USER ID] ✅ Got userId from token:', userId);
-  //       } else {
-  //         console.warn('[GET USER ID] ⚠️ No userId found in token claims');
-  //         console.warn('[GET USER ID] 📋 Available claims:', Object.keys(payload));
-  //       }
-
-  //       return userId || null;
-  //     }
-  //   } catch (err) {
-  //     console.error('[GET USER ID] ❌ Error parsing token:', err);
-  //   }
-  //   return null;
-  // };
-
+  
   // Load root cause status for findings
   const loadRootCauseStatus = async (findingsData: Finding[]) => {
     const statusMap: Record<string, { hasApproved: boolean; hasPending: boolean; hasRejected: boolean; allApproved: boolean; totalCount: number }> = {};
@@ -206,7 +143,6 @@ const FindingsProgress = () => {
             totalCount: totalCount,
           };
         } catch (err) {
-          console.warn(`Failed to load root causes for finding ${finding.findingId}`, err);
           statusMap[finding.findingId] = { hasApproved: false, hasPending: false, hasRejected: false, allApproved: false, totalCount: 0 };
         }
       })
@@ -268,7 +204,6 @@ const FindingsProgress = () => {
                 const user = await getUserById(userId);
                 userNames.push(user.fullName || user.email || userId);
               } catch (err) {
-                console.warn(`Failed to fetch user info for ${userId}`, err);
                 userNames.push(userId);
               }
             }
@@ -288,7 +223,6 @@ const FindingsProgress = () => {
             actionsMap[finding.findingId] = [];
           }
         } catch (err) {
-          console.warn(`Failed to load actions for finding ${finding.findingId}`, err);
           actionsMap[finding.findingId] = [];
         }
       })
@@ -336,7 +270,6 @@ const FindingsProgress = () => {
       await loadAssignedUsers(filteredFindings);
       await loadRootCauseStatus(filteredFindings);
     } catch (err: any) {
-      console.error('Error fetching findings:', err);
       setError(err?.message || 'Failed to load findings');
     } finally {
       setLoading(false);
@@ -384,7 +317,6 @@ const FindingsProgress = () => {
 
       setDisagreedFindings(filteredFindings);
     } catch (err: any) {
-      console.error('Error fetching disagreed findings:', err);
     } finally {
       setLoadingDisagreedFindings(false);
     }
@@ -441,7 +373,6 @@ const FindingsProgress = () => {
       const statusLower = (finding.status || '').toLowerCase().trim();
       return statusLower !== 'archived' && statusLower !== 'witnessdisagreed';
     });
-    console.log('filtered', filtered);
 
     // Apply search filter
     if (searchQuery.trim()) {
@@ -509,13 +440,7 @@ const FindingsProgress = () => {
     try {
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
       const rootCauses = res.data.$values || [];
-      console.log('[LOAD ROOT CAUSES] 📊 All root causes from backend:', rootCauses);
-      console.log('[LOAD ROOT CAUSES] 📊 Root causes count:', rootCauses.length);
-      console.log('[LOAD ROOT CAUSES] 📊 Root cause statuses:', rootCauses.map((rc: any) => ({
-        id: rc.rootCauseId,
-        name: rc.name,
-        status: rc.status
-      })));
+     
 
       // Fetch actions for this finding to check which root causes are already assigned
       let assignedRootCauseIds = new Set<string>();
@@ -524,10 +449,8 @@ const FindingsProgress = () => {
 
       try {
         const actions = await getActionsByFinding(findingId);
-        console.log('[LOAD ROOT CAUSES] 📦 All actions for finding:', actions);
 
         if (actions && actions.length > 0) {
-          console.log('[LOAD ROOT CAUSES] 🔍 Checking each action for rejection status...');
 
           // Check for rejected actions - try multiple possible rejection indicators
           const rejectedActions = actions.filter((action: Action) => {
@@ -541,36 +464,19 @@ const FindingsProgress = () => {
             // 3. Has rejectionReason field
             const hasRejectionReason = !!(action as any).rejectionReason;
             // 4. ReviewFeedback exists and progress is reset to 0 (possible rejection pattern)
-            const hasReviewFeedbackAndZeroProgress = !!action.reviewFeedback && action.progressPercent === 0;
 
             const isRejected = (hasRejectedStatus || hasRejectedAt || hasRejectionReason) && action.rootCauseId && action.assignedTo;
 
-            console.log(`[LOAD ROOT CAUSES] Action ${action.actionId}:`, {
-              status: action.status,
-              statusLower,
-              hasRejectedStatus,
-              hasRejectedAt,
-              hasRejectionReason,
-              hasReviewFeedbackAndZeroProgress,
-              rejectedAt: (action as any).rejectedAt,
-              rejectionReason: (action as any).rejectionReason,
-              reviewFeedback: action.reviewFeedback,
-              progressPercent: action.progressPercent,
-              rootCauseId: action.rootCauseId,
-              assignedTo: action.assignedTo,
-              isRejected
-            });
+          
 
             return isRejected;
           });
 
-          console.log('[LOAD ROOT CAUSES] 🔴 Rejected actions found:', rejectedActions);
 
           // Save rejected action info
           await Promise.all(
             rejectedActions.map(async (action: Action) => {
               const rcId = String(action.rootCauseId);
-              console.log(`[LOAD ROOT CAUSES] Processing rejected action for RC ${rcId}`);
               try {
                 const user = await getUserById(action.assignedTo);
                 rejectedDataMap[rcId] = {
@@ -580,9 +486,7 @@ const FindingsProgress = () => {
                   dueDate: action.dueDate || '',
                   reviewFeedback: action.reviewFeedback || 'No feedback provided'
                 };
-                console.log(`[LOAD ROOT CAUSES] ✅ Saved rejected data for RC ${rcId}:`, rejectedDataMap[rcId]);
               } catch (err) {
-                console.error(`[LOAD ROOT CAUSES] ❌ Error fetching user for rejected action:`, err);
                 rejectedDataMap[rcId] = {
                   actionId: action.actionId,
                   staffId: action.assignedTo,
@@ -633,7 +537,6 @@ const FindingsProgress = () => {
           );
         }
       } catch (err) {
-        console.warn('Error loading actions for finding:', err);
       }
 
       // Update state
@@ -656,7 +559,6 @@ const FindingsProgress = () => {
 
       setFindingRootCauses(rootCausesWithActions);
     } catch (err) {
-      console.error('Error loading root causes:', err);
       setFindingRootCauses([]);
     } finally {
       setLoadingRootCauses(false);
@@ -680,7 +582,6 @@ const FindingsProgress = () => {
         email: user.email,
       })));
     } catch (err: any) {
-      console.error('Error loading staff members:', err);
       setStaffMembers([]);
     } finally {
       setLoadingStaff(false);
@@ -692,18 +593,15 @@ const FindingsProgress = () => {
 
     // Prevent double submission
     if (submittingAssign) {
-      console.warn('[REASSIGN] ⚠️ Already submitting, ignoring duplicate call');
       return;
     }
 
     if (!selectedFindingForAssign || !selectedRootCause) {
-      console.error('[REASSIGN] ❌ Missing selectedFindingForAssign or selectedRootCause');
       toast.error('Please select a finding and root cause');
       return;
     }
 
     if (!individualStaffId || !individualDueDate) {
-      console.error('[REASSIGN] ❌ Missing individualStaffId or individualDueDate');
       toast.error('Please select CAPA owner and due date');
       return;
     }
@@ -729,48 +627,21 @@ const FindingsProgress = () => {
         !action.assignedTo || action.assignedTo.trim() === ''
       );
 
-      console.log('[REASSIGN] 🔍 Existing actions for root cause:', existingActions);
-      console.log('[REASSIGN] 🔍 Unassigned action found:', unassignedAction);
 
       // Priority 1: Update rejected action if user wants to keep it
       if (rejectedInfo && keepExistingAssignment) {
-        console.log('[REASSIGN] 🔄 Updating existing rejected action:', rejectedInfo.actionId);
-
-        // COMMENTED OUT: Using updateAction with assignedBy manually
-        // const currentUserId = getCurrentUserId();
-        // const updatePayload = {
-        //   status: 'Pending',
-        //   assignedBy: currentUserId,
-        //   assignedTo: individualStaffId,
-        //   dueDate: new Date(individualDueDate).toISOString(),
-        //   reviewFeedback: '',
-        // };
-        // console.log('[REASSIGN] 📤 Update payload:', updatePayload);
-        // await updateAction(rejectedInfo.actionId, updatePayload);
 
         // NEW: Use assignActionTo API - Backend auto-sets assignedBy
-        console.log('[REASSIGN] 🎯 Using /assigned-to API for rejected action');
         await assignActionTo(rejectedInfo.actionId, individualStaffId);
 
-        // COMMENTED OUT: Also update status and due date separately
-        // const updatePayload = {
-        //   status: 'Pending',
-        //   dueDate: new Date(individualDueDate).toISOString(),
-        //   reviewFeedback: '',
-        // };
-        // console.log('[REASSIGN] 📤 Additional update payload:', updatePayload);
-        // await updateAction(rejectedInfo.actionId, updatePayload);
 
-        console.log('[REASSIGN] ✅ Rejected action updated successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
         toast.success(`Action reassigned to ${staffName} (kept existing assignment)`);
       }
       // Priority 2: Update existing unassigned action (assignedTo = null)
       else if (unassignedAction) {
-        console.log('[REASSIGN] 📝 Updating existing unassigned action:', unassignedAction.actionId);
 
         // Use the specific assign API instead of generic update
-        console.log('[REASSIGN] 🎯 Using /assigned-to API');
         await assignActionTo(unassignedAction.actionId, individualStaffId);
 
         // COMMENTED OUT: Also update title, description, and due date if needed
@@ -779,17 +650,13 @@ const FindingsProgress = () => {
         //   description: selectedRootCause.description || selectedFindingForAssign.description || '',
         //   dueDate: new Date(individualDueDate).toISOString(),
         // };
-        // console.log('[REASSIGN] 📤 Additional update payload:', updatePayload);
         // await updateAction(unassignedAction.actionId, updatePayload);
 
-        console.log('[REASSIGN] ✅ Unassigned action updated successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
         toast.success(`Action assigned to ${staffName}`);
       }
       // Priority 3: Create new action only if no existing action found
       else {
-        console.log('[REASSIGN] 🆕 Creating new action');
-        console.log('[REASSIGN] Reason: No existing unassigned action found');
 
         // Step 1: Create action WITHOUT assignedTo (null initially)
         const createPayload = {
@@ -804,17 +671,13 @@ const FindingsProgress = () => {
           reviewFeedback: '',
           rootCauseId: selectedRootCause.rootCauseId,
         };
-        console.log('[REASSIGN] 📤 Create payload (without assignment):', createPayload);
 
         const newAction = await createAction(createPayload);
         const newActionId = newAction.actionId;
-        console.log('[REASSIGN] ✅ New action created with ID:', newActionId);
 
         // Step 2: Use assignActionTo API to assign - Backend auto-sets assignedBy
-        console.log('[REASSIGN] 🎯 Using /assigned-to API for new action');
         await assignActionTo(newActionId, individualStaffId);
 
-        console.log('[REASSIGN] ✅ New action assigned successfully');
         const staffName = staffMembers.find(s => s.userId === individualStaffId)?.fullName || 'Unknown';
         toast.success(`Action created and assigned to ${staffName}`);
       }
@@ -884,7 +747,6 @@ const FindingsProgress = () => {
         await loadRootCauseStatus(filteredData);
       }
     } catch (err: any) {
-      console.error('Error creating action:', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to create action. Please try again.'));
     } finally {
       setSubmittingAssign(false);
@@ -1158,20 +1020,7 @@ const FindingsProgress = () => {
                           <tr
                             key={finding.findingId}
                             className="hover:bg-gray-50 transition-colors cursor-pointer"
-                          // onClick={async () => {
-                          //   setLoadingFindingActions(true);
-                          //   setShowActionsModal(true);
-                          //   try {
-                          //     const actions = await getActionsByFinding(finding.findingId);
-                          //     setSelectedFindingActions(Array.isArray(actions) ? actions : []);
-                          //     setSelectedFindingId(finding.findingId);
-                          //   } catch (err: any) {
-                          //     console.error('Error loading actions:', err);
-                          //     setSelectedFindingActions([]);
-                          //   } finally {
-                          //     setLoadingFindingActions(false);
-                          //   }
-                          // }}
+                     
                           >
                             <td className="px-3 sm:px-6 py-3 sm:py-4">
                               <div className="flex flex-col gap-2">
@@ -1302,7 +1151,6 @@ const FindingsProgress = () => {
                                           await loadRootCauseStatus(filteredData);
                                         }
                                       } catch (err: any) {
-                                        console.error('Error resubmitting action:', err);
                                         toast.error(getUserFriendlyErrorMessage(err, 'Failed to redo action. Please try again.'));
                                       }
                                     }}
@@ -1377,7 +1225,6 @@ const FindingsProgress = () => {
                                               toast.info('No actions found for this finding');
                                             }
                                           } catch (err: any) {
-                                            console.error('Error loading actions:', err);
                                             toast.error(getUserFriendlyErrorMessage(err, 'Failed to load actions. Please refresh the page.'));
                                           }
                                         }}
@@ -1620,16 +1467,6 @@ const FindingsProgress = () => {
                           // Priority: Show reassign if there's ANY rejection, regardless of other actions
                           const needsReassignment = rejectedInfo || hasRejectedAction || hasActionWithFeedback;
                           const isFullyAssigned = assignedData && !needsReassignment;
-
-                          console.log(`[ROOT CAUSE ${rcId}] Status:`, {
-                            rejectedInfo: !!rejectedInfo,
-                            hasRejectedAction,
-                            hasActionWithFeedback,
-                            assignedData: !!assignedData,
-                            needsReassignment,
-                            isFullyAssigned,
-                            actionsCount: actions.length
-                          });
 
                           return (
                             <div key={rootCause.rootCauseId} className={`border rounded-lg ${needsReassignment ? 'border-red-300 bg-red-50' :

@@ -52,7 +52,6 @@ export const useAuditFindings = () => {
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch audit plans';
       setError(errorMsg);
-      console.error('Error fetching audit plans:', err);
       return [];
     } finally {
       setLoading(false);
@@ -75,7 +74,6 @@ export const useAuditFindings = () => {
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || err.message || 'Failed to fetch checklist items';
       setError(errorMsg);
-      console.error('Error fetching checklist items:', err);
       return [];
     } finally {
       setLoading(false);
@@ -145,7 +143,6 @@ export const useAuditFindings = () => {
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || err.message || 'Failed to create finding';
       setError(errorMsg);
-      console.error('Error creating finding:', err);
       return {
         success: false,
         error: errorMsg,
@@ -214,7 +211,6 @@ export const useAuditFindings = () => {
     } catch (err: any) {
       const errorMsg = err.response?.data?.message || err.message || 'Failed to process audit';
       setError(errorMsg);
-      console.error('Error processing audit:', err);
       return {
         success: false,
         message: errorMsg,

@@ -67,7 +67,6 @@ export const createAction = async (dto: CreateActionDto): Promise<Action> => {
   if (dto.closedAt) cleanDto.closedAt = dto.closedAt;
   
   const pascalDto = toPascalCase(cleanDto);
-  console.log('POST /Action cleaned payload:', pascalDto);
   const res = await apiClient.post('/Action', pascalDto) as any;
   return res;
 };
@@ -151,22 +150,12 @@ export const getActionsByDepartmentDashboard = async (deptId: number): Promise<A
 // Get actions by root cause ID
 export const getActionsByRootCause = async (rootCauseId: string): Promise<Action[]> => {
   try {
-    console.log('[getActionsByRootCause] 🔍 Called with rootCauseId:', rootCauseId, 'Type:', typeof rootCauseId);
     const res = await apiClient.get(`/Action/by-root-cause/${rootCauseId}`) as any;
-    console.log('[getActionsByRootCause] ✅ API Response:', res);
     const { unwrap } = await import('../utils/normalize');
     const actions = unwrap<Action>(res);
-    console.log('[getActionsByRootCause] 📦 Unwrapped actions:', actions, 'Count:', actions.length);
     return actions;
   } catch (err: any) {
-    console.error('[getActionsByRootCause] ❌ Error:', {
-      rootCauseId,
-      error: err,
-      message: err?.message,
-      response: err?.response,
-      status: err?.response?.status,
-      data: err?.response?.data
-    });
+    
     return [];
   }
 };
@@ -187,8 +176,6 @@ export const updateAction = async (
   }>
 ): Promise<void> => {
   const pascalPayload = toPascalCase(payload);
-  console.log('[UPDATE ACTION] 📤 Payload before PascalCase:', payload);
-  console.log('[UPDATE ACTION] 📤 Payload after PascalCase:', pascalPayload);
   await apiClient.put(`/Action/${actionId}`, pascalPayload);
 };
 
@@ -199,7 +186,5 @@ export const assignActionTo = async (
 ): Promise<void> => {
   const payload = { assignedTo };
   const pascalPayload = toPascalCase(payload);
-  console.log('[ASSIGN ACTION] 📤 ActionId:', actionId);
-  console.log('[ASSIGN ACTION] 📤 Payload:', pascalPayload);
   await apiClient.put(`/Action/${actionId}/assigned-to`, pascalPayload);
 };

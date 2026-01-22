@@ -99,7 +99,6 @@ const AdminSettingDemo = () => {
         }
       }
     } catch (error: any) {
-      console.error('Error fetching current time:', error);
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to fetch current time. Please try again.'));
     } finally {
       setLoading(false);
@@ -133,7 +132,6 @@ const AdminSettingDemo = () => {
         }
       }
     } catch (error: any) {
-      console.error('Error setting time:', error);
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to set time. Please try again.'));
     } finally {
       setSettingTime(false);
@@ -163,7 +161,6 @@ const AdminSettingDemo = () => {
         }
       }
     } catch (error: any) {
-      console.error('Error resetting time:', error);
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to reset time. Please try again.'));
     } finally {
       setResettingTime(false);
@@ -193,7 +190,6 @@ const AdminSettingDemo = () => {
         }
       }
     } catch (error: any) {
-      console.error('Error fetching background service config:', error);
       toast.error(error?.response?.data?.message || 'Failed to fetch background service config');
     } finally {
       setLoadingBgConfig(false);
@@ -213,7 +209,6 @@ const AdminSettingDemo = () => {
       // Refresh config
       await fetchBackgroundServiceConfig();
     } catch (error: any) {
-      console.error('Error updating background service config:', error);
       toast.error(error?.response?.data?.message || 'Failed to update background service config');
     } finally {
       setUpdatingBgConfig(false);

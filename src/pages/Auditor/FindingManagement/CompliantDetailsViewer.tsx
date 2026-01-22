@@ -49,7 +49,6 @@ const CompliantDetailsViewer = ({
           setWitnessName(witnessUser?.fullName || '');
           setWitnessData(witnessUser);
         } catch (err) {
-          console.error('Failed to fetch witness name:', err);
           setWitnessName('Unknown');
           setWitnessData(null);
         }
@@ -62,7 +61,6 @@ const CompliantDetailsViewer = ({
           setCreatedByName(createdByUser?.fullName || '');
           setCreatedByData(createdByUser);
         } catch (err) {
-          console.error('Failed to fetch createdBy name:', err);
           setCreatedByName('Unknown');
           setCreatedByData(null);
         }
@@ -74,7 +72,6 @@ const CompliantDetailsViewer = ({
           const attachmentsData = await getAttachments('compliant', data.auditChecklistItemId);
           setAttachments(attachmentsData);
         } catch (err) {
-          console.error('Failed to fetch attachments:', err);
           setAttachments([]);
         }
       }
@@ -315,7 +312,6 @@ Downloady-center py-20">
                                   alt={attachment.fileName}
                                   className="w-full h-auto max-h-96 object-contain"
                                   onError={(e) => {
-                                    console.error('Image load error:', attachment.filePath);
                                     e.currentTarget.parentElement!.style.display = 'none';
                                   }}
                                 />

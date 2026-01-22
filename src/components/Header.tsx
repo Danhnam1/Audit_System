@@ -33,7 +33,6 @@ export const Navigation = () => {
         }
       } catch (error) {
         // Silently fail - avatar will show fallback initial
-        console.warn('[Header] Failed to load avatar URL:', error);
       }
     };
 

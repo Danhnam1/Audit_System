@@ -155,7 +155,6 @@ export const validateDepartmentWithConditions = async (
               }
             }
           } catch (err) {
-            console.warn(`Failed to get scope for audit ${audit.auditId}:`, err);
             // Still add to conflicts but without scope info
             conflicts.audits.push({
               auditId: String(audit.auditId || audit.id),
@@ -196,7 +195,6 @@ export const validateDepartmentWithConditions = async (
       conflicts: hasConflict ? conflicts : undefined,
     };
   } catch (error: any) {
-    console.error('[validateDepartmentWithConditions] Error:', error);
     return {
       isValid: false,
       message: error?.response?.data?.message || error?.message || 'Failed to validate department with conditions',
@@ -265,7 +263,6 @@ const result = await validateAssignment(request);
       validation: result,
     };
   } catch (error: any) {
-    console.error('[validateAssignmentBeforeCreate] Error:', error);
     return {
       isValid: false,
       message: error?.response?.data?.message || error?.message || 'Failed to validate assignment',
@@ -309,7 +306,6 @@ export const checkPeriodStatus = async (
       status,
     };
   } catch (error: any) {
-    console.error('[checkPeriodStatus] Error:', error);
     return {
       canAssign: false,
       message: error?.response?.data?.message || error?.message || 'Failed to check period status',

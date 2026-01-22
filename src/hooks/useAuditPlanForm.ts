@@ -155,7 +155,6 @@ export const useAuditPlanForm = () => {
           }
         }
       } catch (e) {
-        console.warn('Failed to parse startDate:', startDate, e);
       }
     }
     
@@ -175,7 +174,6 @@ export const useAuditPlanForm = () => {
           }
         }
       } catch (e) {
-        console.warn('Failed to parse endDate:', endDate, e);
       }
     }
     

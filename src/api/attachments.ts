@@ -51,12 +51,10 @@ export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attach
     });
     return res.data;
   } catch (error: any) {
-    console.error('Error status:', error?.response?.status);
     
     // Extract validation errors if available
     const errorData = error?.response?.data;
     if (errorData?.errors && typeof errorData.errors === 'object') {
-      console.error('Validation errors:', errorData.errors);
       const validationErrors: string[] = [];
       Object.keys(errorData.errors).forEach(key => {
         const fieldErrors = errorData.errors[key];
@@ -68,10 +66,8 @@ export const uploadAttachment = async (dto: UploadAttachmentDto): Promise<Attach
           validationErrors.push(`${key}: ${fieldErrors}`);
         }
       });
-      console.error('Validation errors list:', validationErrors);
     }
     
-    console.error('Error headers:', error?.response?.headers);
     throw error;
   }
 };

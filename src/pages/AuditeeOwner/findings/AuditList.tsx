@@ -62,7 +62,6 @@ const AuditeeOwnerAuditList = () => {
         return deptId ? parseInt(deptId) : null;
       }
     } catch (err) {
-      console.error('Error parsing token:', err);
     }
     return null;
   };
@@ -163,7 +162,6 @@ const AuditeeOwnerAuditList = () => {
                 capaDueDate = capaDue.dueDate;
               }
             } catch (scheduleErr) {
-              console.warn(`Failed to load schedule for audit ${auditId}:`, scheduleErr);
             }
             
         
@@ -257,7 +255,6 @@ const AuditeeOwnerAuditList = () => {
             };
             return auditCard;
           } catch (err) {
-            console.error(` Error loading audit ${auditId}:`, err);
             // Fallback: create card with basic info
             return {
               auditId: auditId,
@@ -308,7 +305,6 @@ const AuditeeOwnerAuditList = () => {
 
         setAudits(nonArchivedAudits);
       } catch (err: any) {
-        console.error(' Error loading audits:', err);
         setError(err?.message || 'Failed to load audits');
       } finally {
         setLoading(false);
@@ -369,18 +365,14 @@ const AuditeeOwnerAuditList = () => {
 
   // Helper function to get status color with proper type handling
   const getStatusColor = (status: string): string => {
-    console.log('[STATUS COLOR] Checking status:', status);
-    console.log('[STATUS COLOR] Available keys:', Object.keys(STATUS_COLORS));
     
     // Direct lookup
     const color = (STATUS_COLORS as Record<string, string>)[status];
     
     if (color) {
-      console.log('[STATUS COLOR] ✅ Found color:', color);
       return color;
     }
     
-    console.log('[STATUS COLOR] ❌ No color found, using default');
     return 'bg-gray-200 text-gray-800';
   };
 

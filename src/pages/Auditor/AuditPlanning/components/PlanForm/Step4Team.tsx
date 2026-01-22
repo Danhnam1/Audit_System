@@ -66,7 +66,6 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
       });
       return found?.userId ? String(found.userId) : null;
     } catch (error) {
-      console.error('[Step4Team] Error finding current user:', error);
       return null;
     }
   }, [user?.email, safeAuditorOptions, currentUserId]);
@@ -101,7 +100,6 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
 
         setAvailableAuditorIds(availableIds);
       } catch (error) {
-        console.error('[Step4Team] Error loading available auditors:', error);
         // On error, show all auditors (don't block user)
         setAvailableAuditorIds(new Set());
       } finally {
@@ -133,7 +131,6 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
         }
       }
     } catch (error) {
-      console.error('[Step4Team] Error in useEffect:', error);
     }
   }, [effectiveCurrentUserId, safeSelectedAuditorIds, onAuditorsChange, isAuditorRole]);
 
@@ -317,7 +314,6 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                         const withCurrent = [effectiveCurrentUserId, ...withoutCurrent];
                         onAuditorsChange(withCurrent);
                       } catch (error) {
-                        console.error('[Step4Team] Error in onChange:', error);
                       }
                     }}
                     placeholder="Select auditor(s)"
@@ -339,7 +335,6 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                 </>
               );
             } catch (error) {
-              console.error('[Step4Team] Error rendering auditors section:', error);
               return (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-sm text-red-700">Error loading auditors. Please refresh the page.</p>
@@ -416,7 +411,6 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                       );
                     });
                     } catch (error) {
-                      console.error('[Step4Team] Error rendering owners:', error);
                       return (
                         <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
                           <p className="text-sm text-red-700">Error loading owners. Please refresh the page.</p>
