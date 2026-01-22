@@ -9,7 +9,7 @@ import { getAuditorsByAuditId } from '../../../../api/auditTeam';
 import { getAuditScopeDepartments } from '../../../../api/audits';
 import { unwrap } from '../../../../utils/normalize';
 import { useAuth } from '../../../../contexts';
-import { Button } from '../../../../components';
+import { Button, DepartmentItemsModal } from '../../../../components';
 
 // Badge variant type matching the constants definition
 type BadgeVariant = 'primary-light' | 'primary-medium' | 'primary-dark' | 'primary-solid' | 'gray-light' | 'gray-medium';
@@ -112,6 +112,11 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   
   // Modal states (if not already declared)
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  
+  // Department items modal state
+  const [showDepartmentItemsModal, setShowDepartmentItemsModal] = useState(false);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState<number | null>(null);
+  const [selectedDepartmentName, setSelectedDepartmentName] = useState<string>('');
   
   // Reset processing states when modal closes
   useEffect(() => {
@@ -801,7 +806,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           )}
 
           {/* Created By Section */}
-          {selectedPlanDetails.createdByUser && (
+          {(selectedPlanDetails.createdByUser || selectedPlanDetails.createdBy) && (
             <div className="bg-white rounded-xl border border-primary-100 shadow-sm p-6">
               <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-200">
                 
@@ -811,21 +816,29 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 <div className="flex items-start gap-3">
                   <span className="text-sm font-bold text-black min-w-[100px]">Name:</span>
                   <span className="text-sm text-black font-normal">
-                    {selectedPlanDetails.createdByUser.fullName}
+                    {selectedPlanDetails.createdByUser?.fullName ||
+                      selectedPlanDetails.createdByUser?.name ||
+                      selectedPlanDetails.createdByName ||
+                      selectedPlanDetails.createdBy ||
+                      '—'}
                   </span>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-sm font-bold text-black min-w-[100px]">Email:</span>
-                  <span className="text-sm text-black font-normal">
-                    {selectedPlanDetails.createdByUser.email}
-                  </span>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-sm font-bold text-black min-w-[100px]">Role:</span>
-                  <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-light')}`}>
-                    {selectedPlanDetails.createdByUser.roleName}
-                  </span>
-                </div>
+                {selectedPlanDetails.createdByUser?.email && (
+                  <div className="flex items-start gap-3">
+                    <span className="text-sm font-bold text-black min-w-[100px]">Email:</span>
+                    <span className="text-sm text-black font-normal">
+                      {selectedPlanDetails.createdByUser.email}
+                    </span>
+                  </div>
+                )}
+                {selectedPlanDetails.createdByUser?.roleName && (
+                  <div className="flex items-start gap-3">
+                    <span className="text-sm font-bold text-black min-w-[100px]">Role:</span>
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-normal ${getBadgeVariant('primary-light')}`}>
+                      {selectedPlanDetails.createdByUser.roleName}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-start gap-3">
                   <span className="text-sm font-bold text-black min-w-[100px]">Created At:</span>
                   <span className="text-sm text-black font-normal">
@@ -873,6 +886,13 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 const sensitiveAreasByDept = (selectedPlanDetails as any).sensitiveAreasByDept || {};
                 const deptSensitiveAreas = deptId ? (sensitiveAreasByDept[deptId] || []) : [];
                 const hasSensitiveAreas = deptSensitiveAreas.length > 0;
+
+                // Handler to view department items
+                const handleViewDepartmentItems = () => {
+                  setSelectedDepartmentId(deptId);
+                  setSelectedDepartmentName(deptName);
+                  setShowDepartmentItemsModal(true);
+                };
 
                 return (
                   <div
@@ -929,6 +949,27 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                               </span>
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* View Items Button - Only show for Archived audits */}
+                      {safePlanDetails.status?.toLowerCase() === 'archived' && (
+                        <div className="mt-4 pt-3 border-t border-gray-200">
+                          <button
+                            onClick={handleViewDepartmentItems}
+                            className="w-full px-4 py-2 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors text-sm font-medium flex items-center justify-center gap-2"
+                            title="View findings, no findings, and checklist items"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                              />
+                            </svg>
+                            View Items & History
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1740,6 +1781,21 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       {rejectModalContent}
       {rejectionReasonModalContent}
       {deleteModalContent}
+      
+      {/* Department Items Modal */}
+      {showDepartmentItemsModal && selectedDepartmentId && (
+        <DepartmentItemsModal
+          isOpen={showDepartmentItemsModal}
+          onClose={() => {
+            setShowDepartmentItemsModal(false);
+            setSelectedDepartmentId(null);
+            setSelectedDepartmentName('');
+          }}
+          departmentId={selectedDepartmentId}
+          departmentName={selectedDepartmentName}
+          auditId={selectedPlanDetails?.auditId || selectedPlanDetails?.id || ''}
+        />
+      )}
     </>
   );
 };
