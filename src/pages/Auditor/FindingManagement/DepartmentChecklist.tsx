@@ -14,6 +14,7 @@ import { getFindingSeverities } from '../../../api/findingSeverity';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import CreateFindingModal from './CreateFindingModal';
 import CompliantModal from './CompliantModal';
+import EditCompliantModal from './EditCompliantModal';
 import CompliantDetailsViewer from './CompliantDetailsViewer';
 import FindingDetailModal from './FindingDetailModal';
 import { toast } from 'react-toastify';
@@ -59,6 +60,28 @@ interface ChecklistItem {
   comment: string | null;
 }
 
+// Status detail interfaces for Return items
+interface StatusDetail {
+  auditChecklistItem: ChecklistItem;
+  hasFinding: boolean;
+  finding: Finding | null;
+  hasChecklistItemNoFinding: boolean;
+  checklistItemNoFinding: {
+    id: number;
+    auditChecklistItemId: string;
+    title: string;
+    reason: string;
+    dateOfCompliance: string;
+    timeOfCompliance: string;
+    department: string;
+    witnessId: string;
+    createdBy: string;
+    createdDate: string;
+    status: string;
+    reasonReturn: string;
+  } | null;
+}
+
 const DepartmentChecklist = () => {
   const { deptId } = useParams<{ deptId: string }>();
   const navigate = useNavigate();
@@ -81,6 +104,11 @@ const DepartmentChecklist = () => {
   const [loadingCompliantId, setLoadingCompliantId] = useState(false); // Loading state for fetching compliant ID
   const [compliantIdMap, setCompliantIdMap] = useState<Record<string, string | number>>({}); // auditItemId -> compliant record id (persisted to sessionStorage)
   const [compliantStatusMap, setCompliantStatusMap] = useState<Record<string, { status?: string; returnReason?: string }>>({}); // auditItemId -> { status, returnReason }
+  const [statusDetailMap, setStatusDetailMap] = useState<Record<string, StatusDetail>>({}); // auditItemId -> status detail (for Return items)
+  
+  // Edit compliant modal state
+  const [showEditCompliantModal, setShowEditCompliantModal] = useState(false);
+  const [editingCompliant, setEditingCompliant] = useState<StatusDetail['checklistItemNoFinding'] | null>(null);
   
   // Edit finding modal state (for Return status)
   const [showEditFindingModal, setShowEditFindingModal] = useState(false);
@@ -924,132 +952,8 @@ const DepartmentChecklist = () => {
       setDeletedRootCauseIds([]);
       setDeletedAttachmentIds([]);
 
-      // Reload findings to update the map
-      const reloadFindings = async () => {
-        try {
-          // Load all findings for this department (collaborative mode)
-          let allMyFindings: Finding[] = [];
-          
-          if (deptId) {
-            allMyFindings = await getFindingsByDepartment(parseInt(deptId, 10));
-          } else {
-            allMyFindings = await getFindings();
-          }
-          
-          // Filter by current audit
-          const relevantFindings = allMyFindings.filter((finding: any) => {
-            const findingAuditId = finding.audit?.auditId || finding.auditId || '';
-            const findingDeptId = finding.deptId || null;
-            
-            const auditMatch = !auditId || String(findingAuditId) === String(auditId);
-            const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
-            
-            return auditMatch && deptMatch;
-          });
-          
-          const map: Record<string, { findingId: string; status?: string; createdDate?: string }> = {};
-          relevantFindings.forEach((finding: any) => {
-            if (finding.auditItemId && finding.findingId) {
-              const existingFinding = map[finding.auditItemId];
-              
-              if (!existingFinding) {
-                map[finding.auditItemId] = {
-                  findingId: finding.findingId,
-                  status: finding.status,
-                  createdDate: finding.createdDate
-                };
-              } else {
-                const existingIsRejected = existingFinding.status?.toLowerCase() === 'witnessdisagreed';
-                const currentIsRejected = finding.status?.toLowerCase() === 'witnessdisagreed';
-                
-                if (existingIsRejected && !currentIsRejected) {
-                  map[finding.auditItemId] = {
-                    findingId: finding.findingId,
-                    status: finding.status,
-                    createdDate: finding.createdDate
-                  };
-                } else if (!existingIsRejected && !currentIsRejected) {
-                  const existingDate = new Date(existingFinding.createdDate || 0).getTime();
-                  const currentDate = new Date(finding.createdDate || 0).getTime();
-                  if (currentDate > existingDate) {
-                    map[finding.auditItemId] = {
-                      findingId: finding.findingId,
-                      status: finding.status,
-                      createdDate: finding.createdDate
-                    };
-                  }
-                }
-              }
-            }
-          });
-          setFindingsMap(map);
-
-          // Reload checklist items to update status
-          if (deptId) {
-            const deptIdNum = parseInt(deptId, 10);
-            const allItems = await getChecklistItemsByDepartment(deptIdNum);
-            
-            // Filter by auditId if available
-            let itemsByAudit = allItems;
-            if (auditId) {
-              itemsByAudit = allItems.filter((item: ChecklistItem | any) => {
-                const itemAuditId = item.auditId || 
-                                   item.auditPlanId || 
-                                   item.AuditId ||
-                                   item.audit?.auditId ||
-                                   item.audit?.id;
-                return String(itemAuditId) === String(auditId);
-              });
-            }
-            
-            // Filter out items with status "Archived"
-            const filteredItems = itemsByAudit.filter((item: ChecklistItem) => {
-              const statusLower = (item.status || '').toLowerCase().trim();
-              return statusLower !== 'archived';
-            });
-            
-            // Sort by order
-            const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
-            
-            // Fetch all compliant records to update status and build compliantIdMap
-            try {
-              const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
-              const allCompliantRecords = unwrapArray(compliantRes.data);
-              
-              // Build compliantIdMap and compliantStatusMap
-              const compliantMap: Record<string, string | number> = {};
-              const statusMap: Record<string, { status?: string; returnReason?: string }> = {};
-              allCompliantRecords.forEach((record: any) => {
-                if (record.auditChecklistItemId && record.id) {
-                  compliantMap[record.auditChecklistItemId] = record.id;
-                  statusMap[record.auditChecklistItemId] = {
-                    status: record.status || '',
-                    returnReason: record.returnReason || record.reasonReturn || ''
-                  };
-                }
-              });
-              
-              // Update compliantIdMap and compliantStatusMap state
-              setCompliantIdMap(compliantMap);
-              setCompliantStatusMap(statusMap);
-              
-              // Update checklist items status: if item has compliant record, set status to "Compliant"
-              const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
-                if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
-                  return { ...item, status: 'Compliant' };
-                }
-                return item;
-              });
-              
-              setChecklistItems(itemsWithCompliantStatus);
-            } catch (compliantErr: any) {
-              setChecklistItems(sortedItems);
-            }
-          }
-        } catch (err) {
-        }
-      };
-      await reloadFindings();
+      // Reload all data (findings + checklist items + compliant records)
+      await reloadAllData();
     } catch (err: any) {
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to update finding. Please try again.'));
     } finally {
@@ -1099,6 +1003,7 @@ const DepartmentChecklist = () => {
         const deptIdNum = parseInt(deptId, 10);
         const allItems = await getChecklistItemsByDepartment(deptIdNum);
         
+        
         // Filter by auditId if available
         let itemsByAudit = allItems;
         if (auditId) {
@@ -1138,8 +1043,13 @@ const DepartmentChecklist = () => {
           setCompliantIdMap(compliantMap);
           
           // Update checklist items status: if item has compliant record, set status to "Compliant"
+          // BUT: Do NOT override if item is currently "Return" or "Returned" status
           const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
-            if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
+            const itemStatusLower = (item.status || '').toLowerCase();
+            const isReturnStatus = itemStatusLower.includes('return');
+            
+            // Only update to Compliant if item has compliant record AND is NOT in Return status
+            if (compliantMap[item.auditItemId] && !isCompliant(item.status) && !isReturnStatus) {
               return { ...item, status: 'Compliant' };
             }
             return item;
@@ -1218,8 +1128,14 @@ const DepartmentChecklist = () => {
           setCompliantIdMap(compliantMap);
           
           // Update checklist items status: if item has compliant record, set status to "Compliant"
+          // BUT: Do NOT override if item is currently "Return" or has a finding
           const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
-            if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
+            const itemStatusLower = (item.status || '').toLowerCase();
+            const isReturnStatus = itemStatusLower.includes('return');
+            const hasFinding = findingsMap[item.auditItemId]?.findingId; // Check if item has finding
+            
+            // Only update to Compliant if item has compliant record AND is NOT in Return status AND does NOT have finding
+            if (compliantMap[item.auditItemId] && !isCompliant(item.status) && !isReturnStatus && !hasFinding) {
               return { ...item, status: 'Compliant' };
             }
             return item;
@@ -1237,10 +1153,162 @@ const DepartmentChecklist = () => {
     }
   };
 
+  // Reload all data (findings + checklist items) - reusable helper
+  const reloadAllData = async () => {
+    if (!deptId) return;
+    
+    try {
+      const deptIdNum = parseInt(deptId, 10);
+      
+      // 1. Reload findings map first
+      let allMyFindings: Finding[] = [];
+      if (deptId) {
+        allMyFindings = await getFindingsByDepartment(deptIdNum);
+      } else {
+        allMyFindings = await getFindings();
+      }
+      
+      const relevantFindings = allMyFindings.filter((finding: any) => {
+        const findingAuditId = finding.audit?.auditId || finding.auditId || '';
+        const findingDeptId = finding.deptId || null;
+        
+        const auditMatch = !auditId || String(findingAuditId) === String(auditId);
+        const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === deptIdNum);
+        
+        return auditMatch && deptMatch;
+      });
+      
+      const map: Record<string, { findingId: string; status?: string; createdDate?: string }> = {};
+      relevantFindings.forEach((finding: any) => {
+        if (finding.auditItemId && finding.findingId) {
+          const existingFinding = map[finding.auditItemId];
+          
+          if (!existingFinding) {
+            map[finding.auditItemId] = {
+              findingId: finding.findingId,
+              status: finding.status,
+              createdDate: finding.createdDate
+            };
+          } else {
+            const existingIsRejected = existingFinding.status?.toLowerCase() === 'witnessdisagreed';
+            const currentIsRejected = finding.status?.toLowerCase() === 'witnessdisagreed';
+            
+            if (existingIsRejected && !currentIsRejected) {
+              map[finding.auditItemId] = {
+                findingId: finding.findingId,
+                status: finding.status,
+                createdDate: finding.createdDate
+              };
+            } else if (!existingIsRejected && !currentIsRejected) {
+              const existingDate = new Date(existingFinding.createdDate || 0).getTime();
+              const currentDate = new Date(finding.createdDate || 0).getTime();
+              if (currentDate > existingDate) {
+                map[finding.auditItemId] = {
+                  findingId: finding.findingId,
+                  status: finding.status,
+                  createdDate: finding.createdDate
+                };
+              }
+            }
+          }
+        }
+      });
+      setFindingsMap(map);
+      
+      // 2. Reload checklist items
+      const allItems = await getChecklistItemsByDepartment(deptIdNum);
+      
+      let itemsByAudit = allItems;
+      if (auditId) {
+        itemsByAudit = allItems.filter((item: ChecklistItem | any) => {
+          const itemAuditId = item.auditId || 
+                             item.auditPlanId || 
+                             item.AuditId ||
+                             item.audit?.auditId ||
+                             item.audit?.id;
+          return String(itemAuditId) === String(auditId);
+        });
+      }
+      
+      const filteredItems = itemsByAudit.filter((item: ChecklistItem) => {
+        const statusLower = (item.status || '').toLowerCase().trim();
+        return statusLower !== 'archived';
+      });
+      
+      const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
+      
+      // 3. Reload compliant records
+      try {
+        const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
+        const allCompliantRecords = unwrapArray(compliantRes.data);
+        
+        const compliantMap: Record<string, string | number> = {};
+        allCompliantRecords.forEach((record: any) => {
+          if (record.auditChecklistItemId && record.id) {
+            compliantMap[record.auditChecklistItemId] = record.id;
+          }
+        });
+        
+        setCompliantIdMap(compliantMap);
+        
+        // Apply status with correct priority: Finding > Compliant > Return > Original
+        const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
+          const itemStatusLower = (item.status || '').toLowerCase();
+          const isReturnStatus = itemStatusLower.includes('return');
+          const hasFinding = map[item.auditItemId]?.findingId;
+          
+          if (compliantMap[item.auditItemId] && !isCompliant(item.status) && !isReturnStatus && !hasFinding) {
+            return { ...item, status: 'Compliant' };
+          }
+          return item;
+        });
+        
+        setChecklistItems(itemsWithCompliantStatus);
+      } catch (compliantErr: any) {
+        setChecklistItems(sortedItems);
+      }
+      
+      // 4. Reload status details for Return items AND items with compliant records (to update hasChecklistItemNoFinding)
+      const statusDetails: Record<string, StatusDetail> = {};
+      const itemsNeedingStatusDetail = sortedItems.filter(item => {
+        const statusLower = (item.status || '').toLowerCase();
+        // Include items with return status OR items with compliant records
+        return statusLower.includes('return') || compliantMap[item.auditItemId];
+      });
+      
+      if (itemsNeedingStatusDetail.length > 0) {
+        await Promise.all(
+          itemsNeedingStatusDetail.map(async (item) => {
+            try {
+              const res = await apiClient.get(`/AuditChecklistItems/${item.auditItemId}/status-detail`);
+              statusDetails[item.auditItemId] = res.data;
+            } catch (err) {
+              // Ignore error - item may not have status detail yet
+            }
+          })
+        );
+        setStatusDetailMap(statusDetails);
+      }
+    } catch (err) {
+      console.error('Error reloading data:', err);
+    }
+  };
+
   // Handle mark item as compliant - show modal first
   const handleMarkCompliant = (item: ChecklistItem) => {
     setItemToMarkCompliant(item);
     setShowCompliantModal(true);
+  };
+
+  // Handle edit compliant
+  const handleEditCompliant = (item: ChecklistItem) => {
+    const statusDetail = statusDetailMap[item.auditItemId];
+    if (statusDetail?.checklistItemNoFinding) {
+      setEditingCompliant(statusDetail.checklistItemNoFinding);
+      setShowEditCompliantModal(true);
+    } else {
+      toast.error('Compliant record not found');
+    }
   };
 
   // Confirm and actually mark item as compliant (called from CompliantModal)
@@ -1320,8 +1388,14 @@ const DepartmentChecklist = () => {
         
         // Update status to "Compliant" for ALL items that have compliant records
         // Since backend doesn't automatically update checklist item status, we need to set it manually
+        // BUT: Do NOT override if item is currently "Return" or has a finding
         const updatedItems = sortedItems.map((item: ChecklistItem) => {
-          if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
+          const itemStatusLower = (item.status || '').toLowerCase();
+          const isReturnStatus = itemStatusLower.includes('return');
+          const hasFinding = findingsMap[item.auditItemId]?.findingId; // Check if item has finding
+          
+          // Only update to Compliant if item has compliant record AND is NOT in Return status AND does NOT have finding
+          if (compliantMap[item.auditItemId] && !isCompliant(item.status) && !isReturnStatus && !hasFinding) {
             return { ...item, status: 'Compliant' };
           }
           return item;
@@ -1334,7 +1408,14 @@ const DepartmentChecklist = () => {
         // Fallback: at least update the item we just marked
         const updatedItems = sortedItems.map((item: ChecklistItem) => {
           if (item.auditItemId === compliantItemId && newCompliantId) {
-            return { ...item, status: 'Compliant' };
+            const itemStatusLower = (item.status || '').toLowerCase();
+            const isReturnStatus = itemStatusLower.includes('return');
+            const hasFinding = findingsMap[item.auditItemId]?.findingId; // Check if item has finding
+            
+            // Only update to Compliant if NOT in Return status AND does NOT have finding
+            if (!isReturnStatus && !hasFinding) {
+              return { ...item, status: 'Compliant' };
+            }
           }
           return item;
         });
@@ -1447,7 +1528,7 @@ const DepartmentChecklist = () => {
 
         // Load checklist items
         const allItems = await getChecklistItemsByDepartment(deptIdNum);
-        
+         console.log('Reloaded checklist items after finding edit:', allItems);
         // Filter by auditId if available (from location state)
         let itemsByAudit: ChecklistItem[] = allItems;
         if (auditId) {
@@ -1483,12 +1564,12 @@ const DepartmentChecklist = () => {
         const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
         
         // Fetch all compliant records to update status and build compliantIdMap
+        let compliantMap: Record<string, string | number> = {};
         try {
           const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
           const allCompliantRecords = unwrapArray(compliantRes.data);
           
           // Build compliantIdMap: auditChecklistItemId -> compliant record id
-          const compliantMap: Record<string, string | number> = {};
           allCompliantRecords.forEach((record: any) => {
             if (record.auditChecklistItemId && record.id) {
               compliantMap[record.auditChecklistItemId] = record.id;
@@ -1497,20 +1578,47 @@ const DepartmentChecklist = () => {
           
           // Update compliantIdMap state
           setCompliantIdMap(compliantMap);
-          
-          // Update checklist items status: if item has compliant record, set status to "Compliant"
-          const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
-            if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
-              return { ...item, status: 'Compliant' };
-            }
-            return item;
-          });
-          
-          setChecklistItems(itemsWithCompliantStatus);
         } catch (compliantErr: any) {
           console.error('Error loading compliant records:', compliantErr);
           // Continue without compliant status update if fetch fails
-          setChecklistItems(sortedItems);
+        }
+
+        // Update checklist items status: if item has compliant record, set status to "Compliant"
+        // BUT: Do NOT override if item is currently "Return" or has a finding
+        const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
+          const itemStatusLower = (item.status || '').toLowerCase();
+          const isReturnStatus = itemStatusLower.includes('return');
+          const hasFinding = map[item.auditItemId]?.findingId; // Check if item has finding from findings map
+          
+          // Only update to Compliant if item has compliant record AND is NOT in Return status AND does NOT have finding
+          if (compliantMap[item.auditItemId] && !isCompliant(item.status) && !isReturnStatus && !hasFinding) {
+            return { ...item, status: 'Compliant' };
+          }
+          return item;
+        });
+        
+        setChecklistItems(itemsWithCompliantStatus);
+
+        // Load status details for Return items - use itemsWithCompliantStatus to check status
+        const statusDetails: Record<string, StatusDetail> = {};
+        const returnItems = itemsWithCompliantStatus.filter(item => 
+          (item.status || '').toLowerCase().includes('return')
+        );
+        
+        console.log('[DEBUG] Loading status details for return items:', returnItems.length, returnItems.map(i => ({ order: i.order, status: i.status, id: i.auditItemId.substring(0, 8) })));
+        
+        if (returnItems.length > 0) {
+          await Promise.all(
+            returnItems.map(async (item) => {
+              try {
+                const response = await apiClient.get(`/AuditChecklistItems/${item.auditItemId}/status-detail`);
+                statusDetails[item.auditItemId] = response.data;
+              } catch (err) {
+                console.warn(`Failed to load status detail for item ${item.auditItemId}:`, err);
+              }
+            })
+          );
+          setStatusDetailMap(statusDetails);
         }
       } catch (err: any) {
         console.error('Error loading checklist items:', err);
@@ -1642,11 +1750,12 @@ const DepartmentChecklist = () => {
         const findingDeptId = finding.deptId || null;
         const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
         
-        // Exclude WitnessDisagreed status
+        // Exclude WitnessDisagreed and Return/Returned status
         const statusLower = (finding.status || '').toLowerCase();
         const isNotDisagreed = statusLower !== 'witnessdisagreed';
+        const isNotReturned = !statusLower.includes('return');
         
-        const matches = auditMatch && deptMatch && isNotDisagreed;
+        const matches = auditMatch && deptMatch && isNotDisagreed && isNotReturned;
         
       
         
@@ -2279,8 +2388,23 @@ const DepartmentChecklist = () => {
                               const compliantStatus = compliantData?.status?.toLowerCase();
                               const isCompliantReturned = compliantStatus === 'return' || compliantStatus === 'returned';
                               
+                              // Debug log for all items
+                              const isReturnedResult = isReturned(item, itemStatusToCheck);
+                              console.log(`[DEBUG] Item ${item.order} (${item.auditItemId.substring(0, 8)}):`, {
+                                itemStatus: item.status,
+                                itemStatusToCheck,
+                                isReturnedResult,
+                                isFixedStatus,
+                                isWitnessConfirmed,
+                                isEditedInSession,
+                                isWitnessConfirmReturned,
+                                hasStatusDetail: !!statusDetailMap[item.auditItemId],
+                                findingStatus,
+                                compliantStatus
+                              });
+                              
                               // Show Fixed badge with View icon if status is Fixed, WitnessConfirmed, or already edited in this session
-                              if (isReturned(item, itemStatusToCheck) && (isFixedStatus || isWitnessConfirmed || isEditedInSession || isWitnessConfirmReturned)) {
+                              if (isReturnedResult && (isFixedStatus || isWitnessConfirmed || isEditedInSession || isWitnessConfirmReturned)) {
                                 return (
                                   <div className="flex items-center gap-2">
                                     <span className={`px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap ${
@@ -2314,7 +2438,167 @@ const DepartmentChecklist = () => {
                               }
                               
                               // Check if item is returned (from any source: item status, finding status, or compliant status)
-                              if (isReturned(item, itemStatusToCheck) && !isFixedStatus && !isWitnessConfirmed && !isEditedInSession && !isWitnessConfirmReturned) {
+                              if (isReturnedResult && !isFixedStatus && !isWitnessConfirmed && !isEditedInSession && !isWitnessConfirmReturned) {
+                                // Get status detail from API to determine button logic
+                                const statusDetail = statusDetailMap[item.auditItemId];
+                                
+                                // Debug logging - now it should show
+                                console.log(`[DEBUG] ✅ Item PASSED all return checks:`, {
+                                  itemId: item.auditItemId.substring(0, 8),
+                                  order: item.order,
+                                  hasStatusDetail: !!statusDetail,
+                                  hasFinding: statusDetail?.hasFinding,
+                                  hasChecklistItemNoFinding: statusDetail?.hasChecklistItemNoFinding,
+                                  statusDetail: statusDetail
+                                });
+                                
+                                if (statusDetail) {
+                                  // Case 1: hasFinding = true -> Show "Edit Finding" and "Mark as Compliant" buttons
+                                  if (statusDetail.hasFinding && statusDetail.finding) {
+                                    return (
+                                      <div className="flex items-center gap-2">
+                                        <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-orange-100 text-orange-700 border border-orange-300">
+                                          Returned
+                                        </span>
+                                        {statusDetail.finding.reasonReturn && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedRejectionReason({
+                                                reason: statusDetail.finding?.reasonReturn || '',
+                                                findingTitle: statusDetail.finding?.title || ''
+                                              });
+                                              setShowRejectionReasonModal(true);
+                                            }}
+                                            className="px-2 py-1 text-[10px] sm:text-xs bg-orange-100 text-orange-700 border border-orange-300 rounded-md hover:bg-orange-200 transition-colors"
+                                            title="View return reason"
+                                          >
+                                            <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            const findingId = statusDetail.finding?.findingId;
+                                            if (!findingId) {
+                                              toast.warning('Finding not found for this item');
+                                              return;
+                                            }
+
+                                            setLoadingFinding(true);
+                                            try {
+                                              const finding = await getFindingById(findingId);
+                                              setEditingFinding(finding);
+                                              setEditFormData({
+                                                title: finding.title || '',
+                                                description: finding.description || '',
+                                                severity: finding.severity || '',
+                                                deadline: finding.deadline ? new Date(finding.deadline).toISOString().split('T')[0] : '',
+                                                externalAuditorName: finding.externalAuditorName || '',
+                                                witnessId: finding.witnessId || '',
+                                              });
+                                              setShowEditFindingModal(true);
+                                              await loadSeverities();
+                                              await loadEditFindingExtras(findingId, finding);
+                                            } catch (err: any) {
+                                              console.error('Error loading finding:', err);
+                                              toast.error('Failed to load finding details');
+                                            } finally {
+                                              setLoadingFinding(false);
+                                            }
+                                          }}
+                                          disabled={loadingFinding}
+                                          className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                          title="Edit Finding"
+                                        >
+                                          {loadingFinding ? (
+                                            <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
+                                          ) : (
+                                            <>
+                                              <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                              </svg>
+                                              <span>Edit</span>
+                                            </>
+                                          )}
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleMarkCompliant(item);
+                                          }}
+                                          className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors active:scale-95"
+                                          title="Mark as Compliant"
+                                        >
+                                          Mark Compliant
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+                                  
+                                  // Case 2: hasChecklistItemNoFinding = true -> Show "Create Finding" and "Edit Compliant" buttons
+                                  // BUT: Only show if status is NOT "Fixed" (if already fixed, no need to show edit button)
+                                  if (statusDetail.hasChecklistItemNoFinding && statusDetail.checklistItemNoFinding) {
+                                    const compliantStatus = statusDetail.checklistItemNoFinding.status?.toLowerCase() || '';
+                                    const isCompliantFixed = compliantStatus === 'fixed' || compliantStatus === 'approved';
+                                    
+                                    // If compliant already fixed, don't show edit buttons
+                                    if (isCompliantFixed) {
+                                      return null; // Return null to show default status badge
+                                    }
+                                    
+                                    return (
+                                      <div className="flex items-center gap-2">
+                                        <span className="px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap bg-orange-100 text-orange-700 border border-orange-300">
+                                          Compliant Returned
+                                        </span>
+                                        {statusDetail.checklistItemNoFinding.reasonReturn && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedRejectionReason({
+                                                reason: statusDetail.checklistItemNoFinding?.reasonReturn || '',
+                                                findingTitle: statusDetail.checklistItemNoFinding?.title || ''
+                                              });
+                                              setShowRejectionReasonModal(true);
+                                            }}
+                                            className="px-2 py-1 text-[10px] sm:text-xs bg-orange-100 text-orange-700 border border-orange-300 rounded-md hover:bg-orange-200 transition-colors"
+                                            title="View return reason"
+                                          >
+                                            <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedItem(item);
+                                            setShowCreateModal(true);
+                                          }}
+                                          className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors active:scale-95"
+                                          title="Create Finding"
+                                        >
+                                          Create Finding
+                                        </button>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleEditCompliant(item);
+                                          }}
+                                          className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors active:scale-95"
+                                          title="Edit Compliant"
+                                        >
+                                          Edit Compliant
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+                                }
+                                
+                                // Fallback to old logic if status detail not available
                                 // Case 1: Compliant item returned and no finding exists yet
                                 if (isCompliantReturned && !findingData?.findingId) {
                                   return (
@@ -2917,153 +3201,17 @@ const DepartmentChecklist = () => {
             setShowCreateModal(false);
             setSelectedItem(null);
           }}
-          onSuccess={() => {
-            // Reload findings to update the map
-            const reloadFindings = async () => {
-              try {
-                // Load all findings for this department (collaborative mode)
-                let allMyFindings: Finding[] = [];
-                
-                if (deptId) {
-                  allMyFindings = await getFindingsByDepartment(parseInt(deptId, 10));
-                } else {
-                  allMyFindings = await getFindings();
-                }
-                
-                // Filter by current audit
-                const relevantFindings = allMyFindings.filter((finding: any) => {
-                  const findingAuditId = finding.audit?.auditId || finding.auditId || '';
-                  const findingDeptId = finding.deptId || null;
-                  
-                  const auditMatch = !auditId || String(findingAuditId) === String(auditId);
-                  const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
-                  
-                  return auditMatch && deptMatch;
-                });
-                
-                const map: Record<string, { findingId: string; status?: string; createdDate?: string }> = {};
-                relevantFindings.forEach((finding: any) => {
-                  if (finding.auditItemId && finding.findingId) {
-                    const existingFinding = map[finding.auditItemId];
-                    
-                    if (!existingFinding) {
-                      map[finding.auditItemId] = {
-                        findingId: finding.findingId,
-                        status: finding.status,
-                        createdDate: finding.createdDate
-                      };
-                    } else {
-                      const existingIsRejected = existingFinding.status?.toLowerCase() === 'witnessdisagreed';
-                      const currentIsRejected = finding.status?.toLowerCase() === 'witnessdisagreed';
-                      
-                      if (existingIsRejected && !currentIsRejected) {
-                        map[finding.auditItemId] = {
-                          findingId: finding.findingId,
-                          status: finding.status,
-                          createdDate: finding.createdDate
-                        };
-                      } else if (!existingIsRejected && !currentIsRejected) {
-                        const existingDate = new Date(existingFinding.createdDate || 0).getTime();
-                        const currentDate = new Date(finding.createdDate || 0).getTime();
-                        if (currentDate > existingDate) {
-                          map[finding.auditItemId] = {
-                            findingId: finding.findingId,
-                            status: finding.status,
-                            createdDate: finding.createdDate
-                          };
-                        }
-                      }
-                    }
-                  }
-                });
-                setFindingsMap(map);
-              } catch (err) {
-                console.error('Error reloading findings:', err);
-                toast.warning('Error reloading findings');
-              }
-            };
-            reloadFindings();
-
-            // Reload checklist items to update status
-            const reloadChecklistItems = async () => {
-              if (!deptId) return;
-              try {
-                const deptIdNum = parseInt(deptId, 10);
-                const allItems = await getChecklistItemsByDepartment(deptIdNum);
-                
-                // Filter by auditId if available
-                let itemsByAudit = allItems;
-                if (auditId) {
-                  itemsByAudit = allItems.filter((item: ChecklistItem | any) => {
-                    const itemAuditId = item.auditId || 
-                                       item.auditPlanId || 
-                                       item.AuditId ||
-                                       item.audit?.auditId ||
-                                       item.audit?.id;
-                    return String(itemAuditId) === String(auditId);
-                  });
-                }
-                
-                // Filter out items with status "Archived"
-                const filteredItems = itemsByAudit.filter((item: ChecklistItem) => {
-                  const statusLower = (item.status || '').toLowerCase().trim();
-                  return statusLower !== 'archived';
-                });
-                
-                // Sort by order
-                const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
-                
-                // Fetch all compliant records to update status and build compliantIdMap
-                try {
-                  const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
-                  const allCompliantRecords = unwrapArray(compliantRes.data);
-                  
-                  // Build compliantIdMap and compliantStatusMap
-                  const compliantMap: Record<string, string | number> = {};
-                  const statusMap: Record<string, { status?: string; returnReason?: string }> = {};
-                  allCompliantRecords.forEach((record: any) => {
-                    if (record.auditChecklistItemId && record.id) {
-                      compliantMap[record.auditChecklistItemId] = record.id;
-                      statusMap[record.auditChecklistItemId] = {
-                        status: record.status || '',
-                        returnReason: record.returnReason || record.reasonReturn || ''
-                      };
-                    }
-                  });
-                  
-                  // Update compliantIdMap and compliantStatusMap state
-                  setCompliantIdMap(compliantMap);
-                  setCompliantStatusMap(statusMap);
-                  
-                  // Update checklist items status: if item has compliant record, set status to "Compliant"
-                  const itemsWithCompliantStatus = sortedItems.map((item: ChecklistItem) => {
-                    if (compliantMap[item.auditItemId] && !isCompliant(item.status)) {
-                      return { ...item, status: 'Compliant' };
-                    }
-                    return item;
-                  });
-                  
-                  setChecklistItems(itemsWithCompliantStatus);
-                } catch (compliantErr: any) {
-                  console.error('Error loading compliant records in reloadChecklistItems:', compliantErr);
-                  // Continue without compliant status update if fetch fails
-                  setChecklistItems(sortedItems);
-                }
-                toast.success('Finding created successfully');
-              } catch (err) {
-                console.error('Error reloading checklist items:', err);
-                toast.warning('Error reloading checklist items');
-              }
-            };
-            reloadChecklistItems();
+          onSuccess={async () => {
+            setShowCreateModal(false);
+            setSelectedItem(null);
+            
+            // Reload all data (findings + checklist items + compliant records)
+            await reloadAllData();
+            toast.success('Finding created successfully');
           }}
-          checklistItem={{
-            auditItemId: selectedItem.auditItemId,
-            auditId: auditId || selectedItem.auditId,
-            questionTextSnapshot: selectedItem.questionTextSnapshot,
-          }}
-          deptId={parseInt(deptId, 10)}
-          departmentName={departmentName}
+          checklistItem={selectedItem}
+          departmentId={parseInt(deptId, 10)}
+          auditId={auditId}
         />
       )}
 
@@ -3095,6 +3243,28 @@ const DepartmentChecklist = () => {
             auditId: auditId || itemToMarkCompliant.auditId,
             questionTextSnapshot: itemToMarkCompliant.questionTextSnapshot,
           }}
+        />
+      )}
+
+      {/* Edit Compliant Modal */}
+      {editingCompliant && deptId && (
+        <EditCompliantModal
+          isOpen={showEditCompliantModal}
+          onClose={() => {
+            setShowEditCompliantModal(false);
+            setEditingCompliant(null);
+          }}
+          onSuccess={async () => {
+            setShowEditCompliantModal(false);
+            setEditingCompliant(null);
+            
+            // Reload all data (findings + checklist items + compliant records)
+            await reloadAllData();
+            toast.success('Compliant record updated successfully');
+          }}
+          compliantData={editingCompliant}
+          departmentName={departmentName}
+          deptId={parseInt(deptId, 10)}
         />
       )}
 
