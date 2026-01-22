@@ -773,8 +773,11 @@ export default function AuditorFinalSummaryPage() {
                   {
                     key: "type",
                     header: "TYPE",
-                    accessor: "type",
-                    cellClassName: "text-gray-600",
+                    render: (row) => (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getAuditTypeBadgeColor(row.type || '')}`}>
+                        {row.type || '—'}
+                      </span>
+                    ),
                   },
                   {
                     key: "startDate",

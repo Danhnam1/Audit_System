@@ -62,12 +62,18 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     : undefined;
 
   const [audits, setAudits] = useState<
-    Array<{ auditId: string; title: string; type: string; startDate: string; endDate: string; scope: string; status?: string }>
+    Array<{ auditId: string; title: string; type: string; startDate: string; endDate: string; scope: string; status?: string; rawStartDate?: string; rawEndDate?: string }>
   >([]);
   const [selectedAuditId, setSelectedAuditId] = useState<string>(auditIdFromUrl || "");
   const [loadingAudits, setLoadingAudits] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  
+  // Filter states
+  const [dateStartFilter, setDateStartFilter] = useState<string>("");
+  const [dateEndFilter, setDateEndFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [scopeFilter, setScopeFilter] = useState<string>("");
 
   const [detail, setDetail] = useState<FullDetailResponse | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -209,10 +215,12 @@ export default function LeadAuditorFinalSummaryReviewPage() {
               endDate: formatDate(a.endDate || a.periodTo),
               scope: formatScope(a.scope),
               status: status,
+              rawStartDate: a.startDate || a.periodFrom || "",
+              rawEndDate: a.endDate || a.periodTo || "",
             };
           });
 
-        setAudits(allAudits as Array<{ auditId: string; title: string; type: string; startDate: string; endDate: string; scope: string; status?: string }>);
+        setAudits(allAudits as Array<{ auditId: string; title: string; type: string; startDate: string; endDate: string; scope: string; status?: string; rawStartDate?: string; rawEndDate?: string }>);
       } catch (error) {
         console.error("[LeadAuditor] Failed to load audits:", error);
       } finally {
@@ -285,11 +293,46 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     const loadReportRequest = async () => {
       setLoadingReportRequest(true);
       try {
+        // Check sessionStorage first to see if we've submitted this audit
+        const sessionKey = `final_report_submitted_${selectedAuditId}`;
+        const submittedInSession = sessionStorage.getItem(sessionKey);
+        
         const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
-        setReportRequest(rr || null);
+        
+        if (rr && rr.status) {
+          // If API returns a report request with status, use it and clear sessionStorage
+          // This handles both pending and approved/rejected statuses
+          setReportRequest(rr);
+          sessionStorage.removeItem(sessionKey);
+        } else if (submittedInSession === 'true') {
+          // If API returns null but we have sessionStorage flag, create a temp object with pending status
+          // This handles the case where API hasn't synced yet or status doesn't match filter
+          console.log('[FinalSummaryReview] API returned null but sessionStorage indicates submitted, using temp status');
+          setReportRequest({
+            auditId: selectedAuditId,
+            status: 'PendingFirstApproval', // Default pending status
+            reportRequestId: null,
+            requestedAt: new Date().toISOString(),
+          } as any);
+        } else {
+          // No report request found and not submitted in this session
+          setReportRequest(null);
+        }
       } catch (err) {
         console.error('Failed to load report request:', err);
-        setReportRequest(null);
+        // On error, check sessionStorage as fallback
+        const sessionKey = `final_report_submitted_${selectedAuditId}`;
+        const submittedInSession = sessionStorage.getItem(sessionKey);
+        if (submittedInSession === 'true') {
+          setReportRequest({
+            auditId: selectedAuditId,
+            status: 'PendingFirstApproval',
+            reportRequestId: null,
+            requestedAt: new Date().toISOString(),
+          } as any);
+        } else {
+          setReportRequest(null);
+        }
       } finally {
         setLoadingReportRequest(false);
       }
@@ -314,6 +357,10 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       const result = await submitFinalReport(selectedAuditId);
       console.log('[FinalSummaryReview] Submit result:', result);
       
+      // Save to sessionStorage to persist across reloads
+      const sessionKey = `final_report_submitted_${selectedAuditId}`;
+      sessionStorage.setItem(sessionKey, 'true');
+      
       // After submit, the status should be PendingFirstApproval or PendingSecondApproval
       // Create a temporary report request object with pending status to show "Submitted" state
       if (result) {
@@ -329,7 +376,23 @@ export default function LeadAuditorFinalSummaryReviewPage() {
             status: 'PendingFirstApproval', // Default to pending status after submit
             auditId: selectedAuditId
           });
+        } else {
+          // If result doesn't have status or reportRequestId, create temp object
+          setReportRequest({
+            auditId: selectedAuditId,
+            status: 'PendingFirstApproval',
+            reportRequestId: null,
+            requestedAt: new Date().toISOString(),
+          } as any);
         }
+      } else {
+        // If result is null/undefined, still create temp object
+        setReportRequest({
+          auditId: selectedAuditId,
+          status: 'PendingFirstApproval',
+          reportRequestId: null,
+          requestedAt: new Date().toISOString(),
+        } as any);
       }
       
       // Also reload to get the actual status from backend (but don't wait for it)
@@ -339,15 +402,16 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           try {
             const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
             console.log('[FinalSummaryReview] Background reloaded report request:', rr);
-            // Only update if we got a pending status (not approved)
+            // Update if we got a valid report request with status
             if (rr && rr.status) {
-              const statusLower = String(rr.status).toLowerCase();
-              if (statusLower.includes('pending') || statusLower === 'submitted') {
-                setReportRequest(rr);
-              }
+              setReportRequest(rr);
+              // Clear sessionStorage since we now have real data from API
+              // This works for any status: PendingFirstApproval, PendingSecondApproval, Approved, Rejected
+              sessionStorage.removeItem(sessionKey);
             }
           } catch (err) {
             console.error('Failed to reload report request:', err);
+            // Keep sessionStorage flag if reload fails
           }
         }, 1000);
       }
@@ -377,7 +441,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
      statusLower === 'pendingsecondapproval' ||
      statusLower === 'submitted' ||
      (statusLower.includes('pending') && statusLower.includes('approval')))
-  ) || submitting; // Also disable while submitting
+  ) || submitting; // Also disable while submitting to prevent double submission
   
   // Debug log
   if (selectedAuditId && reportRequest) {
@@ -791,18 +855,69 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   // Note: Lead Auditor no longer needs to submit to Director
   // Auditor's submission is now visible to both Lead Auditor and Director immediately
 
+  // Filter audits based on filters
+  const filteredAudits = useMemo(() => {
+    let filtered = [...audits];
+
+    // Filter by date range
+    if (dateStartFilter) {
+      const filterStart = new Date(dateStartFilter);
+      filterStart.setHours(0, 0, 0, 0);
+      filtered = filtered.filter((audit) => {
+        if (!audit.rawStartDate) return false;
+        const auditStart = new Date(audit.rawStartDate);
+        auditStart.setHours(0, 0, 0, 0);
+        return auditStart >= filterStart;
+      });
+    }
+
+    if (dateEndFilter) {
+      const filterEnd = new Date(dateEndFilter);
+      filterEnd.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((audit) => {
+        if (!audit.rawEndDate) return false;
+        const auditEnd = new Date(audit.rawEndDate);
+        auditEnd.setHours(23, 59, 59, 999);
+        return auditEnd <= filterEnd;
+      });
+    }
+
+    // Filter by type
+    if (typeFilter) {
+      filtered = filtered.filter((audit) => {
+        const auditType = (audit.type || "").toLowerCase().trim();
+        return auditType === typeFilter.toLowerCase().trim();
+      });
+    }
+
+    // Filter by scope
+    if (scopeFilter) {
+      filtered = filtered.filter((audit) => {
+        const auditScope = (audit.scope || "").toLowerCase().trim();
+        if (scopeFilter === "Entire Aviation Academy") {
+          return auditScope === "entire aviation academy";
+        } else if (scopeFilter === "Department") {
+          return auditScope === "department";
+        }
+        return true;
+      });
+    }
+
+    return filtered;
+  }, [audits, dateStartFilter, dateEndFilter, typeFilter, scopeFilter]);
+
   // Pagination logic
-  const totalPages = Math.ceil(audits.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredAudits.length / itemsPerPage);
   const paginatedAudits = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    return audits.slice(startIndex, endIndex);
-  }, [audits, currentPage]);
+    return filteredAudits.slice(startIndex, endIndex);
+  }, [filteredAudits, currentPage]);
 
-  // Reset to page 1 when audits change
+  // Reset to page 1 when audits or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [audits.length]);
+  }, [audits.length, dateStartFilter, dateEndFilter, typeFilter, scopeFilter]);
 
   return (
     <MainLayout user={layoutUser}>
@@ -856,8 +971,70 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           {!selectedAuditId ? (
             <div className="bg-white border border-primary-200 rounded-lg shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">Select an Audit</h3>
-                <p className="text-sm text-gray-500 mt-1">Choose an audit from the table below to review its final summary report.</p>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Select an Audit</h3>
+                    <p className="text-sm text-gray-500 mt-1">Choose an audit from the table below to review its final summary report.</p>
+                  </div>
+                </div>
+                {/* Filters */}
+                <div className="flex items-center gap-3 flex-wrap mt-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Date From:</label>
+                    <input
+                      type="date"
+                      value={dateStartFilter}
+                      onChange={(e) => setDateStartFilter(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Date To:</label>
+                    <input
+                      type="date"
+                      value={dateEndFilter}
+                      onChange={(e) => setDateEndFilter(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Type:</label>
+                    <select
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 min-w-[120px]"
+                    >
+                      <option value="">All Types</option>
+                      <option value="Internal">Internal</option>
+                      <option value="External">External</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Scope:</label>
+                    <select
+                      value={scopeFilter}
+                      onChange={(e) => setScopeFilter(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 min-w-[200px]"
+                    >
+                      <option value="">All Scopes</option>
+                      <option value="Entire Aviation Academy">Entire Aviation Academy</option>
+                      <option value="Department">Department</option>
+                    </select>
+                  </div>
+                  {(dateStartFilter || dateEndFilter || typeFilter || scopeFilter) && (
+                    <button
+                      onClick={() => {
+                        setDateStartFilter("");
+                        setDateEndFilter("");
+                        setTypeFilter("");
+                        setScopeFilter("");
+                      }}
+                      className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
               </div>
               <DataTable
                 columns={[
@@ -876,8 +1053,11 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                   {
                     key: "type",
                     header: "TYPE",
-                    accessor: "type",
-                    cellClassName: "text-gray-600",
+                    render: (row) => (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(row.type || "—")}`}>
+                        {row.type || "—"}
+                      </span>
+                    ),
                   },
                   {
                     key: "startDate",
@@ -919,7 +1099,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                 getRowClassName={() => "border-b border-gray-100 transition-colors hover:bg-primary-50 cursor-pointer"}
                 bodyClassName=""
               />
-              {totalPages > 1 && audits.length > 0 && (
+              {totalPages > 1 && filteredAudits.length > 0 && (
                 <div className="px-6 py-4 border-t border-gray-200 flex justify-center">
                   <Pagination
                     currentPage={currentPage}

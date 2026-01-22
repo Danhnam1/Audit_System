@@ -3,7 +3,7 @@ import { PageHeader } from '../../../components';
 import { useAuth } from '../../../contexts';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { getStatusColor, getSeverityColor, getSeverityChartColor } from '../../../constants';
+import { getStatusColor, getSeverityColor, getSeverityChartColor, getAuditTypeBadgeColor } from '../../../constants';
 import { StatCard, BarChartCard } from '../../../components';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import type { PieLabelRenderProps } from 'recharts';
@@ -1615,7 +1615,11 @@ const SQAStaffReports = () => {
                   >
                     <td className="px-4 py-4 text-sm text-gray-700 whitespace-nowrap">{idx + 1}</td>
                     <td className="px-6 py-4"><span className="text-ms font-bold text-black">{audit.title}</span></td>
-                    <td className="px-6 py-4 text-center"><span className="text-ms text-[#5b6166]">{audit.type}</span></td>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getAuditTypeBadgeColor(audit.type || '')}`}>
+                        {audit.type}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-center"><span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(audit.status)}`}>{audit.status}</span></td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       {(() => {

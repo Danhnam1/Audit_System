@@ -5,10 +5,12 @@ import { getAuditPlans } from "../../api/audits";
 import { getAuditResultByAuditId } from "../../api/auditResult";
 import { unwrap } from "../../utils/normalize";
 import { PageHeader, Pagination } from "../../components";
+import { getStatusColor } from "../../constants/statusColors";
 
 interface AuditResultData {
   auditId: string;
   title: string;
+  status?: string;
   result?: string;
   percentage?: number;
   comment?: string | null;
@@ -27,6 +29,8 @@ export default function ResultHistoryPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [resultFilter, setResultFilter] = useState<string>("");
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -43,6 +47,7 @@ export default function ResultHistoryPage() {
           .map((a: any) => ({
             auditId: a.auditId || a.id || "",
             title: a.title || a.auditTitle || "Untitled audit",
+            status: a.status || "",
             startDate: a.startDate || a.auditStartDate || "",
             endDate: a.endDate || a.auditEndDate || "",
           }))
@@ -57,6 +62,7 @@ export default function ResultHistoryPage() {
               resultsMap.set(audit.auditId, {
                 auditId: audit.auditId,
                 title: audit.title,
+                status: audit.status,
                 result: result.result,
                 percentage: result.percentage,
                 comment: result.comment,
@@ -95,6 +101,22 @@ export default function ResultHistoryPage() {
       );
     }
 
+    // Filter by status
+    if (statusFilter) {
+      results = results.filter((ar) => {
+        const status = (ar.status || "").toLowerCase().trim();
+        return status === statusFilter.toLowerCase().trim();
+      });
+    }
+
+    // Filter by result (pass/fail)
+    if (resultFilter) {
+      results = results.filter((ar) => {
+        const result = (ar.result || "").toLowerCase().trim();
+        return result === resultFilter.toLowerCase().trim();
+      });
+    }
+
     // Filter by date range
     if (startDate) {
       const start = new Date(startDate);
@@ -119,12 +141,12 @@ export default function ResultHistoryPage() {
     }
 
     return results;
-  }, [auditResults, searchTerm, startDate, endDate]);
+  }, [auditResults, searchTerm, startDate, endDate, statusFilter, resultFilter]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, startDate, endDate]);
+  }, [searchTerm, startDate, endDate, statusFilter, resultFilter]);
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredResults.length / itemsPerPage);
@@ -140,6 +162,24 @@ export default function ResultHistoryPage() {
           subtitle="View audit effectiveness results and comments history"
           rightContent={
             <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-slate-900"
+              >
+                <option value="">All Status</option>
+                <option value="InProgress">InProgress</option>
+                <option value="Archived">Archived</option>
+              </select>
+              <select
+                value={resultFilter}
+                onChange={(e) => setResultFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-slate-900"
+              >
+                <option value="">All Results</option>
+                <option value="Pass">Pass</option>
+                <option value="Fail">Fail</option>
+              </select>
               <input
                 type="date"
                 value={startDate}
@@ -154,15 +194,17 @@ export default function ResultHistoryPage() {
                 placeholder="End Date"
                 className="px-3 py-2 border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-slate-900"
               />
-              {(startDate || endDate) && (
+              {(startDate || endDate || statusFilter || resultFilter) && (
                 <button
                   onClick={() => {
                     setStartDate("");
                     setEndDate("");
+                    setStatusFilter("");
+                    setResultFilter("");
                   }}
                   className="px-3 py-2 text-xs text-gray-600 hover:text-gray-800 underline"
                 >
-                  Clear dates
+                  Clear filters
                 </button>
               )}
               <input
@@ -202,6 +244,9 @@ export default function ResultHistoryPage() {
                       Audit Title
                     </th>
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Result
                     </th>
                     <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
@@ -222,6 +267,15 @@ export default function ResultHistoryPage() {
                         <div className="text-sm font-semibold text-gray-900">
                           {ar.title}
                         </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        {ar.status ? (
+                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(ar.status)}`}>
+                            {ar.status}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         {ar.result ? (

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '../../../../components/Button';
+import { getAuditTypeBadgeColor } from '../../../../constants/statusColors';
 
 
 interface Row {
@@ -116,7 +117,15 @@ const AuditReportsTable: React.FC<Props> = ({
                 <tr key={r.auditId} className="border-b border-gray-100 transition-colors hover:bg-gray-50">
                   <td className="px-4 py-4 text-sm text-gray-700 whitespace-nowrap">{idx + 1}</td>
                   <td className="px-6 py-4"><span className="text-ms font-bold text-black">{r.title}</span></td>
-                  <td className="px-6 py-4 text-center whitespace-nowrap"><span className="text-ms text-[#5b6166]">{r.type || '—'}</span></td>
+                  <td className="px-6 py-4 text-center whitespace-nowrap">
+                    {r.type ? (
+                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getAuditTypeBadgeColor(r.type)}`}>
+                        {r.type}
+                      </span>
+                    ) : (
+                      <span className="text-ms text-[#5b6166]">—</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4"><span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(r.status)}`}>{r.displayStatus}</span></td>
                   <td className="px-6 py-4 whitespace-nowrap"><span className="text-ms text-[#5b6166]">{r.createdBy || '—'}</span></td>
                   <td className="px-6 py-4">

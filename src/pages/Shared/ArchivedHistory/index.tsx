@@ -19,6 +19,7 @@ import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlan
 import { getCriterionName } from '../../../helpers/auditPlanHelpers';
 import { unwrap } from '../../../utils/normalize';
 import { getStatusColor } from '../../../constants';
+import { getAdminAuditLog, type AdminAuditLogEntry } from '../../../api/adminAuditLog';
 
 interface AuditRow {
   auditId: string;
@@ -55,6 +56,10 @@ const ArchivedHistoryPage = () => {
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [auditSchedules, setAuditSchedules] = useState<any[]>([]);
   const [criteriaList, setCriteriaList] = useState<any[]>([]);
+  
+  // Audit log state
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLogEntry[]>([]);
+  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
 
   // Load admin users, departments, and criteria for name resolution
   useEffect(() => {
@@ -198,6 +203,7 @@ const ArchivedHistoryPage = () => {
         criteriaMapData,
         templatesData,
         schedulesData,
+        auditLogsData,
       ] = await Promise.allSettled([
         getAuditPlanById(auditId),
         getFindingsByAudit(auditId),
@@ -206,6 +212,7 @@ const ArchivedHistoryPage = () => {
         getCriteriaForAudit(auditId).catch(() => []),
         getAuditChecklistTemplateMapsByAudit(auditId).catch(() => []),
         getAuditSchedules(auditId).catch(() => []),
+        getAdminAuditLog().catch(() => []),
       ]);
 
       // Set audit detail
@@ -230,16 +237,20 @@ const ArchivedHistoryPage = () => {
         setScopeDepartments(enrichedDepts);
       }
 
-      // Set audit team with user names - get all auditor names
+      // Set audit team with user names - get all team members (including archived)
       if (teamData.status === 'fulfilled') {
         const teamList = unwrap(teamData.value);
         const teamArray = Array.isArray(teamList) ? teamList : [];
         const enrichedTeam = await Promise.all(
           teamArray.map(async (member: any) => {
             try {
-              const userId = member.userId || member.id || member.$id;
-              let fullName = member.fullName || '—';
-              let email = member.email || '—';
+              // Get userId from different possible fields
+              const userId = member.userId || member.UserId || member.id || member.$id;
+              let fullName = member.fullName || member.FullName || '—';
+              let email = member.email || member.Email || '—';
+              const roleInTeam = member.roleInTeam || member.RoleInTeam || member.role || '—';
+              const isLead = member.isLead || member.IsLead || false;
+              const status = member.status || member.Status || '—';
               
               // Try to get user name from userId
               if (userId) {
@@ -264,11 +275,22 @@ const ArchivedHistoryPage = () => {
               
               return {
                 ...member,
+                userId: userId,
                 fullName: fullName,
                 email: email,
+                roleInTeam: roleInTeam,
+                isLead: isLead,
+                status: status, // Include status to show archived items
               };
             } catch (err) {
-              return { ...member, fullName: member.fullName || '—', email: member.email || '—' };
+              return { 
+                ...member, 
+                fullName: member.fullName || member.FullName || '—', 
+                email: member.email || member.Email || '—',
+                roleInTeam: member.roleInTeam || member.RoleInTeam || '—',
+                isLead: member.isLead || member.IsLead || false,
+                status: member.status || member.Status || '—',
+              };
             }
           })
         );
@@ -359,6 +381,48 @@ const ArchivedHistoryPage = () => {
       if (schedulesData.status === 'fulfilled') {
         const schedulesList = unwrap(schedulesData.value);
         setAuditSchedules(Array.isArray(schedulesList) ? schedulesList : []);
+      }
+
+      // Set audit logs - filter logs related to this audit
+      if (auditLogsData.status === 'fulfilled') {
+        const allLogs = Array.isArray(auditLogsData.value) ? auditLogsData.value : [];
+        // Filter logs where entityId matches auditId or entityType is related to audit
+        const auditRelatedLogs = allLogs.filter((log: AdminAuditLogEntry) => {
+          // Check if entityId matches auditId
+          if (log.entityId === auditId) {
+            return true;
+          }
+          // Check if entityType is audit-related
+          const auditRelatedTypes = ['Audit', 'AuditSchedule', 'AuditTeam', 'AuditScopeDepartment', 
+            'AuditCriteriaMap', 'AuditChecklistTemplateMap', 'Finding', 'Action', 'AuditResult'];
+          if (auditRelatedTypes.includes(log.entityType)) {
+            // Try to parse newValue/oldValue to check if it contains auditId
+            try {
+              if (log.newValue) {
+                const newVal = JSON.parse(log.newValue);
+                if (newVal.AuditId === auditId || newVal.auditId === auditId) {
+                  return true;
+                }
+              }
+              if (log.oldValue) {
+                const oldVal = JSON.parse(log.oldValue);
+                if (oldVal.AuditId === auditId || oldVal.auditId === auditId) {
+                  return true;
+                }
+              }
+            } catch (e) {
+              // If parsing fails, skip this check
+            }
+          }
+          return false;
+        });
+        // Sort by performedAt descending (newest first)
+        auditRelatedLogs.sort((a, b) => {
+          const dateA = new Date(a.performedAt).getTime();
+          const dateB = new Date(b.performedAt).getTime();
+          return dateB - dateA;
+        });
+        setAuditLogs(auditRelatedLogs);
       }
 
       // Load findings
@@ -458,6 +522,7 @@ const ArchivedHistoryPage = () => {
       setError(err?.message || 'Failed to load audit details');
     } finally {
       setLoadingDetail(false);
+      setLoadingAuditLogs(false);
     }
   };
 
@@ -617,6 +682,7 @@ const ArchivedHistoryPage = () => {
             setSelectedAuditId('');
             setAuditDetail(null);
             setFindings([]);
+            setAuditLogs([]);
           }} />
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slideUp">
             {/* Header */}
@@ -628,6 +694,7 @@ const ArchivedHistoryPage = () => {
                   setSelectedAuditId('');
                   setAuditDetail(null);
                   setFindings([]);
+                  setAuditLogs([]);
                 }}
                 className="text-white hover:text-gray-200 transition-colors"
               >
@@ -1119,6 +1186,92 @@ const ArchivedHistoryPage = () => {
                         })}
                       </div>
                     )}
+
+                    {/* Audit Log History Section */}
+                    <div className="bg-white rounded-lg border border-gray-200 p-5">
+                      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-200">
+                        <h3 className="text-base font-bold text-primary-700">Audit Log History</h3>
+                      </div>
+                      {loadingAuditLogs ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="text-gray-500 text-sm">Loading audit logs...</div>
+                        </div>
+                      ) : auditLogs.length > 0 ? (
+                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                          {auditLogs.map((log: AdminAuditLogEntry) => {
+                            let parsedNewValue = null;
+                            let parsedOldValue = null;
+                            try {
+                              if (log.newValue) parsedNewValue = JSON.parse(log.newValue);
+                              if (log.oldValue) parsedOldValue = JSON.parse(log.oldValue);
+                            } catch (e) {
+                              // Ignore parse errors
+                            }
+
+                            // Get user name who performed the action
+                            const performer = adminUsers.find((u: any) => {
+                              const uId = u.userId || (u as any).$id;
+                              return String(uId) === String(log.performedBy);
+                            });
+                            const performerName = performer?.fullName || performer?.email || log.performedBy || '—';
+
+                            return (
+                              <div key={log.logId} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                                        log.action === 'Create' ? 'bg-green-100 text-green-800' :
+                                        log.action === 'Update' ? 'bg-blue-100 text-blue-800' :
+                                        log.action === 'Delete' ? 'bg-red-100 text-red-800' :
+                                        'bg-gray-100 text-gray-800'
+                                      }`}>
+                                        {log.action}
+                                      </span>
+                                      <span className="text-xs font-medium text-gray-700">{log.entityType}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-600 space-y-1">
+                                      <div>
+                                        <span className="font-medium">Performed by:</span> {performerName} ({log.role})
+                                      </div>
+                                      <div>
+                                        <span className="font-medium">Date:</span> {new Date(log.performedAt).toLocaleString()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                {(parsedNewValue || parsedOldValue) && (
+                                  <div className="mt-3 pt-3 border-t border-gray-200">
+                                    <div className="text-xs text-gray-600 space-y-2">
+                                      {parsedOldValue && (
+                                        <div>
+                                          <span className="font-medium text-red-700">Old Value:</span>
+                                          <pre className="mt-1 p-2 bg-red-50 border border-red-200 rounded text-xs overflow-x-auto">
+                                            {JSON.stringify(parsedOldValue, null, 2)}
+                                          </pre>
+                                        </div>
+                                      )}
+                                      {parsedNewValue && (
+                                        <div>
+                                          <span className="font-medium text-green-700">New Value:</span>
+                                          <pre className="mt-1 p-2 bg-green-50 border border-green-200 rounded text-xs overflow-x-auto">
+                                            {JSON.stringify(parsedNewValue, null, 2)}
+                                          </pre>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-gray-500 text-sm">
+                          No audit log history available for this audit.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </>
               )}
@@ -1132,6 +1285,7 @@ const ArchivedHistoryPage = () => {
                   setSelectedAuditId('');
                   setAuditDetail(null);
                   setFindings([]);
+                  setAuditLogs([]);
                 }}
                 className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
               >

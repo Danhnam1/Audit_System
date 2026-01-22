@@ -41,7 +41,7 @@ export const getMyLeadAuditorAudits = async (): Promise<any> => {
   return apiClient.get('/AuditTeam/my-lead-auditor-audits') as any;
 }
 
-// Get auditors by audit ID
+// Get auditors by audit ID (returns all statuses)
 export const getAuditorsByAuditId = async (auditId: string): Promise<any> => {
   const res: any = await apiClient.get(`/AuditTeam/auditors/${auditId}`);
   const values = unwrap(res);

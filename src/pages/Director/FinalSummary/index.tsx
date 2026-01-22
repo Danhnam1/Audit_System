@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
@@ -22,6 +22,7 @@ import {
 } from "../../Shared/FinalReport";
 import { PlanDetailsModal } from "../../Auditor/AuditPlanning/components/PlanDetailsModal";
 import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor, getSeverityChartColor } from "../../../constants";
+import { toast } from "react-toastify";
 
 type FullDetailResponse = {
   audit?: {
@@ -51,11 +52,17 @@ export default function DirectorFinalSummaryPage() {
   const { auditId: auditIdFromUrl } = useParams<{ auditId?: string }>();
   const layoutUser = user ? { name: user.fullName, avatar: undefined } : undefined;
 
-  const [audits, setAudits] = useState<Array<{ auditId: string; title: string; type: string; startDate: string; endDate: string; scope: string }>>([]);
+  const [audits, setAudits] = useState<Array<{ auditId: string; title: string; type: string; startDate: string; endDate: string; scope: string; rawStartDate?: string; rawEndDate?: string }>>([]);
   const [selectedAuditId, setSelectedAuditId] = useState<string>(auditIdFromUrl || "");
   const [loadingAudits, setLoadingAudits] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  
+  // Filter states
+  const [dateStartFilter, setDateStartFilter] = useState<string>("");
+  const [dateEndFilter, setDateEndFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [scopeFilter, setScopeFilter] = useState<string>("");
 
   const [detail, setDetail] = useState<FullDetailResponse | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -81,12 +88,13 @@ export default function DirectorFinalSummaryPage() {
   const [auditResult, setAuditResult] = useState<any>(null);
   const [loadingEffectiveness, setLoadingEffectiveness] = useState(false);
   const [calculatingEffectiveness, setCalculatingEffectiveness] = useState(false);
-const lastCalculatedAuditRef = useRef<string>("");
   const [editResult, setEditResult] = useState<string>('');
   const [editPercentage, setEditPercentage] = useState<string>('');
   const [editComment, setEditComment] = useState<string>('');
   const [savingResult, setSavingResult] = useState(false);
   const [archivingAudit, setArchivingAudit] = useState(false);
+  // Track if director has saved the result in this session
+  const [hasSavedResult, setHasSavedResult] = useState(false);
   
   // Modal states
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -212,6 +220,8 @@ const lastCalculatedAuditRef = useRef<string>("");
               endDate: formatDate(a.endDate || a.periodTo),
               scope: formatScope(a.scope),
               status: a.status || "", // Include status for filtering
+              rawStartDate: a.startDate || a.periodFrom || "",
+              rawEndDate: a.endDate || a.periodTo || "",
             };
           })
           .filter((x: any) => {
@@ -253,6 +263,7 @@ const lastCalculatedAuditRef = useRef<string>("");
       setSummaryData(null);
       setFindingsActionsSummary(null);
       setAuditResult(null);
+      setHasSavedResult(false); // Reset saved flag when audit changes
       return;
     }
 
@@ -293,9 +304,19 @@ const lastCalculatedAuditRef = useRef<string>("");
       try {
         const result = await getAuditResultByAuditId(selectedAuditId);
         setAuditResult(result);
+        // If result has percentage, it means it was saved before (but not necessarily in this session)
+        // We still need to check if user has saved in this session
+        if (result?.percentage != null) {
+          // Check if this is from a previous save (not auto-calculated)
+          // We'll still require user to save again to enable close button
+          setHasSavedResult(false);
+        } else {
+          setHasSavedResult(false);
+        }
       } catch (error) {
         console.error('Failed to load audit result:', error);
         setAuditResult(null);
+        setHasSavedResult(false);
       } finally {
         setLoadingEffectiveness(false);
       }
@@ -612,73 +633,154 @@ const lastCalculatedAuditRef = useRef<string>("");
 
     setCalculatingEffectiveness(true);
     try {
-      const result = await calculateAuditResult(selectedAuditId);
-      setAuditResult(result);
-      // Silent calculation - no alert
+      const result: any = await calculateAuditResult(selectedAuditId);
+      console.log('[Auto-calculate] API response:', result);
+      
+      // Normalize response: handle both PascalCase and camelCase field names
+      const normalizedResult: any = result ? {
+        ...result,
+        percentage: result.percentage ?? result.Percentage ?? null,
+        result: result.result ?? result.Result ?? null,
+        comment: result.comment ?? result.Comment ?? null,
+        effectivenessScore: result.effectivenessScore ?? result.EffectivenessScore ?? null,
+        auditId: result.auditId ?? result.AuditId ?? selectedAuditId,
+      } : null;
+      
+      console.log('[Auto-calculate] Normalized result:', normalizedResult);
+      
+      // When director clicks "Auto-calculate", populate the fields with calculated values
+      // Director can then review and modify if needed before saving
+      setAuditResult(normalizedResult);
+      
+      // Auto-populate editable fields with calculated values
+      // Director can modify these values if they don't agree with auto-calculated result
+      if (normalizedResult) {
+        const percentageValue = normalizedResult.percentage ?? normalizedResult.effectivenessScore;
+        if (percentageValue != null) {
+          setEditPercentage(String(percentageValue));
+        }
+        if (normalizedResult.result) {
+          setEditResult(normalizedResult.result);
+        }
+        if (normalizedResult.comment) {
+          setEditComment(normalizedResult.comment);
+        }
+      }
+      
+      // Show success message
+      toast.success("Effectiveness score calculated successfully. Please review and save if you agree with the result.");
     } catch (error: any) {
       console.error("Failed to calculate effectiveness:", error);
-      // Silent error - no alert
+      const errorMsg = error?.response?.data?.message || error?.message || "Failed to calculate effectiveness score.";
+      toast.error(errorMsg);
     } finally {
       setCalculatingEffectiveness(false);
     }
   };
 
-// Auto-calculate effectiveness once when audit is selected
-// Only calculate if:
-// 1. Audit result doesn't exist yet, OR
-// 2. Audit result exists but has no percentage (not saved by manager yet)
-// Don't recalculate if audit is archived or already has saved percentage
-useEffect(() => {
-  if (!selectedAuditId) return;
-  if (calculatingEffectiveness || loadingEffectiveness) return;
-  if (lastCalculatedAuditRef.current === selectedAuditId) return;
-  
-  // Check if audit is archived
-  const auditStatus = detail?.audit?.status?.toLowerCase() || '';
-  if (auditStatus === 'archived') {
-    console.log('[Auto-calculate] Skipping - audit is archived');
-    return;
-  }
-  
-  // Check if audit result already exists with saved percentage
-  // If percentage exists, it means manager has already saved it, don't recalculate
-  if (auditResult?.percentage != null) {
-    console.log('[Auto-calculate] Skipping - audit result already has saved percentage:', auditResult.percentage);
-    return;
-  }
-  
-  lastCalculatedAuditRef.current = selectedAuditId;
-  handleCalculateEffectiveness();
-}, [selectedAuditId, calculatingEffectiveness, loadingEffectiveness, detail?.audit?.status, auditResult?.percentage]);
+// REMOVED: Auto-calculate effectiveness on view
+// Director must manually click "Auto-calculate for AuditResult" button to trigger calculation
+// This gives director full control over when to calculate and when to use saved values
+
+  // Helper function to get percentage from result (handles both camelCase and PascalCase)
+  const getPercentage = useCallback((result: any) => {
+    if (!result) return null;
+    return result.percentage ?? result.Percentage ?? result.effectivenessScore ?? result.EffectivenessScore ?? null;
+  }, []);
 
   // Derived values to display (API returns percentage/result)
-  const effectivenessValue = auditResult?.effectivenessScore != null
-    ? Number(auditResult.effectivenessScore)
-    : (auditResult?.percentage != null ? Number(auditResult.percentage) : null);
+  // Use percentage if saved by director, otherwise fall back to effectivenessScore (auto-calculated)
+  // This allows showing auto-calculated results immediately after calculation
+  const effectivenessValue = useMemo(() => {
+    const percentage = getPercentage(auditResult);
+    return percentage != null ? Number(percentage) : null;
+  }, [auditResult, getPercentage]);
   // const _complianceValue = auditResult?.complianceRate != null
   //   ? Number(auditResult.complianceRate)
   //   : effectivenessValue; // Unused
-  const resultLabel = auditResult?.result || auditResult?.status || '';
+  // Handle both camelCase and PascalCase for result field
+  const resultLabel = auditResult?.result ?? auditResult?.Result ?? auditResult?.status ?? auditResult?.Status ?? '';
 
   // Sync editable fields when auditResult changes
+  // IMPORTANT: Only sync percentage if it exists (saved by director)
+  // Don't use auto-calculated effectivenessScore - director must explicitly save a value
   useEffect(() => {
     setEditResult(resultLabel || '');
-    setEditPercentage(effectivenessValue != null ? String(effectivenessValue) : '');
-    setEditComment(auditResult?.comment || '');
-  }, [auditResult, resultLabel, effectivenessValue]);
+    // Handle both camelCase and PascalCase for comment
+    setEditComment(auditResult?.comment ?? auditResult?.Comment ?? '');
+    
+    // For percentage: Use getPercentage helper to handle both cases
+    const percentage = getPercentage(auditResult);
+    if (percentage != null) {
+      setEditPercentage(String(percentage));
+    } else {
+      setEditPercentage('');
+    }
+  }, [auditResult, resultLabel, getPercentage]);
+
+  // Filter audits based on filters
+  const filteredAudits = useMemo(() => {
+    let filtered = [...audits];
+
+    // Filter by date range
+    if (dateStartFilter) {
+      const filterStart = new Date(dateStartFilter);
+      filterStart.setHours(0, 0, 0, 0);
+      filtered = filtered.filter((audit) => {
+        if (!audit.rawStartDate) return false;
+        const auditStart = new Date(audit.rawStartDate);
+        auditStart.setHours(0, 0, 0, 0);
+        return auditStart >= filterStart;
+      });
+    }
+
+    if (dateEndFilter) {
+      const filterEnd = new Date(dateEndFilter);
+      filterEnd.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((audit) => {
+        if (!audit.rawEndDate) return false;
+        const auditEnd = new Date(audit.rawEndDate);
+        auditEnd.setHours(23, 59, 59, 999);
+        return auditEnd <= filterEnd;
+      });
+    }
+
+    // Filter by type
+    if (typeFilter) {
+      filtered = filtered.filter((audit) => {
+        const auditType = (audit.type || "").toLowerCase().trim();
+        return auditType === typeFilter.toLowerCase().trim();
+      });
+    }
+
+    // Filter by scope
+    if (scopeFilter) {
+      filtered = filtered.filter((audit) => {
+        const auditScope = (audit.scope || "").toLowerCase().trim();
+        if (scopeFilter === "Entire Aviation Academy") {
+          return auditScope === "entire aviation academy";
+        } else if (scopeFilter === "Department") {
+          return auditScope === "department";
+        }
+        return true;
+      });
+    }
+
+    return filtered;
+  }, [audits, dateStartFilter, dateEndFilter, typeFilter, scopeFilter]);
 
   // Pagination logic
-  const totalPages = Math.ceil(audits.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredAudits.length / itemsPerPage);
   const paginatedAudits = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
-    return audits.slice(startIndex, endIndex);
-  }, [audits, currentPage]);
+    return filteredAudits.slice(startIndex, endIndex);
+  }, [filteredAudits, currentPage]);
 
-  // Reset to page 1 when audits change
+  // Reset to page 1 when audits or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [audits.length]);
+  }, [audits.length, dateStartFilter, dateEndFilter, typeFilter, scopeFilter]);
 
   const handleSaveResult = async () => {
     if (!selectedAuditId) {
@@ -696,6 +798,8 @@ useEffect(() => {
       };
       const updated = await updateAuditResultManager(selectedAuditId, payload);
       setAuditResult(updated);
+      // Mark as saved after successful save
+      setHasSavedResult(true);
       setModalMessage("Saved effectiveness result successfully.");
       setModalType("success");
       setShowSaveModal(true);
@@ -780,8 +884,70 @@ useEffect(() => {
           {!selectedAuditId ? (
             <div className="bg-white border border-primary-200 rounded-lg shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900">Select an Audit</h3>
-                <p className="text-sm text-gray-500 mt-1">Choose an audit from the table below to review its final summary report.</p>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Select an Audit</h3>
+                    <p className="text-sm text-gray-500 mt-1">Choose an audit from the table below to review its final summary report.</p>
+                  </div>
+                </div>
+                {/* Filters */}
+                <div className="flex items-center gap-3 flex-wrap mt-4">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Date From:</label>
+                    <input
+                      type="date"
+                      value={dateStartFilter}
+                      onChange={(e) => setDateStartFilter(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Date To:</label>
+                    <input
+                      type="date"
+                      value={dateEndFilter}
+                      onChange={(e) => setDateEndFilter(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Type:</label>
+                    <select
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 min-w-[120px]"
+                    >
+                      <option value="">All Types</option>
+                      <option value="Internal">Internal</option>
+                      <option value="External">External</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Scope:</label>
+                    <select
+                      value={scopeFilter}
+                      onChange={(e) => setScopeFilter(e.target.value)}
+                      className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 min-w-[200px]"
+                    >
+                      <option value="">All Scopes</option>
+                      <option value="Entire Aviation Academy">Entire Aviation Academy</option>
+                      <option value="Department">Department</option>
+                    </select>
+                  </div>
+                  {(dateStartFilter || dateEndFilter || typeFilter || scopeFilter) && (
+                    <button
+                      onClick={() => {
+                        setDateStartFilter("");
+                        setDateEndFilter("");
+                        setTypeFilter("");
+                        setScopeFilter("");
+                      }}
+                      className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 underline whitespace-nowrap"
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
               </div>
               <DataTable
                 columns={[
@@ -800,8 +966,11 @@ useEffect(() => {
                   {
                     key: "type",
                     header: "TYPE",
-                    accessor: "type",
-                    cellClassName: "text-gray-600",
+                    render: (row) => (
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAuditTypeBadgeColor(row.type || "—")}`}>
+                        {row.type || "—"}
+                      </span>
+                    ),
                   },
                   {
                     key: "startDate",
@@ -843,7 +1012,7 @@ useEffect(() => {
                 getRowClassName={() => "border-b border-gray-100 transition-colors hover:bg-primary-50 cursor-pointer"}
                 bodyClassName=""
               />
-              {totalPages > 1 && audits.length > 0 && (
+              {totalPages > 1 && filteredAudits.length > 0 && (
                 <div className="px-6 py-4 border-t border-gray-200 flex justify-center">
                   <Pagination
                     currentPage={currentPage}
@@ -1022,23 +1191,49 @@ useEffect(() => {
                         <div className="h-4 w-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mr-2" />
                         Loading...
                       </div>
-                    ) : auditResult ? (
-                      <div className="space-y-3 text-xs text-gray-700">
-                        <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5">
-                          <div className="flex items-center justify-between">
-                            <p className="text-[11px] font-medium text-primary-700 uppercase">Effectiveness Score</p>
-                            {resultLabel && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary-100 text-primary-700 border border-primary-200">
-                                {resultLabel}
-                              </span>
-                            )}
+                    ) : (
+                      <>
+                        {/* Show button if not calculated yet, show stats card if calculated */}
+                        {(() => {
+                          const hasPercentage = getPercentage(auditResult) != null;
+                          console.log('[Render] auditResult:', auditResult, 'hasPercentage:', hasPercentage);
+                          return !auditResult || !hasPercentage;
+                        })() ? (
+                          <div className="flex items-center justify-center py-8">
+                            <button
+                              onClick={handleCalculateEffectiveness}
+                              disabled={calculatingEffectiveness || !selectedAuditId}
+                              className="px-6 py-3 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                              title="Click to auto-calculate effectiveness score based on audit data"
+                            >
+                              {calculatingEffectiveness ? (
+                                <>
+                                  <div className="inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                                  Calculating...
+                                </>
+                              ) : (
+                                "Auto-calculate for AuditResult"
+                              )}
+                            </button>
                           </div>
-                          <p className="mt-0.5 text-2xl font-bold text-primary-900">
-                            {effectivenessValue != null 
-                              ? `${effectivenessValue.toFixed(1)}%` 
-                              : "—"}
-                          </p>
-                        </div>
+                        ) : (
+                          <div className="space-y-3 text-xs text-gray-700">
+                            {/* Effectiveness Score Stats Card - only shown after calculation */}
+                            <div className="rounded-md bg-gradient-to-br from-primary-50 to-white border border-primary-200 px-3 py-2.5">
+                              <div className="flex items-center justify-between">
+                                <p className="text-[11px] font-medium text-primary-700 uppercase">Effectiveness Score</p>
+                                {resultLabel && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary-100 text-primary-700 border border-primary-200">
+                                    {resultLabel}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="mt-0.5 text-2xl font-bold text-primary-900">
+                                {effectivenessValue != null 
+                                  ? `${effectivenessValue.toFixed(1)}%` 
+                                  : "—"}
+                              </p>
+                            </div>
                        
                         
                         {/* Display saved Result and Comment */}
@@ -1058,11 +1253,9 @@ useEffect(() => {
                             )}
                           </div>
                         )}
-                      </div>
-                    ) : (
-                      <div className="text-center py-4 text-xs text-gray-500">
-                        No effectiveness data available yet.
-                      </div>
+                          </div>
+                        )}
+                      </>
                     )}
                     <div className="grid grid-cols-1 gap-3 border-t border-gray-200 pt-3">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1086,8 +1279,15 @@ useEffect(() => {
                             value={editPercentage}
                             onChange={(e) => setEditPercentage(e.target.value)}
                             className="mt-1 px-3 py-2 border border-gray-300 rounded-md text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-primary-500 focus:border-primary-500 bg-white text-gray-900"
-                            placeholder="e.g., 80"
+                            placeholder={auditResult?.effectivenessScore != null && auditResult?.percentage == null 
+                              ? `Auto: ${auditResult.effectivenessScore.toFixed(1)}%` 
+                              : "e.g., 80"}
                           />
+                          {auditResult?.effectivenessScore != null && auditResult?.percentage == null && (
+                            <p className="text-[10px] text-gray-500 mt-1">
+                              System calculated: {auditResult.effectivenessScore.toFixed(1)}% (you can override this)
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-col">
@@ -1111,8 +1311,9 @@ useEffect(() => {
                         </button>
                         <button
                           onClick={handleCloseAudit}
-                          disabled={archivingAudit || !selectedAuditId}
+                          disabled={archivingAudit || !selectedAuditId || !hasSavedResult}
                           className="w-full px-3 py-2 bg-red-600 text-white text-xs font-semibold rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                          title={!hasSavedResult ? "Please save the effectiveness result first before closing the audit" : ""}
                         >
                           {archivingAudit ? "Closing..." : "Closed Audit"}
                         </button>
