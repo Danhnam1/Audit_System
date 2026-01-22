@@ -86,6 +86,32 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   auditTeamsForPlan = [],
 }) => {
   const { user } = useAuth();
+
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showRejectionReasonModal, setShowRejectionReasonModal] = useState(false);
+  const [reviewComments, setReviewComments] = useState(''); // Review comments for actions
+  
+  // Processing states to prevent double-click
+  const [isProcessingForward, setIsProcessingForward] = useState(false);
+  const [isProcessingReject, setIsProcessingReject] = useState(false);
+  const [isProcessingApprove, setIsProcessingApprove] = useState(false);
+  const [isProcessingSubmit, setIsProcessingSubmit] = useState(false);
+  
+  // Shared standards for this audit
+  const [sharedCriteria, setSharedCriteria] = useState<any[]>([]);
+  const [loadingCriteria, setLoadingCriteria] = useState(false);
+  
+  // State for schedules, teams, and scope departments to allow refresh
+  const [refreshedSchedules, setRefreshedSchedules] = useState<any[]>([]);
+  const [refreshedTeams, setRefreshedTeams] = useState<any[]>([]);
+  const [refreshedScopeDepartments, setRefreshedScopeDepartments] = useState<any[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [hasLoadedRefreshedData, setHasLoadedRefreshedData] = useState(false);
+  
+  // Modal states (if not already declared)
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   
   // Reset processing states when modal closes
   useEffect(() => {
@@ -96,8 +122,8 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       setIsProcessingSubmit(false);
     }
   }, [showModal]);
-  
-  if (!showModal || !selectedPlanDetails) return null;
+
+  const safePlanDetails = selectedPlanDetails || {};
 
   // Check if current user is Lead Auditor of THIS specific plan
   // const isLeadAuditor = React.useMemo(() => {
@@ -183,31 +209,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     return false;
   }, [currentUserId, selectedPlanDetails, auditorOptions, ownerOptions, user?.email]);
 
-  const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [showForwardModal, setShowForwardModal] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [showRejectionReasonModal, setShowRejectionReasonModal] = useState(false);
-  const [reviewComments, setReviewComments] = useState(''); // Review comments for actions
-  
-  // Processing states to prevent double-click
-  const [isProcessingForward, setIsProcessingForward] = useState(false);
-  const [isProcessingReject, setIsProcessingReject] = useState(false);
-  const [isProcessingApprove, setIsProcessingApprove] = useState(false);
-  const [isProcessingSubmit, setIsProcessingSubmit] = useState(false);
-  
-  // Shared standards for this audit
-  const [sharedCriteria, setSharedCriteria] = useState<any[]>([]);
-  const [loadingCriteria, setLoadingCriteria] = useState(false);
-  
-  // State for schedules, teams, and scope departments to allow refresh
-  const [refreshedSchedules, setRefreshedSchedules] = useState<any[]>([]);
-  const [refreshedTeams, setRefreshedTeams] = useState<any[]>([]);
-  const [refreshedScopeDepartments, setRefreshedScopeDepartments] = useState<any[]>([]);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [hasLoadedRefreshedData, setHasLoadedRefreshedData] = useState(false);
-  
-  // Modal states (if not already declared)
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   
   // Load shared criteria when modal opens
   useEffect(() => {
@@ -487,10 +488,10 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
   const schedulesToDisplay = useMemo(() => {
     const result = hasLoadedRefreshedData
       ? refreshedSchedules 
-      : (selectedPlanDetails.schedules?.values || []);
+      : (safePlanDetails.schedules?.values || []);
 
     return result;
-  }, [hasLoadedRefreshedData, refreshedSchedules, refreshKey, selectedPlanDetails.schedules?.values]);
+  }, [hasLoadedRefreshedData, refreshedSchedules, refreshKey, safePlanDetails.schedules?.values]);
 
   // Build a list of audit team members to render. Filter out AuditeeOwner immediately.
   const auditTeamsFromDetails: any[] = useMemo(() => {
@@ -499,15 +500,15 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
           return role !== 'auditeeowner';
         })
-      : (Array.isArray(selectedPlanDetails.auditTeams?.values)
-    ? selectedPlanDetails.auditTeams.values.filter((m: any) => {
+      : (Array.isArray(safePlanDetails.auditTeams?.values)
+    ? safePlanDetails.auditTeams.values.filter((m: any) => {
         const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
         return role !== 'auditeeowner';
       })
           : []);
    
     return result;
-  }, [hasLoadedRefreshedData, refreshedTeams, refreshKey, selectedPlanDetails.auditTeams?.values]);
+  }, [hasLoadedRefreshedData, refreshedTeams, refreshKey, safePlanDetails.auditTeams?.values]);
  
 
 
@@ -593,6 +594,8 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
     const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
     return role !== 'auditeeowner';
   });
+
+  if (!showModal || !selectedPlanDetails) return null;
 
   const modalContent = (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] overflow-hidden">

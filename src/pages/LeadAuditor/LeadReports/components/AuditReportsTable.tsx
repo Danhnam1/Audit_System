@@ -18,6 +18,9 @@ interface Props {
   rows: Row[];
   statusFilter: 'all' | 'pending' | 'approved' | 'returned';
   setStatusFilter: (v: 'all' | 'pending' | 'approved' | 'returned') => void;
+  typeFilter: string;
+  setTypeFilter: (v: string) => void;
+  typeOptions: string[];
   reportSearch: string;
   setReportSearch: (v: string) => void;
   onView: (auditId: string) => void;
@@ -31,6 +34,9 @@ const AuditReportsTable: React.FC<Props> = ({
   rows,
   statusFilter,
   setStatusFilter,
+  typeFilter,
+  setTypeFilter,
+  typeOptions,
   reportSearch,
   setReportSearch,
   onView,
@@ -78,6 +84,19 @@ const AuditReportsTable: React.FC<Props> = ({
     <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
       <div className="bg-white p-4">
         <div className="px-2 py-3 flex flex-col md:flex-row md:items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-700">Type:</label>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            >
+              <option value="all">All</option>
+              {typeOptions.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-700">Status:</label>
             <select

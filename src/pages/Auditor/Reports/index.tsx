@@ -85,6 +85,10 @@ const SQAStaffReports = () => {
   const [severityDeptFilter, setSeverityDeptFilter] = useState<string>('all');
   const [deptSeverityData, setDeptSeverityData] = useState<Array<{ name: string; value: number; color: string }>>([]);
   const [loadingSeverityDept, setLoadingSeverityDept] = useState(false);
+  // In Progress table filters
+  const [inProgressTypeFilter, setInProgressTypeFilter] = useState<string>('all');
+  const [inProgressReportStatusFilter, setInProgressReportStatusFilter] = useState<'all' | 'notsubmitted' | 'pending' | 'approved' | 'returned'>('all');
+  const [inProgressSearch, setInProgressSearch] = useState<string>('');
   // Track recently updated audit statuses to prevent overwriting during reload
   const recentlyUpdatedStatusesRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
   // Attachments modal state
@@ -1368,9 +1372,77 @@ const SQAStaffReports = () => {
     });
   }, [audits]);
 
+  const inProgressTypes = useMemo(() => {
+    const typeSet = new Set<string>();
+    inProgressAudits.forEach((a: any) => {
+      const t = a.type || a.auditType || a.category;
+      if (t) typeSet.add(String(t).trim());
+    });
+    return Array.from(typeSet.values()).sort();
+  }, [inProgressAudits]);
+
+  const filteredInProgressAudits = useMemo(() => {
+    let list = [...inProgressAudits];
+
+    if (inProgressTypeFilter !== 'all') {
+      list = list.filter((a: any) => {
+        const t = String(a.type || a.auditType || a.category || '').trim();
+        return t === inProgressTypeFilter;
+      });
+    }
+
+    if (inProgressReportStatusFilter !== 'all') {
+      list = list.filter((a: any) => {
+        const auditId = String(a.auditId || a.id || a.$id || '').trim();
+        const reportRequest = reportRequests[auditId];
+        const reportStatusRaw = String(reportRequest?.status || '').toLowerCase().replace(/\s+/g, '');
+
+        if (inProgressReportStatusFilter === 'notsubmitted') {
+          return !reportStatusRaw;
+        }
+
+        if (!reportStatusRaw) {
+          return false;
+        }
+
+        if (inProgressReportStatusFilter === 'pending') {
+          return reportStatusRaw.includes('pending');
+        }
+
+        if (inProgressReportStatusFilter === 'approved') {
+          return reportStatusRaw.includes('approved') || reportStatusRaw.includes('approve');
+        }
+
+        if (inProgressReportStatusFilter === 'returned') {
+          return reportStatusRaw.includes('returned') || reportStatusRaw.includes('return') || reportStatusRaw.includes('rejected') || reportStatusRaw.includes('reject');
+        }
+
+        return true;
+      });
+    }
+
+    const q = inProgressSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter((a: any) => {
+        const title = a.title || a.name || '';
+        const type = a.type || a.auditType || a.category || '';
+        const createdRaw = a.createdAt || a.startDate || a.createdDate || a.start || '';
+        const createdDate = createdRaw ? new Date(createdRaw).toISOString().slice(0, 10) : '';
+        const createdBy = a?.createdByUser?.fullName || a?.createdByUser?.email || a?.createdBy || '';
+        const auditId = String(a.auditId || a.id || a.$id || '');
+        const reportStatus = String(reportRequests[auditId]?.status || 'Not Submitted');
+
+        const hay = [title, type, createdBy, createdDate, auditId, reportStatus].join(' ').toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    return list;
+  }, [inProgressAudits, inProgressTypeFilter, inProgressReportStatusFilter, inProgressSearch, reportRequests]);
+
   // Build InProgress audit rows
   const inProgressRows = useMemo(() => {
-    return inProgressAudits.map((a: any, idx: number) => {
+    return filteredInProgressAudits.map((a: any, idx: number) => {
       const id = String(a.auditId || a.id || a.$id || `audit_${idx}`);
       const title = a.title || a.name || `Audit ${idx + 1}`;
       const type = a.type || a.auditType || a.category || '—';
@@ -1410,7 +1482,7 @@ const SQAStaffReports = () => {
         createdBy,
       };
     });
-  }, [inProgressAudits, findingsMap, adminUsers]);
+  }, [filteredInProgressAudits, findingsMap, adminUsers]);
 
   // Filter report requests by selected InProgress audit
   const filteredReportRequests = useMemo(() => {
@@ -1590,6 +1662,45 @@ const SQAStaffReports = () => {
           <div className="bg-white p-4 border-b border-gray-100">
             <h2 className="text-lg font-semibold text-gray-900">In Progress Audits</h2>
             <p className="text-sm text-gray-500 mt-1">Audits currently in progress</p>
+            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600">Type:</label>
+                  <select
+                    value={inProgressTypeFilter}
+                    onChange={(e) => setInProgressTypeFilter(e.target.value)}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="all">All</option>
+                    {inProgressTypes.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600">Report Status:</label>
+                  <select
+                    value={inProgressReportStatusFilter}
+                    onChange={(e) => setInProgressReportStatusFilter(e.target.value as 'all' | 'notsubmitted' | 'pending' | 'approved' | 'returned')}
+                    className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="all">All</option>
+                    <option value="notsubmitted">Not Submitted</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approve</option>
+                    <option value="returned">Returned</option>
+                  </select>
+                </div>
+              </div>
+              <div className="w-full md:w-72">
+                <input
+                  value={inProgressSearch}
+                  onChange={(e) => setInProgressSearch(e.target.value)}
+                  placeholder="Search..."
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
           </div>
           <div className="overflow-x-auto font-noto">
             <table className="w-full">

@@ -61,6 +61,7 @@ const AuditorLeadReports = () => {
   const [actionLoading, setActionLoading] = useState<string>(''); // Format: "auditId:approve" or "auditId:reject"
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'returned'>('all');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [reportSearch, setReportSearch] = useState<string>('');
   const [findingsSearch, setFindingsSearch] = useState<string>('');
   const [findingsSeverity, setFindingsSeverity] = useState<string>('all');
@@ -575,8 +576,9 @@ const AuditorLeadReports = () => {
       const createdBy = getCreatedByLabel(a);
       // Get type from audit object or auditPlan, with fallback
       const rawType = a.type || a.auditType || a.category || a.auditPlan?.type || a.auditPlan?.auditType || a.auditPlan?.category;
-      // Format type: capitalize first letter
-      const type = rawType ? String(rawType).charAt(0).toUpperCase() + String(rawType).slice(1).toLowerCase() : '—';
+      // Normalize type to Internal/External only
+      const typeNorm = rawType ? String(rawType).toLowerCase().trim() : '';
+      const type = typeNorm.includes('external') ? 'External' : typeNorm.includes('internal') ? 'Internal' : '—';
       
       // Check if there's an approved extension request (revision request)
       // Backend returns revision status as "Approved" (with capital A)
@@ -604,6 +606,8 @@ const AuditorLeadReports = () => {
       };
     });
   }, [audits, adminUsers, revisionRequestsMap]);
+
+  const reportTypeOptions = useMemo(() => ['Internal', 'External'], []);
 
   // Map of auditId -> hasReturnedFinding (check if any finding has "return" status)
   // This is populated when summary is loaded for an audit (when View is clicked)
@@ -652,6 +656,9 @@ const AuditorLeadReports = () => {
 
   const filteredRows = useMemo(() => {
     let list = rows;
+    if (typeFilter !== 'all') {
+      list = list.filter(r => String(r.type || '').trim() === typeFilter);
+    }
     if (statusFilter !== 'all') {
       list = list.filter(r => {
         const s = String(r.status || '').toLowerCase().replace(/\s+/g, '');
@@ -676,7 +683,7 @@ const AuditorLeadReports = () => {
       list = list.filter(r => r.title.toLowerCase().includes(q));
     }
     return list;
-  }, [rows, statusFilter, reportSearch]);
+  }, [rows, typeFilter, statusFilter, reportSearch]);
 
   const openApproveModal = (auditId: string) => {
     setApproveAuditId(auditId);
@@ -2565,6 +2572,9 @@ const AuditorLeadReports = () => {
           rows={filteredRows}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
+          typeFilter={typeFilter}
+          setTypeFilter={setTypeFilter}
+          typeOptions={reportTypeOptions}
           onView={(id: string) => {
             // Mở modal khi bấm View
             setSelectedAuditId(id);

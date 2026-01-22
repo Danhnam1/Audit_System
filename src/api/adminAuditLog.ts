@@ -13,8 +13,20 @@ export interface AdminAuditLogEntry {
   performedAt: string;
 }
 
-export const getAdminAuditLog = async (): Promise<AdminAuditLogEntry[]> => {
-  const res: any = await apiClient.get('/admin/AdminAuditLog');
+export interface AdminAuditLogQuery {
+  entityType?: string;
+  entityId?: string;
+  auditId?: string;
+}
+
+export const getAdminAuditLog = async (query?: AdminAuditLogQuery): Promise<AdminAuditLogEntry[]> => {
+  const res: any = await apiClient.get('/admin/AdminAuditLog', {
+    params: {
+      entityType: query?.entityType,
+      entityId: query?.entityId,
+      auditId: query?.auditId,
+    },
+  });
   const data = res?.data ?? res;
   // Handle different response formats
   if (Array.isArray(data)) {
