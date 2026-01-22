@@ -29,3 +29,16 @@ export const getAdminAuditLog = async (): Promise<AdminAuditLogEntry[]> => {
   
   return [];
 };
+
+// GET /api/admin/AdminAuditLog/{logId}
+export const getAdminAuditLogById = async (logId: string): Promise<AdminAuditLogEntry | null> => {
+  if (!logId) return null;
+  try {
+    const res: any = await apiClient.get(`/admin/AdminAuditLog/${encodeURIComponent(logId)}`);
+    const data = res?.data ?? res;
+    return data ?? null;
+  } catch (error) {
+    console.error('Failed to get audit log detail:', error);
+    return null;
+  }
+};

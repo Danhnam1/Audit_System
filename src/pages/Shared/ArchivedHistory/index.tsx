@@ -7,7 +7,7 @@ import { getFindingsByAudit } from '../../../api/findings';
 import { getActionsByFinding } from '../../../api/actions';
 import { getAttachments } from '../../../api/attachments';
 import { getAdminUsers, getUserById, type AdminUserDto } from '../../../api/adminUsers';
-import { getDepartments } from '../../../api/departments';
+import { getDepartments, getDepartmentById } from '../../../api/departments';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
 import { getCriteriaForAudit } from '../../../api/auditCriteriaMap';
 import { getAuditCriterionById } from '../../../api/auditCriteria';
@@ -19,7 +19,9 @@ import { getDepartmentName as resolveDeptName } from '../../../helpers/auditPlan
 import { getCriterionName } from '../../../helpers/auditPlanHelpers';
 import { unwrap } from '../../../utils/normalize';
 import { getStatusColor } from '../../../constants';
-import { getAdminAuditLog, type AdminAuditLogEntry } from '../../../api/adminAuditLog';
+import { getAdminAuditLog, getAdminAuditLogById, type AdminAuditLogEntry } from '../../../api/adminAuditLog';
+import { getFindingById } from '../../../api/findings';
+import { getActionById } from '../../../api/actions';
 
 interface AuditRow {
   auditId: string;
@@ -60,6 +62,14 @@ const ArchivedHistoryPage = () => {
   // Audit log state
   const [auditLogs, setAuditLogs] = useState<AdminAuditLogEntry[]>([]);
   const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
+  
+  // Log detail modal state
+  const [showLogDetailModal, setShowLogDetailModal] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<AdminAuditLogEntry | null>(null);
+  const [logDetail, setLogDetail] = useState<AdminAuditLogEntry | null>(null);
+  const [loadingLogDetail, setLoadingLogDetail] = useState(false);
+  const [entityName, setEntityName] = useState<string>('');
+  const [resolvedValues, setResolvedValues] = useState<{ oldValue?: any; newValue?: any }>({});
 
   // Load admin users, departments, and criteria for name resolution
   useEffect(() => {
@@ -536,6 +546,121 @@ const ArchivedHistoryPage = () => {
       }
       return next;
     });
+  };
+
+  // Helper function to resolve entity name from entityType and entityId
+  const resolveEntityName = async (entityType: string, entityId: string): Promise<string> => {
+    try {
+      switch (entityType) {
+        case 'Audit':
+        case 'AuditPlan':
+          const audit = await getAuditPlanById(entityId);
+          return audit?.title || audit?.auditTitle || entityId;
+        case 'Finding':
+          const finding = await getFindingById(entityId);
+          return finding?.title || entityId;
+        case 'Action':
+          const action = await getActionById(entityId);
+          return action?.title || entityId;
+        case 'AuditChecklistItem':
+        case 'AuditChecklistTemplate':
+          const template = await getChecklistTemplateById(entityId);
+          return template?.name || entityId;
+        default:
+          return entityId;
+      }
+    } catch (error) {
+      console.error(`Error resolving ${entityType} name:`, error);
+      return entityId;
+    }
+  };
+
+  // Helper function to resolve IDs in oldValue and newValue
+  const resolveValueIds = async (oldValue: any, newValue: any): Promise<{ oldValue?: any; newValue?: any }> => {
+    const resolveObject = async (obj: any): Promise<any> => {
+      if (!obj || typeof obj !== 'object') return obj;
+      
+      const resolved = { ...obj };
+      
+      // Resolve AuditId
+      if (resolved.AuditId || resolved.auditId) {
+        const auditId = resolved.AuditId || resolved.auditId;
+        try {
+          const audit = await getAuditPlanById(auditId);
+          resolved._resolvedAuditId = audit?.title || audit?.auditTitle || auditId;
+        } catch (e) {
+          resolved._resolvedAuditId = auditId;
+        }
+      }
+      
+      // Resolve FindingId
+      if (resolved.FindingId || resolved.findingId) {
+        const findingId = resolved.FindingId || resolved.findingId;
+        try {
+          const finding = await getFindingById(findingId);
+          resolved._resolvedFindingId = finding?.title || findingId;
+        } catch (e) {
+          resolved._resolvedFindingId = findingId;
+        }
+      }
+      
+      // Resolve ActionId
+      if (resolved.ActionId || resolved.actionId) {
+        const actionId = resolved.ActionId || resolved.actionId;
+        try {
+          const action = await getActionById(actionId);
+          resolved._resolvedActionId = action?.title || actionId;
+        } catch (e) {
+          resolved._resolvedActionId = actionId;
+        }
+      }
+      
+      // Resolve DeptId
+      if (resolved.DeptId || resolved.deptId) {
+        const deptId = resolved.DeptId || resolved.deptId;
+        try {
+          const dept = await getDepartmentById(Number(deptId));
+          resolved._resolvedDeptId = dept?.name || deptId;
+        } catch (e) {
+          resolved._resolvedDeptId = deptId;
+        }
+      }
+      
+      // Resolve UserId fields (createdBy, assignedTo, performedBy, etc.)
+      const userIdFields = ['CreatedBy', 'createdBy', 'AssignedTo', 'assignedTo', 'PerformedBy', 'performedBy', 'UserId', 'userId', 'WitnessId', 'witnessId'];
+      for (const field of userIdFields) {
+        if (resolved[field]) {
+          const userId = resolved[field];
+          try {
+            const user = await getUserById(userId);
+            resolved[`_resolved${field}`] = user?.fullName || user?.email || userId;
+          } catch (e) {
+            resolved[`_resolved${field}`] = userId;
+          }
+        }
+      }
+      
+      // Resolve TemplateId
+      if (resolved.TemplateId || resolved.templateId) {
+        const templateId = resolved.TemplateId || resolved.templateId;
+        try {
+          const template = await getChecklistTemplateById(templateId);
+          resolved._resolvedTemplateId = template?.name || templateId;
+        } catch (e) {
+          resolved._resolvedTemplateId = templateId;
+        }
+      }
+      
+      return resolved;
+    };
+    
+    const resolvedOld = oldValue ? await resolveObject(oldValue) : null;
+    const resolvedNew = newValue ? await resolveObject(newValue) : null;
+    
+    return {
+      oldValue: resolvedOld,
+      newValue: resolvedNew,
+    };
   };
 
   const severityColor = (sev: string) => {
@@ -1191,6 +1316,9 @@ const ArchivedHistoryPage = () => {
                     <div className="bg-white rounded-lg border border-gray-200 p-5">
                       <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-200">
                         <h3 className="text-base font-bold text-primary-700">Audit Log History</h3>
+                        <span className="px-2 py-1 bg-primary-100 text-primary-700 rounded-full text-xs font-medium">
+                          {auditLogs.length} entries
+                        </span>
                       </div>
                       {loadingAuditLogs ? (
                         <div className="flex items-center justify-center py-8">
@@ -1214,54 +1342,103 @@ const ArchivedHistoryPage = () => {
                               return String(uId) === String(log.performedBy);
                             });
                             const performerName = performer?.fullName || performer?.email || log.performedBy || '—';
+                            
+                            // Check if there are changes to show
+                            const hasChanges = parsedNewValue || parsedOldValue;
 
                             return (
-                              <div key={log.logId} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                                <div className="flex items-start justify-between mb-2">
+                              <div 
+                                key={log.logId} 
+                                className="border border-gray-200 rounded-lg p-4 bg-white hover:border-primary-300 hover:shadow-md transition-all cursor-pointer"
+                                onClick={async () => {
+                                  setSelectedLog(log);
+                                  setShowLogDetailModal(true);
+                                  setLoadingLogDetail(true);
+                                  setEntityName('');
+                                  setResolvedValues({});
+                                  
+                                  try {
+                                    // Load detailed log if needed
+                                    const detail = await getAdminAuditLogById(log.logId);
+                                    const logToUse = detail || log;
+                                    setLogDetail(logToUse);
+                                    
+                                    // Resolve entity name
+                                    try {
+                                      const name = await resolveEntityName(logToUse.entityType, logToUse.entityId);
+                                      setEntityName(name);
+                                    } catch (e) {
+                                      setEntityName(logToUse.entityId);
+                                    }
+                                    
+                                    // Resolve IDs in oldValue and newValue
+                                    let parsedOldValue: any = null;
+                                    let parsedNewValue: any = null;
+                                    try {
+                                      if (logToUse.oldValue) parsedOldValue = JSON.parse(logToUse.oldValue);
+                                      if (logToUse.newValue) parsedNewValue = JSON.parse(logToUse.newValue);
+                                    } catch (e) {
+                                      // Ignore parse errors
+                                    }
+                                    
+                                    if (parsedOldValue || parsedNewValue) {
+                                      const resolved = await resolveValueIds(parsedOldValue, parsedNewValue);
+                                      setResolvedValues(resolved);
+                                    }
+                                  } catch (e) {
+                                    console.error('Error loading log detail:', e);
+                                    setLogDetail(log);
+                                    setEntityName(log.entityId);
+                                  } finally {
+                                    setLoadingLogDetail(false);
+                                  }
+                                }}
+                              >
+                                <div className="flex items-start justify-between">
                                   <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-                                        log.action === 'Create' ? 'bg-green-100 text-green-800' :
-                                        log.action === 'Update' ? 'bg-blue-100 text-blue-800' :
-                                        log.action === 'Delete' ? 'bg-red-100 text-red-800' :
-                                        'bg-gray-100 text-gray-800'
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                                        log.action === 'Create' ? 'bg-green-100 text-green-800 border border-green-300' :
+                                        log.action === 'Update' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                                        log.action === 'Delete' ? 'bg-red-100 text-red-800 border border-red-300' :
+                                        'bg-gray-100 text-gray-800 border border-gray-300'
                                       }`}>
                                         {log.action}
                                       </span>
-                                      <span className="text-xs font-medium text-gray-700">{log.entityType}</span>
+                                      <span className="text-sm font-semibold text-gray-900">{log.entityType}</span>
                                     </div>
-                                    <div className="text-xs text-gray-600 space-y-1">
-                                      <div>
-                                        <span className="font-medium">Performed by:</span> {performerName} ({log.role})
+                                    <div className="text-xs text-gray-600 space-y-1 mb-2">
+                                      <div className="flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                        </svg>
+                                        <span><span className="font-medium">By:</span> {performerName} <span className="text-gray-400">({log.role})</span></span>
                                       </div>
-                                      <div>
-                                        <span className="font-medium">Date:</span> {new Date(log.performedAt).toLocaleString()}
+                                      <div className="flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <span><span className="font-medium">Date:</span> {new Date(log.performedAt).toLocaleString()}</span>
                                       </div>
                                     </div>
+                                    {hasChanges && (
+                                      <div className="mt-2 pt-2 border-t border-gray-200">
+                                        <div className="flex items-center gap-2 text-xs text-primary-600 font-medium">
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                          </svg>
+                                          Click to view detailed changes
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex-shrink-0 ml-4">
+                                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
                                   </div>
                                 </div>
-                                {(parsedNewValue || parsedOldValue) && (
-                                  <div className="mt-3 pt-3 border-t border-gray-200">
-                                    <div className="text-xs text-gray-600 space-y-2">
-                                      {parsedOldValue && (
-                                        <div>
-                                          <span className="font-medium text-red-700">Old Value:</span>
-                                          <pre className="mt-1 p-2 bg-red-50 border border-red-200 rounded text-xs overflow-x-auto">
-                                            {JSON.stringify(parsedOldValue, null, 2)}
-                                          </pre>
-                                        </div>
-                                      )}
-                                      {parsedNewValue && (
-                                        <div>
-                                          <span className="font-medium text-green-700">New Value:</span>
-                                          <pre className="mt-1 p-2 bg-green-50 border border-green-200 rounded text-xs overflow-x-auto">
-                                            {JSON.stringify(parsedNewValue, null, 2)}
-                                          </pre>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
@@ -1286,6 +1463,356 @@ const ArchivedHistoryPage = () => {
                   setAuditDetail(null);
                   setFindings([]);
                   setAuditLogs([]);
+                }}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Log Detail Modal */}
+      {showLogDetailModal && selectedLog && createPortal(
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 animate-fadeIn">
+          <div className="fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300" onClick={() => {
+            setShowLogDetailModal(false);
+            setSelectedLog(null);
+            setLogDetail(null);
+          }} />
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col animate-slideUp">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-primary-600 to-primary-700 rounded-t-xl flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Audit Log Detail</h2>
+                <p className="text-xs text-primary-100 mt-1">{selectedLog.entityType} - {selectedLog.action}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowLogDetailModal(false);
+                  setSelectedLog(null);
+                  setLogDetail(null);
+                }}
+                className="text-white hover:text-gray-200 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {loadingLogDetail ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-gray-500">Loading log details...</div>
+                </div>
+              ) : (
+                <>
+                  {/* Log Information */}
+                  <div className="bg-white rounded-lg border border-gray-200 p-5">
+                    <h3 className="text-base font-bold text-primary-700 mb-4 pb-2 border-b border-gray-200">Log Information</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-xs font-semibold text-gray-600">Action:</span>
+                        <div className="mt-1">
+                          <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                            selectedLog.action === 'Create' ? 'bg-green-100 text-green-800 border border-green-300' :
+                            selectedLog.action === 'Update' ? 'bg-blue-100 text-blue-800 border border-blue-300' :
+                            selectedLog.action === 'Delete' ? 'bg-red-100 text-red-800 border border-red-300' :
+                            'bg-gray-100 text-gray-800 border border-gray-300'
+                          }`}>
+                            {selectedLog.action}
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-xs font-semibold text-gray-600">Entity Type:</span>
+                        <p className="text-sm text-gray-900 mt-1 font-medium">{selectedLog.entityType}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-semibold text-gray-600">Entity:</span>
+                        <p className="text-sm text-gray-900 mt-1 font-medium">
+                          {entityName || selectedLog.entityId}
+                        </p>
+                        {entityName && entityName !== selectedLog.entityId && (
+                          <p className="text-xs text-gray-500 mt-1 font-mono">ID: {selectedLog.entityId}</p>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-xs font-semibold text-gray-600">Performed By:</span>
+                        <p className="text-sm text-gray-900 mt-1">
+                          {(() => {
+                            const performer = adminUsers.find((u: any) => {
+                              const uId = u.userId || (u as any).$id;
+                              return String(uId) === String(selectedLog.performedBy);
+                            });
+                            return performer?.fullName || performer?.email || selectedLog.performedBy || '—';
+                          })()}
+                          <span className="text-gray-500 ml-2">({selectedLog.role})</span>
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-semibold text-gray-600">Performed At:</span>
+                        <p className="text-sm text-gray-900 mt-1">{new Date(selectedLog.performedAt).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-semibold text-gray-600">Log ID:</span>
+                        <p className="text-sm text-gray-900 mt-1 font-mono text-xs break-all">{selectedLog.logId}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Comparison View */}
+                  {(logDetail || selectedLog) && (() => {
+                    const log = logDetail || selectedLog;
+                    // Use resolved values if available, otherwise parse
+                    let parsedNewValue: any = resolvedValues.newValue;
+                    let parsedOldValue: any = resolvedValues.oldValue;
+                    
+                    if (!parsedNewValue && !parsedOldValue) {
+                      try {
+                        if (log.newValue) parsedNewValue = JSON.parse(log.newValue);
+                        if (log.oldValue) parsedOldValue = JSON.parse(log.oldValue);
+                      } catch (e) {
+                        // Ignore parse errors
+                      }
+                    }
+
+                    if (!parsedNewValue && !parsedOldValue) {
+                      return (
+                        <div className="bg-white rounded-lg border border-gray-200 p-5">
+                          <p className="text-sm text-gray-500 text-center py-8">No value changes to display.</p>
+                        </div>
+                      );
+                    }
+
+                    // Get all keys from both objects
+                    const allKeys = new Set<string>();
+                    if (parsedOldValue) Object.keys(parsedOldValue).forEach(k => allKeys.add(k));
+                    if (parsedNewValue) Object.keys(parsedNewValue).forEach(k => allKeys.add(k));
+
+                    const formatValue = (value: any, key: string): string => {
+                      if (value === null || value === undefined) return '—';
+                      if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+                      
+                      // Check if there's a resolved name for this field
+                      const resolvedKey = `_resolved${key.charAt(0).toUpperCase() + key.slice(1)}`;
+                      if (value[resolvedKey]) {
+                        return `${value[resolvedKey]} (ID: ${value[key] || value[key.charAt(0).toUpperCase() + key.slice(1)] || '—'})`;
+                      }
+                      
+                      // Check common ID fields and show resolved names
+                      const idFields: { [key: string]: string } = {
+                        'AuditId': '_resolvedAuditId',
+                        'auditId': '_resolvedAuditId',
+                        'FindingId': '_resolvedFindingId',
+                        'findingId': '_resolvedFindingId',
+                        'ActionId': '_resolvedActionId',
+                        'actionId': '_resolvedActionId',
+                        'DeptId': '_resolvedDeptId',
+                        'deptId': '_resolvedDeptId',
+                        'TemplateId': '_resolvedTemplateId',
+                        'templateId': '_resolvedTemplateId',
+                        'CreatedBy': '_resolvedCreatedBy',
+                        'createdBy': '_resolvedCreatedBy',
+                        'AssignedTo': '_resolvedAssignedTo',
+                        'assignedTo': '_resolvedAssignedTo',
+                      };
+                      
+                      if (typeof value === 'object' && !Array.isArray(value)) {
+                        const formatted: any = {};
+                        Object.keys(value).forEach(k => {
+                          if (k.startsWith('_resolved')) {
+                            // Skip resolved fields in main display
+                            return;
+                          }
+                          const resolvedField = idFields[k];
+                          if (resolvedField && value[resolvedField]) {
+                            formatted[k] = `${value[resolvedField]} (ID: ${value[k]})`;
+                          } else {
+                            formatted[k] = value[k];
+                          }
+                        });
+                        return JSON.stringify(formatted, null, 2);
+                      }
+                      
+                      return String(value);
+                    };
+
+                    const isChanged = (key: string): boolean => {
+                      const oldVal = parsedOldValue?.[key];
+                      const newVal = parsedNewValue?.[key];
+                      return JSON.stringify(oldVal) !== JSON.stringify(newVal);
+                    };
+
+                    return (
+                      <div className="bg-white rounded-lg border border-gray-200 p-5">
+                        <h3 className="text-base font-bold text-primary-700 mb-4 pb-2 border-b border-gray-200">Value Changes</h3>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          {/* Old Value Column */}
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                              <h4 className="text-sm font-semibold text-red-700">Before (Old Value)</h4>
+                            </div>
+                            {parsedOldValue ? (
+                              <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                                {Array.from(allKeys).map((key) => {
+                                  const value = parsedOldValue[key];
+                                  const changed = isChanged(key);
+                                  return (
+                                    <div 
+                                      key={key} 
+                                      className={`p-3 rounded-lg border-2 ${
+                                        changed 
+                                          ? 'bg-red-50 border-red-200' 
+                                          : 'bg-gray-50 border-gray-200'
+                                      }`}
+                                    >
+                                      <div className="text-xs font-semibold text-gray-700 mb-1">{key}:</div>
+                                      <div className={`text-sm ${
+                                        changed ? 'text-red-900 font-medium' : 'text-gray-700'
+                                      }`}>
+                                        {(() => {
+                                          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                                            return (
+                                              <div className="space-y-1.5">
+                                                {Object.keys(value).filter(k => !k.startsWith('_resolved')).map(k => {
+                                                  const resolvedKey = `_resolved${k.charAt(0).toUpperCase() + k.slice(1)}`;
+                                                  const hasResolved = value[resolvedKey];
+                                                  const fieldValue = value[k];
+                                                  
+                                                  return (
+                                                    <div key={k} className="text-xs border-l-2 border-gray-300 pl-2">
+                                                      <span className="font-semibold text-gray-700">{k}:</span>{' '}
+                                                      {hasResolved ? (
+                                                        <span>
+                                                          <span className="text-primary-700 font-medium">{value[resolvedKey]}</span>
+                                                          <span className="text-gray-400 ml-1 text-[10px]">(ID: {String(fieldValue || '—')})</span>
+                                                        </span>
+                                                      ) : (
+                                                        <span>{String(fieldValue !== null && fieldValue !== undefined ? fieldValue : '—')}</span>
+                                                      )}
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            );
+                                          }
+                                          return <span>{formatValue(value, key)}</span>;
+                                        })()}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="p-8 text-center text-sm text-gray-400 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                No old value
+                              </div>
+                            )}
+                          </div>
+
+                          {/* New Value Column */}
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                              <h4 className="text-sm font-semibold text-green-700">After (New Value)</h4>
+                            </div>
+                            {parsedNewValue ? (
+                              <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                                {Array.from(allKeys).map((key) => {
+                                  const value = parsedNewValue[key];
+                                  const changed = isChanged(key);
+                                  return (
+                                    <div 
+                                      key={key} 
+                                      className={`p-3 rounded-lg border-2 ${
+                                        changed 
+                                          ? 'bg-green-50 border-green-200' 
+                                          : 'bg-gray-50 border-gray-200'
+                                      }`}
+                                    >
+                                      <div className="text-xs font-semibold text-gray-700 mb-1">{key}:</div>
+                                      <div className={`text-sm ${
+                                        changed ? 'text-green-900 font-medium' : 'text-gray-700'
+                                      }`}>
+                                        {(() => {
+                                          if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                                            return (
+                                              <div className="space-y-1.5">
+                                                {Object.keys(value).filter(k => !k.startsWith('_resolved')).map(k => {
+                                                  const resolvedKey = `_resolved${k.charAt(0).toUpperCase() + k.slice(1)}`;
+                                                  const hasResolved = value[resolvedKey];
+                                                  const fieldValue = value[k];
+                                                  
+                                                  return (
+                                                    <div key={k} className="text-xs border-l-2 border-gray-300 pl-2">
+                                                      <span className="font-semibold text-gray-700">{k}:</span>{' '}
+                                                      {hasResolved ? (
+                                                        <span>
+                                                          <span className="text-primary-700 font-medium">{value[resolvedKey]}</span>
+                                                          <span className="text-gray-400 ml-1 text-[10px]">(ID: {String(fieldValue || '—')})</span>
+                                                        </span>
+                                                      ) : (
+                                                        <span>{String(fieldValue !== null && fieldValue !== undefined ? fieldValue : '—')}</span>
+                                                      )}
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            );
+                                          }
+                                          return <span>{formatValue(value, key)}</span>;
+                                        })()}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="p-8 text-center text-sm text-gray-400 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
+                                No new value
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Summary of Changes */}
+                        {Array.from(allKeys).some(k => isChanged(k)) && (
+                          <div className="mt-4 pt-4 border-t border-gray-200">
+                            <h4 className="text-sm font-semibold text-gray-700 mb-2">Changed Fields:</h4>
+                            <div className="flex flex-wrap gap-2">
+                              {Array.from(allKeys)
+                                .filter(k => isChanged(k))
+                                .map((key) => (
+                                  <span 
+                                    key={key}
+                                    className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-medium border border-yellow-300"
+                                  >
+                                    {key}
+                                  </span>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-end">
+              <button
+                onClick={() => {
+                  setShowLogDetailModal(false);
+                  setSelectedLog(null);
+                  setLogDetail(null);
                 }}
                 className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
               >

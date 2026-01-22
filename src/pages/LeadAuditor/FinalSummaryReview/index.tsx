@@ -426,22 +426,25 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     }
   };
 
-  // Check if report has been submitted (check pending statuses - button will be disabled and show "Submitted")
+  // Disable "Submit to Director" when status is "submitted" (sau khi submit xong)
   // Check case-insensitive to handle different status formats
   const reportStatus = reportRequest?.status ? String(reportRequest.status).trim() : '';
   const statusLower = reportStatus.toLowerCase();
-  
-  // Consider as submitted if:
-  // 1. Status is pending (waiting for approval)
-  // 2. Status is submitted
-  // 3. OR if we just submitted (submitting flag will handle this temporarily)
-  const alreadySubmitted = Boolean(
-    reportStatus && 
-    (statusLower === 'pendingfirstapproval' || 
-     statusLower === 'pendingsecondapproval' ||
-     statusLower === 'submitted' ||
-     (statusLower.includes('pending') && statusLower.includes('approval')))
-  ) || submitting; // Also disable while submitting to prevent double submission
+  const isSubmittedStatus = statusLower === 'submitted';
+
+  // Disable button when:
+  // 1. Status is "submitted" (primary check - đã submit xong)
+  // 2. Status is pending (waiting for approval)
+  // 3. OR currently submitting (prevent double submit)
+  const alreadySubmitted =
+    isSubmittedStatus ||
+    Boolean(
+      reportStatus &&
+        (statusLower === 'pendingfirstapproval' ||
+          statusLower === 'pendingsecondapproval' ||
+          (statusLower.includes('pending') && statusLower.includes('approval')))
+    ) ||
+    submitting;
   
   // Debug log
   if (selectedAuditId && reportRequest) {

@@ -2230,6 +2230,30 @@ const AuditorLeadReports = () => {
         const key = makeDeptKey(name, name);
         list.push({ key, name: String(name), count, deptId });
       });
+      
+      // Add department entry for WitnessConfirmReturned findings that don't have a department
+      const witnessConfirmReturnedWithoutDept = allFindings.filter((f: any) => {
+        const isWitnessConfirmReturned = String(f?.status || '').toLowerCase() === 'witnessconfirmreturned';
+        if (!isWitnessConfirmReturned) return false;
+        // Check if this finding already belongs to a department in the list
+        const variants = makeDeptKeyVariants(
+          f?.deptId,
+          f?.auditItem?.section,
+          f?.deptName || f?.departmentName || f?.department?.name
+        );
+        return !variants.some(v => list.some(d => d.key === v)) && 
+               !(f?.deptId != null && list.some(d => d.deptId === f.deptId));
+      });
+      
+      if (witnessConfirmReturnedWithoutDept.length > 0) {
+        const witnessKey = 'witnessconfirmreturned';
+        list.push({ 
+          key: witnessKey, 
+          name: 'Witness Confirm Returned', 
+          count: witnessConfirmReturnedWithoutDept.length 
+        });
+      }
+      
       return list;
     }
     const map = new Map<string, { name: string; count: number; deptId?: any }>();
@@ -2241,6 +2265,21 @@ const AuditorLeadReports = () => {
       cur.count += 1;
       map.set(key, cur);
     });
+    
+    // Add department entry for WitnessConfirmReturned findings that don't have a department
+    const witnessConfirmReturnedWithoutDept = allFindings.filter((f: any) => {
+      const isWitnessConfirmReturned = String(f?.status || '').toLowerCase() === 'witnessconfirmreturned';
+      if (!isWitnessConfirmReturned) return false;
+      const sectionName = f?.auditItem?.section;
+      const hasDeptInfo = f?.deptId != null || sectionName || f?.deptName || f?.departmentName || f?.department?.name;
+      return !hasDeptInfo;
+    });
+    
+    if (witnessConfirmReturnedWithoutDept.length > 0) {
+      const witnessKey = 'witnessconfirmreturned';
+      map.set(witnessKey, { name: 'Witness Confirm Returned', count: witnessConfirmReturnedWithoutDept.length });
+    }
+    
     map.forEach((v, k) => list.push({ key: k, name: v.name, count: v.count, deptId: v.deptId }));
     return list;
   }, [summary, allFindings]);
@@ -2248,13 +2287,49 @@ const AuditorLeadReports = () => {
   const findingsForSelectedDept = useMemo(() => {
     if (!selectedDeptKey) return [] as any[];
     const deptEntry = departmentEntries.find(d => d.key === selectedDeptKey);
+    
+    // Special handling for "Witness Confirm Returned" department
+    if (selectedDeptKey === 'witnessconfirmreturned') {
+      return allFindings.filter((f: any) => {
+        const isWitnessConfirmReturned = String(f?.status || '').toLowerCase() === 'witnessconfirmreturned';
+        if (!isWitnessConfirmReturned) return false;
+        // Only include findings that don't belong to any other department
+        const variants = makeDeptKeyVariants(
+          f?.deptId,
+          f?.auditItem?.section,
+          f?.deptName || f?.departmentName || f?.department?.name
+        );
+        const belongsToOtherDept = variants.some(v => {
+          const otherDept = departmentEntries.find(d => d.key === v && d.key !== 'witnessconfirmreturned');
+          return otherDept != null;
+        }) || (f?.deptId != null && departmentEntries.some(d => d.deptId === f.deptId && d.key !== 'witnessconfirmreturned'));
+        return !belongsToOtherDept;
+      });
+    }
+    
     const matched = allFindings.filter((f: any) => {
+      const isWitnessConfirmReturned = String(f?.status || '').toLowerCase() === 'witnessconfirmreturned';
       const variants = makeDeptKeyVariants(
         f?.deptId,
         f?.auditItem?.section,
         f?.deptName || f?.departmentName || f?.department?.name
       );
-      return variants.includes(selectedDeptKey) || (deptEntry?.deptId != null && f?.deptId === deptEntry.deptId);
+      const matchesDept = variants.includes(selectedDeptKey) || (deptEntry?.deptId != null && f?.deptId === deptEntry.deptId);
+      
+      // For WitnessConfirmReturned findings: include if they match the department
+      // OR if they don't belong to any department (will be shown in "Witness Confirm Returned" department)
+      if (isWitnessConfirmReturned) {
+        if (matchesDept) return true;
+        // Check if this finding doesn't belong to any department
+        const belongsToAnyDept = variants.some(v => {
+          const otherDept = departmentEntries.find(d => d.key === v && d.key !== 'witnessconfirmreturned');
+          return otherDept != null;
+        }) || (f?.deptId != null && departmentEntries.some(d => d.deptId === f.deptId && d.key !== 'witnessconfirmreturned'));
+        // If it doesn't belong to any department, it should be in "Witness Confirm Returned" department, not here
+        return false;
+      }
+      
+      return matchesDept;
     });
     return matched;
   }, [allFindings, selectedDeptKey, departmentEntries]);
