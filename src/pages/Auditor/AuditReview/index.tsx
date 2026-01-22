@@ -204,7 +204,6 @@ const AuditorAuditReview = () => {
       setCriteriaList(Array.isArray(critRes) ? critRes : []);
       setChecklistTemplates(Array.isArray(templatesRes) ? templatesRes : []);
     } catch (err) {
-      console.error('Failed to load audit plans for review', err);
       setPendingPlans([]);
       setApprovedPlans([]);
       setRejectedPlans([]);
@@ -365,7 +364,6 @@ const AuditorAuditReview = () => {
       setForwardPlanId(null);
       setSelectedPlanFull(null);
     } catch (err: any) {
-      console.error('Failed to forward to director', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Failed to forward to Director: ' + errorMessage);
     }
@@ -382,7 +380,6 @@ const AuditorAuditReview = () => {
       setRejectComment('');
       setSelectedPlanFull(null);
     } catch (err: any) {
-      console.error('Failed to reject plan', err);
       const errorMessage = err?.response?.data?.message || err?.message || String(err);
       toast.error('Reject failed: ' + errorMessage);
     }
@@ -425,7 +422,6 @@ const AuditorAuditReview = () => {
       setApprovedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
       setRejectedPlans((prev: any[]) => prev.map((p: any) => (String(p.auditId || p.id) === String(auditId) ? { ...p, department: deptNames.length ? deptNames.join(', ') : p.department } : p)));
     } catch (err) {
-      console.error('Failed to load plan details', err);
       alert('Unable to load plan details. Please try again.');
     } finally {
       setLoading(false);

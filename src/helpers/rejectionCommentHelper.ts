@@ -105,33 +105,13 @@ export const loadRejectionComment = async (
               (detailsWithSchedules as any).rejectedBy = rejectedBy;
             }
             
-            // Debug logging
-            if (!latestRejectionComment) {
-              console.warn(
-                "⚠️ Rejection comment not found for audit:",
-                currentAuditId,
-                {
-                  rejectedItem: rejected[0],
-                  allFields: Object.keys(rejected[0]),
-                }
-              );
-            }
+           
           }
         } else {
-          console.warn(
-            "⚠️ No related approvals found for audit:",
-            currentAuditId,
-            {
-              totalApprovals: approvals.length,
-              sampleApproval: approvals[0],
-            }
-          );
+        
         }
       } catch (approvalErr) {
-        console.error(
-          "Failed to load audit approvals for plan",
-          approvalErr
-        );
+        // Ignore errors here, will return null comment
       }
     }
   }

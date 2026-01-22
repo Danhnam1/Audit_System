@@ -62,13 +62,11 @@ const EvidenceDetail = () => {
                 const user = await getUserById(action.assignedTo);
                 assignedUserName = user.fullName || user.email || action.assignedTo;
               } catch (err) {
-                console.warn(`Failed to fetch user info for ${action.assignedTo}`, err);
               }
             }
 
             return { ...action, attachments, assignedUserName };
           } catch (err) {
-            console.warn(`Failed to fetch attachments for action ${action.actionId}`, err);
             return { ...action, attachments: [], assignedUserName: action.assignedTo };
           }
         })
@@ -76,7 +74,6 @@ const EvidenceDetail = () => {
 
       setActions(actionsWithAttachments);
     } catch (err: any) {
-      console.error('Failed to fetch data', err);
       toast.error('Unable to load data');
     } finally {
       setLoading(false);
@@ -104,7 +101,6 @@ const EvidenceDetail = () => {
       setFeedbackValue('');
       await fetchData();
     } catch (err: any) {
-      console.error('Failed to approve action', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Unable to approve action. Please try again.'));
     } finally {
       setProcessingActionId(null);
@@ -128,7 +124,6 @@ const EvidenceDetail = () => {
       setFeedbackValue('');
       await fetchData();
     } catch (err: any) {
-      console.error('Failed to reject action', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Unable to reject action. Please try again.'));
     } finally {
       setProcessingActionId(null);

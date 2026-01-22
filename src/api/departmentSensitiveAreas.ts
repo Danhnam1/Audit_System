@@ -91,7 +91,6 @@ export const getDepartmentSensitiveAreas = async (): Promise<DepartmentSensitive
       return normalized;
     });
   } catch (error: any) {
-    console.error('[getDepartmentSensitiveAreas] API Error:', error);
     throw error; // Re-throw to be handled by caller
   }
 };

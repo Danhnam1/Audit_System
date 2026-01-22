@@ -6,7 +6,6 @@ import { markChecklistItemNonCompliant } from '../../../api/checklists';
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { createRootCause } from '../../../api/rootCauses';
-import { createAction } from '../../../api/actions';
 import { type SuggestedRootCause } from '../../../api/chatbot';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
@@ -161,7 +160,6 @@ const [findingTime, setFindingTime] = useState(() => {
       const { getAuditPlanById } = await import('../../../api/audits');
       const auditResponse = await getAuditPlanById(checklistItem.auditId);
       
-      console.log('[CREATE FINDING] 🔍 Full audit object:', auditResponse);
       
       // Check audit type - could be at different levels in the response
       // API returns nested structure: { audit: { type: "External" } }
@@ -170,10 +168,7 @@ const [findingTime, setFindingTime] = useState(() => {
       
       setAuditType(type);
       
-      console.log('[CREATE FINDING] ✅ Audit Type set to:', type);
-      console.log('[CREATE FINDING] 🎯 Will show External Auditor field:', type.toLowerCase() === 'external');
     } catch (err) {
-      console.error('[CREATE FINDING] ❌ Error loading audit info:', err);
       // Default to Internal if error
       setAuditType('Internal');
     }
@@ -201,7 +196,6 @@ const [findingTime, setFindingTime] = useState(() => {
         setWitnesses(potentialWitnesses[0].userId || '');
       }
     } catch (err: any) {
-      console.error('Error loading department users:', err);
     } finally {
       setLoadingUsers(false);
     }
@@ -231,7 +225,6 @@ const [findingTime, setFindingTime] = useState(() => {
         setEvidenceDueDate(new Date(evidenceDue.dueDate));
       }
     } catch (err) {
-      console.error('Error loading schedule:', err);
     } finally {
       setLoadingSchedule(false);
     }
@@ -296,7 +289,6 @@ const [findingTime, setFindingTime] = useState(() => {
       const data = await getFindingSeverities();
       setSeverities(data.map(item => ({ severity: item.severity || item.name || '' })));
     } catch (err) {
-      console.error('Error loading severities:', err);
     } finally {
       setLoadingSeverities(false);
     }
@@ -517,19 +509,10 @@ const [findingTime, setFindingTime] = useState(() => {
         throw new Error('Finding ID not found in response');
       }
 
-      // Create multiple root causes with actions
-      console.log('[CREATE FINDING] 🏗️ Starting to create root causes and actions:', {
-        findingId,
-        totalRootCauses: rootCauses.length,
-        rootCausesData: rootCauses
-      });
+    
       
       for (const rc of rootCauses) {
-        console.log('[CREATE FINDING] 📝 Creating root cause:', {
-          rootCauseName: rc.rootCauseName,
-          rootCauseDescription: rc.rootCauseDescription,
-          proposedAction: rc.proposedAction
-        });
+       
         
         // Create root cause with status 'Pending' (waiting for department head to assign CAPA owner)
         const rootCausePayload = {
@@ -541,9 +524,7 @@ const [findingTime, setFindingTime] = useState(() => {
           category: '', // Empty category as requested
         };
 
-        console.log('[CREATE FINDING] 🚀 Calling createRootCause API with payload:', rootCausePayload);
         const rootCause = await createRootCause(rootCausePayload);
-        console.log('[CREATE FINDING] ✅ Root cause created, response:', rootCause);
         
         const rootCauseId = rootCause.rootCauseId || (rootCause as any).$id || (rootCause as any).id;
 
@@ -551,29 +532,11 @@ const [findingTime, setFindingTime] = useState(() => {
           throw new Error('Root Cause ID not found in response');
         }
 
-        console.log('[CREATE FINDING] 🎯 Root Cause ID extracted:', rootCauseId);
 
-        // Create action with proposed action as description (department head will assign CAPA owner later)
-        const actionPayload = {
-          findingId: findingId,
-          title: rc.rootCauseName.trim(), // Use root cause name as title (for backend validation)
-          description: rc.proposedAction.trim(), // Proposed action as description
-          assignedBy: null, // Will be set when department head assigns the action
-          assignedTo: null, // To be assigned by department head
-          assignedDeptId: deptId,
-          rootCauseId: rootCauseId,
-          progressPercent: 0,
-          dueDate: new Date().toISOString(), // Temporary date, will be updated when assigned
-          reviewFeedback: '',
-        };
 
-        console.log('[CREATE FINDING] 🚀 Calling createAction API with payload:', actionPayload);
-        const actionResult = await createAction(actionPayload);
-        console.log('[CREATE FINDING] ✅ Action created, response:', actionResult);
-        console.log('[CREATE FINDING] ➡️ Moving to next root cause (if any)...');
+       
       }
       
-      console.log('[CREATE FINDING] 🎉 All root causes and actions created successfully');
 
       // Don't mark as 'Received' - let it stay as 'Open' until department head assigns actions
 
@@ -635,13 +598,7 @@ const [findingTime, setFindingTime] = useState(() => {
       onSuccess?.();
       onClose();
     } catch (err: any) {
-      console.error('Error creating finding:', err);
-      console.error('Error details:', {
-        message: err?.message,
-        response: err?.response,
-        data: err?.response?.data,
-        status: err?.response?.status,
-      });
+  
       
       // Show more detailed error message
       const errorMessage = err?.message || 'Failed to create finding. Please check console for details.';

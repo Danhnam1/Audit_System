@@ -50,7 +50,6 @@ export default function AuditorTeamPage() {
         setUsers(Array.isArray(uRes) ? uRes : [])
         setDepartments(Array.isArray(dRes) ? dRes : [])
       } catch (e: any) {
-        console.error('[AuditorTeam] Load failed', e)
         setError(e?.message || 'Failed to load team information')
       } finally {
         setLoading(false)

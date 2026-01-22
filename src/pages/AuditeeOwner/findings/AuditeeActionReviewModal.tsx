@@ -46,7 +46,6 @@ export default function AuditeeActionReviewModal({
       
       onClose();
     } catch (err: any) {
-      console.error(' [AuditeeOwner] Verify error:', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to verify action. Please try again.'));
     } finally {
       setProcessing(false);
@@ -74,7 +73,6 @@ export default function AuditeeActionReviewModal({
       
       onClose();
     } catch (err: any) {
-      console.error(' [AuditeeOwner] Decline error:', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to decline action. Please try again.'));
     } finally {
       setProcessing(false);

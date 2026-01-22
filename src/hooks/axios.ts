@@ -97,15 +97,7 @@ function setupInterceptors(apiClient: AxiosInstance) {
           request.url = request.url.replace(':80', '');
         }
       }
-      
-      // Log final URL for debugging
-      if (request.baseURL && request.url) {
-        const fullUrl = request.url.startsWith('http') ? request.url : request.baseURL + request.url;
-       
-        if (fullUrl.includes(':80')) {
-          console.warn('[axios] WARNING: Full URL still contains :80:', fullUrl);
-        }
-      }
+ 
 
       return request
     },

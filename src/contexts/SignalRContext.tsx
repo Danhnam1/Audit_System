@@ -55,7 +55,6 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
         try {
           callback(data);
         } catch (error) {
-          console.error('[SignalRContext] Error in notification callback:', error);
         }
       });
     };
@@ -66,7 +65,6 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
     
     // Only log if callbacks count changed to reduce console noise
     if (notificationCallbacksRef.current.size > 0) {
-      console.log('[SignalRContext] ✅ Handler registered with', notificationCallbacksRef.current.size, 'callback(s)');
     }
   }, []);
 
@@ -125,7 +123,6 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
           registerHandler();
         }
       } catch (error) {
-        console.error('[SignalRContext] Failed to connect:', error);
         setIsConnected(false);
         setConnectionState(null);
         // Don't reset connectionAttemptedRef - let SignalR's automatic reconnect handle retries
@@ -166,7 +163,6 @@ export function SignalRProvider({ children }: SignalRProviderProps) {
       
       // If connection just became connected (reconnected), re-register handler
       if (connected && !wasConnected) {
-        console.log('[SignalRContext] Connection established/reconnected, re-registering handler');
         handlerRegisteredRef.current = false; // Reset flag to allow re-registration
         registerHandler();
       }

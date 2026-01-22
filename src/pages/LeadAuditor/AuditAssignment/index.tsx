@@ -574,12 +574,7 @@ export default function AuditAssignment() {
           });
           
           if (itemsForThisAudit.length > 0) {
-            console.log('ℹ️ [AuditAssignment] Checklist items already exist for this audit and department, skipping creation:', {
-              auditId: auditIdToUse,
-              deptId: deptIdToUse,
-              existingItemsCount: itemsForThisAudit.length,
-              note: 'Items were likely created during audit plan submission. Skipping to avoid duplicates.'
-            });
+          
             shouldCreate = false; // skip creation but continue flow
           }
         } catch (checkErr: any) {
@@ -589,25 +584,14 @@ export default function AuditAssignment() {
         
         if (shouldCreate) {
           // Log detailed information for debugging
-          console.log('🔍 [AuditAssignment] Creating checklist items from template:', {
-            auditId: auditIdToUse,
-            auditIdType: typeof auditIdToUse,
-            auditIdLength: auditIdToUse.length,
-            auditIdIsValidUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(auditIdToUse),
-            deptId: deptIdToUse,
-            deptIdType: typeof deptIdToUse,
-            selectedDepartment: {
-              deptId: selectedDepartment.deptId,
-              name: selectedDepartment.name
-            }
-          });
+          console.log('[AuditAssignment] Creating checklist items from template for auditId:', auditIdToUse, 'deptId:', deptIdToUse);
           
           const result = await createAuditChecklistItemsFromTemplate(
             auditIdToUse,
             deptIdToUse
           );
+          console.log('[AuditAssignment] Checklist items created from template:', result);
           
-          console.log('✅ [AuditAssignment] Checklist items created successfully:', result);
         }
       } catch (checklistError: any) {
         // Check if error is due to duplicate (items already exist)
@@ -617,7 +601,6 @@ export default function AuditAssignment() {
                                  errorMessage.toLowerCase().includes('trùng');
         
         if (isDuplicateError) {
-          console.log('ℹ️ [AuditAssignment] Checklist items already exist (duplicate detected), skipping:', errorMessage);
           // Don't show warning for duplicate - it's expected if items were created earlier
         } else {
           // Do not block assignment if checklist creation fails, but log the error

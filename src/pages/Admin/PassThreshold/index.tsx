@@ -51,7 +51,6 @@ const AdminPassThresholdPage = () => {
     } catch (err: any) {
       toast.error('Failed to load pass threshold');
       // eslint-disable-next-line no-console
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -83,7 +82,6 @@ const AdminPassThresholdPage = () => {
     } catch (err: any) {
       toast.error('Failed to update pass threshold');
       // eslint-disable-next-line no-console
-      console.error(err);
     } finally {
       setSaving(false);
     }

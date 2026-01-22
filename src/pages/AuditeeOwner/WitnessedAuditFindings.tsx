@@ -45,7 +45,6 @@ const WitnessedAuditFindings = () => {
         setFindings(filteredFindings);
         setError(null);
       } catch (err: any) {
-        console.error('Error fetching witnessed findings:', err);
         setError(err?.message || 'Failed to load findings');
       } finally {
         setLoading(false);

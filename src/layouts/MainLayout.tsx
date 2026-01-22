@@ -88,7 +88,6 @@ export const MainLayout = ({
           const hasPermission = await hasAuditPlanCreationPermission(userId);
           setHasPlanPermission(hasPermission);
         } catch (error) {
-          console.error('[MainLayout] Failed to check plan creation permission', error);
           setHasPlanPermission(false);
         }
       } else {

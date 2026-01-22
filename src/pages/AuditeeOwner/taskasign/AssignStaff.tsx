@@ -47,14 +47,12 @@ const AssignStaff = () => {
             const staff = await getDepartmentUsers(findingData.deptId);
             setStaffMembers(staff);
           } catch (staffErr) {
-            console.warn('Could not load staff members:', staffErr);
             // Continue even if staff loading fails
           }
         }
 
         setError(null);
       } catch (err: any) {
-        console.error('Error loading data:', err);
         setError(err?.message || 'Failed to load finding');
       } finally {
         setLoading(false);
@@ -90,7 +88,6 @@ const AssignStaff = () => {
       alert('✅ Assignment created successfully!');
       navigate('/auditee-owner/findings');
     } catch (err: any) {
-      console.error('Error creating assignment:', err);
       alert(`❌ Error: ${err?.message || 'Failed to assign'}`);
     } finally {
       setSubmitting(false);

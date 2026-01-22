@@ -130,7 +130,6 @@ export const Step1BasicInfo: React.FC<Step1BasicInfoProps> = ({
           setConflictingAuditsCount(0);
         }
       } catch (error) {
-        console.error('[Step1BasicInfo] Error checking time conflict:', error);
         setHasTimeConflict(false);
         setConflictingAuditsCount(0);
       }

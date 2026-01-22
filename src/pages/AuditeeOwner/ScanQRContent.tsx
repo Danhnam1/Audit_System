@@ -51,7 +51,6 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
           setScannerUserId(userId);
         }
       } catch (error) {
-        console.error('Failed to load scanner user ID:', error);
       }
     };
 
@@ -94,7 +93,6 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
 
       setScanning(true);
     } catch (err: any) {
-      console.error('Failed to start QR scanner:', err);
       setScanningError('Failed to start camera. Please check permissions.');
       toast.error('Failed to start camera. Please allow camera access.');
     }
@@ -106,7 +104,6 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
         await html5QrCodeRef.current.stop();
         await html5QrCodeRef.current.clear();
       } catch (err) {
-        console.error('Error stopping scanner:', err);
       }
       html5QrCodeRef.current = null;
     }
@@ -153,7 +150,6 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
       const decodedText = await fileScanHtml5QrCode.scanFile(file, true);
       await handleQrScanned(decodedText);
     } catch (err: any) {
-      console.error('Failed to scan QR from file:', err);
       setScanning(false);
       
       // Check if it's a "No QR code found" error
@@ -165,7 +161,6 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
       } else if (err?.message?.includes('not found') || err?.message?.includes('Element with id')) {
         setScanningError('Scanning service error. Please refresh the page and try again.');
         toast.error('Scanning service error. Please refresh the page and try again.');
-        console.error('Element error details:', err);
       } else {
         setScanningError('Failed to scan QR code from image. Please try another image.');
         toast.error('Failed to scan QR code from image. Please try another image.');
@@ -225,8 +220,7 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
                              'N/A';
                 setAuditTitle(title);
               })
-              .catch((e) => {
-                console.warn('Failed to load audit info', e);
+              .catch(() => {
                 setAuditTitle('N/A');
               })
           );
@@ -243,8 +237,7 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
                   );
                 }
               })
-              .catch((e) => {
-                console.warn('Failed to load auditor info', e);
+              .catch(() => {
                 setAuditorName('N/A');
               })
           );
@@ -263,8 +256,7 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
                   isSensitive,
                 });
               })
-              .catch((e) => {
-                console.warn('Failed to load department info for sensitivity check', e);
+              .catch(() => {
                 setScannedDept({
                   deptId: Number(result.deptId),
                   name: 'Department',
@@ -290,7 +282,6 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
         setScanResult(result);
       }
     } catch (error: any) {
-      console.error('Failed to scan QR code:', error);
       
       const errorData = error?.response?.data;
       let reason = 'Scan failed';
@@ -391,7 +382,6 @@ export default function ScanQRContent({ onClose }: ScanQRContentProps) {
         toast.error(result.reason || 'Verify code is incorrect');
       }
     } catch (error: any) {
-      console.error('Failed to verify code:', error);
       toast.error(getUserFriendlyErrorMessage(error, 'Failed to verify code. Please check the code and try again.'));
     } finally {
       setVerifying(false);

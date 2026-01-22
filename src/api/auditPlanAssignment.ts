@@ -135,7 +135,6 @@ export const createAuditPlanAssignment = async (
       });
       return res?.data || res;
     } catch (error: any) {
-      console.error('[createAuditPlanAssignment] Error response:', error?.response?.data);
       throw error;
     }
   } else {
@@ -167,7 +166,6 @@ export const createAuditPlanAssignment = async (
       const res: any = await apiClient.post('/AuditPlanAssignment', payload);
       return res?.data || res;
     } catch (error: any) {
-      console.error('[createAuditPlanAssignment] Payload that was sent:', JSON.stringify(payload, null, 2));
       throw error;
     }
   }
@@ -252,7 +250,6 @@ export const hasAuditPlanCreationPermission = async (auditorId: number | string)
     // Convert to string for comparison
     const auditorIdStr = String(auditorId || '').trim();
     if (!auditorIdStr) {
-      console.warn('[hasAuditPlanCreationPermission] Empty auditorId');
       return false;
     }
     
@@ -278,7 +275,6 @@ export const hasAuditPlanCreationPermission = async (auditorId: number | string)
     
     return approvedAssignments.length > 0;
   } catch (error) {
-    console.error('[hasAuditPlanCreationPermission] Error checking permission:', error);
     return false;
   }
 };

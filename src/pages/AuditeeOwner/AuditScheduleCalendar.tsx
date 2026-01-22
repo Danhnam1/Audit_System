@@ -74,7 +74,6 @@ const AuditScheduleCalendar = () => {
         // If no deptId found
         toast.warning('Department information not found. Please contact administrator.');
       } catch (error) {
-        console.error('Failed to load department:', error);
         toast.error('Failed to load department information');
       }
     };
@@ -121,7 +120,6 @@ const AuditScheduleCalendar = () => {
         
         setAssignments(assignedOnly);
       } catch (error) {
-        console.error('Failed to load audit data:', error);
         toast.error('Failed to load audit schedule');
       } finally {
         setLoading(false);

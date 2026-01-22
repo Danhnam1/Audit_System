@@ -38,7 +38,6 @@ const FindingsList = () => {
         return deptId ? parseInt(deptId) : null;
       }
     } catch (err) {
-      console.error('Error parsing token:', err);
     }
     return null;
   };
@@ -59,7 +58,6 @@ const FindingsList = () => {
         setFindings(deptFindings);
         setError(null);
       } catch (err: any) {
-        console.error('Error fetching findings:', err);
         setError(err?.message || 'Failed to load findings');
       } finally {
         setLoading(false);

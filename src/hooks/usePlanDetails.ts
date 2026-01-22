@@ -35,7 +35,6 @@ export const usePlanDetails = ({
           }));
           setDepartments(deptList);
         } catch (err) {
-          console.error("Failed to load departments", err);
         }
       }
 
@@ -87,7 +86,6 @@ export const usePlanDetails = ({
             criteriaList = [];
           }
         } catch (err) {
-          console.error("Failed to load criteria", err);
         }
 
         const normalizedDetails = normalizePlanDetails(detailsWithSchedules, {
@@ -125,7 +123,6 @@ export const usePlanDetails = ({
             .filter((x: any) => x.templateId != null);
           setTemplatesForSelectedPlan(normalizedRecords);
         } catch (err) {
-          console.error("Failed to load templates for plan", err);
           setTemplatesForSelectedPlan([]);
         }
         
@@ -213,7 +210,6 @@ export const usePlanDetails = ({
             .filter((x: any) => x.templateId != null);
           setTemplatesForSelectedPlan(normalizedRecords);
         } catch (err) {
-          console.error("Failed to load templates for plan", err);
           setTemplatesForSelectedPlan([]);
         }
         
@@ -221,7 +217,6 @@ export const usePlanDetails = ({
         return;
       }
     } catch (error) {
-      console.error("Failed to fetch plan details", error);
       alert(
         "⚠️ Cannot load full plan details\n\n" +
           "The backend API endpoint GET /api/AuditPlan/{id} is returning 500 Internal Server Error.\n\n" +

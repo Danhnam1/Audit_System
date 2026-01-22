@@ -45,7 +45,6 @@ const AuditDepartments = () => {
         const auditTitle = auditData.title || auditData.name || 'Department Audit' ;
         setAuditInfo({ title: auditTitle, type: auditType });
       } catch (err) {
-        console.warn('Failed to load audit info:', err);
         // Set fallback info
         setAuditInfo({ title: 'Department Audit', type: '' });
       }
@@ -146,10 +145,7 @@ const AuditDepartments = () => {
             }
           });
         } catch (sensErr) {
-          console.warn(
-            '[AuditDepartments] Failed to load sensitive departments for highlighting:',
-            sensErr
-          );
+       
         }
 
         // Load department info for each unique deptId

@@ -261,7 +261,6 @@ export const createAuditChecklistItemsFromTemplate = async (auditId: string, dep
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const trimmedAuditId = auditId.trim();
   if (!uuidRegex.test(trimmedAuditId)) {
-    console.warn('[createAuditChecklistItemsFromTemplate] auditId may not be a valid UUID:', trimmedAuditId);
   }
   
   // Build URL with query parameters (as per API documentation)
@@ -273,12 +272,7 @@ export const createAuditChecklistItemsFromTemplate = async (auditId: string, dep
   
   const url = `${baseUrl}?${params.toString()}`;
   
-  console.log('[createAuditChecklistItemsFromTemplate] Calling API with query parameters:', { 
-    url, 
-    auditId: trimmedAuditId, 
-    deptId,
-    fullUrl: url
-  });
+  
   
   // POST with empty body (null = empty body like curl -d '')
   // Parameters in query string, add accept header as per API docs
@@ -288,7 +282,6 @@ export const createAuditChecklistItemsFromTemplate = async (auditId: string, dep
     },
   });
   
-  console.log('[createAuditChecklistItemsFromTemplate] API response:', res);
   
   return res.data || res;
 };
@@ -361,11 +354,8 @@ export const markChecklistItemUnmarked = async (auditItemId: string): Promise<{ 
 // Returns items with MarkStatus = "Pending" || "Marked" || "Approved"
 export const getMarkedChecklistItems = async (auditId: string): Promise<any[]> => {
   const res: any = await apiClient.get(`/AuditChecklistItems/marked?auditId=${auditId}`);
-  console.log(`[getMarkedChecklistItems] Raw API response for auditId ${auditId}:`, res);
   const data = res?.data ?? res;
-  console.log(`[getMarkedChecklistItems] Data after extraction:`, data);
   const result = unwrapArray(data);
-  console.log(`[getMarkedChecklistItems] Unwrapped array result (length: ${result.length}):`, result);
   return result;
 };
 
@@ -444,7 +434,6 @@ export const getCompliantIdByAuditItemId = async (auditItemId: string): Promise<
     
     return compliantId;
   } catch (err: any) {
-    console.error(' [API] ERROR in getCompliantIdByAuditItemId:', err?.message);
 
     return null;
   }

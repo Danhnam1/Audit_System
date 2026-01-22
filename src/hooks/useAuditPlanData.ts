@@ -38,7 +38,6 @@ export const useAuditPlanData = (_props: UseAuditPlanDataProps) => {
         : [];
       setAuditTeams(filteredTeams);
     } catch (err) {
-      console.error("Failed to load audit teams", err);
     }
   };
 
@@ -98,7 +97,6 @@ export const useAuditPlanData = (_props: UseAuditPlanDataProps) => {
         setAuditorOptions(auditors);
         setOwnerOptions(owners);
       } catch (err) {
-        console.error("Failed to load users", err);
       }
     };
     fetchUsers();
@@ -122,10 +120,8 @@ export const useAuditPlanData = (_props: UseAuditPlanDataProps) => {
             : [];
           setCriteria(activeCriteria);
         } catch (e) {
-          console.error("Failed to load audit criteria", e);
         }
       } catch (err) {
-        console.error("Failed to load checklist templates", err);
       }
     };
     load();
@@ -143,7 +139,6 @@ export const useAuditPlanData = (_props: UseAuditPlanDataProps) => {
         }));
         setDepartments(list);
       } catch (err) {
-        console.error("Failed to load departments", err);
       }
     };
     loadDepts();

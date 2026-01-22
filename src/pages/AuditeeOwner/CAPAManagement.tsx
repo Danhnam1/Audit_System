@@ -32,7 +32,6 @@ const CAPAManagement = () => {
         return deptId ? parseInt(deptId) : null;
       }
     } catch (err) {
-      console.error('Error parsing token:', err);
     }
     return null;
   };
@@ -52,7 +51,6 @@ const CAPAManagement = () => {
         const data = await getAdminUsersByDepartment(deptId);
         setUsers(data || []);
       } catch (err: any) {
-        console.error('Error fetching users:', err);
         setError(err?.message || 'Failed to load users');
       } finally {
         setLoading(false);

@@ -249,7 +249,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 status: item.status || detail.status || 'Active',
               };
             } catch (err) {
-              console.error('Failed to load criterion detail:', err);
               return {
                 criteriaId: item.criteriaId || item.id || item,
                 name: item.name || 'N/A',
@@ -267,7 +266,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
 
         setSharedCriteria(validCriteria);
       } catch (error) {
-        console.error('Failed to load shared criteria:', error);
         setSharedCriteria([]);
       } finally {
         setLoadingCriteria(false);
@@ -298,21 +296,18 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       }
 
       try {
-        console.log(`[PlanDetailsModal] Reloading data for auditId: ${auditId}, refreshKey: ${refreshKey}`);
         
         // Backend may block schedules for archived audits, so handle gracefully
         // Note: getAuditScopeDepartmentsByAuditId returns ViewDepartment[] (missing auditId, status)
         // So we use getAuditScopeDepartments() (get all) and filter by auditId in frontend
         const [schedulesRes, teamsRes, scopeDeptsRes] = await Promise.allSettled([
-          getAuditSchedules(String(auditId)).catch((err) => {
+          getAuditSchedules(String(auditId)).catch(() => {
             // If schedule API fails (e.g., blocked for archived), fallback to original data
-            console.warn(`[PlanDetailsModal] Failed to load schedules for audit ${auditId}, will use original data:`, err);
             return null; // Return null to indicate failure
           }),
           getAuditorsByAuditId(String(auditId)),
-          getAuditScopeDepartments().catch((err) => {
+          getAuditScopeDepartments().catch(() => {
             // If get all fails, return empty array instead of throwing
-            console.warn(`[PlanDetailsModal] Failed to load all scope departments, will use empty array:`, err);
             return [];
           }),
         ]);
@@ -326,7 +321,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           // Fallback to original schedules from selectedPlanDetails
           const originalSchedules = selectedPlanDetails.schedules?.values || selectedPlanDetails.schedules || [];
           schedulesArray = Array.isArray(originalSchedules) ? originalSchedules : [];
-          console.log(`[PlanDetailsModal] Using original schedules from selectedPlanDetails: ${schedulesArray.length} items`);
         }
 
         const teams = teamsRes.status === 'fulfilled' ? (unwrap(teamsRes.value) || []) : [];
@@ -336,7 +330,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
           const unwrapped = unwrap(scopeDeptsRes.value);
           allScopeDepts = Array.isArray(unwrapped) ? unwrapped : [];
         } else {
-          console.warn(`[PlanDetailsModal] Failed to load scope departments for audit ${auditId}, will use original data or empty array`);
           allScopeDepts = [];
         }
 
@@ -358,11 +351,9 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
               const status = (sd.status || sd.Status || '').toLowerCase();
               return status === 'active' || status === 'archived';
             });
-            console.log(`[PlanDetailsModal] Using original scope departments from selectedPlanDetails: ${scopeDeptsArray.length} items`);
           }
         }
         
-        console.log(`[PlanDetailsModal] Loaded ${schedulesArray.length} schedules, ${teamsArray.length} teams, ${scopeDeptsArray.length} scope departments`);
 
         // Force state update to trigger re-render by creating new array references
         setRefreshedSchedules([...schedulesArray]); // Create new array reference
@@ -370,9 +361,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
         setRefreshedScopeDepartments([...scopeDeptsArray]); // Create new array reference
         setHasLoadedRefreshedData(true); // Mark that we've loaded refreshed data
         
-        console.log(`[PlanDetailsModal] State updated with refreshed data`);
       } catch (error) {
-        console.error('PlanDetailsModal: Failed to reload schedules, teams, and departments:', error);
         // Fallback to original data from selectedPlanDetails
         const originalSchedules = selectedPlanDetails?.schedules?.values || selectedPlanDetails?.schedules || [];
         const originalScopeDepts = selectedPlanDetails?.scopeDepartments?.values || selectedPlanDetails?.scopeDepartments || [];
@@ -457,14 +446,11 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
       const customEvent = e as CustomEvent;
       const updatedAuditId = customEvent.detail?.auditId;
       
-      console.log(`[PlanDetailsModal] Received auditPlanUpdated event. Updated auditId: ${updatedAuditId}, Current auditId: ${auditId}`);
       
       // Compare with case-insensitive string comparison
       if (updatedAuditId && String(updatedAuditId).toLowerCase().trim() === String(auditId).toLowerCase().trim()) {
-        console.log(`[PlanDetailsModal] Audit IDs match, triggering refresh`);
         handleRefresh();
       } else {
-        console.log(`[PlanDetailsModal] Audit IDs do not match, skipping refresh`);
       }
     };
 
@@ -479,7 +465,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
             handleRefresh();
           }
         } catch (err) {
-          console.warn('PlanDetailsModal: Failed to parse storage event:', err);
         }
       }
     };
@@ -1335,7 +1320,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                     await onRequestRevision(selectedPlanDetails.auditId, reviewComments);
                     onClose();
                   } catch (err) {
-                    console.error('Request revision failed', err);
                     toast.error('Failed to request revision. Please try again.');
                   } finally {
                     setIsProcessingSubmit(false);
@@ -1370,7 +1354,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                     await onApprove(selectedPlanDetails.auditId, reviewComments);
                     onClose();
                   } catch (err) {
-                    console.error('Approve failed', err);
                     alert('Failed to approve: ' + (err as any)?.message || String(err));
                   } finally {
                     setIsProcessingApprove(false);
@@ -1453,7 +1436,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   setShowSubmitModal(false);
                   onClose();
                 } catch (err) {
-                  console.error('Failed to submit to lead auditor', err);
                   toast.error(getUserFriendlyErrorMessage(err, 'Failed to submit to Lead Auditor. Please try again.'));
                 } finally {
                   setIsProcessingSubmit(false);
@@ -1507,7 +1489,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   setShowDeleteModal(false);
                   onClose();
                 } catch (err) {
-                  console.error('Delete failed', err);
                   toast.error(getUserFriendlyErrorMessage(err, 'Failed to delete plan. Please try again.'));
                 }
               }}
@@ -1566,7 +1547,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   toast.success('Submit successfully.');
                   onClose();
                 } catch (err) {
-                  console.error('Forward to director failed', err);
                   toast.error(getUserFriendlyErrorMessage(err, 'Failed to forward to Director. Please try again.'));
                 } finally {
                   setIsProcessingForward(false);
@@ -1649,7 +1629,6 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                   setShowRejectModal(false);
                   onClose();
                 } catch (err) {
-                  console.error('Reject failed', err);
                   toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject plan. Please try again.'));
                 } finally {
                   setIsProcessingReject(false);

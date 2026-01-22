@@ -70,7 +70,6 @@ const AdminDepartmentManagement = () => {
       }))
       setDepartments(mapped)
     } catch (err) {
-      console.error('Failed to load departments', err)
     } finally {
       setLoading(false)
     }

@@ -182,7 +182,6 @@ export const getRoleMenu = (role?: string | null): SidebarMenuItem[] => {
       ];
 
     default:
-      console.warn('No menu found for role:', role, '- Using base menu');
       return base;
   }
 };

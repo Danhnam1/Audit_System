@@ -65,7 +65,6 @@ const AuditExecutionDetail = () => {
         ]);
         setRootCauses(rootCausesData);
       } catch (err) {
-        console.error('Error loading master data:', err);
         // Fallback to default severities on error
         setSeverities([
           { id: 1, name: 'Minor' },
@@ -81,7 +80,6 @@ const AuditExecutionDetail = () => {
   useEffect(() => {
     const loadAuditData = async () => {
       if (!auditId) {
-        console.error('No audit ID provided');
         return;
       }
 
@@ -97,7 +95,6 @@ const AuditExecutionDetail = () => {
         const transformedItems = transformChecklistItems(items);
         setChecklist(transformedItems);
       } catch (err) {
-        console.error('Error loading audit data:', err);
       }
     };
 
@@ -176,7 +173,6 @@ const AuditExecutionDetail = () => {
       setShowAddRootCause(false);
       alert('Root cause added successfully!');
     } catch (err) {
-      console.error('Error adding root cause:', err);
       alert('Failed to add root cause. Check console for details.');
     } finally {
       setLoadingRootCauses(false);
@@ -207,7 +203,6 @@ const AuditExecutionDetail = () => {
 
       if (!deptId) {
         alert('Cannot determine department ID from audit plan');
-        console.error('auditPlan structure:', JSON.stringify(auditPlan, null, 2));
         return;
       }
 
@@ -257,12 +252,10 @@ const AuditExecutionDetail = () => {
                   userId = payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'] || '';
                 }
               } catch (parseErr) {
-                console.error('Error parsing token:', parseErr);
               }
             }
             
             if (!userId) {
-              console.warn('User ID not found in token, evidence upload may fail');
             }
             
             await uploadAttachment({
@@ -273,7 +266,6 @@ const AuditExecutionDetail = () => {
               file: findingForm.evidenceFile,
             });
           } catch (uploadErr: any) {
-            console.error('Error uploading evidence:', uploadErr);
             
             // Check if it's a CORS error
             if (uploadErr?.message?.includes('CORS') || uploadErr?.message?.includes('Network Error')) {
@@ -291,7 +283,6 @@ const AuditExecutionDetail = () => {
         alert(`Error: ${result.error}`);
       }
     } catch (err) {
-      console.error('Error saving finding:', err);
       alert('Failed to save finding');
     }
   };

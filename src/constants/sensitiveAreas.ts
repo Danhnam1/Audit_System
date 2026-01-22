@@ -15,7 +15,6 @@ export const getSensitiveAreasByDepartment = async (deptId: number | string): Pr
     const dataArray = await getDepartmentSensitiveAreaByDeptId(deptId);
     return dataArray.map(item => item.sensitiveArea).filter(Boolean);
   } catch (error) {
-    console.error('Failed to load sensitive areas for department', deptId, error);
     return [];
   }
 };
@@ -30,7 +29,6 @@ export const getDefaultNotesByDepartment = async (deptId: number | string): Prom
     const notes = dataArray.map(item => item.defaultNotes).filter(Boolean);
     return notes.join(' | ');
   } catch (error) {
-    console.error('Failed to load default notes for department', deptId, error);
     return '';
   }
 };
@@ -48,7 +46,6 @@ export const getSensitiveAreasByDepartments = async (deptIds: (number | string)[
     });
     return Array.from(allAreas);
   } catch (error) {
-    console.error('Failed to load sensitive areas for departments', error);
     return [];
   }
 };
@@ -63,7 +60,6 @@ export const getDefaultNotesByDepartments = async (deptIds: (number | string)[])
     const notes = results.filter(note => note.trim().length > 0);
     return notes.join(' | ');
   } catch (error) {
-    console.error('Failed to load default notes for departments', error);
     return '';
   }
 };

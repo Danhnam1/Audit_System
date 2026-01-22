@@ -179,7 +179,6 @@ export const getMyAssignments = async (): Promise<any> => {
     }
     return data;
   } catch (error) {
-    console.error('Error in getMyAssignments:', error);
     throw error;
   }
 };
