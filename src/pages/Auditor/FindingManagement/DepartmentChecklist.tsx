@@ -9,7 +9,7 @@ import { getChecklistItemsByDepartment, createAuditChecklistItem,
    type UpdateAuditChecklistItemDto,
     getCompliantIdByAuditItemId } from '../../../api/checklists';
 import { getDepartmentById } from '../../../api/departments';
-import { getFindings, getMyFindings, getFindingsByDepartment, getFindingById, updateFinding, type Finding} from '../../../api/findings';
+import { getFindings, getMyFindings, getFindingsByDepartment, getFindingById, updateFinding, deleteFinding, type Finding} from '../../../api/findings';
 import { getFindingSeverities } from '../../../api/findingSeverity';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import CreateFindingModal from './CreateFindingModal';
@@ -23,6 +23,7 @@ import { getActionsByFinding, getActionsByRootCause, createAction, type Action }
 // import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
+import { getReportRequestByAuditId, type ViewReportRequest } from '../../../api/reportRequest';
 
 import AuditorActionReviewModal from './AuditorActionReviewModal';
 import ActionDetailsModal from '../../LeadAuditor/auditplanning/components/ActionDetailsModal';
@@ -123,6 +124,7 @@ const DepartmentChecklist = () => {
   });
   const [loadingFinding, setLoadingFinding] = useState(false);
   const [submittingEdit, setSubmittingEdit] = useState(false);
+  const [convertingToCompliant, setConvertingToCompliant] = useState(false);
   const [showWitnessesDropdown, setShowWitnessesDropdown] = useState(false);
   const [departmentUsers, setDepartmentUsers] = useState<AdminUserDto[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -133,6 +135,10 @@ const DepartmentChecklist = () => {
 
   // Audit info state
   const [auditType, setAuditType] = useState<string>('');
+  
+  // Report request blocking state
+  const [reportRequest, setReportRequest] = useState<ViewReportRequest | null>(null);
+  const [isBlockedByReport, setIsBlockedByReport] = useState(false);
   
   // Schedule data for deadline constraints
   const [fieldworkStartDate, setFieldworkStartDate] = useState<Date | null>(null);
@@ -429,6 +435,31 @@ const DepartmentChecklist = () => {
     }
   }, [auditId, auditTypeFromState]);
 
+  // Check report request status - block all actions if Pending
+  useEffect(() => {
+    const checkReportRequest = async () => {
+      if (!auditId) return;
+      
+      try {
+        const reportReq = await getReportRequestByAuditId(auditId);
+        setReportRequest(reportReq);
+        
+        // Block all actions if report status is Pending
+        if (reportReq && reportReq.status?.toLowerCase() === 'pending') {
+          setIsBlockedByReport(true);
+          
+        } else {
+          setIsBlockedByReport(false);
+        }
+      } catch (err) {
+        // If error loading report request, don't block
+        setIsBlockedByReport(false);
+      }
+    };
+    
+    checkReportRequest();
+  }, [auditId]);
+
   // Save compliantIdMap to sessionStorage whenever it changes
   useEffect(() => {
     if (auditId && Object.keys(compliantIdMap).length > 0) {
@@ -704,6 +735,55 @@ const DepartmentChecklist = () => {
     };
     const dto = toPascal(payload);
     await apiClient.put(`/Action/${actionId}`, dto);
+  };
+
+  // Handle convert finding to compliant
+  const handleConvertToCompliant = async () => {
+    if (!editingFinding) return;
+    
+    setConvertingToCompliant(true);
+    try {
+      // 1. Delete the finding
+      await deleteFinding(editingFinding.findingId);
+      
+      // 2. Create compliant record
+      const compliantPayload = {
+        AuditChecklistItemId: editingFinding.auditItemId,
+        Comment: `Converted from finding: ${editFormData.title || editingFinding.title}`,
+        Status: 'Compliant',
+      };
+      
+      const response = await apiClient.post('/ChecklistItemNoFinding', compliantPayload);
+      const newCompliantId = response.data?.id || response.data?.Id;
+      
+      // 3. Update compliantIdMap
+      if (newCompliantId) {
+        setCompliantIdMap(prev => ({
+          ...prev,
+          [editingFinding.auditItemId]: newCompliantId
+        }));
+      }
+      
+      // 4. IMPORTANT: Remove finding from findingsMap to hide Edit button
+      setFindingsMap(prev => {
+        const newMap = { ...prev };
+        delete newMap[editingFinding.auditItemId];
+        return newMap;
+      });
+      
+      toast.success('Finding converted to compliant successfully');
+      setShowEditFindingModal(false);
+      setEditingFinding(null);
+      setDeletedRootCauseIds([]);
+      setDeletedAttachmentIds([]);
+      
+      // Reload all data
+      await reloadAllData();
+    } catch (err: any) {
+      toast.error(getUserFriendlyErrorMessage(err, 'Failed to convert finding to compliant. Please try again.'));
+    } finally {
+      setConvertingToCompliant(false);
+    }
   };
 
   // Handle edit finding submit
@@ -1238,11 +1318,11 @@ const DepartmentChecklist = () => {
       const sortedItems = filteredItems.sort((a: ChecklistItem, b: ChecklistItem) => (a.order || 0) - (b.order || 0));
       
       // 3. Reload compliant records
+      let compliantMap: Record<string, string | number> = {}; // Declare outside try-catch so it's accessible in step 4
       try {
         const compliantRes = await apiClient.get(`/ChecklistItemNoFinding`);
         const allCompliantRecords = unwrapArray(compliantRes.data);
         
-        const compliantMap: Record<string, string | number> = {};
         allCompliantRecords.forEach((record: any) => {
           if (record.auditChecklistItemId && record.id) {
             compliantMap[record.auditChecklistItemId] = record.id;
@@ -1273,7 +1353,8 @@ const DepartmentChecklist = () => {
       const itemsNeedingStatusDetail = sortedItems.filter(item => {
         const statusLower = (item.status || '').toLowerCase();
         // Include items with return status OR items with compliant records
-        return statusLower.includes('return') || compliantIdMap[item.auditItemId];
+        // Use the UPDATED compliantMap instead of compliantIdMap to ensure newly created compliant records are included
+        return statusLower.includes('return') || compliantMap[item.auditItemId];
       });
       
       if (itemsNeedingStatusDetail.length > 0) {
@@ -1296,6 +1377,12 @@ const DepartmentChecklist = () => {
 
   // Handle mark item as compliant - show modal first
   const handleMarkCompliant = (item: ChecklistItem) => {
+    // Block if report is pending
+    if (isBlockedByReport) {
+      toast.error('Cannot mark as compliant while report is pending review.');
+      return;
+    }
+    
     setItemToMarkCompliant(item);
     setShowCompliantModal(true);
   };
@@ -2125,6 +2212,30 @@ const DepartmentChecklist = () => {
       </div>
 
       <div className="px-4 sm:px-6 pb-4 sm:pb-6">
+        {/* Report Pending Warning Banner */}
+        {isBlockedByReport && reportRequest && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded-lg shadow-md">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3 flex-1">
+                <h3 className="text-sm font-medium text-yellow-800">
+                  Report Pending Review
+                </h3>
+                <div className="mt-2 text-sm text-yellow-700">
+                  <p>
+                    All audit actions are temporarily blocked because a report is pending review.
+                    {reportRequest.note && ` Note: ${reportRequest.note}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Tab Navigation */}
         <div className="bg-white rounded-xl border border-primary-100 shadow-md mb-4 sm:mb-6">
           <div className="border-b border-gray-200">
@@ -2487,6 +2598,13 @@ const DepartmentChecklist = () => {
                                         <button
                                           onClick={async (e) => {
                                             e.stopPropagation();
+                                            
+                                            // Block if report is pending
+                                            if (isBlockedByReport) {
+                                              toast.error('Cannot edit finding while report is pending review.');
+                                              return;
+                                            }
+                                            
                                             const findingId = statusDetail.finding?.findingId;
                                             if (!findingId) {
                                               toast.warning('Finding not found for this item');
@@ -2515,9 +2633,9 @@ const DepartmentChecklist = () => {
                                               setLoadingFinding(false);
                                             }
                                           }}
-                                          disabled={loadingFinding}
-                                          className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                                          title="Edit Finding"
+                                          disabled={loadingFinding || isBlockedByReport}
+                                          className={`px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 ${isBlockedByReport ? 'opacity-50' : ''}`}
+                                          title={isBlockedByReport ? "Blocked - Report pending review" : "Edit Finding"}
                                         >
                                           {loadingFinding ? (
                                             <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
@@ -2533,10 +2651,15 @@ const DepartmentChecklist = () => {
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
+                                            if (isBlockedByReport) {
+                                              toast.error('Cannot mark as compliant while report is pending review.');
+                                              return;
+                                            }
                                             handleMarkCompliant(item);
                                           }}
-                                          className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors active:scale-95"
-                                          title="Mark as Compliant"
+                                          disabled={isBlockedByReport}
+                                          className={`px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors active:scale-95 ${isBlockedByReport ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          title={isBlockedByReport ? "Blocked - Report pending review" : "Mark as Compliant"}
                                         >
                                           Mark Compliant
                                         </button>
@@ -2581,21 +2704,31 @@ const DepartmentChecklist = () => {
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
+                                            if (isBlockedByReport) {
+                                              toast.error('Cannot create finding while report is pending review.');
+                                              return;
+                                            }
                                             setSelectedItem(item);
                                             setShowCreateModal(true);
                                           }}
-                                          className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors active:scale-95"
-                                          title="Create Finding"
+                                          disabled={isBlockedByReport}
+                                          className={`px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors active:scale-95 ${isBlockedByReport ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          title={isBlockedByReport ? "Blocked - Report pending review" : "Create Finding"}
                                         >
                                           Create Finding
                                         </button>
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
+                                            if (isBlockedByReport) {
+                                              toast.error('Cannot edit compliant while report is pending review.');
+                                              return;
+                                            }
                                             handleEditCompliant(item);
                                           }}
-                                          className="px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors active:scale-95"
-                                          title="Edit Compliant"
+                                          disabled={isBlockedByReport}
+                                          className={`px-2 sm:px-3 py-1 text-[10px] sm:text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors active:scale-95 ${isBlockedByReport ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          title={isBlockedByReport ? "Blocked - Report pending review" : "Edit Compliant"}
                                         >
                                           Edit Compliant
                                         </button>
@@ -2805,13 +2938,17 @@ const DepartmentChecklist = () => {
                               <>
                                 {/* Green Checkmark */}
                                 <button
-                                  className={`w-7 h-7 flex items-center justify-center rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 shadow-sm hover:shadow-md active:scale-95 ${updatingItemId === item.auditItemId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  className={`w-7 h-7 flex items-center justify-center rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 shadow-sm hover:shadow-md active:scale-95 ${updatingItemId === item.auditItemId || isBlockedByReport ? 'opacity-50 cursor-not-allowed' : ''}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    if (isBlockedByReport) {
+                                      toast.error('Cannot mark as compliant while report is pending review.');
+                                      return;
+                                    }
                                     handleMarkCompliant(item);
                                   }}
-                                  disabled={updatingItemId === item.auditItemId}
-                                  title="Mark as Compliant"
+                                  disabled={updatingItemId === item.auditItemId || isBlockedByReport}
+                                  title={isBlockedByReport ? "Blocked - Report pending review" : "Mark as Compliant"}
                                 >
                                   {updatingItemId === item.auditItemId ? (
                                     <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-600"></div>
@@ -2824,13 +2961,18 @@ const DepartmentChecklist = () => {
 
                                 {/* Red X */}
                                 <button
-                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white border-2 border-red-600 shadow-md hover:shadow-lg active:scale-95"
+                                  className={`w-7 h-7 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white border-2 border-red-600 shadow-md hover:shadow-lg active:scale-95 ${isBlockedByReport ? 'opacity-50 cursor-not-allowed' : ''}`}
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    if (isBlockedByReport) {
+                                      toast.error('Cannot create finding while report is pending review.');
+                                      return;
+                                    }
                                     setSelectedItem(item);
                                     setShowCreateModal(true);
                                   }}
-                                  title="Mark as Non-Compliant"
+                                  disabled={isBlockedByReport}
+                                  title={isBlockedByReport ? "Blocked - Report pending review" : "Mark as Non-Compliant"}
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -3994,31 +4136,56 @@ const DepartmentChecklist = () => {
               </div>
 
               {/* Footer */}
-              <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-end gap-3 rounded-b-xl border-t border-gray-200">
+              <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex items-center justify-between gap-3 rounded-b-xl border-t border-gray-200">
+                {/* Convert to Compliant button on the left */}
                 <button
-                  onClick={() => {
-                    setShowEditFindingModal(false);
-                    setEditingFinding(null);
-                  }}
-                  disabled={submittingEdit}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  onClick={handleConvertToCompliant}
+                  disabled={convertingToCompliant || submittingEdit}
+                  className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  title="Delete this finding and mark the item as compliant"
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleEditFindingSubmit}
-                  disabled={submittingEdit || !editFormData.title.trim() || !editFormData.description.trim() || !editFormData.severity || !editFormData.deadline}
-                  className="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {submittingEdit ? (
+                  {convertingToCompliant ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                      Updating...
+                      Converting...
                     </>
                   ) : (
-                    'Update Finding'
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Convert to Compliant
+                    </>
                   )}
                 </button>
+
+                {/* Action buttons on the right */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setShowEditFindingModal(false);
+                      setEditingFinding(null);
+                    }}
+                    disabled={submittingEdit || convertingToCompliant}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleEditFindingSubmit}
+                    disabled={submittingEdit || convertingToCompliant || !editFormData.title.trim() || !editFormData.description.trim() || !editFormData.severity || !editFormData.deadline}
+                    className="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {submittingEdit ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        Updating...
+                      </>
+                    ) : (
+                      'Update Finding'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
