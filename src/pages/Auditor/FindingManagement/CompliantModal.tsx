@@ -3,6 +3,7 @@ import { markChecklistItemCompliant, markChecklistItemCompliant1 } from '../../.
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { uploadAttachment } from '../../../api/attachments';
 import { useUserId } from '../../../store/useAuthStore';
+import { toast } from 'react-toastify';
 
 interface CompliantModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface CompliantModalProps {
     auditItemId: string;
     auditId: string;
     questionTextSnapshot: string;
+    rowVersion: string;
   };
   departmentName?: string; // Department name passed from parent
   deptId?: number; // Department ID to fetch users
@@ -227,9 +229,24 @@ const CompliantModal = ({
 
       // Call API to update checklist item status to "Compliant"
       try {
-        await markChecklistItemCompliant(checklistItem.auditItemId);
+        if (!checklistItem.rowVersion) {
+          toast.error('RowVersion is required for concurrency control. Please refresh the page.');
+          throw new Error('RowVersion is required for concurrency control');
+        }
+        await markChecklistItemCompliant(checklistItem.auditItemId, checklistItem.rowVersion);
       } catch (statusError: any) {
-        // The compliant record was already created successfully
+        console.error('Error marking as compliant:', statusError);
+        
+        // Check if it's a concurrency conflict
+        const errorData = statusError?.response?.data;
+        if (errorData?.errors?.RowVersion) {
+          toast.error('This item has been modified by another user. Please refresh the page and try again.');
+        } else if (statusError?.response?.status === 409) {
+          toast.error('Conflict: This item has been modified. Please refresh the page.');
+        } else {
+          toast.error('Failed to update checklist item status. The compliant record was created, but status update failed.');
+        }
+        throw statusError; // Re-throw to show error to user
       }
 
       // Use auditChecklistItemId from response (GUID string) for file upload
@@ -295,12 +312,15 @@ const CompliantModal = ({
           }
         });
         if (errorMessages.length > 0) {
-          alert(`Validation Error:\n${errorMessages.join('\n')}`);
+          // Show each error as separate toast for better visibility
+          errorMessages.forEach((msg, index) => {
+            setTimeout(() => toast.error(msg), index * 100);
+          });
         } else {
-          alert(`Error: ${err?.message || 'Failed to mark item as compliant'}`);
+          toast.error(err?.message || 'Failed to mark item as compliant');
         }
       } else {
-        alert(`Error: ${err?.message || 'Failed to mark item as compliant'}`);
+        toast.error(err?.message || 'Failed to mark item as compliant');
       }
     } finally {
       setSubmitting(false);

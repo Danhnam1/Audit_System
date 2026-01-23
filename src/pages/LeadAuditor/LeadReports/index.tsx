@@ -21,10 +21,10 @@ import { getMarkedItemsByRequestId } from '../../../api/auditPlanRevisionRequest
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
 import CompliantDetailModal from '../../Shared/CompliantDetailModal';
-import { 
-  createAuditPlanRevisionRequest, 
+import {
+  createAuditPlanRevisionRequest,
   getAuditPlanRevisionRequestsByAuditId,
-  type ViewAuditPlanRevisionRequest 
+  type ViewAuditPlanRevisionRequest
 } from '../../../api/auditPlanRevisionRequest';
 import EditScheduleAndTeamModal from './components/EditScheduleAndTeamModal';
 import { updateAuditSchedule, addAuditSchedule, deleteAuditSchedule, getAuditSchedules } from '../../../api/auditSchedule';
@@ -93,7 +93,7 @@ const AuditorLeadReports = () => {
   // Selected compliant items for return or extension request
   const [selectedCompliantItems, setSelectedCompliantItems] = useState<Set<string>>(new Set());
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
-  
+
   // Extension request states
   const [showExtensionModal, setShowExtensionModal] = useState(false);
   const [showRequestHistoryModal, setShowRequestHistoryModal] = useState(false);
@@ -109,7 +109,7 @@ const AuditorLeadReports = () => {
   // Map of requestId -> marked checklist items (for displaying in Previous Requests)
   const [markedItemsByRequest, setMarkedItemsByRequest] = useState<Record<string, any[]>>({});
   const [loadingMarkedItems, setLoadingMarkedItems] = useState<Record<string, boolean>>({});
-  
+
   // Edit Schedule & Team states
   const [showEditScheduleTeamModal, setShowEditScheduleTeamModal] = useState(false);
   const [editScheduleTeamAuditId, setEditScheduleTeamAuditId] = useState<string | null>(null);
@@ -123,11 +123,11 @@ const AuditorLeadReports = () => {
   // Compliant detail modal states
   const [showCompliantDetailModal, setShowCompliantDetailModal] = useState(false);
   const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null);
-  
+
   // Root causes map: findingId -> rootCauses[]
   const [rootCausesMap, setRootCausesMap] = useState<Record<string, any[]>>({});
   const [loadingRootCauses, setLoadingRootCauses] = useState<Record<string, boolean>>({});
-  
+
   // Attachments modal state
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
   const [selectedAttachments, setSelectedAttachments] = useState<any[]>([]);
@@ -138,7 +138,7 @@ const AuditorLeadReports = () => {
   const [summaryReloadKey, setSummaryReloadKey] = useState(0);
   // All findings from API (to include WitnessConfirmReturned findings)
   const [allFindingsFromAPI, setAllFindingsFromAPI] = useState<any[]>([]);
-  
+
   // New tables: InProgress audits and their report requests
 
   const reload = useCallback(async () => {
@@ -148,7 +148,7 @@ const AuditorLeadReports = () => {
         getAdminUsers(),
         getAuditPlans().catch(() => []) // Get all audits to merge with ReportRequests
       ]);
-      
+
       const users = Array.isArray(usersRes) ? usersRes : [];
       setAdminUsers(users);
       let currentUserId: string | null = null;
@@ -168,7 +168,7 @@ const AuditorLeadReports = () => {
         currentUserId = String((user as any).userId);
       }
       const normalizedCurrentUserId = currentUserId ? String(currentUserId).toLowerCase().trim() : null;
-      
+
       const addAuditId = (set: Set<string>, value: any) => {
         if (value == null) return;
         const str = String(value).trim();
@@ -176,7 +176,7 @@ const AuditorLeadReports = () => {
         set.add(str);
         set.add(str.toLowerCase());
       };
-      
+
       const teams = Array.isArray(teamsRes) ? teamsRes : [];
       const leadAuditIds = new Set<string>();
       if (normalizedCurrentUserId) {
@@ -193,15 +193,15 @@ const AuditorLeadReports = () => {
           }
         });
       }
-      
+
       // Get all audits first
       const auditsList = unwrap(auditsRes);
       const allAudits = Array.isArray(auditsList) ? auditsList : [];
-      
+
       // Get ReportRequests using getReportRequestFromSubmitAudit (same as Auditor/Reports)
       // This ensures we only get report requests from submitAudit API (luồng 3), not from final summary (luồng 5)
       const reportRequestsMap = new Map<string, ViewReportRequest>();
-      
+
       // Load report requests for each audit using getReportRequestFromSubmitAudit
       try {
         await Promise.all(
@@ -224,9 +224,9 @@ const AuditorLeadReports = () => {
       } catch (err) {
         console.error('[LeadReports] Failed to load report requests from submitAudit:', err);
       }
-      
+
       const reportRequests = Array.from(reportRequestsMap.values()) as ViewReportRequest[];
-      
+
       // Create a map of audits by auditId for quick lookup
       const auditMap = new Map<string, any>();
       allAudits.forEach((a: any) => {
@@ -236,25 +236,25 @@ const AuditorLeadReports = () => {
           auditMap.set(auditId, a);
         }
       });
-      
+
       // Filter audits with status InProgress for new table (removed unused)
       // const inProgressAuditsList = allAudits.filter((a: any) => {
       //   const auditStatus = String(a.status || a.state || '').trim();
       //   const normalizedAuditStatus = auditStatus.toLowerCase().replace(/\s+/g, '').replace(/-/g, '');
       //   return normalizedAuditStatus === 'inprogress';
       // });
-      
+
       // Combine reports from ReportRequests (submitted by Auditors)
       const combinedReports: any[] = [];
-      
+
       // Add reports from latest ReportRequest per auditId (submitted by Auditors)
       reportRequests.forEach((rr) => {
         const auditId = String(rr.auditId || '');
         if (!auditId) return;
-        
+
         // Get audit details from auditMap
         const audit = auditMap.get(auditId.toLowerCase()) || auditMap.get(auditId);
-        
+
         // Debug: Log if audit not found in auditMap
         if (!audit && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
           console.warn(`[LeadReports] Audit not found in auditMap for ReportRequest:`, {
@@ -265,40 +265,40 @@ const AuditorLeadReports = () => {
             auditMapKeys: Array.from(auditMap.keys()).slice(0, 10), // First 10 keys for debugging
           });
         }
-        
+
         if (!audit) {
           // Audit không tồn tại trong auditMap → không hiển thị
           if (import.meta.env?.DEV || import.meta.env?.MODE === 'development') {
-            
+
           }
           return; // Skip this report
         }
-        
+
         // Kiểm tra status của audit - chỉ hiển thị nếu status là "InProgress"
         const auditStatus = String(audit.status || audit.state || '').trim();
         const normalizedAuditStatus = auditStatus.toLowerCase().replace(/\s+/g, '').replace(/-/g, '');
-        
+
         // Chỉ hiển thị nếu audit status là "InProgress" (hỗ trợ các format: InProgress, In-Progress, In Progress)
         // Loại bỏ tất cả các status khác: Approved, Pending, Draft, Rejected, Closed, etc.
         const isInProgress = normalizedAuditStatus === 'inprogress';
-        
-      
-        
+
+
+
         if (!isInProgress) {
-       
+
           return; // Skip this report
         }
-        
+
         // Lấy status của report request để hiển thị (bao gồm cả Approved)
         // const reportRequestStatus = String(rr.status || '').trim(); // Unused
-        
-        
-        
+
+
+
         // Backend returns "Returned" (capital R) when reject, normalize to lowercase for comparison
         const finalStatus = rr.status || 'Pending';
-        
-       
-        
+
+
+
         // Create report object from ReportRequest
         const reportObj: any = {
           auditId: auditId,
@@ -323,10 +323,10 @@ const AuditorLeadReports = () => {
           note: rr.note,
           auditPlan: audit?.auditPlan, // Keep auditPlan for reference
         };
-        
+
         combinedReports.push(reportObj);
       });
-      
+
       // Filter chỉ lấy status: Pending, Approved, và Returned (Lead Auditor cần thấy Pending để approve/reject, Returned để theo dõi)
       // Chỉ lấy từ submitAudit API (luồng 3), không lấy từ final summary (luồng 5)
       const allowedStatuses = ['approved', 'pending', 'returned'];
@@ -334,7 +334,7 @@ const AuditorLeadReports = () => {
         const rawStatus = p.status || p.state || p.approvalStatus || '';
         const reportStatus = String(rawStatus).toLowerCase().replace(/\s+/g, '');
         const hasAllowedStatus = allowedStatuses.includes(reportStatus);
-        
+
         // Debug: Log reports that are filtered out
         if (!hasAllowedStatus && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
           console.warn(`[LeadReports] Report filtered out due to status:`, {
@@ -345,9 +345,9 @@ const AuditorLeadReports = () => {
             allowedStatuses: allowedStatuses
           });
         }
-        
+
         if (!hasAllowedStatus) return false;
-        
+
         // Check if audit belongs to this Lead Auditor
         const auditMatchesLead = (audit: any) => {
           const candidates = [
@@ -363,7 +363,7 @@ const AuditorLeadReports = () => {
           if (!candidates.length) return false;
           return candidates.some((id: string) => leadAuditIds.has(id) || leadAuditIds.has(id.toLowerCase()));
         };
-        
+
         // If Lead Auditor role, show all reports with allowed status (Pending, Approved, and Returned)
         // Otherwise, only show reports where user is lead of the audit
         if (isLeadAuditorRole) {
@@ -371,17 +371,17 @@ const AuditorLeadReports = () => {
         }
         return auditMatchesLead(p);
       });
-      
+
       const sorted = filtered.sort((a: any, b: any) => {
         const dateA = a.startDate ? new Date(a.startDate).getTime() : (a.createdAt ? new Date(a.createdAt).getTime() : (a.requestedAt ? new Date(a.requestedAt).getTime() : 0));
         const dateB = b.startDate ? new Date(b.startDate).getTime() : (b.createdAt ? new Date(b.createdAt).getTime() : (b.requestedAt ? new Date(b.requestedAt).getTime() : 0));
         return dateB - dateA;
       });
-      
-   
-      
+
+
+
       setAudits(sorted);
-      
+
       // Load revision requests for all audits to check extension approval
       const revisionMap: Record<string, ViewAuditPlanRevisionRequest[]> = {};
       const revisionPromises = sorted.map(async (audit: any) => {
@@ -390,7 +390,7 @@ const AuditorLeadReports = () => {
           try {
             const requests = await getAuditPlanRevisionRequestsByAuditId(auditId).catch(() => []);
             revisionMap[auditId] = Array.isArray(requests) ? requests : [];
-            
+
             // Debug log (only in development)
             if (revisionMap[auditId].length > 0 && (import.meta.env?.DEV || import.meta.env?.MODE === 'development')) {
             }
@@ -409,25 +409,25 @@ const AuditorLeadReports = () => {
 
   useEffect(() => {
     reload();
-    
+
     // Auto-reload every 30 seconds to catch new ReportRequests when Auditor resubmits
     const intervalId = setInterval(() => {
       reload();
     }, 30000); // 30 seconds
-    
+
     // Also reload when window regains focus (user switches back to tab)
     const handleFocus = () => {
       reload();
     };
     window.addEventListener('focus', handleFocus);
-    
+
     // Listen for report submission events to reload immediately
     const handleReportSubmitted = () => {
       reload();
     };
     window.addEventListener('reportSubmitted', handleReportSubmitted);
     document.addEventListener('reportSubmitted', handleReportSubmitted);
-    
+
     return () => {
       clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
@@ -541,14 +541,14 @@ const AuditorLeadReports = () => {
       const title = a.title || a.name || `Audit ${idx + 1}`;
       const rawStatus = a.status || a.state || a.approvalStatus || '—';
       const norm = String(rawStatus).toLowerCase().replace(/\s+/g, '');
-      
+
       // Map status from AuditReports API: Pending, Approved, Returned
       let status: string;
       let displayStatus: string; // Status để hiển thị trên UI
-      
+
       // Normalize và check status (case-insensitive, remove spaces)
       const normalizedStatus = norm;
-      
+
       if (normalizedStatus === 'pending') {
         status = 'Pending';
         displayStatus = 'Pending';
@@ -572,14 +572,14 @@ const AuditorLeadReports = () => {
           displayStatus = rawStatus;
         }
       }
-      
+
       const createdBy = getCreatedByLabel(a);
       // Get type from audit object or auditPlan, with fallback
       const rawType = a.type || a.auditType || a.category || a.auditPlan?.type || a.auditPlan?.auditType || a.auditPlan?.category;
       // Normalize type to Internal/External only
       const typeNorm = rawType ? String(rawType).toLowerCase().trim() : '';
       const type = typeNorm.includes('external') ? 'External' : typeNorm.includes('internal') ? 'Internal' : '—';
-      
+
       // Check if there's an approved extension request (revision request)
       // Backend returns revision status as "Approved" (with capital A)
       const auditRevisionRequests = revisionRequestsMap[auditId] || [];
@@ -588,21 +588,21 @@ const AuditorLeadReports = () => {
         // Check for approved status (case-insensitive)
         return reqStatus.toLowerCase() === 'approved';
       });
-      
-   
-      
+
+
+
       // Only allow Edit Schedule & Team button when extension request has been approved by Director
       const isDirectorApproved = hasApprovedExtension;
-      
-      return { 
-        auditId, 
+
+      return {
+        auditId,
         title,
         type, // Audit type (internal, external, etc.)
         status, // Backend status (Pending, Approved, Returned)
         displayStatus, // Frontend display (same as status)
-        createdBy, 
-        rawStatus, 
-        isDirectorApproved 
+        createdBy,
+        rawStatus,
+        isDirectorApproved
       };
     });
   }, [audits, adminUsers, revisionRequestsMap]);
@@ -651,7 +651,7 @@ const AuditorLeadReports = () => {
       toast.error('Invalid audit checklist item ID');
       return;
     }
-    
+
     try {
       // Get compliant ID from auditChecklistItemId
       const compliantId = await getCompliantIdByAuditItemId(auditChecklistItemId);
@@ -659,7 +659,7 @@ const AuditorLeadReports = () => {
         toast.error('No compliant details found for this item');
         return;
       }
-      
+
       setSelectedCompliantId(compliantId);
       setShowCompliantDetailModal(true);
     } catch (err: any) {
@@ -672,7 +672,7 @@ const AuditorLeadReports = () => {
     setReturnAuditId(auditId);
     setReturnNote('');
     setShowReturnModal(true);
-    
+
     // Load schedule and team data for this audit
     try {
       const [schedulesRes, teamRes, usersRes] = await Promise.all([
@@ -683,17 +683,17 @@ const AuditorLeadReports = () => {
 
       const schedulesData = unwrap(schedulesRes);
       const schedulesList = Array.isArray(schedulesData) ? schedulesData : [];
-      
+
       // Filter schedules: only show from Evidence Due onwards
       const evidenceDueIndex = schedulesList.findIndex((s: any) => {
         const name = String(s.milestoneName || '').toLowerCase().replace(/\s+/g, '');
         return name.includes('evidencedue') || name.includes('evidence-due') || name === 'evidence due';
       });
-      
-      const filteredSchedules = evidenceDueIndex >= 0 
-        ? schedulesList.slice(evidenceDueIndex) 
+
+      const filteredSchedules = evidenceDueIndex >= 0
+        ? schedulesList.slice(evidenceDueIndex)
         : schedulesList;
-      
+
       // Format dates for input
       const formatDateForInput = (dateValue: any): string => {
         if (!dateValue) return '';
@@ -714,7 +714,7 @@ const AuditorLeadReports = () => {
           return '';
         }
       };
-      
+
       const formattedSchedules = filteredSchedules.map((s: any, idx: number) => ({
         scheduleId: s.scheduleId || s.id || s.$id ? String(s.scheduleId || s.id || s.$id) : undefined,
         milestoneName: s.milestoneName || s.milestone || `Schedule ${idx + 1}`,
@@ -722,9 +722,9 @@ const AuditorLeadReports = () => {
         status: s.status || 'Active',
         notes: s.notes || '',
       }));
-      
+
       setReturnSchedules(formattedSchedules);
-      
+
       // Save initial Evidence Due date for validation
       const evidenceDueSchedule = formattedSchedules.find((s: any) => {
         const name = String(s.milestoneName || '').toLowerCase().replace(/\s+/g, '');
@@ -747,7 +747,7 @@ const AuditorLeadReports = () => {
 
       setReturnSelectedAuditorIds(auditorIds);
       setReturnInitialAuditorIds(new Set(auditorIds));
-      
+
       // Get period dates
       try {
         const fullDetail = await getAuditFullDetail(auditId);
@@ -863,11 +863,11 @@ const AuditorLeadReports = () => {
     if (draftIdx != null && draftIdx >= 0 && returnPeriodTo) {
       const draftDate = toDate(returnSchedules[draftIdx].dueDate);
       const periodToDate = new Date(returnPeriodTo);
-      
+
       if (draftDate) {
         draftDate.setHours(0, 0, 0, 0);
         periodToDate.setHours(0, 0, 0, 0);
-        
+
         if (draftDate > periodToDate && !errs[draftIdx]) {
           errs[draftIdx] = `Draft Report Due must be on or before Period To (${new Date(returnPeriodTo).toLocaleDateString()}).`;
         }
@@ -878,11 +878,11 @@ const AuditorLeadReports = () => {
     if (evidenceIdx != null && evidenceIdx >= 0 && returnInitialEvidenceDueDate) {
       const currentEvidenceDate = toDate(returnSchedules[evidenceIdx].dueDate);
       const initialEvidenceDate = toDate(returnInitialEvidenceDueDate);
-      
+
       if (currentEvidenceDate && initialEvidenceDate) {
         currentEvidenceDate.setHours(0, 0, 0, 0);
         initialEvidenceDate.setHours(0, 0, 0, 0);
-        
+
         if (currentEvidenceDate < initialEvidenceDate && !errs[evidenceIdx]) {
           errs[evidenceIdx] = `Evidence Due cannot be earlier than the original date (${new Date(returnInitialEvidenceDueDate).toLocaleDateString()}).`;
         }
@@ -899,7 +899,7 @@ const AuditorLeadReports = () => {
 
   const handleApprove = async () => {
     if (!approveAuditId) return;
-    
+
     // Check if audit has any finding with "return" status or returned compliant items
     // Use 2 APIs: getFindingsByAudit and getReturnedCompliantItemsByAudit
     try {
@@ -907,17 +907,17 @@ const AuditorLeadReports = () => {
         getFindingsByAudit(approveAuditId),
         getReturnedCompliantItemsByAudit(approveAuditId)
       ]);
-      
+
       // Check for findings with return status (but NOT WitnessConfirmReturned which is a different status)
       const hasReturnedFinding = findingsRes.some((f: any) => {
         const status = String(f?.status || '').toLowerCase().trim();
         // Only match exact "return" or "returned", not other statuses containing "return"
         return status === 'return' || status === 'returned';
       });
-      
+
       // Check for returned compliant items
       const hasReturnedCompliantItem = returnedCompliantItems.length > 0;
-      
+
       if (hasReturnedFinding || hasReturnedCompliantItem) {
         if (hasReturnedFinding && hasReturnedCompliantItem) {
           toast.error('Cannot approve audit report when it has findings and compliant items with Return status');
@@ -932,18 +932,18 @@ const AuditorLeadReports = () => {
       console.warn('Failed to check return status:', err);
       // Continue with approve if we can't check (fail open)
     }
-    
+
     setActionLoading(`${approveAuditId}:approve`);
     setActionMsg(null);
     try {
       await approveAuditReport(approveAuditId);
-      
+
       toast.success('Approved the Audit Report successfully.');
       closeApproveModal();
       // After approve, hide details until user explicitly clicks View again
       setShowViewModal(false);
       setSelectedAuditId('');
-      
+
       // Reload immediately to get updated data
       await reload();
     } catch (err: any) {
@@ -973,14 +973,14 @@ const AuditorLeadReports = () => {
       toast.error('Please select at least one finding or compliant item to return.');
       return;
     }
-    
+
     // Validate: external audits cannot have findings returned
     const auditType = getAuditType(auditId);
     if (auditType === 'external' && selectedFindings.size > 0) {
       toast.error('Findings of external audits cannot be returned.');
       return;
     }
-    
+
     setReasonReturnAuditId(auditId);
     setFindingReasonReturn('');
     setCompliantReasonReturn('');
@@ -998,14 +998,14 @@ const AuditorLeadReports = () => {
   // Handle direct return (with reason from modal)
   const handleDirectReturn = async () => {
     if (!reasonReturnAuditId) return;
-    
+
     // Validate: external audits cannot have findings returned
     const auditType = getAuditType(reasonReturnAuditId);
     if (auditType === 'external' && selectedFindings.size > 0) {
       toast.error('Findings of external audits cannot be returned.');
       return;
     }
-    
+
     // Validate reasons based on selected items
     if (selectedFindings.size > 0 && !findingReasonReturn.trim()) {
       toast.error('Please enter a reason for returning findings.');
@@ -1015,19 +1015,19 @@ const AuditorLeadReports = () => {
       toast.error('Please enter a reason for returning compliant items.');
       return;
     }
-    
+
     setReasonReturnLoading(true);
     setActionLoading(`${reasonReturnAuditId}:return`);
     try {
       let findingsReturned = 0;
       let compliantItemsReturned = 0;
-      
+
       // Return selected findings and compliant items in parallel
       const returnPromises: Promise<any>[] = [];
-      
+
       // Return selected findings
       if (selectedFindings.size > 0 && findingReasonReturn.trim()) {
-        const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
+        const returnFindingPromises = Array.from(selectedFindings).map(findingId =>
           returnFinding(findingId, findingReasonReturn.trim()).then(() => ({ type: 'finding', success: true })).catch((err) => {
             console.error(`Failed to return finding ${findingId}:`, err);
             return { type: 'finding', success: false };
@@ -1035,7 +1035,7 @@ const AuditorLeadReports = () => {
         );
         returnPromises.push(...returnFindingPromises);
       }
-      
+
       // Return selected compliant items using PUT /api/ChecklistItemNoFinding/{id}/return
       if (selectedCompliantItems.size > 0 && compliantReasonReturn.trim()) {
         const returnCompliantPromises = Array.from(selectedCompliantItems).map(async (auditItemId) => {
@@ -1046,7 +1046,7 @@ const AuditorLeadReports = () => {
               console.error(`No compliant ID found for auditItemId: ${auditItemId}`);
               return { type: 'compliant', success: false };
             }
-            
+
             // Call PUT /api/ChecklistItemNoFinding/{id}/return
             await returnCompliantItem(compliantId, compliantReasonReturn.trim());
             return { type: 'compliant', success: true };
@@ -1057,14 +1057,14 @@ const AuditorLeadReports = () => {
         });
         returnPromises.push(...returnCompliantPromises);
       }
-      
+
       // Execute all return operations in parallel
       if (returnPromises.length > 0) {
         try {
           const results = await Promise.all(returnPromises);
           findingsReturned = results.filter(r => r.type === 'finding' && r.success).length;
           compliantItemsReturned = results.filter(r => r.type === 'compliant' && r.success).length;
-          
+
           if (findingsReturned < selectedFindings.size || compliantItemsReturned < selectedCompliantItems.size) {
             toast.warning(`Some items failed to return. ${findingsReturned} finding(s) and ${compliantItemsReturned} compliant item(s) returned successfully.`);
           }
@@ -1073,7 +1073,7 @@ const AuditorLeadReports = () => {
           toast.warning(`Some items failed to return. Continuing with report return...`);
         }
       }
-      
+
       // Build return note
       const noteParts: string[] = [];
       if (findingsReturned > 0) {
@@ -1083,10 +1083,10 @@ const AuditorLeadReports = () => {
         noteParts.push(`${compliantItemsReturned} compliant item(s)`);
       }
       const returnNote = noteParts.length > 0 ? `Returned with ${noteParts.join(' and ')}` : 'Returned audit report';
-      
+
       // Return the report
       await rejectAuditReport(reasonReturnAuditId, { note: returnNote });
-      
+
       // Show success message
       const successParts: string[] = [];
       if (findingsReturned > 0) {
@@ -1099,17 +1099,17 @@ const AuditorLeadReports = () => {
         toast.success(`Returned ${successParts.join(' and ')} successfully.`);
       }
       toast.success('Returned the Audit Report successfully.');
-      
+
       // Close modal
       closeReasonReturnModal();
-      
+
       // Clear selected items
       setSelectedFindings(new Set());
       setSelectedCompliantItems(new Set());
-      
+
       // Wait a bit for backend to process
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Reload to get updated data
       await reload();
     } catch (err: any) {
@@ -1123,14 +1123,14 @@ const AuditorLeadReports = () => {
   // Handle return with extension (opens modal to edit schedule & team)
   const handleReturn = async () => {
     if (!returnAuditId) return;
-    
+
     // Validate: external audits cannot have findings returned
     const auditType = getAuditType(returnAuditId);
     if (auditType === 'external' && selectedFindings.size > 0) {
       toast.error('Findings of external audits cannot be returned.');
       return;
     }
-    
+
     if (!returnNote.trim()) {
       toast.error('Please enter a reason for returning.');
       return;
@@ -1142,7 +1142,7 @@ const AuditorLeadReports = () => {
       // Save schedule changes (from Evidence Due onwards)
       for (const schedule of returnSchedules) {
         const scheduleId = schedule.scheduleId ? String(schedule.scheduleId) : null;
-        
+
         if (scheduleId) {
           // Update existing schedule
           let dueDateValue = schedule.dueDate || '';
@@ -1155,7 +1155,7 @@ const AuditorLeadReports = () => {
               dueDateValue = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`;
             }
           }
-          
+
           await updateAuditSchedule(scheduleId, {
             milestoneName: schedule.milestoneName.trim(),
             dueDate: dueDateValue,
@@ -1196,7 +1196,7 @@ const AuditorLeadReports = () => {
 
       // Find new auditor IDs to add
       const newAuditorIds = returnSelectedAuditorIds.filter(id => !currentAuditorIds.has(id));
-      
+
       for (const userId of newAuditorIds) {
         await addTeamMember({
           auditId: returnAuditId,
@@ -1217,16 +1217,16 @@ const AuditorLeadReports = () => {
       if (changesNote.trim() !== '--- Changes Made ---') {
         returnNoteText += changesNote;
       }
-      
+
       let findingsReturned = 0;
       let compliantItemsReturned = 0;
-      
+
       // Return selected findings and compliant items in parallel
       const returnPromises: Promise<any>[] = [];
-      
+
       // Return selected findings
       if (selectedFindings.size > 0) {
-        const returnFindingPromises = Array.from(selectedFindings).map(findingId => 
+        const returnFindingPromises = Array.from(selectedFindings).map(findingId =>
           returnFinding(findingId, returnNoteText || 'Returned with audit report').then(() => ({ type: 'finding', success: true })).catch((err) => {
             console.error(`Failed to return finding ${findingId}:`, err);
             return { type: 'finding', success: false };
@@ -1234,7 +1234,7 @@ const AuditorLeadReports = () => {
         );
         returnPromises.push(...returnFindingPromises);
       }
-      
+
       // Return selected compliant items using PUT /api/ChecklistItemNoFinding/{id}/return
       if (selectedCompliantItems.size > 0) {
         const returnCompliantPromises = Array.from(selectedCompliantItems).map(async (auditItemId) => {
@@ -1245,7 +1245,7 @@ const AuditorLeadReports = () => {
               console.error(`No compliant ID found for auditItemId: ${auditItemId}`);
               return { type: 'compliant', success: false };
             }
-            
+
             // Call PUT /api/ChecklistItemNoFinding/{id}/return
             await returnCompliantItem(compliantId, returnNoteText || 'Returned with audit report');
             return { type: 'compliant', success: true };
@@ -1256,14 +1256,14 @@ const AuditorLeadReports = () => {
         });
         returnPromises.push(...returnCompliantPromises);
       }
-      
+
       // Execute all return operations in parallel
       if (returnPromises.length > 0) {
         try {
           const results = await Promise.all(returnPromises);
           findingsReturned = results.filter(r => r.type === 'finding' && r.success).length;
           compliantItemsReturned = results.filter(r => r.type === 'compliant' && r.success).length;
-          
+
           if (findingsReturned < selectedFindings.size || compliantItemsReturned < selectedCompliantItems.size) {
             toast.warning(`Some items failed to return. ${findingsReturned} finding(s) and ${compliantItemsReturned} compliant item(s) returned successfully.`);
           }
@@ -1272,16 +1272,16 @@ const AuditorLeadReports = () => {
           toast.warning(`Some items failed to return. Continuing with report return...`);
         }
       }
-      
+
       // Update return note with compliant items info
       if (compliantItemsReturned > 0) {
         const compliantNote = `\nCompliant Items: ${compliantItemsReturned} item(s) returned`;
         returnNoteText += compliantNote;
       }
-      
+
       // Return the report
       await rejectAuditReport(returnAuditId, { note: returnNoteText });
-      
+
       // Show success messages
       const successParts: string[] = [];
       if (findingsReturned > 0) {
@@ -1295,11 +1295,11 @@ const AuditorLeadReports = () => {
       }
       toast.success('Returned the Audit Report successfully.');
       closeReturnModal();
-      
+
       // Clear selected items
       setSelectedFindings(new Set());
       setSelectedCompliantItems(new Set());
-      
+
       // Clear return modal states
       setReturnSchedules([]);
       setReturnSelectedAuditorIds([]);
@@ -1307,10 +1307,10 @@ const AuditorLeadReports = () => {
       setReturnInitialAuditorIds(new Set());
       setReturnPeriodFrom(undefined);
       setReturnPeriodTo(undefined);
-      
+
       // Wait a bit for backend to process the return before reloading
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Reload to get updated data
       await reload();
     } catch (err: any) {
@@ -1330,33 +1330,33 @@ const AuditorLeadReports = () => {
     }
     setEditScheduleTeamAuditId(auditId);
     setShowEditScheduleTeamModal(true);
-    
+
     // Try to get period dates from full audit detail
     try {
       const fullDetail = await getAuditFullDetail(auditId);
       const audit = fullDetail?.audit || fullDetail?.Audit || fullDetail;
-      
+
       if (audit) {
         // Priority order: auditPlan.periodFrom/periodTo first (most accurate), then audit.periodFrom/periodTo, then startDate/endDate
-        const periodFrom = audit.auditPlan?.periodFrom 
-                          || audit.auditPlan?.PeriodFrom
-                          || audit.periodFrom 
-                          || audit.PeriodFrom
-                          || audit.auditPlan?.startDate
-                          || audit.auditPlan?.StartDate
-                          || audit.startDate 
-                          || audit.StartDate;
+        const periodFrom = audit.auditPlan?.periodFrom
+          || audit.auditPlan?.PeriodFrom
+          || audit.periodFrom
+          || audit.PeriodFrom
+          || audit.auditPlan?.startDate
+          || audit.auditPlan?.StartDate
+          || audit.startDate
+          || audit.StartDate;
         const periodTo = audit.auditPlan?.periodTo
-                        || audit.auditPlan?.PeriodTo
-                        || audit.periodTo 
-                        || audit.PeriodTo
-                        || audit.auditPlan?.endDate
-                        || audit.auditPlan?.EndDate
-                        || audit.endDate 
-                        || audit.EndDate;
-        
-     
-        
+          || audit.auditPlan?.PeriodTo
+          || audit.periodTo
+          || audit.PeriodTo
+          || audit.auditPlan?.endDate
+          || audit.auditPlan?.EndDate
+          || audit.endDate
+          || audit.EndDate;
+
+
+
         // Convert to YYYY-MM-DD format, avoiding timezone shifts
         const formatDate = (date: any): string | undefined => {
           if (!date) return undefined;
@@ -1389,7 +1389,7 @@ const AuditorLeadReports = () => {
 
         const formattedFrom = formatDate(periodFrom);
         const formattedTo = formatDate(periodTo);
-        
+
 
         setAuditPeriodDates({
           periodFrom: formattedFrom,
@@ -1419,29 +1419,29 @@ const AuditorLeadReports = () => {
 
       if (audit) {
         // Priority order: auditPlan.periodFrom/periodTo first (most accurate), then audit.periodFrom/periodTo, then startDate/endDate
-        const periodFrom = audit.auditPlan?.periodFrom 
-                          || audit.auditPlan?.PeriodFrom
-                          || audit.periodFrom 
-                          || audit.PeriodFrom
-                          || audit.periodFromDate 
-                          || audit.period_from
-                          || audit.auditPlan?.startDate
-                          || audit.auditPlan?.StartDate
-                          || audit.startDate 
-                          || audit.StartDate;
+        const periodFrom = audit.auditPlan?.periodFrom
+          || audit.auditPlan?.PeriodFrom
+          || audit.periodFrom
+          || audit.PeriodFrom
+          || audit.periodFromDate
+          || audit.period_from
+          || audit.auditPlan?.startDate
+          || audit.auditPlan?.StartDate
+          || audit.startDate
+          || audit.StartDate;
         const periodTo = audit.auditPlan?.periodTo
-                        || audit.auditPlan?.PeriodTo
-                        || audit.periodTo 
-                        || audit.PeriodTo
-                        || audit.periodToDate
-                        || audit.period_to
-                        || audit.auditPlan?.endDate
-                        || audit.auditPlan?.EndDate
-                        || audit.endDate 
-                        || audit.EndDate;
-        
-      
-        
+          || audit.auditPlan?.PeriodTo
+          || audit.periodTo
+          || audit.PeriodTo
+          || audit.periodToDate
+          || audit.period_to
+          || audit.auditPlan?.endDate
+          || audit.auditPlan?.EndDate
+          || audit.endDate
+          || audit.EndDate;
+
+
+
         // Convert to YYYY-MM-DD format, avoiding timezone shifts
         const formatDate = (date: any): string | undefined => {
           if (!date) return undefined;
@@ -1474,7 +1474,7 @@ const AuditorLeadReports = () => {
 
         const formattedFrom = formatDate(periodFrom);
         const formattedTo = formatDate(periodTo);
-    
+
 
         return {
           periodFrom: formattedFrom,
@@ -1492,8 +1492,8 @@ const AuditorLeadReports = () => {
   };
 
   const handleSaveScheduleAndTeam = async (schedules: any[], teamMembers: any[]) => {
- 
-    
+
+
     if (!editScheduleTeamAuditId) {
       return;
     }
@@ -1510,34 +1510,34 @@ const AuditorLeadReports = () => {
       const currentSchedules = unwrap(currentSchedulesRes) || [];
       const allTeams = Array.isArray(allTeamsRes) ? allTeamsRes : [];
       const currentTeamFromAuditors = unwrap(currentTeamRes) || [];
-      
+
       // Try to get full team data with auditTeamId from getAuditTeam()
       // Filter by auditId to get team members with full IDs
       // Check multiple possible field names for auditId
       const auditIdStr = String(editScheduleTeamAuditId);
       const currentTeamWithIds = allTeams.filter((t: any) => {
         const tAuditId = String(
-          t.auditId 
-          || t.AuditId 
-          || t.audit?.id 
+          t.auditId
+          || t.AuditId
+          || t.audit?.id
           || t.audit?.$id
           || t.audit?.auditId
           || ''
         );
         return tAuditId === auditIdStr;
       });
-      
-   
-      
+
+
+
       // Create a map of userId -> team member with auditTeamId
       const teamMap = new Map<string, any>();
       currentTeamWithIds.forEach((t: any) => {
         const uid = String(t.userId || t.UserId || t.id || t.$id || '').trim();
         if (uid) {
           // Get auditTeamId from various possible fields
-          const teamId = t.auditTeamId 
-            || t.AuditTeamId 
-            || t.id 
+          const teamId = t.auditTeamId
+            || t.AuditTeamId
+            || t.id
             || t.$id
             || t.Id;
           if (teamId) {
@@ -1547,16 +1547,16 @@ const AuditorLeadReports = () => {
           }
         }
       });
-      
+
       // Merge with currentTeamFromAuditors, preserving auditTeamId from teamMap
       const currentTeam = currentTeamFromAuditors.map((m: any) => {
         const uid = String(m.userId || m.UserId || m.id || m.$id || '').trim();
         const teamWithId = teamMap.get(uid);
         if (teamWithId) {
           // Merge: use data from currentTeamFromAuditors but add auditTeamId from teamWithId
-          const teamId = teamWithId.auditTeamId 
+          const teamId = teamWithId.auditTeamId
             || teamWithId.AuditTeamId
-            || teamWithId.id 
+            || teamWithId.id
             || teamWithId.$id
             || teamWithId.Id;
           return {
@@ -1568,20 +1568,20 @@ const AuditorLeadReports = () => {
         }
         return m;
       });
-      
-  
+
+
       // Update schedules
       for (const schedule of schedules) {
         const scheduleId = schedule.scheduleId ? String(schedule.scheduleId) : null;
-        
+
         if (scheduleId) {
           // Validate scheduleId format (should be a valid GUID)
           const guidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           if (!guidRegex.test(scheduleId)) {
-         
+
             throw new Error(`Invalid scheduleId format: ${scheduleId}. Expected GUID format.`);
           }
-          
+
           // Update existing - backend receives scheduleId via route, NOT in body
           // UpdateAuditSchedule DTO only has: MilestoneName, DueDate, Notes, Status
           // Ensure dueDate is in correct format (ISO string with time)
@@ -1614,30 +1614,30 @@ const AuditorLeadReports = () => {
               }
             }
           }
-          
+
           // Validate required fields
           if (!schedule.milestoneName || !schedule.milestoneName.trim()) {
             throw new Error(`Missing required field: milestoneName for schedule ${scheduleId}`);
           }
-          
+
           if (!dueDateValue) {
             throw new Error(`Missing required field: dueDate for schedule ${scheduleId}`);
           }
-          
+
           const updatePayload: any = {
             milestoneName: schedule.milestoneName.trim(),
             dueDate: dueDateValue,
             notes: schedule.notes || '', // Ensure notes is not undefined
             status: schedule.status || 'Active',
           };
-          
-       
+
+
           // DO NOT include id or auditId in update payload - scheduleId is in route
           try {
             await updateAuditSchedule(scheduleId, updatePayload);
-         
+
           } catch (updateErr: any) {
-        
+
             throw updateErr; // Re-throw to stop execution
           }
         } else {
@@ -1672,7 +1672,7 @@ const AuditorLeadReports = () => {
               }
             }
           }
-          
+
           const addPayload: any = {
             auditId: editScheduleTeamAuditId,
             milestoneName: schedule.milestoneName || '',
@@ -1699,7 +1699,7 @@ const AuditorLeadReports = () => {
       // Update team members - only if teamMembers array is provided (not empty)
       // If teamMembers is empty, it means user only edited schedule, not team - skip team update
       let teamUpdateErrors: any[] = [];
-      
+
       // Only update team if teamMembers array has items (user actually edited team)
       // Empty array means user only edited schedule, so we skip team update to preserve existing team
       if (teamMembers.length > 0) {
@@ -1709,42 +1709,42 @@ const AuditorLeadReports = () => {
             teamMembers.map((m: any) => String(m.userId || '').trim()).filter(Boolean)
           );
 
-        // Current auditors (exclude AuditeeOwner)
-        const currentAuditors = (currentTeam || []).filter((m: any) => {
-          const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
-          return role !== 'auditeeowner';
-        });
+          // Current auditors (exclude AuditeeOwner)
+          const currentAuditors = (currentTeam || []).filter((m: any) => {
+            const role = String(m.roleInTeam || '').toLowerCase().replace(/\s+/g, '');
+            return role !== 'auditeeowner';
+          });
 
-        const currentUserIds = new Set<string>();
-        currentAuditors.forEach((m: any) => {
-          const uid = String(m.userId || m.id || m.$id || '').trim();
-          if (uid) currentUserIds.add(uid);
-        });
+          const currentUserIds = new Set<string>();
+          currentAuditors.forEach((m: any) => {
+            const uid = String(m.userId || m.id || m.$id || '').trim();
+            if (uid) currentUserIds.add(uid);
+          });
 
-     
 
-        // Add new members: in selectedUserIds but not in currentUserIds
-        // Only add new members, do not delete existing ones (Add only, cannot remove existing members)
-        for (const userId of Array.from(selectedUserIds)) {
-          if (!currentUserIds.has(userId)) {
-            try {
-              await addTeamMember({
-                auditId: editScheduleTeamAuditId,
-                userId,
-                roleInTeam: 'Auditor',
-                isLead: false,
-              });
-            } catch (addErr: any) {
-              teamUpdateErrors.push({ userId, error: addErr });
+
+          // Add new members: in selectedUserIds but not in currentUserIds
+          // Only add new members, do not delete existing ones (Add only, cannot remove existing members)
+          for (const userId of Array.from(selectedUserIds)) {
+            if (!currentUserIds.has(userId)) {
+              try {
+                await addTeamMember({
+                  auditId: editScheduleTeamAuditId,
+                  userId,
+                  roleInTeam: 'Auditor',
+                  isLead: false,
+                });
+              } catch (addErr: any) {
+                teamUpdateErrors.push({ userId, error: addErr });
+              }
             }
           }
-        }
         } catch (outerErr: any) {
           teamUpdateErrors.push({ error: outerErr });
         }
       } else {
       }
-      
+
       // Show warning if there were team update errors, but don't block the success flow
       if (teamUpdateErrors.length > 0) {
         toast.warning(`Schedule updated successfully, but ${teamUpdateErrors.length} team member update(s) failed.`);
@@ -1756,7 +1756,7 @@ const AuditorLeadReports = () => {
       // Store auditId before closing modal
       const auditIdToNotify = String(editScheduleTeamAuditId);
       const auditKey = auditIdToNotify.toLowerCase().trim();
-      
+
       // Show success message (even if some team updates failed)
       if (teamUpdateErrors && teamUpdateErrors.length === 0) {
         toast.success('Schedule and team updated successfully.');
@@ -1765,7 +1765,7 @@ const AuditorLeadReports = () => {
       } else {
         toast.success('Schedule updated successfully.');
       }
-      
+
       // Mark this audit as edited once (prevent further edits - FE guard)
       setEditedScheduleTeamOnce((prev) => {
         const next = new Set(prev);
@@ -1774,20 +1774,20 @@ const AuditorLeadReports = () => {
       });
 
       closeEditScheduleTeamModal();
-      
+
       // Reload data first
       await reload();
-      
+
       // Notify PlanDetailsModal and other components to refresh AFTER reload
       // Use multiple attempts to ensure modal receives the event
       // Also dispatch to localStorage for cross-tab communication
       try {
-        const eventData = { 
+        const eventData = {
           auditId: auditIdToNotify,
           timestamp: Date.now(),
           action: 'scheduleTeamUpdated'
         };
-        
+
         const dispatchRefreshEvent = (_attempt: number = 0) => {
           // Dispatch CustomEvent for same-tab communication
           const event = new CustomEvent('auditPlanUpdated', {
@@ -1795,23 +1795,23 @@ const AuditorLeadReports = () => {
             bubbles: true,
             cancelable: true
           });
-          
+
           window.dispatchEvent(event);
           document.dispatchEvent(event); // Also dispatch on document
-          
-     
+
+
         };
-        
+
         // Dispatch immediately
         dispatchRefreshEvent(0);
-        
+
         // Dispatch after short delays to ensure modal catches it
         setTimeout(() => dispatchRefreshEvent(1), 100);
         setTimeout(() => dispatchRefreshEvent(2), 300);
         setTimeout(() => dispatchRefreshEvent(3), 500);
         setTimeout(() => dispatchRefreshEvent(4), 1000);
         setTimeout(() => dispatchRefreshEvent(5), 2000);
-        
+
         // Also use localStorage event for cross-tab communication
         try {
           const storageData = {
@@ -1819,7 +1819,7 @@ const AuditorLeadReports = () => {
             _timestamp: Date.now()
           };
           localStorage.setItem('auditPlanUpdated', JSON.stringify(storageData));
-          
+
           // Trigger storage event manually for same-tab
           const storageEvent = new StorageEvent('storage', {
             key: 'auditPlanUpdated',
@@ -1845,14 +1845,14 @@ const AuditorLeadReports = () => {
     if (markedItemsByRequest[requestId]) {
       return;
     }
-    
+
     setLoadingMarkedItems(prev => ({ ...prev, [requestId]: true }));
     try {
       // Use new API: GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
       // This returns the marked items that were included in this specific request
       // API returns: { "$id": "1", "$values": [...] } which is unwrapped by getMarkedItemsByRequestId
       const markedItems = await getMarkedItemsByRequestId(requestId);
-      
+
       // Store marked items directly - API returns array after unwrap
       setMarkedItemsByRequest(prev => ({ ...prev, [requestId]: markedItems || [] }));
     } catch (err) {
@@ -1872,13 +1872,13 @@ const AuditorLeadReports = () => {
       toast.error('External audits cannot request extension.');
       return;
     }
-    
+
     setSelectedAuditId(auditId);
     setShowExtensionModal(true);
     setExtensionComment('');
     // Use selectedCompliantItems directly (same as Return logic)
     // Don't reset selectedCompliantItems - items are selected outside the modal
-    
+
     // Load checklist items for this audit (needed for handleRequestExtension to get full item details)
     try {
       const items = await getAuditChecklistItems(auditId);
@@ -1887,12 +1887,12 @@ const AuditorLeadReports = () => {
       console.error('Failed to load checklist items:', err);
       setAllChecklistItems([]);
     }
-    
+
     // Load existing revision requests
     try {
       const requests = await getAuditPlanRevisionRequestsByAuditId(auditId);
       setRevisionRequests(requests);
-      
+
       // Marked items will be loaded on-demand when Extension Request History modal is opened
     } catch (err) {
       console.error('Failed to load revision requests:', err);
@@ -1903,38 +1903,38 @@ const AuditorLeadReports = () => {
   // Handle request extension (Lead Auditor)
   const handleRequestExtension = async () => {
     if (!selectedAuditId) return;
-    
+
     // Validate: external audits cannot request extension
     const auditType = getAuditType(selectedAuditId);
     if (auditType === 'external') {
       toast.error('External audits cannot request extension.');
       return;
     }
-    
+
     // Check if there's already a pending or approved request
     const pendingRequest = revisionRequests.find(r => r.status === 'Pending');
     const approvedRequest = revisionRequests.find(r => r.status === 'Approved');
-    
+
     if (pendingRequest) {
       toast.error('An extension request is already pending. Please wait for Director\'s response.');
       return;
     }
-    
+
     if (approvedRequest) {
       toast.error('An extension request has already been approved. You can now edit schedule and team.');
       return;
     }
-    
+
     if (!extensionComment.trim()) {
       toast.error('Please enter a comment explaining why you need an extension.');
       return;
     }
-    
+
     // Auto-populate selectedChecklistItems from selectedFindings if not already set
     if (selectedChecklistItems.size === 0 && selectedFindings.size > 0) {
       const checklistItemIds = new Set<string>();
       selectedFindings.forEach(findingId => {
-        const finding = allFindings.find((f: any) => 
+        const finding = allFindings.find((f: any) =>
           String(f.findingId || f.id || '') === findingId
         );
         if (finding) {
@@ -1948,21 +1948,21 @@ const AuditorLeadReports = () => {
         setSelectedChecklistItems(checklistItemIds);
       }
     }
-    
+
     // Validate: must have at least one item selected (checklist items or findings)
     if (selectedCompliantItems.size === 0 && selectedFindings.size === 0) {
       toast.error('Please select at least one compliant item or finding to request extension for.');
       return;
     }
-    
+
     setExtensionLoading(true);
     try {
       // Mark all selected compliant items as Pending (for extension requests)
       if (selectedCompliantItems.size > 0) {
-        const markPromises = Array.from(selectedCompliantItems).map(auditItemId => 
+        const markPromises = Array.from(selectedCompliantItems).map(auditItemId =>
           markChecklistItemPending(auditItemId)
         );
-        
+
         try {
           await Promise.all(markPromises);
           toast.success(`Marked ${selectedCompliantItems.size} compliant item(s) as Pending for extension request.`);
@@ -1971,19 +1971,19 @@ const AuditorLeadReports = () => {
           toast.warning('Some compliant items failed to mark. Continuing with request...');
         }
       }
-      
+
       // Collect findings from two sources:
       // 1. Findings from selected compliant items
       // 2. Findings directly selected (selectedFindings)
       const findingIds: string[] = [];
       const findingsForRequest: any[] = [];
-      
+
       // Source 1: Get findings from selected compliant items
       if (selectedCompliantItems.size > 0) {
-        const selectedItemsList = allChecklistItems.filter((item: any) => 
+        const selectedItemsList = allChecklistItems.filter((item: any) =>
           selectedCompliantItems.has(item.auditItemId || item.id)
         );
-        
+
         selectedItemsList.forEach((item: any) => {
           const itemId = item.auditItemId || item.id;
           allFindings.forEach((finding: any) => {
@@ -1998,11 +1998,11 @@ const AuditorLeadReports = () => {
           });
         });
       }
-      
+
       // Source 2: Add findings directly selected (selectedFindings)
       if (selectedFindings.size > 0) {
         selectedFindings.forEach(findingId => {
-          const finding = allFindings.find((f: any) => 
+          const finding = allFindings.find((f: any) =>
             String(f.findingId || f.id || '') === findingId
           );
           if (finding) {
@@ -2014,21 +2014,21 @@ const AuditorLeadReports = () => {
           }
         });
       }
-      
+
       console.log(`[Extension Request] Total findings to send: ${findingIds.length}`, {
         fromCompliantItems: selectedCompliantItems.size,
         fromSelectedFindings: selectedFindings.size,
         totalFindings: findingIds.length,
         findingIds
       });
-      
+
       // Create extension request with findings
       const newRequest = await createAuditPlanRevisionRequest({
         auditId: selectedAuditId,
         comment: extensionComment.trim(),
         findingIds: findingIds.length > 0 ? findingIds : undefined,
       });
-      
+
       // Save mapping of request -> findings for later display
       // Store findings directly (not checklist items) so we can display them in Extension Request History
       if (newRequest?.requestId) {
@@ -2038,7 +2038,7 @@ const AuditorLeadReports = () => {
           [newRequest.requestId]: findingsForRequest
         }));
       }
-      
+
       const totalItemsCount = selectedCompliantItems.size + selectedFindings.size;
       toast.success(`Extension request sent to Director successfully for ${totalItemsCount} item(s) (${selectedCompliantItems.size} compliant items, ${selectedFindings.size} findings).`);
       setShowExtensionModal(false);
@@ -2109,7 +2109,7 @@ const AuditorLeadReports = () => {
 
   const allFindings = useMemo(() => {
     const items: any[] = [];
-    
+
     if (summary) {
       // New backend shape: findingsInAudit.$values[].findings.$values[]
       const byAudit = unwrapValues((summary as any).findingsInAudit);
@@ -2166,18 +2166,18 @@ const AuditorLeadReports = () => {
         const count = Number(d?.count || 0);
         let deptId = d?.deptId;
         if (deptId == null) {
-            for (const [id, c] of countByDeptId.entries()) {
-              if (c === count && !assignedIds.has(id)) {
-                deptId = id;
-                assignedIds.add(id);
-                break;
-              }
+          for (const [id, c] of countByDeptId.entries()) {
+            if (c === count && !assignedIds.has(id)) {
+              deptId = id;
+              assignedIds.add(id);
+              break;
             }
+          }
         }
         const key = makeDeptKey(name, name);
         list.push({ key, name: String(name), count, deptId });
       });
-      
+
       // Add department entry for WitnessConfirmReturned findings that don't have a department
       const witnessConfirmReturnedWithoutDept = allFindings.filter((f: any) => {
         const isWitnessConfirmReturned = String(f?.status || '').toLowerCase() === 'witnessconfirmreturned';
@@ -2188,19 +2188,19 @@ const AuditorLeadReports = () => {
           f?.auditItem?.section,
           f?.deptName || f?.departmentName || f?.department?.name
         );
-        return !variants.some(v => list.some(d => d.key === v)) && 
-               !(f?.deptId != null && list.some(d => d.deptId === f.deptId));
+        return !variants.some(v => list.some(d => d.key === v)) &&
+          !(f?.deptId != null && list.some(d => d.deptId === f.deptId));
       });
-      
+
       if (witnessConfirmReturnedWithoutDept.length > 0) {
         const witnessKey = 'witnessconfirmreturned';
-        list.push({ 
-          key: witnessKey, 
-          name: 'Witness Confirm Returned', 
-          count: witnessConfirmReturnedWithoutDept.length 
+        list.push({
+          key: witnessKey,
+          name: 'Witness Confirm Returned',
+          count: witnessConfirmReturnedWithoutDept.length
         });
       }
-      
+
       return list;
     }
     const map = new Map<string, { name: string; count: number; deptId?: any }>();
@@ -2212,7 +2212,7 @@ const AuditorLeadReports = () => {
       cur.count += 1;
       map.set(key, cur);
     });
-    
+
     // Add department entry for WitnessConfirmReturned findings that don't have a department
     const witnessConfirmReturnedWithoutDept = allFindings.filter((f: any) => {
       const isWitnessConfirmReturned = String(f?.status || '').toLowerCase() === 'witnessconfirmreturned';
@@ -2221,12 +2221,12 @@ const AuditorLeadReports = () => {
       const hasDeptInfo = f?.deptId != null || sectionName || f?.deptName || f?.departmentName || f?.department?.name;
       return !hasDeptInfo;
     });
-    
+
     if (witnessConfirmReturnedWithoutDept.length > 0) {
       const witnessKey = 'witnessconfirmreturned';
       map.set(witnessKey, { name: 'Witness Confirm Returned', count: witnessConfirmReturnedWithoutDept.length });
     }
-    
+
     map.forEach((v, k) => list.push({ key: k, name: v.name, count: v.count, deptId: v.deptId }));
     return list;
   }, [summary, allFindings]);
@@ -2234,7 +2234,7 @@ const AuditorLeadReports = () => {
   const findingsForSelectedDept = useMemo(() => {
     if (!selectedDeptKey) return [] as any[];
     const deptEntry = departmentEntries.find(d => d.key === selectedDeptKey);
-    
+
     // Special handling for "Witness Confirm Returned" department
     if (selectedDeptKey === 'witnessconfirmreturned') {
       return allFindings.filter((f: any) => {
@@ -2253,7 +2253,7 @@ const AuditorLeadReports = () => {
         return !belongsToOtherDept;
       });
     }
-    
+
     const matched = allFindings.filter((f: any) => {
       const isWitnessConfirmReturned = String(f?.status || '').toLowerCase() === 'witnessconfirmreturned';
       const variants = makeDeptKeyVariants(
@@ -2262,7 +2262,7 @@ const AuditorLeadReports = () => {
         f?.deptName || f?.departmentName || f?.department?.name
       );
       const matchesDept = variants.includes(selectedDeptKey) || (deptEntry?.deptId != null && f?.deptId === deptEntry.deptId);
-      
+
       // For WitnessConfirmReturned findings: include if they match the department
       // OR if they don't belong to any department (will be shown in "Witness Confirm Returned" department)
       if (isWitnessConfirmReturned) {
@@ -2275,7 +2275,7 @@ const AuditorLeadReports = () => {
         // If it doesn't belong to any department, it should be in "Witness Confirm Returned" department, not here
         return false;
       }
-      
+
       return matchesDept;
     });
     return matched;
@@ -2305,29 +2305,29 @@ const AuditorLeadReports = () => {
         setRequiredFindings(new Set());
         return;
       }
-      
+
       // Check if there's an approved extension request
       const auditRevisionRequests = revisionRequestsMap[selectedAuditId] || [];
       const approvedRequest = auditRevisionRequests.find((req: ViewAuditPlanRevisionRequest) => {
         const reqStatus = String(req.status || '').trim();
         return reqStatus.toLowerCase() === 'approved';
       });
-      
+
       if (!approvedRequest) {
         setRequiredFindings(new Set());
         return;
       }
-      
+
       // Get marked items for this approved request (use same logic as Extension Request History)
       let markedItems = markedItemsByRequest[approvedRequest.requestId] || [];
-      
+
       // If not in state, load from API using the same function as Extension Request History
       if (markedItems.length === 0) {
         try {
           // Use same API and logic as loadMarkedItemsForRequest (for consistency)
           // GET /api/AuditPlanRevisionRequest/{requestId}/marked-items
           const markedItemsFromApi = await getMarkedItemsByRequestId(approvedRequest.requestId);
-          
+
           if (markedItemsFromApi && markedItemsFromApi.length > 0) {
             // Store marked items directly (same as Extension Request History)
             // API returns array after unwrap: can contain both checklist items and findings
@@ -2335,12 +2335,12 @@ const AuditorLeadReports = () => {
               ...prev,
               [approvedRequest.requestId]: markedItemsFromApi
             }));
-            
+
             // Extract findings from marked items (for auto-selection)
             // Marked items can be: checklist items (with auditItemId) or findings (with findingId)
             const markedItemIds = new Set(markedItemsFromApi.map((item: any) => String(item.auditItemId || item.id)));
             const findingsFromMarkedItems: any[] = [];
-            
+
             // First, add direct findings from marked items
             markedItemsFromApi.forEach((item: any) => {
               if (item.findingId || item.title) {
@@ -2351,7 +2351,7 @@ const AuditorLeadReports = () => {
                 }
               }
             });
-            
+
             // Then, find findings associated with marked checklist items
             allFindings.forEach((finding: any) => {
               const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
@@ -2362,7 +2362,7 @@ const AuditorLeadReports = () => {
                 }
               }
             });
-            
+
             markedItems = findingsFromMarkedItems;
           }
         } catch (err) {
@@ -2372,7 +2372,7 @@ const AuditorLeadReports = () => {
         // If already in state, extract findings from stored marked items
         const markedItemIds = new Set(markedItems.map((item: any) => String(item.auditItemId || item.id)));
         const findingsFromMarkedItems: any[] = [];
-        
+
         // First, add direct findings from marked items
         markedItems.forEach((item: any) => {
           if (item.findingId || item.title) {
@@ -2383,7 +2383,7 @@ const AuditorLeadReports = () => {
             }
           }
         });
-        
+
         // Then, find findings associated with marked checklist items
         allFindings.forEach((finding: any) => {
           const findingItemId = finding.auditChecklistItemId || finding.auditItemId || finding.auditItem?.auditItemId;
@@ -2394,10 +2394,10 @@ const AuditorLeadReports = () => {
             }
           }
         });
-        
+
         markedItems = findingsFromMarkedItems;
       }
-      
+
       // Extract findings from marked items (which are already findings)
       const requiredFindingIds = new Set<string>();
       markedItems.forEach((item: any) => {
@@ -2405,10 +2405,10 @@ const AuditorLeadReports = () => {
         const findingId = String(item.findingId || item.id || '');
         if (findingId) requiredFindingIds.add(findingId);
       });
-      
+
       // Set required findings
       setRequiredFindings(requiredFindingIds);
-      
+
       // Auto-select required findings
       if (requiredFindingIds.size > 0) {
         setSelectedFindings(prev => {
@@ -2418,7 +2418,7 @@ const AuditorLeadReports = () => {
         });
       }
     };
-    
+
     loadRequiredFindings();
   }, [selectedAuditId, allFindings, revisionRequestsMap, markedItemsByRequest]);
 
@@ -2433,7 +2433,7 @@ const AuditorLeadReports = () => {
       const isCompliant = !isNonCompliant && (rawStatus === 'compliant' || rawStatus.includes('compliant'));
       return isCompliant;
     });
-    
+
     // Filter by department
     if (nofindingsDeptFilter !== 'all') {
       filtered = filtered.filter((item: any) => {
@@ -2446,7 +2446,7 @@ const AuditorLeadReports = () => {
         return String(deptName).trim() === nofindingsDeptFilter;
       });
     }
-    
+
     return filtered;
   }, [auditChecklistItems, nofindingsDeptFilter]);
 
@@ -2458,7 +2458,7 @@ const AuditorLeadReports = () => {
       const isOverdue = rawStatus === 'overdue' || rawStatus.includes('overdue');
       const isActive = rawStatus === 'active';
       const isReturn = rawStatus === 'return' || rawStatus === 'returned' || rawStatus.includes('return');
-      
+
       // Filter by status
       if (checklistitemsStatusFilter === 'all') {
         return isOverdue || isActive || isReturn;
@@ -2471,7 +2471,7 @@ const AuditorLeadReports = () => {
       }
       return false;
     });
-    
+
     // Filter by department
     if (checklistitemsDeptFilter !== 'all') {
       filtered = filtered.filter((item: any) => {
@@ -2484,7 +2484,7 @@ const AuditorLeadReports = () => {
         return String(deptName).trim() === checklistitemsDeptFilter;
       });
     }
-    
+
     return filtered;
   }, [auditChecklistItems, checklistitemsStatusFilter, checklistitemsDeptFilter]);
 
@@ -2527,7 +2527,7 @@ const AuditorLeadReports = () => {
           getStatusColor={getStatusColor}
           reportSearch={reportSearch}
           setReportSearch={setReportSearch}
-          // auditHasReturnedFinding={auditHasReturnedFinding}
+        // auditHasReturnedFinding={auditHasReturnedFinding}
         />
 
         {/* View Details Modal */}
@@ -2538,7 +2538,7 @@ const AuditorLeadReports = () => {
               className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
               onClick={() => setShowViewModal(false)}
             />
-            
+
             {/* Modal */}
             <div className="relative bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col">
               {/* Header */}
@@ -2608,7 +2608,7 @@ const AuditorLeadReports = () => {
                         )}
                       </button>
                     )}
-                    
+
                     {/* Request Extension Button - Only show if no pending or approved request, and report is not approved */}
                     {(() => {
                       // Check if report is approved by Lead Auditor
@@ -2616,17 +2616,17 @@ const AuditorLeadReports = () => {
                       const status = currentAudit?.status || currentAudit?.state || currentAudit?.approvalStatus || '';
                       const statusToCheck = String(status).toLowerCase().trim().replace(/\s+/g, '');
                       const isReportApproved = statusToCheck === 'approved' || statusToCheck.includes('approve');
-                      
+
                       // Don't show button if report is already approved by Lead Auditor
                       if (isReportApproved) {
                         return null;
                       }
-                      
+
                       const pendingRequest = revisionRequests.find(r => r.status === 'Pending');
                       const approvedRequest = revisionRequests.find(r => r.status === 'Approved');
                       const auditType = selectedAuditId ? getAuditType(selectedAuditId) : null;
                       const isExternal = auditType === 'external';
-                      
+
                       if (pendingRequest) {
                         // Show disabled button when pending
                         return (
@@ -2642,7 +2642,7 @@ const AuditorLeadReports = () => {
                           </button>
                         );
                       }
-                      
+
                       if (approvedRequest) {
                         // Show disabled button when approved (Director has already approved an extension)
                         return (
@@ -2658,7 +2658,7 @@ const AuditorLeadReports = () => {
                           </button>
                         );
                       }
-                      
+
                       if (isExternal) {
                         // Show disabled button for external audits
                         return (
@@ -2674,7 +2674,7 @@ const AuditorLeadReports = () => {
                           </button>
                         );
                       }
-                      
+
                       return (
                         <button
                           onClick={() => {
@@ -2703,7 +2703,7 @@ const AuditorLeadReports = () => {
                 </div>
                 {activeTab === 'departmentsSummary' ? (
                   <>
-                   <div className="mb-8 pt-8 border-t border-gray-200">
+                    <div className="mb-8 pt-8 border-t border-gray-200">
                       <SummaryTab
                         summary={summary}
                         severityEntries={severityEntries}
@@ -2718,14 +2718,14 @@ const AuditorLeadReports = () => {
                       onViewFinding={async (finding) => {
                         setSelectedFindingId(String(finding?.findingId || ''));
                         setShowFindingModal(true);
-                        
+
                         // Load root causes for this finding
                         const findingId = finding?.findingId || finding?.id;
                         if (findingId && !rootCausesMap[findingId]) {
                           setLoadingRootCauses(prev => ({ ...prev, [findingId]: true }));
                           try {
                             const rootCauses = await getRootCausesByFinding(String(findingId));
-                            
+
                             // Load actions (proposed solutions) for each root cause
                             const rootCausesWithActions = await Promise.all(
                               rootCauses.map(async (rc: any) => {
@@ -2738,7 +2738,7 @@ const AuditorLeadReports = () => {
                                 }
                               })
                             );
-                            
+
                             setRootCausesMap(prev => ({ ...prev, [findingId]: rootCausesWithActions || [] }));
                           } catch (err) {
                             console.error('Failed to load root causes:', err);
@@ -2769,11 +2769,11 @@ const AuditorLeadReports = () => {
                           }
                           return next;
                         });
-                        
+
                         // Auto-map findings to checklist items for extension request
                         if (isSelected) {
                           // Find the finding and get its checklist item ID
-                          const finding = allFindings.find((f: any) => 
+                          const finding = allFindings.find((f: any) =>
                             String(f.findingId || f.id || '') === findingId
                           );
                           if (finding) {
@@ -2788,7 +2788,7 @@ const AuditorLeadReports = () => {
                           }
                         } else {
                           // When unselecting finding, also unselect its checklist item
-                          const finding = allFindings.find((f: any) => 
+                          const finding = allFindings.find((f: any) =>
                             String(f.findingId || f.id || '') === findingId
                           );
                           if (finding) {
@@ -2797,11 +2797,11 @@ const AuditorLeadReports = () => {
                               // Only remove if no other selected findings belong to this checklist item
                               const otherFindingsForItem = allFindings.filter((f: any) => {
                                 const fItemId = f.auditChecklistItemId || f.auditItemId || f.auditItem?.auditItemId;
-                                return String(fItemId) === String(checklistItemId) && 
-                                       String(f.findingId || f.id || '') !== findingId &&
-                                       selectedFindings.has(String(f.findingId || f.id || ''));
+                                return String(fItemId) === String(checklistItemId) &&
+                                  String(f.findingId || f.id || '') !== findingId &&
+                                  selectedFindings.has(String(f.findingId || f.id || ''));
                               });
-                              
+
                               if (otherFindingsForItem.length === 0) {
                                 setSelectedChecklistItems(prev => {
                                   const next = new Set(prev);
@@ -2814,41 +2814,36 @@ const AuditorLeadReports = () => {
                         }
                       }}
                     />
-                   
+
                   </>
                 ) : activeTab === 'checklist' ? (
                   <>
                     {/* Tabs: Finding | No Findings | Checklist items */}
                     <div className="border-b border-gray-100 mb-4">
                       <nav className="flex gap-4 text-sm">
-                        
+
                         <button
                           type="button"
                           onClick={() => setSummaryTab('nofindings')}
-                          className={`pb-2 border-b-2 transition-colors ${
-                            summaryTab === 'nofindings'
+                          className={`pb-2 border-b-2 transition-colors ${summaryTab === 'nofindings'
                               ? 'border-primary-600 text-primary-700 font-semibold'
                               : 'border-transparent text-gray-500 hover:text-gray-700'
-                          }`}
+                            }`}
                         >
                           No Findings
                         </button>
                         <button
                           type="button"
                           onClick={() => setSummaryTab('checklistitems')}
-                          className={`pb-2 border-b-2 transition-colors ${
-                            summaryTab === 'checklistitems'
+                          className={`pb-2 border-b-2 transition-colors ${summaryTab === 'checklistitems'
                               ? 'border-primary-600 text-primary-700 font-semibold'
                               : 'border-transparent text-gray-500 hover:text-gray-700'
-                          }`}
+                            }`}
                         >
                           Checklist items
                         </button>
                       </nav>
                     </div>
-
-                    
-
                     {/* TAB 2: No Findings (Compliant items only) */}
                     {summaryTab === 'nofindings' && (
                       <>
@@ -3124,22 +3119,22 @@ const AuditorLeadReports = () => {
                     const statusToCheck = String(status).toLowerCase().trim().replace(/\s+/g, '');
                     const isApproved = statusToCheck === 'approved' || statusToCheck.includes('approve');
                     const isReturned = statusToCheck === 'returned' || statusToCheck.includes('return') || statusToCheck.includes('reject');
-                    
+
                     // Check if needs decision (Pending status)
                     const needsDecision = statusToCheck === 'pending';
-                    
+
                     // Check if Director approved extension
                     const auditRevisionRequests = revisionRequestsMap[selectedAuditId] || [];
                     const hasApprovedExtension = auditRevisionRequests.some((req: ViewAuditPlanRevisionRequest) => {
                       const reqStatus = String(req.status || '').trim();
                       return reqStatus.toLowerCase() === 'approved';
                     });
-                    
+
                     // Don't show buttons if already approved or returned
                     if (isApproved || isReturned || !needsDecision) {
                       return null;
                     }
-                    
+
                     return (
                       <>
                         {/* Only show Approve if NO approved extension */}
@@ -3168,17 +3163,17 @@ const AuditorLeadReports = () => {
                           const auditType = getAuditType(selectedAuditId);
                           const isExternal = auditType === 'external';
                           const isDisabled = actionLoading === `${selectedAuditId}:approve` || actionLoading === `${selectedAuditId}:return` || isExternal;
-                          const disabledTitle = isExternal 
-                            ? 'External audits cannot be returned' 
-                            : hasApprovedExtension 
-                              ? `Extension approved - You must Return to edit schedule and team${requiredFindings.size > 0 ? ` (${requiredFindings.size} required finding(s))` : ''}` 
+                          const disabledTitle = isExternal
+                            ? 'External audits cannot be returned'
+                            : hasApprovedExtension
+                              ? `Extension approved - You must Return to edit schedule and team${requiredFindings.size > 0 ? ` (${requiredFindings.size} required finding(s))` : ''}`
                               : `Return report${selectedFindings.size > 0 ? ` and ${selectedFindings.size} finding(s)` : ''}${selectedCompliantItems.size > 0 ? ` and ${selectedCompliantItems.size} compliant item(s)` : ''}`;
-                          
+
                           return (
                             <button
                               onClick={async () => {
                                 setShowViewModal(false);
-                                
+
                                 // If has approved extension → open modal to edit schedule & team
                                 if (hasApprovedExtension) {
                                   openReturnModal(selectedAuditId);
@@ -3216,7 +3211,7 @@ const AuditorLeadReports = () => {
                     );
                   })()}
                 </div>
-                
+
                 {/* Right side - Close */}
                 <button
                   onClick={() => setShowViewModal(false)}
@@ -3238,7 +3233,7 @@ const AuditorLeadReports = () => {
               className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
               onClick={closeApproveModal}
             />
-            
+
             {/* Modal */}
             <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
               <div className="p-6">
@@ -3361,9 +3356,8 @@ const AuditorLeadReports = () => {
                               }}
                               min={returnPeriodFrom}
                               max={returnPeriodTo}
-                              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${
-                                returnScheduleErrors[index] ? 'border-red-500' : 'border-gray-300'
-                              }`}
+                              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent ${returnScheduleErrors[index] ? 'border-red-500' : 'border-gray-300'
+                                }`}
                             />
                             {returnScheduleErrors[index] && (
                               <p className="text-xs text-red-600 mt-1">{returnScheduleErrors[index]}</p>
@@ -3475,7 +3469,7 @@ const AuditorLeadReports = () => {
                 setExtensionComment('');
               }}
             />
-            
+
             {/* Modal */}
             <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg mx-auto">
               <div className="p-6">
@@ -3492,7 +3486,7 @@ const AuditorLeadReports = () => {
                     <p className="text-xs text-gray-500">Request Director to extend the deadline for submitting evidence</p>
                   </div>
                 </div>
-                
+
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Reason for extension request:
@@ -3505,10 +3499,6 @@ const AuditorLeadReports = () => {
                     rows={5}
                   />
                 </div>
-
-              
-                
-                
                 <div className="flex gap-3 justify-end">
                   <button
                     onClick={() => {
@@ -3541,7 +3531,7 @@ const AuditorLeadReports = () => {
               className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
               onClick={() => setShowRequestHistoryModal(false)}
             />
-            
+
             {/* Modal */}
             <div className="relative bg-white rounded-xl shadow-xl border-2 border-gray-300 w-full max-w-4xl mx-auto max-h-[90vh] flex flex-col overflow-hidden">
               {/* Header */}
@@ -3602,22 +3592,21 @@ const AuditorLeadReports = () => {
                           loadMarkedItemsForRequest(req.requestId);
                         }
                         // Get marked items from state (loaded on-demand like Director)
-                        const markedItems = Array.isArray(markedItemsByRequest[req.requestId]) 
-                          ? markedItemsByRequest[req.requestId] 
+                        const markedItems = Array.isArray(markedItemsByRequest[req.requestId])
+                          ? markedItemsByRequest[req.requestId]
                           : [];
                         const isLoading = loadingMarkedItems[req.requestId];
                         const isApproved = req.status === 'Approved';
                         const isRejected = req.status === 'Rejected';
                         const isPending = req.status === 'Pending';
-                        
+
                         return (
                           <div key={req.requestId} className="bg-white border-2 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                             {/* Request Header */}
-                            <div className={`p-4 border-b-2 ${
-                              isApproved ? 'bg-green-50 border-green-200' :
-                              isRejected ? 'bg-red-50 border-red-200' :
-                              'bg-amber-50 border-amber-200'
-                            }`}>
+                            <div className={`p-4 border-b-2 ${isApproved ? 'bg-green-50 border-green-200' :
+                                isRejected ? 'bg-red-50 border-red-200' :
+                                  'bg-amber-50 border-amber-200'
+                              }`}>
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                   {isApproved && (
@@ -3642,11 +3631,10 @@ const AuditorLeadReports = () => {
                                     </div>
                                   )}
                                   <div>
-                                    <h4 className={`text-sm font-bold ${
-                                      isApproved ? 'text-green-800' :
-                                      isRejected ? 'text-red-800' :
-                                      'text-amber-800'
-                                    }`}>
+                                    <h4 className={`text-sm font-bold ${isApproved ? 'text-green-800' :
+                                        isRejected ? 'text-red-800' :
+                                          'text-amber-800'
+                                      }`}>
                                       {isApproved ? 'APPROVED' : isRejected ? 'REJECTED' : 'PENDING'}
                                     </h4>
                                     <p className="text-xs text-gray-600 mt-0.5">
@@ -3684,11 +3672,10 @@ const AuditorLeadReports = () => {
                               {req.responseComment && (
                                 <div>
                                   <p className="text-xs font-semibold text-gray-700 mb-1">Director's Response:</p>
-                                  <p className={`text-sm rounded-lg p-3 border ${
-                                    isApproved 
-                                      ? 'bg-green-50 border-green-200 text-green-900' 
+                                  <p className={`text-sm rounded-lg p-3 border ${isApproved
+                                      ? 'bg-green-50 border-green-200 text-green-900'
                                       : 'bg-red-50 border-red-200 text-red-900'
-                                  }`}>
+                                    }`}>
                                     {req.responseComment}
                                   </p>
                                 </div>
@@ -3702,7 +3689,7 @@ const AuditorLeadReports = () => {
                                   </svg>
                                   Marked Checklist Items ({markedItems.length})
                                 </h4>
-                                
+
                                 {isLoading ? (
                                   <div className="flex items-center justify-center py-4">
                                     <div className="flex items-center gap-2">
@@ -3723,7 +3710,7 @@ const AuditorLeadReports = () => {
                                       const section = item.section || 'Unknown Section';
                                       const itemStatus = item.itemStatus || item.status || '';
                                       const requestStatus = item.status || req.status || '';
-                                      
+
                                       return (
                                         <div key={item.auditItemId || item.findingId || item.id || idx} className="bg-white border border-purple-200 rounded-lg p-3">
                                           {/* Checklist Item */}
@@ -3743,15 +3730,14 @@ const AuditorLeadReports = () => {
                                               <div className="flex items-center gap-2 flex-wrap">
                                                 {itemStatus && (
                                                   <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-medium ${getStatusColor(itemStatus)}`}>
-                                                     {itemStatus}
+                                                    {itemStatus}
                                                   </span>
                                                 )}
                                                 {requestStatus && (
-                                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${
-                                                    requestStatus === 'Approved' ? 'bg-green-100 text-green-700' :
-                                                    requestStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
-                                                    'bg-amber-100 text-amber-700'
-                                                  }`}>
+                                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${requestStatus === 'Approved' ? 'bg-green-100 text-green-700' :
+                                                      requestStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
+                                                        'bg-amber-100 text-amber-700'
+                                                    }`}>
                                                     Request: {requestStatus}
                                                   </span>
                                                 )}
@@ -3776,9 +3762,6 @@ const AuditorLeadReports = () => {
                   </div>
                 )}
               </div>
-
-         
-              
             </div>
           </div>,
           document.body
@@ -3786,12 +3769,12 @@ const AuditorLeadReports = () => {
 
         {/* Finding Details Modal */}
         {showFindingModal && selectedFindingId && (() => {
-          const selectedFinding = findingsForSelectedDept.find((f: any) => 
+          const selectedFinding = findingsForSelectedDept.find((f: any) =>
             String(f?.findingId || '') === selectedFindingId
           );
-          
+
           if (!selectedFinding) return null;
-          
+
           return (
             <FindingDetailModal
               isOpen={showFindingModal}
@@ -3821,7 +3804,7 @@ const AuditorLeadReports = () => {
               className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
               onClick={closeReasonReturnModal}
             />
-            
+
             {/* Modal */}
             <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-100">
               {/* Header */}
@@ -3937,7 +3920,7 @@ const AuditorLeadReports = () => {
                 </Button>
                 <button
                   onClick={handleDirectReturn}
-                  disabled={reasonReturnLoading || 
+                  disabled={reasonReturnLoading ||
                     (selectedFindings.size > 0 && !findingReasonReturn.trim()) ||
                     (selectedCompliantItems.size > 0 && !compliantReasonReturn.trim())
                   }
@@ -3975,7 +3958,7 @@ const AuditorLeadReports = () => {
                 setReturningFindingId(null);
               }}
             />
-            
+
             {/* Modal */}
             <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md mx-auto">
               <div className="p-6">
@@ -3990,7 +3973,7 @@ const AuditorLeadReports = () => {
                     <p className="text-xs text-gray-500 mt-0.5">Provide a reason for returning this finding</p>
                   </div>
                 </div>
-                
+
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Reason <span className="text-red-500">*</span>
@@ -4003,7 +3986,7 @@ const AuditorLeadReports = () => {
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
                   />
                 </div>
-                
+
                 <div className="flex items-center justify-end gap-3">
                   <button
                     onClick={() => {
@@ -4021,19 +4004,19 @@ const AuditorLeadReports = () => {
                         toast.error('Please enter a reason for returning this finding.');
                         return;
                       }
-                      
+
                       if (!returningFindingId) return;
-                      
+
                       try {
                         setActionLoading(`${returningFindingId}:return`);
                         await returnFinding(returningFindingId, returnFindingNote.trim());
-                        
+
                         toast.success('Finding returned successfully.');
                         setShowReturnFindingModal(false);
                         setShowFindingModal(false);
                         setReturnFindingNote('');
                         setReturningFindingId(null);
-                        
+
                         // Reload data
                         setTimeout(async () => {
                           await reload();
@@ -4089,7 +4072,7 @@ const AuditorLeadReports = () => {
               className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
               onClick={() => setShowAttachmentsModal(false)}
             />
-            
+
             {/* Modal */}
             <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
               {/* Header */}
@@ -4125,7 +4108,7 @@ const AuditorLeadReports = () => {
                       const size = att?.fileSize || att?.size;
                       const sizeDisplay = size ? (size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(2)} KB` : `${(size / (1024 * 1024)).toFixed(2)} MB`) : '';
                       const uploadedAt = att?.uploadedAt || att?.createdAt || att?.uploadDate;
-                      
+
                       return (
                         <div key={idx} className="flex items-center gap-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg px-4 py-3 transition-colors">
                           <div className="flex-shrink-0 w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center">
@@ -4139,9 +4122,9 @@ const AuditorLeadReports = () => {
                               {sizeDisplay && <span>{sizeDisplay}</span>}
                               {uploadedAt && (
                                 <span>
-                                  {new Date(uploadedAt).toLocaleDateString('en-US', { 
-                                    year: 'numeric', 
-                                    month: 'short', 
+                                  {new Date(uploadedAt).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'short',
                                     day: 'numeric',
                                     hour: '2-digit',
                                     minute: '2-digit'
@@ -4151,10 +4134,10 @@ const AuditorLeadReports = () => {
                             </div>
                           </div>
                           {url ? (
-                            <a 
-                              href={url} 
-                              target="_blank" 
-                              rel="noreferrer" 
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noreferrer"
                               className="flex-shrink-0 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

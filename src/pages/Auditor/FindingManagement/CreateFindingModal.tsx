@@ -27,6 +27,7 @@ interface CreateFindingModalProps {
     auditItemId: string;
     auditId: string;
     questionTextSnapshot: string;
+    rowVersion: string;
   };
   departmentId: number;
   departmentName?: string; // Department name
@@ -594,9 +595,25 @@ const [findingTime, setFindingTime] = useState(() => {
 
       // Mark checklist item as non-compliant
       try {
-        await markChecklistItemNonCompliant(checklistItem.auditItemId);
+        if (!checklistItem.rowVersion) {
+          toast.error('RowVersion is required for concurrency control. Please refresh the page.');
+          throw new Error('RowVersion is required for concurrency control');
+        }
+        await markChecklistItemNonCompliant(checklistItem.auditItemId, checklistItem.rowVersion);
       } catch (markError: any) {
-        // Don't throw error, just log it - finding was created successfully
+        // Log the error
+        console.error('Error marking as non-compliant:', markError);
+        
+        // Show user-friendly error message
+        const errorData = markError?.response?.data;
+        if (errorData?.errors?.RowVersion) {
+          toast.warning('This item has been modified by another user. The finding was created, but status update failed. Please refresh the page.');
+        } else if (markError?.response?.status === 409) {
+          toast.warning('Conflict: This item has been modified. The finding was created successfully. Please refresh the page.');
+        } else if (markError?.message?.includes('RowVersion')) {
+          toast.warning('Version conflict detected. The finding was created successfully. Please refresh the page.');
+        }
+        // Don't throw error - finding was created successfully
       }
 
       // Reset form

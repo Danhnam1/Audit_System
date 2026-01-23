@@ -19,7 +19,6 @@ import CompliantDetailsViewer from './CompliantDetailsViewer';
 import FindingDetailModal from './FindingDetailModal';
 import { toast } from 'react-toastify';
 import { getActionsByFinding, getActionsByRootCause, createAction, type Action } from '../../../api/actions';
-
 // import ActionDetailModal from '../../CAPAOwner/ActionDetailModal';
 import { getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
@@ -59,6 +58,7 @@ interface ChecklistItem {
   order: number;
   status: string;
   comment: string | null;
+  rowVersion?: string;
 }
 
 // Status detail interfaces for Return items
@@ -1380,6 +1380,12 @@ const DepartmentChecklist = () => {
     // Block if report is pending
     if (isBlockedByReport) {
       toast.error('Cannot mark as compliant while report is pending review.');
+      return;
+    }
+    
+    // Check if rowVersion exists
+    if (!item.rowVersion) {
+      toast.error('Missing version information. Please refresh the page.');
       return;
     }
     
@@ -2968,6 +2974,10 @@ const DepartmentChecklist = () => {
                                       toast.error('Cannot create finding while report is pending review.');
                                       return;
                                     }
+                                    if (!item.rowVersion) {
+                                      toast.error('Missing version information. Please refresh the page.');
+                                      return;
+                                    }
                                     setSelectedItem(item);
                                     setShowCreateModal(true);
                                   }}
@@ -3342,7 +3352,7 @@ const DepartmentChecklist = () => {
       )}
 
       {/* Create Finding Modal */}
-      {selectedItem && deptId && (
+      {selectedItem && selectedItem.rowVersion && deptId && (
         <CreateFindingModal
           isOpen={showCreateModal}
           onClose={() => {
@@ -3357,7 +3367,7 @@ const DepartmentChecklist = () => {
             await reloadAllData();
             toast.success('Finding created successfully');
           }}
-          checklistItem={selectedItem}
+          checklistItem={selectedItem as ChecklistItem & { rowVersion: string }}
           departmentId={parseInt(deptId, 10)}
           departmentName={departmentName}
         />
@@ -3376,7 +3386,7 @@ const DepartmentChecklist = () => {
       )}
 
       {/* Compliant Modal */}
-      {itemToMarkCompliant && deptId && (
+      {itemToMarkCompliant && itemToMarkCompliant.rowVersion && deptId && (
         <CompliantModal
           isOpen={showCompliantModal}
           onClose={() => {
@@ -3390,6 +3400,7 @@ const DepartmentChecklist = () => {
             auditItemId: itemToMarkCompliant.auditItemId,
             auditId: auditId || itemToMarkCompliant.auditId,
             questionTextSnapshot: itemToMarkCompliant.questionTextSnapshot,
+            rowVersion: itemToMarkCompliant.rowVersion,
           }}
         />
       )}

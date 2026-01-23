@@ -173,8 +173,12 @@ export const getChecklistItemsByDepartment = async (deptId: number) => {
 };
 
 // Mark checklist item as compliant
-export const markChecklistItemCompliant = async (auditItemId: string) => {
-  const res = await apiClient.put(`/AuditChecklistItems/${auditItemId}/compliant`);
+export const markChecklistItemCompliant = async (auditItemId: string, rowVersion: string) => {
+  // Backend requires PascalCase: RowVersion
+  const payload = {
+    RowVersion: rowVersion
+  };
+  const res = await apiClient.put(`/AuditChecklistItems/${auditItemId}/compliant`, payload);
   return res.data;
 }
 export const markChecklistItemCompliant1 = async (
@@ -237,10 +241,13 @@ export const markChecklistItemCompliant1 = async (
 };
 
 // Mark checklist item as non-compliant
-export const markChecklistItemNonCompliant = async (auditItemId: string) => {
-  const res = await apiClient.put(`/AuditChecklistItems/${auditItemId}/non-compliant`, {
+export const markChecklistItemNonCompliant = async (auditItemId: string, rowVersion: string) => {
+  // Backend requires PascalCase: RowVersion
+  const payload: any = {
     entityId: auditItemId,
-  });
+    RowVersion: rowVersion
+  };
+  const res = await apiClient.put(`/AuditChecklistItems/${auditItemId}/non-compliant`, payload);
   return res.data;
 };
 
