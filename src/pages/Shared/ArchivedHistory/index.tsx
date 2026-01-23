@@ -11,6 +11,8 @@ import { getCriterionName, getDepartmentName } from '../../../helpers/auditPlanH
 import { unwrap } from '../../../utils/normalize';
 import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from '../../../constants';
 import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
+import ReportHistoryModal from '../../../components/ReportHistoryModal';
+import { getReportRequestByAuditId } from '../../../api/reportRequest';
 
 interface AuditRow {
   auditId: string;
@@ -38,6 +40,11 @@ const ArchivedHistoryPage = () => {
   const [auditDetail, setAuditDetail] = useState<any>(null);
   const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
   const [criteriaList, setCriteriaList] = useState<any[]>([]);
+
+  // Report History modal state
+  const [showReportHistoryModal, setShowReportHistoryModal] = useState(false);
+  const [reportHistoryEntityId, setReportHistoryEntityId] = useState<string>('');
+  const [reportHistoryAuditTitle, setReportHistoryAuditTitle] = useState<string>('');
 
   // Load admin users, departments, and criteria for name resolution
   useEffect(() => {
@@ -158,6 +165,25 @@ const ArchivedHistoryPage = () => {
   });
 
   // Handle view details
+  const handleViewReportHistory = async (auditId: string, auditTitle: string) => {
+    try {
+      // Get the report request for this audit
+      const reportRequest = await getReportRequestByAuditId(auditId);
+      if (reportRequest?.reportRequestId) {
+        setReportHistoryEntityId(reportRequest.reportRequestId);
+        setReportHistoryAuditTitle(auditTitle);
+        setShowReportHistoryModal(true);
+      } else {
+        setError('No report request found for this audit');
+        setTimeout(() => setError(null), 3000);
+      }
+    } catch (err: any) {
+      console.error('Failed to load report request:', err);
+      setError(err?.message || 'Failed to load report request');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
+
   const handleViewDetails = async (auditId: string) => {
     setSelectedAuditId(auditId);
     setShowDetailModal(true);
@@ -342,16 +368,27 @@ const ArchivedHistoryPage = () => {
                           <span className="text-sm text-[#5b6166]">{audit.createdBy || '—'}</span>
                         </td>
                         <td className="px-6 py-4 text-center align-middle">
-                          <button
-                            onClick={() => handleViewDetails(audit.auditId)}
-                            className="p-1.5 text-blue-600 hover:bg-gray-100 rounded transition-colors"
-                            title="View Details"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleViewDetails(audit.auditId)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                              title="View Audit Details"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleViewReportHistory(audit.auditId, audit.title)}
+                              className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors"
+                              title="View Report History"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -379,6 +416,17 @@ const ArchivedHistoryPage = () => {
         getAuditTypeBadgeColor={getAuditTypeBadgeColor}
         ownerOptions={adminUsers}
         auditorOptions={adminUsers}
+      />
+
+      <ReportHistoryModal
+        isOpen={showReportHistoryModal}
+        onClose={() => {
+          setShowReportHistoryModal(false);
+          setReportHistoryEntityId('');
+          setReportHistoryAuditTitle('');
+        }}
+        reportRequestId={reportHistoryEntityId}
+        auditTitle={reportHistoryAuditTitle}
       />
     </MainLayout>
   );

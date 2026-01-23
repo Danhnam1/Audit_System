@@ -6,6 +6,7 @@ import { getAuditChecklistItems } from '../api/checklists';
 import { getAdminUsers } from '../api/adminUsers';
 import { getStatusColor, getSeverityColor } from '../constants/statusColors';
 import AuditLogHistoryModal from './AuditLogHistoryModal';
+import FindingActionsModal from './FindingActionsModal';
 
 interface DepartmentItemsModalProps {
   isOpen: boolean;
@@ -34,6 +35,11 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
   const [historyEntityType, setHistoryEntityType] = useState<'Finding' | 'ChecklistItem' | 'ChecklistItemNoFinding'>('Finding');
   const [historyEntityId, setHistoryEntityId] = useState<string>('');
   const [historyTitle, setHistoryTitle] = useState<string>('');
+
+  // Actions modal state
+  const [showActionsModal, setShowActionsModal] = useState(false);
+  const [actionsFindingId, setActionsFindingId] = useState<string>('');
+  const [actionsFindingTitle, setActionsFindingTitle] = useState<string>('');
 
   useEffect(() => {
     if (!isOpen || !auditId) {
@@ -100,6 +106,12 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
     setHistoryEntityId(entityId);
     setHistoryTitle(title);
     setShowHistoryModal(true);
+  };
+
+  const handleShowActions = (findingId: string, title: string) => {
+    setActionsFindingId(findingId);
+    setActionsFindingTitle(title);
+    setShowActionsModal(true);
   };
 
   return createPortal(
@@ -220,21 +232,38 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
                           <h4 className="text-base font-bold text-gray-900 mb-2">{finding.title}</h4>
                           <p className="text-sm text-gray-600 line-clamp-2">{finding.description}</p>
                         </div>
-                        <button
-                          onClick={() => handleShowHistory('Finding', finding.findingId, finding.title)}
-                          className="ml-3 flex-shrink-0 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium flex items-center gap-2"
-                          title="View history"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                          History
-                        </button>
+                        <div className="ml-3 flex-shrink-0 flex gap-2">
+                          <button
+                            onClick={() => handleShowActions(finding.findingId, finding.title)}
+                            className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium flex items-center gap-2"
+                            title="View corrective actions"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                              />
+                            </svg>
+                            Actions
+                          </button>
+                          <button
+                            onClick={() => handleShowHistory('Finding', finding.findingId, finding.title)}
+                            className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium flex items-center gap-2"
+                            title="View history"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            </svg>
+                            History
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mt-3">
@@ -428,6 +457,14 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
         entityType={historyEntityType}
         entityId={historyEntityId}
         title={historyTitle}
+      />
+
+      {/* Actions Modal */}
+      <FindingActionsModal
+        isOpen={showActionsModal}
+        onClose={() => setShowActionsModal(false)}
+        findingId={actionsFindingId}
+        findingTitle={actionsFindingTitle}
       />
     </>,
     document.body
