@@ -9,7 +9,7 @@ export const STATUS_COLORS = {
   'Verified': 'bg-teal-100 text-teal-800',
   'WitnessConfirmed': 'bg-teal-100 text-teal-800',
   "WitnessDisagreed": 'bg-red-100 text-red-800',
-  'WitnessConfirmReturned': 'bg-teal-100 text-teal-800',
+  'WitnessConfirmReturned': 'bg-teal-200 text-teal-800',
   
   // In Progress/Active States - Medium primary/sky tone
   'In Progress': 'bg-sky-500 text-white',

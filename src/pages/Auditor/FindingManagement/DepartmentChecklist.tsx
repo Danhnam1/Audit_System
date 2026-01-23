@@ -1750,10 +1750,11 @@ const DepartmentChecklist = () => {
         const findingDeptId = finding.deptId || null;
         const deptMatch = !deptId || (findingDeptId !== null && findingDeptId === parseInt(deptId, 10));
         
-        // Exclude WitnessDisagreed and Return/Returned status
+        // Exclude WitnessDisagreed and Return/Returned status (but keep WitnessConfirmReturned)
         const statusLower = (finding.status || '').toLowerCase();
         const isNotDisagreed = statusLower !== 'witnessdisagreed';
-        const isNotReturned = !statusLower.includes('return');
+        // Only exclude pure "Return" or "Returned" status, not "WitnessConfirmReturned"
+        const isNotReturned = statusLower !== 'return' && statusLower !== 'returned';
         
         const matches = auditMatch && deptMatch && isNotDisagreed && isNotReturned;
         
@@ -1865,8 +1866,8 @@ const DepartmentChecklist = () => {
     const originalStatus = finding.status || '';
     const statusLower = originalStatus.toLowerCase();
 
-    // If finding already has final status (Closed/Verified), return it directly
-    if (statusLower === 'closed' || statusLower === 'verified') {
+    // If finding already has final status (Closed/Verified/WitnessConfirmed/WitnessConfirmReturned), return it directly
+    if (statusLower === 'closed' || statusLower === 'verified' || statusLower === 'witnessconfirmed' || statusLower === 'witnessconfirmreturned') {
       return originalStatus;
     }
 
@@ -2405,18 +2406,23 @@ const DepartmentChecklist = () => {
                               
                               // Show Fixed badge with View icon if status is Fixed, WitnessConfirmed, or already edited in this session
                               if (isReturnedResult && (isFixedStatus || isWitnessConfirmed || isEditedInSession || isWitnessConfirmReturned)) {
+                                // Determine status for color mapping
+                                const badgeStatus = isWitnessConfirmReturned 
+                                  ? 'WitnessConfirmReturned' 
+                                  : isWitnessConfirmed 
+                                  ? 'WitnessConfirmed' 
+                                  : 'Fixed';
+                                
                                 return (
                                   <div className="flex items-center gap-2">
-                                    <span className={`px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap ${
-                                      isWitnessConfirmReturned
-                                        ? 'bg-purple-100 text-purple-700 border border-purple-300'
-                                        : isWitnessConfirmed 
-                                        ? 'bg-teal-100 text-teal-700 border border-teal-300' 
-                                        : 'bg-green-100 text-green-700 border border-green-300'
+                                    <span className={`px-2 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold whitespace-nowrap border ${getStatusColorFromConstants(badgeStatus)} ${
+                                      isWitnessConfirmReturned || isWitnessConfirmed
+                                        ? 'border-teal-300'
+                                        : 'border-green-300'
                                     }`}>
                                       {isWitnessConfirmReturned ? 'Witness Confirm Returned' : isWitnessConfirmed ? 'Confirmed' : 'Fixed'}
                                     </span>
-                                    <button
+                                    {/* <button
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         const findingId = findingData?.findingId;
@@ -2432,7 +2438,7 @@ const DepartmentChecklist = () => {
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                       </svg>
-                                    </button>
+                                    </button> */}
                                   </div>
                                 );
                               }

@@ -566,54 +566,6 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
                           </div>
                         )}
 
-                        {/* History */}
-                        {rc.history && rc.history.length > 0 && (
-                          <div className="mt-6 pt-6 border-t-2 border-gray-200">
-                            <div className="flex items-center gap-3 mb-4">
-                              <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              </div>
-                              <h5 className="text-base font-bold text-gray-900">History</h5>
-                            </div>
-                            <div className="space-y-3 pl-2">
-                              {rc.history.map((log: any, logIndex: number) => (
-                                <div key={log.logId} className="flex items-start gap-4 relative">
-                                  {/* Timeline line */}
-                                  {logIndex < rc.history.length - 1 && (
-                                    <div className="absolute left-2 top-8 bottom-0 w-0.5 bg-gradient-to-b from-blue-300 to-transparent"></div>
-                                  )}
-                                  
-                                  {/* Timeline dot */}
-                                  <div className="flex-shrink-0 w-4 h-4 bg-blue-500 rounded-full mt-1 ring-4 ring-blue-100 relative z-10"></div>
-                                  
-                                  {/* Content */}
-                                  <div className="flex-1 min-w-0 bg-gradient-to-r from-blue-50 to-transparent border-l-4 border-blue-400 rounded-r-lg p-4 -ml-2">
-                                    <p className="text-sm text-gray-700 break-words">
-                                      <span className="font-bold text-gray-900">{log.changedBy || 'System'}</span>
-                                      {' '}changed status to{' '}
-                                      <span className="font-bold text-blue-700">{log.newStatus}</span>
-                                    </p>
-                                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5">
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                      </svg>
-                                      {new Date(log.changedAt).toLocaleString('vi-VN')}
-                                    </p>
-                                    {log.reasonReject && (
-                                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
-                                        <p className="text-xs text-red-700 font-medium whitespace-pre-wrap break-words">
-                                          <span className="font-bold">Reason:</span> {log.reasonReject}
-                                        </p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     ))
                   )}
