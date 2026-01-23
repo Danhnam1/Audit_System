@@ -221,24 +221,31 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
   };
 
   const getActionLabel = (log: AdminAuditLogEntry): string => {
+    const action = String(log.action || '').trim();
+    if (action) return action;
+
     const newStatus = getStatusFromValue(log.newValue);
     const oldStatus = getStatusFromValue(log.oldValue);
     if (newStatus && newStatus !== oldStatus) {
       const norm = String(newStatus).toLowerCase();
       if (norm.includes('approve')) return 'Approved';
-      if (norm.includes('return') || norm.includes('reject')) return 'Returned';
-      if (norm.includes('submit')) return 'Submitted';
-      if (norm.includes('pending')) return 'Submitted';
+      if (norm.includes('return')) return 'Returned';
+      if (norm.includes('reject')) return 'Rejected';
+      if (norm.includes('submit') || norm.includes('pending')) return 'Submitted';
     }
-    if (log.action === 'Create') return 'Submitted';
-    return log.action || 'Updated';
+
+    return 'Update';
   };
 
   const getActionByLabel = (actionLabel: string): string => {
     const norm = actionLabel.toLowerCase();
     if (norm.includes('approve')) return 'Approved by';
-    if (norm.includes('return') || norm.includes('reject')) return 'Returned by';
+    if (norm.includes('return')) return 'Returned by';
+    if (norm.includes('reject')) return 'Rejected by';
     if (norm.includes('submit')) return 'Submitted by';
+    if (norm.includes('create')) return 'Created by';
+    if (norm.includes('delete') || norm.includes('softdelete')) return 'Deleted by';
+    if (norm.includes('update')) return 'Updated by';
     return 'Performed by';
   };
 
@@ -285,31 +292,45 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
                   <div className="flex-shrink-0">
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        actionLabel === 'Submitted'
+                        actionLabel.toLowerCase().includes('submit')
                           ? 'bg-blue-100 text-blue-600'
-                          : actionLabel === 'Approved'
+                          : actionLabel.toLowerCase().includes('approve')
                           ? 'bg-green-100 text-green-600'
-                          : actionLabel === 'Returned'
+                          : actionLabel.toLowerCase().includes('return') || actionLabel.toLowerCase().includes('reject')
                           ? 'bg-red-100 text-red-600'
+                          : actionLabel.toLowerCase().includes('create')
+                          ? 'bg-emerald-100 text-emerald-600'
+                          : actionLabel.toLowerCase().includes('delete')
+                          ? 'bg-rose-100 text-rose-600'
+                          : actionLabel.toLowerCase().includes('update')
+                          ? 'bg-amber-100 text-amber-600'
                           : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {actionLabel === 'Approved' && (
+                      {actionLabel.toLowerCase().includes('approve') && (
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                       )}
-                      {actionLabel === 'Returned' && (
+                      {actionLabel.toLowerCase().includes('return') && (
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       )}
-                      {actionLabel === 'Submitted' && (
+                      {actionLabel.toLowerCase().includes('reject') && (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                      {actionLabel.toLowerCase().includes('submit') && (
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
                       )}
-                      {actionLabel !== 'Submitted' && actionLabel !== 'Approved' && actionLabel !== 'Returned' && (
+                      {!actionLabel.toLowerCase().includes('submit') &&
+                        !actionLabel.toLowerCase().includes('approve') &&
+                        !actionLabel.toLowerCase().includes('return') &&
+                        !actionLabel.toLowerCase().includes('reject') && (
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5" />
                         </svg>
