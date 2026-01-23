@@ -398,6 +398,18 @@ export const getChecklistItemCompliantDetails = async (compliantItemId: string |
   return res.data;
 };
 
+// Get compliant details by auditChecklistItemId
+export const getChecklistItemNoFindingByAuditChecklistItemId = async (auditChecklistItemId: string): Promise<any | null> => {
+  try {
+    const res: any = await apiClient.get(`/ChecklistItemNoFinding/by-audit-checklist-item/${auditChecklistItemId}`);
+    const data = res?.data ?? res;
+    const values = unwrapArray(data);
+    return values.length > 0 ? values[0] : null;
+  } catch (err) {
+    return null;
+  }
+};
+
 // Return compliant item (ChecklistItemNoFinding)
 export const returnCompliantItem = async (compliantItemId: number, reasonReturn: string): Promise<any> => {
   // Convert to PascalCase for .NET API
@@ -411,22 +423,8 @@ export const returnCompliantItem = async (compliantItemId: number, reasonReturn:
 // Returns the numeric 'id' field of the compliant record
 export const getCompliantIdByAuditItemId = async (auditItemId: string): Promise<number | null> => {
   try {
-    
-    // GET /ChecklistItemNoFinding returns ALL compliant records
-    // We need to filter by auditChecklistItemId on the client side
-    
-    const res = await apiClient.get(`/ChecklistItemNoFinding`);
-    
-    
-    // Response is wrapped with $values array
-    const allRecords = unwrapArray(res.data);
-    
-    // Find the record that matches our auditChecklistItemId
-    const compliantRecord = allRecords.find((record: any) => 
-      record.auditChecklistItemId === auditItemId
-    );
-    
-    const compliantId = compliantRecord?.id;
+    const record = await getChecklistItemNoFindingByAuditChecklistItemId(auditItemId);
+    const compliantId = record?.id;
     
     if (!compliantId) {
       return null;
@@ -479,6 +477,7 @@ export default {
   updateAuditChecklistItem,
   deleteAuditChecklistItem,
   getChecklistItemCompliantDetails,
+  getChecklistItemNoFindingByAuditChecklistItemId,
   getCompliantIdByAuditItemId,
   returnCompliantItem,
   getReturnedCompliantItemsByAudit,

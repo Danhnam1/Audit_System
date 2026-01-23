@@ -16,7 +16,7 @@ import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../../api/reportRequest';
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
-import { getAuditChecklistItems, markChecklistItemPending, getCompliantIdByAuditItemId, returnCompliantItem, getReturnedCompliantItemsByAudit } from '../../../api/checklists';
+import { getAuditChecklistItems, markChecklistItemPending, getChecklistItemNoFindingByAuditChecklistItemId, getCompliantIdByAuditItemId, returnCompliantItem, getReturnedCompliantItemsByAudit } from '../../../api/checklists';
 import { getMarkedItemsByRequestId } from '../../../api/auditPlanRevisionRequest';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
@@ -123,6 +123,8 @@ const AuditorLeadReports = () => {
   // Compliant detail modal states
   const [showCompliantDetailModal, setShowCompliantDetailModal] = useState(false);
   const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null);
+  const [selectedCompliantAuditItemId, setSelectedCompliantAuditItemId] = useState<string | null>(null);
+  const [nofindingRecordMap, setNofindingRecordMap] = useState<Record<string, any>>({});
   
   // Root causes map: findingId -> rootCauses[]
   const [rootCausesMap, setRootCausesMap] = useState<Record<string, any[]>>({});
@@ -653,14 +655,8 @@ const AuditorLeadReports = () => {
     }
     
     try {
-      // Get compliant ID from auditChecklistItemId
-      const compliantId = await getCompliantIdByAuditItemId(auditChecklistItemId);
-      if (!compliantId) {
-        toast.error('No compliant details found for this item');
-        return;
-      }
-      
-      setSelectedCompliantId(compliantId);
+      setSelectedCompliantAuditItemId(auditChecklistItemId);
+      setSelectedCompliantId(null);
       setShowCompliantDetailModal(true);
     } catch (err: any) {
       console.error('Failed to load compliant details:', err);
@@ -2446,6 +2442,47 @@ const AuditorLeadReports = () => {
     return filtered;
   }, [auditChecklistItems, nofindingsDeptFilter]);
 
+  useEffect(() => {
+    if (!selectedAuditId) {
+      setNofindingRecordMap({});
+      return;
+    }
+
+    const ids = compliantItemsOnly
+      .map((item: any) => String(item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '').trim())
+      .filter(Boolean);
+
+    if (ids.length === 0) {
+      setNofindingRecordMap({});
+      return;
+    }
+
+    const missing = ids.filter((id) => !nofindingRecordMap[id]);
+    if (!missing.length) return;
+
+    let cancelled = false;
+    const load = async () => {
+      const results = await Promise.allSettled(
+        missing.map((id) => getChecklistItemNoFindingByAuditChecklistItemId(id))
+      );
+      if (cancelled) return;
+      const patch: Record<string, any> = {};
+      results.forEach((res, idx) => {
+        if (res.status === 'fulfilled' && res.value) {
+          patch[missing[idx]] = res.value;
+        }
+      });
+      if (Object.keys(patch).length) {
+        setNofindingRecordMap((prev) => ({ ...prev, ...patch }));
+      }
+    };
+
+    load().catch((err) => console.error('Failed to load no-finding records:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAuditId, compliantItemsOnly]);
+
   // Overdue + Active + Return items (for "Checklist items" tab)
   const overdueAndActiveItems = useMemo(() => {
     if (!auditChecklistItems) return [];
@@ -2905,7 +2942,6 @@ const AuditorLeadReports = () => {
                                     <th className="px-3 py-2 text-left text-gray-700">#</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Department</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Question</th>
-                                    <th className="px-3 py-2 text-left text-gray-700">Status</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Actions</th>
                                   </tr>
                                 </thead>
@@ -2923,15 +2959,16 @@ const AuditorLeadReports = () => {
                                         item.questionText ||
                                         item.title ||
                                         '—';
-                                      const status = item.status || '—';
-                                      const statusColorClass = getStatusColor(status);
                                       // Try multiple field names: auditItemId (from backend AuditItemId), auditChecklistItemId, itemId, id, $id
                                       const auditChecklistItemId = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '';
+                                      const nofindingRecord = nofindingRecordMap[auditChecklistItemId];
+                                      const status = nofindingRecord?.status || item.status || '—';
+                                      const isFixedStatus = String(status).toLowerCase() === 'fixed';
                                       const isSelected = auditChecklistItemId && selectedCompliantItems.has(auditChecklistItemId);
                                       return (
                                         <tr
                                           key={auditChecklistItemId || idx}
-                                          className={`hover:bg-gray-50 ${isSelected ? 'bg-primary-50' : ''}`}
+                                          className={`hover:bg-gray-50 ${isSelected ? 'bg-primary-50' : ''} ${isFixedStatus ? 'bg-green-100 border-l-4 border-green-500' : ''}`}
                                         >
                                           <td className="px-3 py-2 whitespace-nowrap">
                                             {auditChecklistItemId && auditChecklistItemId.trim() ? (
@@ -2961,11 +2998,6 @@ const AuditorLeadReports = () => {
                                             <span className="line-clamp-2">{question}</span>
                                           </td>
                                           <td className="px-3 py-2 whitespace-nowrap">
-                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
-                                              {status}
-                                            </span>
-                                          </td>
-                                          <td className="px-3 py-2 whitespace-nowrap">
                                             {auditChecklistItemId && auditChecklistItemId.trim() ? (
                                               <button
                                                 onClick={() => handleViewCompliantDetail(auditChecklistItemId)}
@@ -2987,7 +3019,7 @@ const AuditorLeadReports = () => {
                                     })
                                   ) : (
                                     <tr>
-                                      <td colSpan={6} className="px-3 py-4 text-center text-gray-500">
+                                      <td colSpan={5} className="px-3 py-4 text-center text-gray-500">
                                         No compliant checklist items.
                                       </td>
                                     </tr>
@@ -3805,8 +3837,10 @@ const AuditorLeadReports = () => {
           onClose={() => {
             setShowCompliantDetailModal(false);
             setSelectedCompliantId(null);
+            setSelectedCompliantAuditItemId(null);
           }}
           compliantId={selectedCompliantId}
+          auditChecklistItemId={selectedCompliantAuditItemId}
         />
 
         {/* Reason Return Modal */}
