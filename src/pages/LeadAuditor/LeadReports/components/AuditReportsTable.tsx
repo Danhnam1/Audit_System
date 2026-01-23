@@ -40,46 +40,11 @@ const AuditReportsTable: React.FC<Props> = ({
   reportSearch,
   setReportSearch,
   onView,
-  onEditScheduleAndTeam,
   editedScheduleTeamOnce,
   actionMsg,
   getStatusColor
 }) => {
-  // Check if status allows editing schedule and team (Director approved)
-  // Button hiển thị khi:
-  // 1. Có extension request (revision request) đã được Director approve (isDirectorApproved = true)
-  // 2. VÀ report status KHÔNG phải "Returned" (không bị reject) - kể cả sau khi đã edit
-  // 3. VÀ report status KHÔNG phải "Approved" (chưa được approve)
-  const canEditScheduleAndTeam = (auditId: string, status: string, rawStatus?: string, isDirectorApproved?: boolean) => {
-    // Normalize status (check both status and rawStatus for edge cases)
-    const statusLower = String(status || '').toLowerCase().trim().replace(/\s+/g, '');
-    const rawStatusLower = String(rawStatus || '').toLowerCase().trim().replace(/\s+/g, '');
-    const key = String(auditId || '').toLowerCase().trim();
-    if (editedScheduleTeamOnce?.has(key)) return false; // already edited once
-    
-    // Nếu report đã bị reject (Returned) - ẩn button ngay cả khi đã edit trước đó
-    // Check multiple variations: returned, reject, rejected
-    if (statusLower === 'returned' || 
-        statusLower.includes('return') || 
-        statusLower.includes('reject') ||
-        rawStatusLower === 'returned' ||
-        rawStatusLower.includes('return') ||
-        rawStatusLower.includes('reject')) {
-      return false;
-    }
-    
-    // Nếu report đã được approve - ẩn button
-    if (statusLower === 'approved' || 
-        statusLower.includes('approve') ||
-        rawStatusLower === 'approved' ||
-        rawStatusLower.includes('approve')) {
-      return false;
-    }
-    
-    // Nếu có Director approval (bao gồm cả extension request đã approved), cho phép edit
-    // Nhưng chỉ khi status không phải Returned hoặc Approved (đã check ở trên)
-    return isDirectorApproved === true;
-  };
+  void editedScheduleTeamOnce;
   return (
     <div className="bg-white rounded-xl border border-primary-100 shadow-md overflow-hidden">
       <div className="bg-white p-4">
@@ -161,22 +126,7 @@ const AuditReportsTable: React.FC<Props> = ({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                       </Button>
-                      {canEditScheduleAndTeam(r.auditId, r.status, r.rawStatus, r.isDirectorApproved) && onEditScheduleAndTeam && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => onEditScheduleAndTeam(r.auditId)}
-                          className="text-xs rounded-md font-semibold shadow-sm"
-                          title="Edit Schedule & Team - Update audit schedule and team members"
-                          leftIcon={
-                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          }
-                        >
-                          Edit Schedule & Team
-                        </Button>
-                      )}
+                      
                       {(() => {
                         // Double-check: Don't show Approve/Reject buttons if status is Approved or Returned
                         // Check both r.status and r.displayStatus to ensure we catch all cases
