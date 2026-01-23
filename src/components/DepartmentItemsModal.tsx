@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import { getFindingsByAudit } from '../api/findings';
 import { getAuditChecklistItems } from '../api/checklists';
 import { getAdminUsers } from '../api/adminUsers';
+import { getStatusColor, getSeverityColor } from '../constants/statusColors';
 import AuditLogHistoryModal from './AuditLogHistoryModal';
 
 interface DepartmentItemsModalProps {
@@ -99,46 +100,6 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
     setHistoryEntityId(entityId);
     setHistoryTitle(title);
     setShowHistoryModal(true);
-  };
-
-  // Get status badge color
-  const getStatusBadge = (status: string) => {
-    const statusLower = status.toLowerCase();
-    switch (statusLower) {
-      case 'open':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'witnessconfirmed':
-      case 'witness confirmed':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'closed':
-      case 'fixed':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'returned':
-      case 'witnessdisagreed':
-      case 'witness disagreed':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'compliant':
-      case 'nofinding':
-        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  // Get severity badge color
-  const getSeverityBadge = (severity: string) => {
-    switch (severity?.toLowerCase()) {
-      case 'critical':
-        return 'bg-red-600 text-white';
-      case 'major':
-        return 'bg-orange-500 text-white';
-      case 'minor':
-        return 'bg-yellow-500 text-white';
-      case 'observation':
-        return 'bg-blue-500 text-white';
-      default:
-        return 'bg-gray-500 text-white';
-    }
   };
 
   return createPortal(
@@ -277,11 +238,11 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusBadge(finding.status)}`}>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(finding.status)}`}>
                           {finding.status}
                         </span>
                         {finding.severity && (
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getSeverityBadge(finding.severity)}`}>
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getSeverityColor(finding.severity)}`}>
                             {finding.severity}
                           </span>
                         )}
@@ -357,7 +318,7 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusBadge(item.status)}`}>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
                           {item.status}
                         </span>
                         {item.createdBy && (
@@ -432,7 +393,7 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusBadge(item.status)}`}>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
                           {item.status}
                         </span>
                         {item.createdBy && (

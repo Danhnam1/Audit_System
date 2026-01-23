@@ -957,7 +957,7 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                         <div className="mt-4 pt-3 border-t border-gray-200">
                           <button
                             onClick={handleViewDepartmentItems}
-                            className="w-full px-4 py-2 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition-colors text-sm font-medium flex items-center justify-center gap-2"
+                            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
                             title="View findings, no findings, and checklist items"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
