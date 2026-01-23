@@ -151,12 +151,12 @@ export const getReportRequestFromSubmitAudit = async (auditId: string): Promise<
 };
 
 // Get report request from submitFinalReport API (Final Summary page)
-// Filter by status values that come from submitFinalReport: "PendingFirstApproval", "PendingSecondApproval", "Approved", "Rejected"
+// Filter by status values that come from submitFinalReport: "PendingFirstApproval", "PendingSecondApproval", "Approved", "Rejected", "Submitted"
 export const getReportRequestFromFinalSubmit = async (auditId: string): Promise<ViewReportRequest | null> => {
   try {
     const allRequests = await getAllReportRequests();
     // Filter ReportRequests for this auditId with statuses from submitFinalReport API
-    const finalSubmitStatuses = ['PendingFirstApproval', 'PendingSecondApproval', 'Approved', 'Rejected', 'Returned'];
+    const finalSubmitStatuses = ['PendingFirstApproval', 'PendingSecondApproval', 'Approved', 'Rejected', 'Returned', 'Submitted'];
     const matchingRequests = allRequests.filter(r => {
       if (r.auditId !== auditId) return false;
       const status = String(r.status || '').trim();

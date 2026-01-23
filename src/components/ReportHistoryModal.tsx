@@ -4,7 +4,6 @@ import { getAdminAuditLog, type AdminAuditLogEntry } from '../api/adminAuditLog'
 import { getReportRequestById, type ViewReportRequest } from '../api/reportRequest';
 import { getAdminUsers } from '../api/adminUsers';
 import { toast } from 'react-toastify';
-import { getStatusColor } from '../constants/statusColors';
 
 interface ReportHistoryModalProps {
   isOpen: boolean;
@@ -24,6 +23,8 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userMap, setUserMap] = useState<Map<string, any>>(new Map());
+  const [showFindingsHistory, setShowFindingsHistory] = useState(true);
+  const [showFinalHistory, setShowFinalHistory] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !reportRequestId) {
@@ -45,19 +46,117 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
         });
         setUserMap(usersById);
 
-        // Load report request details
-        const report = await getReportRequestById(reportRequestId);
-        if (!report) {
-          throw new Error('Report request not found');
+        // Load report request details (may fail for ReportRequestFinal)
+        let report: ViewReportRequest | null = null;
+        try {
+          report = await getReportRequestById(reportRequestId);
+          setReportRequest(report || null);
+        } catch {
+          setReportRequest(null);
         }
-        setReportRequest(report);
 
-        // Load audit logs for this report request
-        const result = await getAdminAuditLog({
-          entityType: 'ReportRequest',
-          entityId: reportRequestId,
+        // Load audit logs for both entity types (by entityId first)
+        const [byEntityLogsRes, byEntityFinalLogsRes] = await Promise.allSettled([
+          getAdminAuditLog({
+            entityType: 'ReportRequest',
+            entityId: reportRequestId,
+          }),
+          getAdminAuditLog({
+            entityType: 'ReportRequestFinal',
+            entityId: reportRequestId,
+          }),
+        ]);
+
+        const byEntityLogs = byEntityLogsRes.status === 'fulfilled' ? byEntityLogsRes.value : [];
+        const byEntityFinalLogs = byEntityFinalLogsRes.status === 'fulfilled' ? byEntityFinalLogsRes.value : [];
+
+        let combinedLogs: AdminAuditLogEntry[] = [...byEntityLogs, ...byEntityFinalLogs];
+
+        // Try to resolve auditId (from report or logs)
+        let auditId: string | null = report?.auditId ? String(report.auditId) : null;
+        if (!auditId && combinedLogs.length > 0) {
+          const newest = combinedLogs.reduce((acc, cur) => {
+            if (!acc) return cur;
+            return new Date(cur.performedAt || 0) > new Date(acc.performedAt || 0) ? cur : acc;
+          }, combinedLogs[0]);
+          const parsed = parseValue(newest.newValue) || {};
+          auditId = parsed.AuditId || parsed.auditId || null;
+        }
+
+        // If we have auditId, load logs by auditId to include both entity types
+        if (auditId) {
+          const [auditLogsRes, auditFinalLogsRes] = await Promise.allSettled([
+            getAdminAuditLog({
+              entityType: 'ReportRequest',
+              auditId: String(auditId),
+            }),
+            getAdminAuditLog({
+              entityType: 'ReportRequestFinal',
+              auditId: String(auditId),
+            }),
+          ]);
+          const auditLogs = auditLogsRes.status === 'fulfilled' ? auditLogsRes.value : [];
+          const auditFinalLogs = auditFinalLogsRes.status === 'fulfilled' ? auditFinalLogsRes.value : [];
+          const merged = [...combinedLogs, ...auditLogs, ...auditFinalLogs];
+          const uniq = new Map<string, AdminAuditLogEntry>();
+          merged.forEach((log) => {
+            const key = log.logId || `${log.entityType}-${log.entityId}-${log.performedAt}`;
+            if (!uniq.has(key)) {
+              uniq.set(key, log);
+            }
+          });
+          combinedLogs = Array.from(uniq.values());
+        }
+
+        combinedLogs.sort((a, b) => {
+          const timeA = new Date(a.performedAt || 0).getTime();
+          const timeB = new Date(b.performedAt || 0).getTime();
+          return timeB - timeA;
         });
-        setLogs(result);
+        setLogs(combinedLogs);
+
+        // Build report items from logs (both ReportRequest + ReportRequestFinal)
+        const reportMap = new Map<string, { report: ViewReportRequest; entityType: string; timestamp: string }>();
+        combinedLogs.forEach((log) => {
+          const parsed = parseValue(log.newValue) || {};
+          const id = parsed.ReportRequestId || parsed.reportRequestId || log.entityId || '';
+          if (!id) return;
+          const reportData: ViewReportRequest = {
+            reportRequestId: id,
+            auditId: parsed.AuditId || parsed.auditId || auditId || '',
+            title: parsed.Title || parsed.title || '',
+            status: parsed.Status || parsed.status || 'Pending',
+            filePath: parsed.FilePath || parsed.filePath || null,
+            requestedAt: parsed.RequestedAt || parsed.requestedAt || null,
+            completedAt: parsed.CompletedAt || parsed.completedAt || null,
+            note: parsed.Note || parsed.note || null,
+            requestedBy: parsed.RequestedBy || parsed.requestedBy || null,
+          } as ViewReportRequest;
+
+          const existing = reportMap.get(id);
+          if (!existing || new Date(log.performedAt || 0) > new Date(existing.timestamp || 0)) {
+            reportMap.set(id, { report: reportData, entityType: log.entityType || '', timestamp: log.performedAt || '' });
+          }
+        });
+
+        // Ensure API report is included
+        if (report?.reportRequestId) {
+          const id = String(report.reportRequestId);
+          if (!reportMap.has(id)) {
+            reportMap.set(id, { report, entityType: 'ReportRequest', timestamp: report.requestedAt || '' });
+          }
+        }
+
+        const items = Array.from(reportMap.values()).sort((a, b) => {
+          const timeA = new Date(a.timestamp || a.report.requestedAt || 0).getTime();
+          const timeB = new Date(b.timestamp || b.report.requestedAt || 0).getTime();
+          return timeB - timeA;
+        });
+
+        // If report request not found via API, derive info from audit logs
+        if (!report && items.length > 0) {
+          setReportRequest(items[0].report);
+        }
       } catch (err: any) {
         console.error('Failed to load report history:', err);
         setError(err?.message || 'Failed to load report history');
@@ -76,30 +175,6 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
     if (!userId) return 'N/A';
     const user = userMap.get(userId);
     return user?.fullName || user?.email || userId;
-  };
-
-  const formatDate = (dateStr: string | null | undefined): string => {
-    if (!dateStr) return 'N/A';
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-
-  const handleDownloadReport = () => {
-    if (reportRequest?.filePath) {
-      window.open(reportRequest.filePath, '_blank');
-    } else {
-      toast.error('Report file not available');
-    }
   };
 
   // Helper function to parse JSON string safely
@@ -138,6 +213,184 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
 
     return changes;
   };
+
+  const getStatusFromValue = (value: string | null): string | null => {
+    const parsed = parseValue(value);
+    const status = parsed?.Status || parsed?.status || null;
+    return status ? String(status) : null;
+  };
+
+  const getActionLabel = (log: AdminAuditLogEntry): string => {
+    const action = String(log.action || '').trim();
+    if (action) return action;
+
+    const newStatus = getStatusFromValue(log.newValue);
+    const oldStatus = getStatusFromValue(log.oldValue);
+    if (newStatus && newStatus !== oldStatus) {
+      const norm = String(newStatus).toLowerCase();
+      if (norm.includes('approve')) return 'Approved';
+      if (norm.includes('return')) return 'Returned';
+      if (norm.includes('reject')) return 'Rejected';
+      if (norm.includes('submit') || norm.includes('pending')) return 'Submitted';
+    }
+
+    return 'Update';
+  };
+
+  const getActionByLabel = (actionLabel: string): string => {
+    const norm = actionLabel.toLowerCase();
+    if (norm.includes('approve')) return 'Approved by';
+    if (norm.includes('return')) return 'Returned by';
+    if (norm.includes('reject')) return 'Rejected by';
+    if (norm.includes('submit')) return 'Submitted by';
+    if (norm.includes('create')) return 'Created by';
+    if (norm.includes('delete') || norm.includes('softdelete')) return 'Deleted by';
+    if (norm.includes('update')) return 'Updated by';
+    return 'Performed by';
+  };
+
+  const renderTimeline = (title: string, timelineLogs: AdminAuditLogEntry[]) => (
+    <div>
+      <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">{title}</h3>
+      {timelineLogs.length === 0 ? (
+        <div className="text-center py-8">
+          <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <p className="text-gray-500">No activity history available.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {timelineLogs.map((log, index) => {
+            const changes = getChanges(log.oldValue, log.newValue);
+            const performedDate = new Date(log.performedAt);
+            const actionLabel = getActionLabel(log);
+            const byLabel = getActionByLabel(actionLabel);
+
+            return (
+              <div
+                key={log.logId || index}
+                className="relative border border-gray-200 rounded-lg p-5 bg-gradient-to-r from-gray-50 to-white hover:shadow-md transition-shadow"
+              >
+                {index < timelineLogs.length - 1 && (
+                  <div className="absolute left-9 top-[70px] bottom-[-16px] w-0.5 bg-gray-300"></div>
+                )}
+
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0">
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        actionLabel.toLowerCase().includes('submit')
+                          ? 'bg-blue-100 text-blue-600'
+                          : actionLabel.toLowerCase().includes('approve')
+                          ? 'bg-green-100 text-green-600'
+                          : actionLabel.toLowerCase().includes('return') || actionLabel.toLowerCase().includes('reject')
+                          ? 'bg-red-100 text-red-600'
+                          : actionLabel.toLowerCase().includes('create')
+                          ? 'bg-emerald-100 text-emerald-600'
+                          : actionLabel.toLowerCase().includes('delete')
+                          ? 'bg-rose-100 text-rose-600'
+                          : actionLabel.toLowerCase().includes('update')
+                          ? 'bg-amber-100 text-amber-600'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {actionLabel.toLowerCase().includes('approve') && (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                      {actionLabel.toLowerCase().includes('return') && (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                      {actionLabel.toLowerCase().includes('reject') && (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                      {actionLabel.toLowerCase().includes('submit') && (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      )}
+                      {!actionLabel.toLowerCase().includes('submit') &&
+                        !actionLabel.toLowerCase().includes('approve') &&
+                        !actionLabel.toLowerCase().includes('return') &&
+                        !actionLabel.toLowerCase().includes('reject') && (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <h4 className="text-base font-bold text-gray-900">{actionLabel}</h4>
+                        <p className="text-sm text-gray-600">
+                          {byLabel} <span className="font-medium">{getUserName(log.performedBy)}</span>
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-gray-500">
+                          {performedDate.toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {performedDate.toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                    </div>
+
+                    {changes.length > 0 && (
+                      <div className="mt-3 bg-white border border-gray-200 rounded-lg p-3">
+                        <p className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
+                          Changes:
+                        </p>
+                        <ul className="space-y-1">
+                          {changes.map((change, idx) => (
+                            <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
+                              <span className="text-green-500 mt-1">•</span>
+                              <span className="flex-1">{change}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-400 mt-2">
+                      Role: {log.role}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 
   return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10002] p-4">
@@ -198,218 +451,54 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
 
           {!loading && !error && reportRequest && (
             <div className="space-y-6">
-              {/* Report Information Section */}
-              <div className="bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2">
-                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    Report Information
-                  </h3>
-                  {reportRequest.filePath && (
+              <div className="space-y-4">
+                <div className="bg-gradient-to-r from-blue-50 to-white border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide">Report Findings</h3>
+                      
+                    </div>
                     <button
-                      onClick={handleDownloadReport}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm font-medium shadow-sm hover:shadow-md"
+                      type="button"
+                      onClick={() => setShowFindingsHistory((v) => !v)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      Download Report
+                      {showFindingsHistory ? 'Hide history' : 'View history'}
                     </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Report ID */}
-                  <div className="bg-white rounded-lg p-4 border border-green-100">
-                    <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Report ID</p>
-                    <p className="text-sm text-gray-900 font-mono">{reportRequest.reportRequestId}</p>
                   </div>
-
-                  {/* Status */}
-                  <div className="bg-white rounded-lg p-4 border border-green-100">
-                    <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Status</p>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(reportRequest.status)}`}>
-                      {reportRequest.status}
-                    </span>
-                  </div>
-
-                  {/* Requested By */}
-                  <div className="bg-white rounded-lg p-4 border border-green-100">
-                    <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Requested By</p>
-                    <p className="text-sm text-gray-900">{getUserName(reportRequest.requestedBy)}</p>
-                  </div>
-
-                  {/* Requested At */}
-                  <div className="bg-white rounded-lg p-4 border border-green-100">
-                    <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Requested Date</p>
-                    <p className="text-sm text-gray-900">{formatDate(reportRequest.requestedAt)}</p>
-                  </div>
-
-                  {/* Title */}
-                  {reportRequest.title && (
-                    <div className="bg-white rounded-lg p-4 border border-green-100 md:col-span-2">
-                      <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Title</p>
-                      <p className="text-sm text-gray-900">{reportRequest.title}</p>
-                    </div>
-                  )}
-
-                  {/* Completed At */}
-                  {reportRequest.completedAt && (
-                    <div className="bg-white rounded-lg p-4 border border-green-100">
-                      <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Completed Date</p>
-                      <p className="text-sm text-gray-900">{formatDate(reportRequest.completedAt)}</p>
-                    </div>
-                  )}
-
-                  {/* File Path */}
-                  {reportRequest.filePath && (
-                    <div className="bg-white rounded-lg p-4 border border-green-100">
-                      <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">File Available</p>
-                      <div className="flex items-center gap-2">
-                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span className="text-sm font-medium text-green-700">Yes</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Note */}
-                  {reportRequest.note && (
-                    <div className="bg-white rounded-lg p-4 border border-green-100 md:col-span-2">
-                      <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Note</p>
-                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{reportRequest.note}</p>
+                  {showFindingsHistory && (
+                    <div className="mt-4">
+                      {renderTimeline(
+                        '',
+                        logs.filter((log) => String(log.entityType || '').toLowerCase() === 'reportrequest')
+                      )}
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* Activity Timeline Section */}
-              <div>
-                <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">Activity Timeline</h3>
-                {logs.length === 0 ? (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-                      <svg
-                        className="w-8 h-8 text-gray-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
+                <div className="bg-gradient-to-r from-purple-50 to-white border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide">Report Final</h3>
+                      
                     </div>
-                    <p className="text-gray-500">No activity history available.</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowFinalHistory((v) => !v)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                    >
+                      {showFinalHistory ? 'Hide history' : 'View history'}
+                    </button>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {logs.map((log, index) => {
-                      const changes = getChanges(log.oldValue, log.newValue);
-                      const performedDate = new Date(log.performedAt);
-
-                      return (
-                        <div
-                          key={log.logId || index}
-                          className="relative border border-gray-200 rounded-lg p-5 bg-gradient-to-r from-gray-50 to-white hover:shadow-md transition-shadow"
-                        >
-                          {/* Timeline connector */}
-                          {index < logs.length - 1 && (
-                            <div className="absolute left-9 top-[70px] bottom-[-16px] w-0.5 bg-gray-300"></div>
-                          )}
-
-                          <div className="flex gap-4">
-                            {/* Action icon */}
-                            <div className="flex-shrink-0">
-                              <div
-                                className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                                  log.action === 'Create'
-                                    ? 'bg-green-100 text-green-600'
-                                    : log.action === 'Update'
-                                    ? 'bg-blue-100 text-blue-600'
-                                    : log.action === 'Delete'
-                                    ? 'bg-red-100 text-red-600'
-                                    : 'bg-gray-100 text-gray-600'
-                                }`}
-                              >
-                                {log.action === 'Create' && (
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                  </svg>
-                                )}
-                                {log.action === 'Update' && (
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                  </svg>
-                                )}
-                                {log.action === 'Delete' && (
-                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                  </svg>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Action details */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
-                                  <h4 className="text-base font-bold text-gray-900">{log.action}</h4>
-                                  <p className="text-sm text-gray-600">
-                                    by <span className="font-medium">{log.role}</span>
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-xs text-gray-500">
-                                    {performedDate.toLocaleDateString('en-US', {
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                    })}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    {performedDate.toLocaleTimeString('en-US', {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    })}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Changes */}
-                              {changes.length > 0 && (
-                                <div className="mt-3 bg-white border border-gray-200 rounded-lg p-3">
-                                  <p className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">
-                                    Changes:
-                                  </p>
-                                  <ul className="space-y-1">
-                                    {changes.map((change, idx) => (
-                                      <li key={idx} className="text-sm text-gray-700 flex items-start gap-2">
-                                        <span className="text-green-500 mt-1">•</span>
-                                        <span className="flex-1">{change}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {/* Performer Info */}
-                              <p className="text-xs text-gray-400 mt-2">
-                                Performed by: {getUserName(log.performedBy)}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                  {showFinalHistory && (
+                    <div className="mt-4">
+                      {renderTimeline(
+                        '',
+                        logs.filter((log) => String(log.entityType || '').toLowerCase() === 'reportrequestfinal')
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

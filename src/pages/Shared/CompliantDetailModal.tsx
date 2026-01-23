@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useState, useEffect } from 'react';
-import { getChecklistItemCompliantDetails } from '../../api/checklists';
+import { getChecklistItemCompliantDetails, getChecklistItemNoFindingByAuditChecklistItemId } from '../../api/checklists';
 import { getUserById } from '../../api/adminUsers';
 import { getAttachments, type Attachment } from '../../api/attachments';
 
@@ -8,12 +8,14 @@ interface CompliantDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   compliantId: string | number | null;
+  auditChecklistItemId?: string | null;
 }
 
 const CompliantDetailModal = ({ 
   isOpen, 
   onClose, 
-  compliantId
+  compliantId,
+  auditChecklistItemId = null,
 }: CompliantDetailModalProps) => {
   const [compliantData, setCompliantData] = useState<any>(null);
   const [witnessName, setWitnessName] = useState<string>('');
@@ -22,7 +24,7 @@ const CompliantDetailModal = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen && compliantId) {
+    if (isOpen && (compliantId || auditChecklistItemId)) {
       fetchCompliantDetails();
     } else {
       // Reset state when modal closes
@@ -31,17 +33,25 @@ const CompliantDetailModal = ({
       setAttachments([]);
       setError(null);
     }
-  }, [isOpen, compliantId]);
+  }, [isOpen, compliantId, auditChecklistItemId]);
 
   const fetchCompliantDetails = async () => {
     setLoading(true);
     setError(null);
     try {
-      if (!compliantId) {
+      if (!compliantId && !auditChecklistItemId) {
         setError('Compliant ID is required');
         return;
       }
-      const data = await getChecklistItemCompliantDetails(compliantId);
+
+      const data = auditChecklistItemId
+        ? await getChecklistItemNoFindingByAuditChecklistItemId(auditChecklistItemId)
+        : await getChecklistItemCompliantDetails(compliantId as string | number);
+
+      if (!data) {
+        setError('No compliant details found for this item');
+        return;
+      }
       setCompliantData(data);
 
       // Fetch witness name if witnessId exists

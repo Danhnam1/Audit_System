@@ -17,6 +17,7 @@ export const STATUS_COLORS = {
   'InProgress': 'bg-sky-500 text-white',
   'Assigned': 'bg-sky-400 text-white',
   'Fixed': 'bg-blue-400 text-white',
+  'fixed': 'bg-blue-400 text-white',
   
   // Under Review States - Light primary/sky tone
   'Under Review': 'bg-sky-200 text-sky-800',

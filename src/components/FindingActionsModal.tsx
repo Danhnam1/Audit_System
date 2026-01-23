@@ -4,6 +4,7 @@ import { getAdminAuditLog, type AdminAuditLogEntry } from '../api/adminAuditLog'
 import { getAdminUsers } from '../api/adminUsers';
 import { getDepartments } from '../api/departments';
 import { getAttachments, type Attachment } from '../api/attachments';
+import { getRootCauseById, type RootCause } from '../api/rootCauses';
 import { toast } from 'react-toastify';
 import { getStatusColor } from '../constants/statusColors';
 
@@ -55,6 +56,7 @@ export const FindingActionsModal: React.FC<FindingActionsModalProps> = ({
   const [deptMap, setDeptMap] = useState<Map<number, any>>(new Map());
   const [expandedFindingAttachments, setExpandedFindingAttachments] = useState(false);
   const [expandedActionAttachments, setExpandedActionAttachments] = useState<Set<string>>(new Set());
+  const [rootCauseMap, setRootCauseMap] = useState<Map<string, RootCause>>(new Map());
 
   useEffect(() => {
     if (!isOpen || !findingId) {
@@ -170,6 +172,41 @@ export const FindingActionsModal: React.FC<FindingActionsModalProps> = ({
         const actionsList = Array.from(uniqueActionMap.values()).sort(
           (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
+
+        // Load root causes for actions (by rootCauseId)
+        const uniqueRootCauseIds = Array.from(
+          new Set(
+            actionsList
+              .map((a) => String(a.rootCauseId || '').trim())
+              .filter((id) => id)
+          )
+        );
+
+        if (uniqueRootCauseIds.length > 0) {
+          const rootCauseResults = await Promise.allSettled(
+            uniqueRootCauseIds.map(async (id) => {
+              try {
+                const data = await getRootCauseById(id);
+                return { id, data };
+              } catch {
+                return { id, data: null };
+              }
+            })
+          );
+
+          const nextRootCauseMap = new Map<string, RootCause>();
+          rootCauseResults.forEach((result) => {
+            if (result.status === 'fulfilled') {
+              const { id, data } = result.value;
+              if (data) {
+                nextRootCauseMap.set(String(id), data as RootCause);
+              }
+            }
+          });
+          setRootCauseMap(nextRootCauseMap);
+        } else {
+          setRootCauseMap(new Map());
+        }
 
         // Load attachments for each action
         const actionsWithAttachments = await Promise.all(
@@ -403,7 +440,7 @@ export const FindingActionsModal: React.FC<FindingActionsModalProps> = ({
               )}
 
               {/* Actions List */}
-              {actions.map((action, index) => (
+              {actions.map((action) => (
                 <div
                   key={action.actionId}
                   className="border border-gray-200 rounded-xl p-6 bg-gradient-to-br from-white to-gray-50 hover:shadow-lg transition-shadow"
@@ -412,12 +449,15 @@ export const FindingActionsModal: React.FC<FindingActionsModalProps> = ({
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-lg font-bold text-gray-900">{action.title}</h3>
+                        <h3 className="text-lg font-bold text-gray-900">Action: "{action.title}"</h3>
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(action.status)}`}>
                           {action.status}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-600">{action.description}</p>
+                      <div className="text-sm text-gray-600">
+                        <span className="font-semibold text-gray-700">Proposed Solution:</span>{' '}
+                        {action.description || 'N/A'}
+                      </div>
                     </div>
                     <div className="ml-4 text-right">
                       <div className="text-xs text-gray-500">Progress</div>
@@ -441,6 +481,17 @@ export const FindingActionsModal: React.FC<FindingActionsModalProps> = ({
                     <div className="bg-white rounded-lg p-4 border border-gray-200">
                       <h4 className="text-xs font-bold text-gray-700 mb-3 uppercase tracking-wide">Assignment</h4>
                       <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs text-gray-500 min-w-[80px]">Root Cause:</span>
+                          <span className="text-sm font-medium text-gray-900">
+                            {(() => {
+                              const rootCauseId = String(action.rootCauseId || '').trim();
+                              if (!rootCauseId) return 'N/A';
+                              const rootCause = rootCauseMap.get(rootCauseId);
+                              return rootCause?.name || rootCauseId;
+                            })()}
+                          </span>
+                        </div>
                         <div className="flex items-start gap-2">
                           <span className="text-xs text-gray-500 min-w-[80px]">Assigned By:</span>
                           <span className="text-sm font-medium text-gray-900">{getUserName(action.assignedBy)}</span>

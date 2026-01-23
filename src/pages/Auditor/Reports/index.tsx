@@ -16,7 +16,7 @@ import { uploadMultipleAuditDocuments, getAuditDocuments } from '../../../api/au
 import { getAuditTeam } from '../../../api/auditTeam';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getAuditPlanRevisionRequestsByAuditId, type ViewAuditPlanRevisionRequest } from '../../../api/auditPlanRevisionRequest';
-import { getAuditChecklistItems, getCompliantIdByAuditItemId, getChecklistItemCompliantDetails } from '../../../api/checklists';
+import { getAuditChecklistItems, getChecklistItemNoFindingByAuditChecklistItemId } from '../../../api/checklists';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
 import { getFindingsByAudit, getFindingById } from '../../../api/findings';
@@ -53,6 +53,15 @@ const SQAStaffReports = () => {
   const [returnedFindings, setReturnedFindings] = useState<Array<{ id: string; title: string; reasonReturn?: string }>>([]);
   const [returnedCompliantItems, setReturnedCompliantItems] = useState<Array<{ id: number; title: string; reasonReturn?: string }>>([]);
   const [loadingReturnedItems, setLoadingReturnedItems] = useState(false);
+  const [exportedAudits, setExportedAudits] = useState<Set<string>>(() => {
+    try {
+      const stored = sessionStorage.getItem('exported_audits');
+      const parsed = stored ? (JSON.parse(stored) as string[]) : [];
+      return new Set(parsed);
+    } catch {
+      return new Set();
+    }
+  });
   const [_uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [_leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [creatorAuditIds, setCreatorAuditIds] = useState<Set<string>>(new Set()); // auditId -> creator can resubmit
@@ -100,6 +109,8 @@ const SQAStaffReports = () => {
   // Compliant detail modal states
   const [showCompliantDetailModal, setShowCompliantDetailModal] = useState(false);
   const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null);
+  const [selectedCompliantAuditItemId, setSelectedCompliantAuditItemId] = useState<string | null>(null);
+  const [nofindingRecordMap, setNofindingRecordMap] = useState<Record<string, any>>({});
   const [selectedFinding, setSelectedFinding] = useState<any | null>(null);
   // Root causes map: findingId -> rootCauses[]
   const [rootCausesMap, setRootCausesMap] = useState<Record<string, any[]>>({});
@@ -238,14 +249,8 @@ const SQAStaffReports = () => {
     }
     
     try {
-      // Get compliant ID from auditChecklistItemId
-      const compliantId = await getCompliantIdByAuditItemId(auditChecklistItemId);
-      if (!compliantId) {
-        toast.error('No compliant details found for this item');
-        return;
-      }
-      
-      setSelectedCompliantId(compliantId);
+      setSelectedCompliantAuditItemId(auditChecklistItemId);
+      setSelectedCompliantId(null);
       setShowCompliantDetailModal(true);
     } catch (err: any) {
       console.error('Failed to load compliant details:', err);
@@ -280,6 +285,47 @@ const SQAStaffReports = () => {
     
     return filtered;
   }, [auditChecklistItems, nofindingsDeptFilter]);
+
+  useEffect(() => {
+    if (!selectedAuditId) {
+      setNofindingRecordMap({});
+      return;
+    }
+
+    const ids = compliantItemsOnly
+      .map((item: any) => String(item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '').trim())
+      .filter(Boolean);
+
+    if (ids.length === 0) {
+      setNofindingRecordMap({});
+      return;
+    }
+
+    const missing = ids.filter((id) => !nofindingRecordMap[id]);
+    if (!missing.length) return;
+
+    let cancelled = false;
+    const load = async () => {
+      const results = await Promise.allSettled(
+        missing.map((id) => getChecklistItemNoFindingByAuditChecklistItemId(id))
+      );
+      if (cancelled) return;
+      const patch: Record<string, any> = {};
+      results.forEach((res, idx) => {
+        if (res.status === 'fulfilled' && res.value) {
+          patch[missing[idx]] = res.value;
+        }
+      });
+      if (Object.keys(patch).length) {
+        setNofindingRecordMap((prev) => ({ ...prev, ...patch }));
+      }
+    };
+
+    load().catch((err) => console.error('Failed to load no-finding records:', err));
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAuditId, compliantItemsOnly]);
 
   // Overdue + Active + Return items (for "Checklist items" tab)
   const overdueAndActiveItems = useMemo(() => {
@@ -1300,6 +1346,11 @@ const SQAStaffReports = () => {
 
   const onClickUpload = (auditIdRaw: string) => {
     const auditId = normalizeId(auditIdRaw);
+
+    if (!exportedAudits.has(auditId)) {
+      toast.error('Please export the report first before uploading.');
+      return;
+    }
     
     // Check if currently uploading
     if (uploadLoading[auditId]) {
@@ -1357,6 +1408,18 @@ const SQAStaffReports = () => {
         window.URL.revokeObjectURL(url);
         toast.success('Report exported successfully');
       }, 200);
+
+      const auditIdNorm = normalizeId(auditId);
+      setExportedAudits((prev) => {
+        const next = new Set(prev);
+        next.add(auditIdNorm);
+        try {
+          sessionStorage.setItem('exported_audits', JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
     } catch (err) {
       console.error('Export PDF failed', err);
       toast.error('Export PDF failed. Please try again.');
@@ -1773,6 +1836,7 @@ const SQAStaffReports = () => {
                           const auditIdNorm = normalizeId(auditIdStr);
                           const approved = isReportApproved(auditIdStr);
                           const isCreator = auditIdStr && (creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase()));
+                          const hasExported = exportedAudits.has(auditIdNorm);
                           
                           // Allow export if: approved AND is Creator only
                           // Only the creator can export after Lead Auditor approves
@@ -1781,7 +1845,7 @@ const SQAStaffReports = () => {
                           
                           // Allow upload if: approved AND is Creator AND not currently uploading
                           // Only the creator can upload signed report after approval
-                          const canUpload = approved && isCreator && !uploadLoading[auditIdNorm];
+                          const canUpload = approved && isCreator && hasExported && !uploadLoading[auditIdNorm];
                           const disableUpload = !canUpload;
                           
                           // Tooltip messages
@@ -1795,6 +1859,8 @@ const SQAStaffReports = () => {
                             ? 'Upload is available only after the report request is approved'
                             : !isCreator
                               ? 'Only the Lead of the Auditor Team can upload signed reports'
+                              : !hasExported
+                                ? 'Please export the report before uploading'
                               : uploadLoading[auditIdNorm]
                                 ? 'Upload in progress...'
                                 : 'Upload signed report';
@@ -2087,11 +2153,11 @@ const SQAStaffReports = () => {
                               returnedCompliantList.map(async (item: any) => {
                                 try {
                                   const auditItemId = item.auditItemId || item.auditChecklistItemId || item.id;
-                                  const compliantId = await getCompliantIdByAuditItemId(auditItemId);
-                                  if (compliantId) {
-                                    const compliantDetail = await getChecklistItemCompliantDetails(compliantId);
+                                  if (!auditItemId) return null;
+                                  const compliantDetail = await getChecklistItemNoFindingByAuditChecklistItemId(String(auditItemId));
+                                  if (compliantDetail) {
                                     return {
-                                      id: compliantId,
+                                      id: compliantDetail.id,
                                       title: item.questionTextSnapshot || item.questionText || item.title || compliantDetail?.title || '—',
                                       reasonReturn: compliantDetail?.reasonReturn || null,
                                     };
@@ -2461,7 +2527,6 @@ const SQAStaffReports = () => {
                             <th className="px-3 py-2 text-left text-gray-700">#</th>
                             <th className="px-3 py-2 text-left text-gray-700">Department</th>
                             <th className="px-3 py-2 text-left text-gray-700">Question</th>
-                            <th className="px-3 py-2 text-left text-gray-700">Status</th>
                             <th className="px-3 py-2 text-left text-gray-700">Actions</th>
                           </tr>
                         </thead>
@@ -2479,24 +2544,20 @@ const SQAStaffReports = () => {
                                 item.questionText ||
                                 item.title ||
                                 '—';
-                              const status = item.status || '—';
-                              const statusColorClass = getStatusColor(status);
                               // Try multiple field names: auditItemId (from backend AuditItemId), auditChecklistItemId, itemId, id, $id
                               const auditChecklistItemId = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '';
+                              const nofindingRecord = nofindingRecordMap[auditChecklistItemId];
+                              const status = nofindingRecord?.status || item.status || '—';
+                              const isFixedStatus = String(status).toLowerCase() === 'fixed';
                               return (
                                 <tr
                                   key={auditChecklistItemId || idx}
-                                  className="hover:bg-gray-50"
+                                  className={`hover:bg-gray-50 ${isFixedStatus ? 'bg-green-100 border-l-4 border-green-500' : ''}`}
                                 >
                                   <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
                                   <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
                                   <td className="px-3 py-2">
                                     <span className="line-clamp-2">{question}</span>
-                                  </td>
-                                  <td className="px-3 py-2 whitespace-nowrap">
-                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${statusColorClass}`}>
-                                      {status}
-                                    </span>
                                   </td>
                                   <td className="px-3 py-2 whitespace-nowrap">
                                     {auditChecklistItemId && auditChecklistItemId.trim() ? (
@@ -2520,7 +2581,7 @@ const SQAStaffReports = () => {
                             })
                           ) : (
                             <tr>
-                              <td colSpan={5} className="px-3 py-4 text-center text-gray-500">
+                              <td colSpan={4} className="px-3 py-4 text-center text-gray-500">
                                 No compliant checklist items.
                               </td>
                             </tr>
@@ -2986,8 +3047,10 @@ const SQAStaffReports = () => {
           onClose={() => {
             setShowCompliantDetailModal(false);
             setSelectedCompliantId(null);
+            setSelectedCompliantAuditItemId(null);
           }}
           compliantId={selectedCompliantId}
+          auditChecklistItemId={selectedCompliantAuditItemId}
         />
       </div>
     </MainLayout>

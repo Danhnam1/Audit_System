@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { MainLayout } from "../../../layouts";
 import { useAuth } from "../../../contexts";
@@ -22,6 +23,7 @@ import {
 } from "../../../api/reportRequest";
 import { unwrap } from "../../../utils/normalize";
 import { PageHeader } from "../../../components";
+import { Button } from "../../../components/Button";
 import { PlanDetailsModal } from "../../Auditor/AuditPlanning/components/PlanDetailsModal";
 import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor, getSeverityChartColor } from "../../../constants";
 import {
@@ -100,11 +102,21 @@ export default function LeadAuditorFinalSummaryReviewPage() {
 
   const [expandedImages, setExpandedImages] = useState<Set<string>>(new Set());
   const [showAuditDetailModal, setShowAuditDetailModal] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [submitFeedback, setSubmitFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   
   // State for submit functionality
   const [reportRequest, setReportRequest] = useState<any>(null);
   const [_loadingReportRequest, setLoadingReportRequest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const normalizeReportRequestStatus = (rawStatus: string | null | undefined): string => {
+    const status = String(rawStatus || "").trim();
+    const lower = status.toLowerCase();
+    if (lower === "approved" || lower === "approve") return "Approved";
+    if (lower === "submitted") return "Submitted";
+    return "";
+  };
 
   // Load list of audits for dropdown - Lead Auditor can see all audits (no need to wait for submit)
   useEffect(() => {
@@ -146,18 +158,40 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         const templatesArr = Array.isArray(templatesRes) ? templatesRes : [];
         setChecklistTemplates(templatesArr);
 
-        // Create a map of auditId -> status for easy lookup (optional, for showing status if exists)
+        // Create a map of auditId -> status (only Approved/Submitted)
         const auditStatusMap = new Map<string, string>();
         if (Array.isArray(reportRequestsRes)) {
+          const latestByAudit = new Map<string, any>();
+
           reportRequestsRes.forEach((rr: any) => {
             const auditId = rr.auditId;
-            if (auditId) {
-              const auditIdStr = String(auditId).trim();
-              const status = String(rr.status || "").trim();
-              // Only store if status exists and is valid
-              if (status && status !== '' && status !== 'null' && status !== 'undefined') {
-                auditStatusMap.set(auditIdStr, status);
-              }
+            if (!auditId) return;
+            const auditIdStr = String(auditId).trim();
+            if (!auditIdStr) return;
+
+            const currentLatest = latestByAudit.get(auditIdStr);
+            const rrCompletedAt = rr?.completedAt ? new Date(rr.completedAt).getTime() : 0;
+            const rrRequestedAt = rr?.requestedAt ? new Date(rr.requestedAt).getTime() : 0;
+            const rrLatestTime = Math.max(rrCompletedAt, rrRequestedAt);
+
+            if (!currentLatest) {
+              latestByAudit.set(auditIdStr, rr);
+              return;
+            }
+
+            const currentCompletedAt = currentLatest?.completedAt ? new Date(currentLatest.completedAt).getTime() : 0;
+            const currentRequestedAt = currentLatest?.requestedAt ? new Date(currentLatest.requestedAt).getTime() : 0;
+            const currentLatestTime = Math.max(currentCompletedAt, currentRequestedAt);
+
+            if (rrLatestTime >= currentLatestTime) {
+              latestByAudit.set(auditIdStr, rr);
+            }
+          });
+
+          latestByAudit.forEach((rr: any, auditIdStr: string) => {
+            const normalizedStatus = normalizeReportRequestStatus(rr?.status);
+            if (normalizedStatus) {
+              auditStatusMap.set(auditIdStr, normalizedStatus);
             }
           });
         }
@@ -184,26 +218,22 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           return "Department";
         };
 
-        // Show ALL audits - Lead Auditor can view any audit without waiting for submit
-        // Exclude audits with "archived" status
+        // Show only audits that have report request status Approved/Submitted
         const allAudits = (Array.isArray(plans) ? plans : [])
           .filter((a: any) => {
             const auditId = String(a.auditId || a.id || "").trim();
             if (!auditId || auditId === "") return false;
-            
-            // Get status from report request if exists, otherwise show audit status
-            const status = auditStatusMap.get(auditId) || a.status || "";
-            const statusLower = String(status).toLowerCase().trim();
-            
-            // Exclude archived audits
-            if (statusLower === 'archived') return false;
-            
+
+            // Only include when report request status is Approved/Submitted
+            const status = auditStatusMap.get(auditId) || "";
+            if (!status) return false;
+
             return true;
           })
           .map((a: any) => {
             const auditId = String(a.auditId || a.id || "").trim();
             // Get status from report request if exists, otherwise show audit status
-            const status = auditStatusMap.get(auditId) || a.status || "";
+            const status = auditStatusMap.get(auditId) || "";
             let title = a.title || a.auditTitle || "Untitled audit";
             // Remove "true" or "false" from title if present
             title = title.replace(/\s*(true|false)\s*$/i, "").trim();
@@ -303,6 +333,16 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           // If API returns a report request with status, use it and clear sessionStorage
           // This handles both pending and approved/rejected statuses
           setReportRequest(rr);
+          const normalizedStatus = normalizeReportRequestStatus(rr.status);
+          if (normalizedStatus) {
+            setAudits((prev) =>
+              prev.map((a) =>
+                String(a.auditId) === String(selectedAuditId)
+                  ? { ...a, status: normalizedStatus }
+                  : a
+              )
+            );
+          }
           sessionStorage.removeItem(sessionKey);
         } else if (submittedInSession === 'true') {
           // If API returns null but we have sessionStorage flag, create a temp object with pending status
@@ -344,15 +384,12 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   // Handle submit final report to Director
   const handleSubmitReport = async () => {
     if (!selectedAuditId) {
-      alert("Please select an audit first.");
-      return;
-    }
-
-    if (!window.confirm("Are you sure you want to submit this final audit summary report to Director for review?")) {
+      setSubmitFeedback({ type: "error", message: "Please select an audit first." });
       return;
     }
 
     setSubmitting(true);
+    setSubmitFeedback(null);
     try {
       const result = await submitFinalReport(selectedAuditId);
       console.log('[FinalSummaryReview] Submit result:', result);
@@ -368,6 +405,14 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         if (result.status) {
           console.log('[FinalSummaryReview] Using submit result with status:', result.status);
           setReportRequest(result);
+          const normalizedStatus = normalizeReportRequestStatus(result.status) || "Submitted";
+          setAudits((prev) =>
+            prev.map((a) =>
+              String(a.auditId) === String(selectedAuditId)
+                ? { ...a, status: normalizedStatus }
+                : a
+            )
+          );
         } else if (result.reportRequestId) {
           // If result has reportRequestId but no status, create temp object with pending status
           console.log('[FinalSummaryReview] Creating temp report request with pending status');
@@ -376,6 +421,13 @@ export default function LeadAuditorFinalSummaryReviewPage() {
             status: 'PendingFirstApproval', // Default to pending status after submit
             auditId: selectedAuditId
           });
+          setAudits((prev) =>
+            prev.map((a) =>
+              String(a.auditId) === String(selectedAuditId)
+                ? { ...a, status: "Submitted" }
+                : a
+            )
+          );
         } else {
           // If result doesn't have status or reportRequestId, create temp object
           setReportRequest({
@@ -384,6 +436,13 @@ export default function LeadAuditorFinalSummaryReviewPage() {
             reportRequestId: null,
             requestedAt: new Date().toISOString(),
           } as any);
+          setAudits((prev) =>
+            prev.map((a) =>
+              String(a.auditId) === String(selectedAuditId)
+                ? { ...a, status: "Submitted" }
+                : a
+            )
+          );
         }
       } else {
         // If result is null/undefined, still create temp object
@@ -393,34 +452,47 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           reportRequestId: null,
           requestedAt: new Date().toISOString(),
         } as any);
+        setAudits((prev) =>
+          prev.map((a) =>
+            String(a.auditId) === String(selectedAuditId)
+              ? { ...a, status: "Submitted" }
+              : a
+          )
+        );
       }
       
-      // Also reload to get the actual status from backend (but don't wait for it)
+      // Fetch latest status immediately (no page reload needed)
       if (selectedAuditId) {
-        // Reload in background without blocking
-        setTimeout(async () => {
-          try {
-            const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
-            console.log('[FinalSummaryReview] Background reloaded report request:', rr);
-            // Update if we got a valid report request with status
-            if (rr && rr.status) {
-              setReportRequest(rr);
-              // Clear sessionStorage since we now have real data from API
-              // This works for any status: PendingFirstApproval, PendingSecondApproval, Approved, Rejected
-              sessionStorage.removeItem(sessionKey);
+        try {
+          const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
+          console.log('[FinalSummaryReview] Reloaded report request:', rr);
+          if (rr && rr.status) {
+            setReportRequest(rr);
+            const normalizedStatus = normalizeReportRequestStatus(rr.status);
+            if (normalizedStatus) {
+              setAudits((prev) =>
+                prev.map((a) =>
+                  String(a.auditId) === String(selectedAuditId)
+                    ? { ...a, status: normalizedStatus }
+                    : a
+                )
+              );
             }
-          } catch (err) {
-            console.error('Failed to reload report request:', err);
-            // Keep sessionStorage flag if reload fails
+            sessionStorage.removeItem(sessionKey);
           }
-        }, 1000);
+        } catch (err) {
+          console.error('Failed to reload report request:', err);
+        }
       }
       
-      alert("Report submitted successfully! Director will be notified.");
+      setSubmitFeedback({
+        type: "success",
+        message: "Report submitted successfully! Director will be notified.",
+      });
     } catch (error: any) {
       console.error("Failed to submit report:", error);
       const errorMessage = error?.response?.data?.message || error?.message || "Failed to submit report. Please try again.";
-      alert(errorMessage);
+      setSubmitFeedback({ type: "error", message: errorMessage });
     } finally {
       setSubmitting(false);
     }
@@ -430,10 +502,14 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   // Check case-insensitive to handle different status formats
   const reportStatus = reportRequest?.status ? String(reportRequest.status).trim() : '';
   const statusLower = reportStatus.toLowerCase();
-  const isSubmittedStatus = statusLower === 'submitted';
+  
+  // Check for submitted status - both exact match and contains check
+  const isSubmittedStatus = 
+    statusLower === 'submitted' || 
+    statusLower.includes('submitted');
 
   // Disable button when:
-  // 1. Status is "submitted" (primary check - đã submit xong)
+  // 1. Status is "submitted" or contains "submitted" (primary check - đã submit xong)
   // 2. Status is pending (waiting for approval)
   // 3. OR currently submitting (prevent double submit)
   const alreadySubmitted =
@@ -931,44 +1007,59 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           rightContent={
             selectedAuditId && (
               <div className="flex items-center gap-2">
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => navigate('/lead-auditor/final-summary-review')}
-                  className="px-3 py-1.5 border border-gray-300 text-gray-700 text-xs font-semibold rounded-md hover:bg-gray-50 transition-colors"
                 >
                   Back to List
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setShowAuditDetailModal(true)}
-                  className="px-3 py-1.5 border border-primary-600 text-primary-700 text-xs font-semibold rounded-md hover:bg-primary-50 transition-colors"
                 >
                   View audit details
-                </button>
+                </Button>
                 {selectedAuditId && (
-                  <button
+                  <Button
                     type="button"
-                    onClick={handleSubmitReport}
+                    variant={alreadySubmitted ? "gray" : "success"}
+                    size="sm"
+                    onClick={() => setShowSubmitConfirm(true)}
                     disabled={submitting || alreadySubmitted}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                      alreadySubmitted
-                        ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
-                        : submitting
-                        ? 'bg-green-500 text-white cursor-not-allowed opacity-50'
-                        : 'bg-green-600 text-white hover:bg-green-700'
-                    }`}
+                    isLoading={submitting}
+                    className={alreadySubmitted ? "text-gray-600 border-2 border-gray-200" : undefined}
                   >
-                    {submitting 
-                      ? 'Submitting...' 
-                      : alreadySubmitted 
-                        ? 'Submitted' 
-                        : 'Submit to Director'}
-                  </button>
+                    {alreadySubmitted ? "Submitted" : "Submit to Director"}
+                  </Button>
                 )}
               </div>
             )
           }
         />
+
+        {submitFeedback && (
+          <div
+            className={`rounded-md border px-4 py-3 text-sm flex items-start justify-between gap-3 ${
+              submitFeedback.type === "success"
+                ? "bg-green-50 text-green-800 border-green-200"
+                : "bg-red-50 text-red-800 border-red-200"
+            }`}
+          >
+            <span>{submitFeedback.message}</span>
+            <button
+              type="button"
+              onClick={() => setSubmitFeedback(null)}
+              className="text-sm font-semibold text-current opacity-70 hover:opacity-100"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         <section className="pb-2">
           {!selectedAuditId ? (
@@ -1079,6 +1170,26 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                     header: "SCOPE",
                     accessor: "scope",
                     cellClassName: "text-gray-600",
+                  },
+                  {
+                    key: "status",
+                    header: "STATUS",
+                    render: (row) => {
+                      const status = String(row.status || "").trim();
+                      const statusLower = status.toLowerCase();
+                      const displayText =
+                        statusLower === "approved"
+                          ? "Not Submitted"
+                          : statusLower === "submitted"
+                          ? "Submitted"
+                          : "—";
+                      const badgeClass = `${getStatusColor(displayText)} border border-gray-200`;
+                      return (
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
+                          {displayText}
+                        </span>
+                      );
+                    },
                   },
                   {
                     key: "action",
@@ -1256,6 +1367,42 @@ export default function LeadAuditorFinalSummaryReviewPage() {
             auditTeamsForPlan={teamsArr}
           />
         )}
+
+        {showSubmitConfirm &&
+          createPortal(
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+              <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+                <div className="px-5 py-4 border-b border-gray-200">
+                  <h3 className="text-base font-semibold text-gray-900">Confirm submission</h3>
+                </div>
+                <div className="px-5 py-4 text-sm text-gray-700">
+                  Are you sure you want to submit this final audit summary report to Director for review?
+                </div>
+                <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowSubmitConfirm(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="success"
+                    size="sm"
+                    onClick={() => {
+                      setShowSubmitConfirm(false);
+                      handleSubmitReport();
+                    }}
+                  >
+                    Confirm
+                  </Button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
 
       </div>
     </MainLayout>
