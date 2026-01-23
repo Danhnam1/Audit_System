@@ -53,6 +53,15 @@ const SQAStaffReports = () => {
   const [returnedFindings, setReturnedFindings] = useState<Array<{ id: string; title: string; reasonReturn?: string }>>([]);
   const [returnedCompliantItems, setReturnedCompliantItems] = useState<Array<{ id: number; title: string; reasonReturn?: string }>>([]);
   const [loadingReturnedItems, setLoadingReturnedItems] = useState(false);
+  const [exportedAudits, setExportedAudits] = useState<Set<string>>(() => {
+    try {
+      const stored = sessionStorage.getItem('exported_audits');
+      const parsed = stored ? (JSON.parse(stored) as string[]) : [];
+      return new Set(parsed);
+    } catch {
+      return new Set();
+    }
+  });
   const [_uploadedAudits, setUploadedAudits] = useState<Set<string>>(new Set());
   const [_leadAuditIds, setLeadAuditIds] = useState<Set<string>>(new Set());
   const [creatorAuditIds, setCreatorAuditIds] = useState<Set<string>>(new Set()); // auditId -> creator can resubmit
@@ -1300,6 +1309,11 @@ const SQAStaffReports = () => {
 
   const onClickUpload = (auditIdRaw: string) => {
     const auditId = normalizeId(auditIdRaw);
+
+    if (!exportedAudits.has(auditId)) {
+      toast.error('Please export the report first before uploading.');
+      return;
+    }
     
     // Check if currently uploading
     if (uploadLoading[auditId]) {
@@ -1357,6 +1371,18 @@ const SQAStaffReports = () => {
         window.URL.revokeObjectURL(url);
         toast.success('Report exported successfully');
       }, 200);
+
+      const auditIdNorm = normalizeId(auditId);
+      setExportedAudits((prev) => {
+        const next = new Set(prev);
+        next.add(auditIdNorm);
+        try {
+          sessionStorage.setItem('exported_audits', JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore
+        }
+        return next;
+      });
     } catch (err) {
       console.error('Export PDF failed', err);
       toast.error('Export PDF failed. Please try again.');
@@ -1773,6 +1799,7 @@ const SQAStaffReports = () => {
                           const auditIdNorm = normalizeId(auditIdStr);
                           const approved = isReportApproved(auditIdStr);
                           const isCreator = auditIdStr && (creatorAuditIds.has(auditIdStr) || creatorAuditIds.has(auditIdStr.toLowerCase()));
+                          const hasExported = exportedAudits.has(auditIdNorm);
                           
                           // Allow export if: approved AND is Creator only
                           // Only the creator can export after Lead Auditor approves
@@ -1781,7 +1808,7 @@ const SQAStaffReports = () => {
                           
                           // Allow upload if: approved AND is Creator AND not currently uploading
                           // Only the creator can upload signed report after approval
-                          const canUpload = approved && isCreator && !uploadLoading[auditIdNorm];
+                          const canUpload = approved && isCreator && hasExported && !uploadLoading[auditIdNorm];
                           const disableUpload = !canUpload;
                           
                           // Tooltip messages
@@ -1795,6 +1822,8 @@ const SQAStaffReports = () => {
                             ? 'Upload is available only after the report request is approved'
                             : !isCreator
                               ? 'Only the Lead of the Auditor Team can upload signed reports'
+                              : !hasExported
+                                ? 'Please export the report before uploading'
                               : uploadLoading[auditIdNorm]
                                 ? 'Upload in progress...'
                                 : 'Upload signed report';
