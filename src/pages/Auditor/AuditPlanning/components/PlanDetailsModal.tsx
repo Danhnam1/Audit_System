@@ -816,21 +816,55 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 <div className="flex items-start gap-3">
                   <span className="text-sm font-bold text-black min-w-[100px]">Name:</span>
                   <span className="text-sm text-black font-normal">
-                    {selectedPlanDetails.createdByUser?.fullName ||
-                      selectedPlanDetails.createdByUser?.name ||
-                      selectedPlanDetails.createdByName ||
-                      selectedPlanDetails.createdBy ||
-                      '—'}
+                    {(() => {
+                      // Priority 1: Use createdByUser data if available
+                      if (selectedPlanDetails.createdByUser?.fullName) {
+                        return selectedPlanDetails.createdByUser.fullName;
+                      }
+                      if (selectedPlanDetails.createdByUser?.name) {
+                        return selectedPlanDetails.createdByUser.name;
+                      }
+                      if (selectedPlanDetails.createdByName) {
+                        return selectedPlanDetails.createdByName;
+                      }
+                      
+                      // Priority 2: Lookup from userMap using createdBy ID
+                      const createdById = selectedPlanDetails.createdBy;
+                      if (createdById) {
+                        const user = userMap.get(String(createdById).toLowerCase()) || userMap.get(String(createdById));
+                        if (user?.fullName) return user.fullName;
+                        if (user?.email) return user.email;
+                      }
+                      
+                      // Priority 3: Return ID or fallback
+                      return createdById || '—';
+                    })()}
                   </span>
                 </div>
-                {selectedPlanDetails.createdByUser?.email && (
-                  <div className="flex items-start gap-3">
-                    <span className="text-sm font-bold text-black min-w-[100px]">Email:</span>
-                    <span className="text-sm text-black font-normal">
-                      {selectedPlanDetails.createdByUser.email}
-                    </span>
-                  </div>
-                )}
+                {(() => {
+                  // Get email from createdByUser or lookup from userMap
+                  let email = selectedPlanDetails.createdByUser?.email;
+                  
+                  if (!email) {
+                    const createdById = selectedPlanDetails.createdBy;
+                    if (createdById) {
+                      const user = userMap.get(String(createdById).toLowerCase()) || userMap.get(String(createdById));
+                      email = user?.email;
+                    }
+                  }
+                  
+                  if (email) {
+                    return (
+                      <div className="flex items-start gap-3">
+                        <span className="text-sm font-bold text-black min-w-[100px]">Email:</span>
+                        <span className="text-sm text-black font-normal">
+                          {email}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 {selectedPlanDetails.createdByUser?.roleName && (
                   <div className="flex items-start gap-3">
                     <span className="text-sm font-bold text-black min-w-[100px]">Role:</span>
