@@ -56,7 +56,7 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
         }
 
         // Load audit logs for both entity types (by entityId first)
-        const [byEntityLogsRes, byEntityFinalLogsRes] = await Promise.allSettled([
+        const [byEntityLogsRes, byEntityFinalLogsRes, byEntityRevisionLogsRes] = await Promise.allSettled([
           getAdminAuditLog({
             entityType: 'ReportRequest',
             entityId: reportRequestId,
@@ -65,12 +65,18 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
             entityType: 'ReportRequestFinal',
             entityId: reportRequestId,
           }),
+          getAdminAuditLog({
+            entityType: 'AuditPlanRevisionRequest',
+            entityId: reportRequestId,
+          }),
         ]);
 
         const byEntityLogs = byEntityLogsRes.status === 'fulfilled' ? byEntityLogsRes.value : [];
         const byEntityFinalLogs = byEntityFinalLogsRes.status === 'fulfilled' ? byEntityFinalLogsRes.value : [];
+        const byEntityRevisionLogs =
+          byEntityRevisionLogsRes.status === 'fulfilled' ? byEntityRevisionLogsRes.value : [];
 
-        let combinedLogs: AdminAuditLogEntry[] = [...byEntityLogs, ...byEntityFinalLogs];
+        let combinedLogs: AdminAuditLogEntry[] = [...byEntityLogs, ...byEntityFinalLogs, ...byEntityRevisionLogs];
 
         // Try to resolve auditId (from report or logs)
         let auditId: string | null = report?.auditId ? String(report.auditId) : null;
@@ -85,7 +91,7 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
 
         // If we have auditId, load logs by auditId to include both entity types
         if (auditId) {
-          const [auditLogsRes, auditFinalLogsRes] = await Promise.allSettled([
+          const [auditLogsRes, auditFinalLogsRes, auditRevisionLogsRes] = await Promise.allSettled([
             getAdminAuditLog({
               entityType: 'ReportRequest',
               auditId: String(auditId),
@@ -94,10 +100,16 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
               entityType: 'ReportRequestFinal',
               auditId: String(auditId),
             }),
+            getAdminAuditLog({
+              entityType: 'AuditPlanRevisionRequest',
+              auditId: String(auditId),
+            }),
           ]);
           const auditLogs = auditLogsRes.status === 'fulfilled' ? auditLogsRes.value : [];
           const auditFinalLogs = auditFinalLogsRes.status === 'fulfilled' ? auditFinalLogsRes.value : [];
-          const merged = [...combinedLogs, ...auditLogs, ...auditFinalLogs];
+          const auditRevisionLogs =
+            auditRevisionLogsRes.status === 'fulfilled' ? auditRevisionLogsRes.value : [];
+          const merged = [...combinedLogs, ...auditLogs, ...auditFinalLogs, ...auditRevisionLogs];
           const uniq = new Map<string, AdminAuditLogEntry>();
           merged.forEach((log) => {
             const key = log.logId || `${log.entityType}-${log.entityId}-${log.performedAt}`;
@@ -193,8 +205,8 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
     const newObj = parseValue(newValue);
 
     if (!oldObj && !newObj) return [];
-    if (!oldObj) return ['Created'];
-    if (!newObj) return ['Deleted'];
+    if (!oldObj) return [];
+    if (!newObj) return [];
 
     const changes: string[] = [];
     const allKeys = new Set([...Object.keys(oldObj || {}), ...Object.keys(newObj || {})]);
@@ -224,6 +236,11 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
     const action = String(log.action || '').trim();
     if (action) return action;
 
+    const entityType = String(log.entityType || '').toLowerCase();
+    if (entityType === 'auditplanrevisionrequest') {
+      return 'Extension Time Request';
+    }
+
     const newStatus = getStatusFromValue(log.newValue);
     const oldStatus = getStatusFromValue(log.oldValue);
     if (newStatus && newStatus !== oldStatus) {
@@ -247,6 +264,14 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
     if (norm.includes('delete') || norm.includes('softdelete')) return 'Deleted by';
     if (norm.includes('update')) return 'Updated by';
     return 'Performed by';
+  };
+
+  const getEntityLabel = (log: AdminAuditLogEntry): string => {
+    const type = String(log.entityType || '').toLowerCase();
+    if (type === 'auditplanrevisionrequest') return 'Extension Time Request';
+    if (type === 'reportrequestfinal') return 'Report Final';
+    if (type === 'reportrequest') return 'Report Findings';
+    return log.entityType || '—';
   };
 
   const renderTimeline = (title: string, timelineLogs: AdminAuditLogEntry[]) => (
@@ -345,6 +370,7 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
                         <p className="text-sm text-gray-600">
                           {byLabel} <span className="font-medium">{getUserName(log.performedBy)}</span>
                         </p>
+                        <p className="text-xs text-gray-500 mt-1">Entity: {getEntityLabel(log)}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-xs text-gray-500">
@@ -470,7 +496,10 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
                     <div className="mt-4">
                       {renderTimeline(
                         '',
-                        logs.filter((log) => String(log.entityType || '').toLowerCase() === 'reportrequest')
+                        logs.filter((log) => {
+                          const type = String(log.entityType || '').toLowerCase();
+                          return type === 'reportrequest' || type === 'auditplanrevisionrequest';
+                        })
                       )}
                     </div>
                   )}
