@@ -397,9 +397,12 @@ export const AuditLogHistoryModal: React.FC<AuditLogHistoryModalProps> = ({
                               </div>
                             )}
 
-                            {/* Performer ID */}
+                            {/* Performer Info */}
                             <p className="text-xs text-gray-400 mt-2">
-                              Performed by: {log.performedBy}
+                              Performed by: {(() => {
+                                const user = userMap.get(log.performedBy);
+                                return user?.fullName || user?.email || log.performedBy;
+                              })()}
                             </p>
                           </div>
                         </div>
