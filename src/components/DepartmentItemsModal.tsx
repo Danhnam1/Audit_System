@@ -4,7 +4,9 @@ import { toast } from 'react-toastify';
 import { getFindingsByAudit } from '../api/findings';
 import { getAuditChecklistItems } from '../api/checklists';
 import { getAdminUsers } from '../api/adminUsers';
+import { getStatusColor, getSeverityColor } from '../constants/statusColors';
 import AuditLogHistoryModal from './AuditLogHistoryModal';
+import FindingActionsModal from './FindingActionsModal';
 
 interface DepartmentItemsModalProps {
   isOpen: boolean;
@@ -33,6 +35,11 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
   const [historyEntityType, setHistoryEntityType] = useState<'Finding' | 'ChecklistItem' | 'ChecklistItemNoFinding'>('Finding');
   const [historyEntityId, setHistoryEntityId] = useState<string>('');
   const [historyTitle, setHistoryTitle] = useState<string>('');
+
+  // Actions modal state
+  const [showActionsModal, setShowActionsModal] = useState(false);
+  const [actionsFindingId, setActionsFindingId] = useState<string>('');
+  const [actionsFindingTitle, setActionsFindingTitle] = useState<string>('');
 
   useEffect(() => {
     if (!isOpen || !auditId) {
@@ -101,44 +108,10 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
     setShowHistoryModal(true);
   };
 
-  // Get status badge color
-  const getStatusBadge = (status: string) => {
-    const statusLower = status.toLowerCase();
-    switch (statusLower) {
-      case 'open':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'witnessconfirmed':
-      case 'witness confirmed':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'closed':
-      case 'fixed':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'returned':
-      case 'witnessdisagreed':
-      case 'witness disagreed':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'compliant':
-      case 'nofinding':
-        return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  // Get severity badge color
-  const getSeverityBadge = (severity: string) => {
-    switch (severity?.toLowerCase()) {
-      case 'critical':
-        return 'bg-red-600 text-white';
-      case 'major':
-        return 'bg-orange-500 text-white';
-      case 'minor':
-        return 'bg-yellow-500 text-white';
-      case 'observation':
-        return 'bg-blue-500 text-white';
-      default:
-        return 'bg-gray-500 text-white';
-    }
+  const handleShowActions = (findingId: string, title: string) => {
+    setActionsFindingId(findingId);
+    setActionsFindingTitle(title);
+    setShowActionsModal(true);
   };
 
   return createPortal(
@@ -259,29 +232,46 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
                           <h4 className="text-base font-bold text-gray-900 mb-2">{finding.title}</h4>
                           <p className="text-sm text-gray-600 line-clamp-2">{finding.description}</p>
                         </div>
-                        <button
-                          onClick={() => handleShowHistory('Finding', finding.findingId, finding.title)}
-                          className="ml-3 flex-shrink-0 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium flex items-center gap-2"
-                          title="View history"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                          History
-                        </button>
+                        <div className="ml-3 flex-shrink-0 flex gap-2">
+                          <button
+                            onClick={() => handleShowActions(finding.findingId, finding.title)}
+                            className="px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium flex items-center gap-2"
+                            title="View corrective actions"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                              />
+                            </svg>
+                            Actions
+                          </button>
+                          <button
+                            onClick={() => handleShowHistory('Finding', finding.findingId, finding.title)}
+                            className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium flex items-center gap-2"
+                            title="View history"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            </svg>
+                            History
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusBadge(finding.status)}`}>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(finding.status)}`}>
                           {finding.status}
                         </span>
                         {finding.severity && (
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getSeverityBadge(finding.severity)}`}>
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getSeverityColor(finding.severity)}`}>
                             {finding.severity}
                           </span>
                         )}
@@ -357,7 +347,7 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusBadge(item.status)}`}>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
                           {item.status}
                         </span>
                         {item.createdBy && (
@@ -432,7 +422,7 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusBadge(item.status)}`}>
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
                           {item.status}
                         </span>
                         {item.createdBy && (
@@ -467,6 +457,14 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
         entityType={historyEntityType}
         entityId={historyEntityId}
         title={historyTitle}
+      />
+
+      {/* Actions Modal */}
+      <FindingActionsModal
+        isOpen={showActionsModal}
+        onClose={() => setShowActionsModal(false)}
+        findingId={actionsFindingId}
+        findingTitle={actionsFindingTitle}
       />
     </>,
     document.body
