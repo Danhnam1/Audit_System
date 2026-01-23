@@ -6,10 +6,11 @@ export const STATUS_COLORS = {
   'Approved': 'bg-green-100 text-green-800',
   'Completed': 'bg-green-100 text-green-800',
   'Closed': 'bg-green-600 text-white',
-  'Verified': 'bg-teal-100 text-teal-800',
+
   'WitnessConfirmed': 'bg-teal-100 text-teal-800',
   "WitnessDisagreed": 'bg-red-100 text-red-800',
   'WitnessConfirmReturned': 'bg-teal-200 text-teal-800',
+ 
   
   // In Progress/Active States - Medium primary/sky tone
   'In Progress': 'bg-sky-500 text-white',
@@ -37,13 +38,21 @@ export const STATUS_COLORS = {
   // Draft/Initial States - Light gray
   'Draft': 'bg-gray-200 text-gray-700',
   'Open': 'bg-gray-300 text-gray-800',
+  'Reopen': 'bg-red-200 text-red-800',
+  'Received': 'bg-yellow-100 text-yellow-800',
   
   // Rejected/Negative States - Red/Orange (Clear warning)
   'Rejected': 'bg-red-100 text-red-800',
-  'Declined': 'bg-orange-200 text-orange-900', // Rejected by Lead Auditor (different from Director's Rejected)
+  'declined': 'bg-orange-200 text-orange-900', // Rejected by Lead Auditor (different from Director's Rejected)
   'Returned': 'bg-orange-100 text-orange-800',
   'Return': 'bg-orange-100 text-orange-800',
   'Cancelled': 'bg-red-200 text-red-800',
+  'Verified': 'bg-teal-100 text-teal-800',
+  'AuditorApproved': 'bg-green-100 text-green-800',
+  'LeadRejected': 'bg-red-300 text-red-800',
+  'LeadApproved': 'bg-green-300 text-green-800',  
+  
+
   
   // Special States
   'Overdue': 'bg-red-500 text-white',

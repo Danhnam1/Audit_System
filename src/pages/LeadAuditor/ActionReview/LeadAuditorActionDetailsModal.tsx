@@ -4,6 +4,7 @@ import { getAttachments, updateAttachmentStatus, type Attachment } from '../../.
 import { approveFindingActionHigherLevel, rejectFindingActionHigherLevel } from '../../../api/findings';
 import { toast } from 'react-toastify';
 import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
+import {  getStatusColor } from '../../../constants/statusColors';
 
 interface LeadAuditorActionDetailsModalProps {
   isOpen: boolean;
@@ -566,7 +567,9 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                                   <p className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
                                     {att.fileName}
                                   </p>
-                                  {getAttachmentStatusBadge(att.status)}
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(att.status || '')}`}>
+                                    {att.status}
+                                  </span>
                                 </div>
                                 <p className="text-sm text-gray-500 mt-0.5">
                                   {formatFileSize(att.fileSize || 0)} • Uploaded {formatDate(att.uploadedAt)}

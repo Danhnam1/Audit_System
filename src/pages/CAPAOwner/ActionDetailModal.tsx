@@ -3,7 +3,7 @@ import { getActionById, getActionsByFinding, type Action } from '../../api/actio
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById, type AdminUserDto } from '../../api/adminUsers';
 import { getRootCauseById, type RootCause } from '../../api/rootCauses';
-import { getStatusColor } from '../../constants';
+import { getStatusColor } from '../../constants/statusColors';
 
 interface ActionDetailModalProps {
   isOpen: boolean;
@@ -206,39 +206,7 @@ const ActionDetailModal = ({
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  // Get status badge for attachment
-  const getAttachmentStatusBadge = (status?: string) => {
-    if (!status) return null;
-    const statusLower = status.toLowerCase();
-    
-    if (statusLower === 'rejected') {
-      return (
-        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded border border-red-300 flex-shrink-0">
-          Rejected
-        </span>
-      );
-    }
-    if (statusLower === 'approved') {
-      return (
-        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-300 flex-shrink-0">
-          Approved
-        </span>
-      );
-    }
-    if (statusLower === 'open') {
-      return (
-        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded border border-blue-300 flex-shrink-0">
-          Open
-        </span>
-      );
-    }
-    // Default: show status as-is
-    return (
-      <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded border border-gray-300 flex-shrink-0">
-        {status}
-      </span>
-    );
-  };
+
 
   if (!isOpen) return null;
 
@@ -443,7 +411,7 @@ const ActionDetailModal = ({
                     <p className="text-blue-100 text-sm mt-1">
                       {relatedActions.length > 1 
                         ? `Viewing action ${relatedActions.findIndex(a => a.actionId === selectedActionId) + 1} of ${relatedActions.length}`
-                        : 'Comprehensive action information and attachments'}
+                        : 'Comprehensive action information and attdachments'}
                     </p>
                   </div>
                 )}
@@ -491,7 +459,7 @@ const ActionDetailModal = ({
                         <label className="block text-sm font-semibold text-gray-700 mb-2 uppercase tracking-wide">
                           Status
                         </label>
-                        <div className="px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium">
+                        <div className={`px-4 py-2.5 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 font-medium `}>
                           {action.status || 'N/A'}
                         </div>
                       </div>
@@ -579,7 +547,7 @@ const ActionDetailModal = ({
                             {/* Proposed Action / Remediation Proposal */}
                             {rootCause.proposedAction && (
                               <div>
-                                <label className="block text-xs font-semibold text-green-600 uppercase tracking-wide mb-2 flex items-center gap-2">
+                                <label className=" text-xs font-semibold text-green-600 uppercase tracking-wide mb-2 flex items-center gap-2">
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                   </svg>
@@ -756,8 +724,11 @@ const ActionDetailModal = ({
                                   )}
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
-                                      <p className="text-gray-700 font-medium truncate">{attachment.fileName}</p>
-                                      {getAttachmentStatusBadge(attachment.status)}
+                                      <p className="text-gray-700 font-medium truncate ">{attachment.fileName}</p>
+                                      
+                                      <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(attachment.status || '')}}`}>
+                                        {attachment.status}
+                                      </span>
                                     </div>
                                     <p className="text-xs text-gray-500">
                                       {formatFileSize(attachment.fileSize || 0)} • {new Date(attachment.uploadedAt).toLocaleString()}

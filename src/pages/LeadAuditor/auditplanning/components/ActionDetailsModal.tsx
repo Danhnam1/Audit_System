@@ -3,6 +3,7 @@ import { getActionById, type Action } from '../../../../api/actions';
 import { getAttachments, type Attachment } from '../../../../api/attachments';
 import { toast } from 'react-toastify';
 import { getUserFriendlyErrorMessage } from '../../../../utils/errorMessages';
+import {getStatusColor} from '../../../../constants/statusColors';
 
 interface ActionDetailsModalProps {
   isOpen: boolean;
@@ -60,46 +61,6 @@ const ActionDetailsModal = ({ isOpen, onClose, actionId }: ActionDetailsModalPro
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  // Get status badge for attachment
-  const getAttachmentStatusBadge = (status?: string) => {
-    if (!status) return null;
-    const statusLower = status.toLowerCase();
-    
-    if (statusLower === 'rejected') {
-      return (
-        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded border border-red-300 flex-shrink-0">
-          Rejected
-        </span>
-      );
-    }
-    if (statusLower === 'approved') {
-      return (
-        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-green-300 flex-shrink-0">
-          Approved
-        </span>
-      );
-    }
-    if (statusLower === 'open') {
-      return (
-        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded border border-blue-300 flex-shrink-0">
-          Open
-        </span>
-      );
-    }
-    if (statusLower === 'Completed') {
-      return (
-        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded border border-blue-300 flex-shrink-0">
-          Completed
-        </span>
-      );
-    }
-    // Default: show status as-is
-    return (
-      <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded border border-gray-300 flex-shrink-0">
-        {status}
-      </span>
-    );
-  };
 
 
   if (!isOpen) return null;
@@ -295,7 +256,9 @@ const ActionDetailsModal = ({ isOpen, onClose, actionId }: ActionDetailsModalPro
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
                                       <p className="text-gray-700 font-medium truncate">{attachment.fileName}</p>
-                                      {getAttachmentStatusBadge(attachment.status)}
+                                      <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(attachment.status || '')}`}>
+                                        {attachment.status}
+                                      </span> 
                                     </div>
                                     <p className="text-xs text-gray-500">
                                       {formatFileSize(attachment.fileSize || 0)} • {new Date(attachment.uploadedAt).toLocaleString()}
