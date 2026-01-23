@@ -3,6 +3,7 @@ import { getActionById, type Action } from '../../../../api/actions';
 import { getAttachments, type Attachment } from '../../../../api/attachments';
 import { toast } from 'react-toastify';
 import { getUserFriendlyErrorMessage } from '../../../../utils/errorMessages';
+import {getStatusColor} from '../../../../constants/statusColors';
 
 interface ActionDetailsModalProps {
   isOpen: boolean;
@@ -295,7 +296,9 @@ const ActionDetailsModal = ({ isOpen, onClose, actionId }: ActionDetailsModalPro
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
                                       <p className="text-gray-700 font-medium truncate">{attachment.fileName}</p>
-                                      {getAttachmentStatusBadge(attachment.status)}
+                                      <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(attachment.status)}`}>
+                                        {attachment.status}
+                                      </span> 
                                     </div>
                                     <p className="text-xs text-gray-500">
                                       {formatFileSize(attachment.fileSize || 0)} • {new Date(attachment.uploadedAt).toLocaleString()}

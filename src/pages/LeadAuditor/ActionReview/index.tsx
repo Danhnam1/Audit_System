@@ -11,7 +11,7 @@ import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import FindingDetailModal from '../../Auditor/FindingManagement/FindingDetailModal';
 import LeadAuditorActionDetailsModal from './LeadAuditorActionDetailsModal';
-import { getStatusColor, getAuditTypeBadgeColor, getSeverityColor } from '../../../constants';
+import { getStatusColor, getAuditTypeBadgeColor, getSeverityColor } from '../../../constants/statusColors';
 
 interface Audit {
   auditId: string;
@@ -189,80 +189,7 @@ const ActionReview = () => {
   };
 
 
-  // Get display status for finding based on action states
-  const getDisplayStatus = (finding: Finding): string => {
-    const originalStatus = finding.status || '';
-    const statusLower = originalStatus.toLowerCase();
-    const actions = findingActionsMap[finding.findingId] || [];
-
-    // If finding already has final status (Closed/Verified), return it directly
-    if (statusLower === 'closed' || statusLower === 'verified') {
-      return originalStatus;
-    }
-
-    // If no actions assigned yet, return original status
-    if (actions.length === 0) {
-      return originalStatus;
-    }
-
-    // Check all action statuses to determine finding status
-    const actionStatuses = actions.map(a => a.status?.toLowerCase() || '');
-    
-    // All actions closed -> Finding Closed
-    const allClosed = actions.every(a => {
-      const status = a.status?.toLowerCase() || '';
-      return status === 'closed' || a.closedAt !== null;
-    });
-    if (allClosed) {
-      return 'Closed';
-    }
-
-    // All actions verified -> Finding Verified
-    const allVerified = actionStatuses.every(s => s === 'verified');
-    if (allVerified) {
-      return 'Verified';
-    }
-
-    // All actions approved/completed -> Finding Approved
-    const allApproved = actionStatuses.every(s => 
-      s === 'approved' || 
-      s === 'completed' || 
-      s === 'complete'
-    );
-    if (allApproved) {
-      return 'Approved';
-    }
-
-    // Any action rejected/declined -> Finding Returned
-    const hasRejected = actionStatuses.some(s => s === 'rejected' || s === 'declined' || s === 'leadrejected' || s === 'returned');
-    if (hasRejected) {
-      return 'Returned';
-    }
-
-    // Any action in progress -> Finding In Progress
-    const hasInProgress = actionStatuses.some(s => 
-      s === 'inprogress' || 
-      s === 'in progress' || 
-      s === 'assigned'
-    );
-    if (hasInProgress) {
-      return 'InProgress';
-    }
-
-    // Any action under review -> Finding Under Review
-    const hasUnderReview = actionStatuses.some(s => 
-      s === 'underreview' || 
-      s === 'under review' || 
-      s === 'pendingreview' ||
-      s === 'pending review'
-    );
-    if (hasUnderReview) {
-      return 'UnderReview';
-    }
-
-    // Default: return original status
-    return originalStatus;
-  };
+  
 
   // Helper function to load findings
   const loadFindings = async (deptId: number) => {
@@ -769,8 +696,8 @@ const ActionReview = () => {
                               <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getSeverityColor(finding.severity || 'Low')}`}>
                                 {finding.severity || 'N/A'}
                               </span>
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${getStatusColor(getDisplayStatus(finding))}`}>
-                                {getDisplayStatus(finding) || 'No status'}
+                              <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block ${getStatusColor(finding.status || '')}`}>
+                                {finding.status}
                               </span>
                               {showDisagreedTab && (
                                 <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200">

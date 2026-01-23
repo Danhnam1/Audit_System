@@ -3,7 +3,7 @@ import { getFindingById, type Finding, witnessConfirmFinding, witnessConfirmRetu
 import { getAttachments, type Attachment } from '../../api/attachments';
 import { getUserById } from '../../api/adminUsers';
 import { getDepartmentById } from '../../api/departments';
-import { getSeverityColor } from '../../constants/statusColors';
+import { getSeverityColor, getStatusColor } from '../../constants/statusColors';
 import { toast } from 'react-toastify';
 import { getUserFriendlyErrorMessage } from '../../utils/errorMessages';
 import { getRootCauseLogs } from '../../api/rootCauses';
@@ -340,12 +340,7 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
                       <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getSeverityColor(finding.severity)}`}>
                         {finding.severity}
                       </span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        finding.status === 'Open' ? 'bg-blue-100 text-blue-700' :
-                        finding.status === 'Received' ? 'bg-yellow-100 text-yellow-700' :
-                        finding.status === 'Closed' ? 'bg-green-100 text-green-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(finding.status)}`}>
                         {finding.status}
                       </span>
                     </div>
