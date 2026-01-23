@@ -726,7 +726,7 @@ const ActionDetailModal = ({
                                     <div className="flex items-center gap-2">
                                       <p className="text-gray-700 font-medium truncate ">{attachment.fileName}</p>
                                       
-                                      <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(attachment.status)}`}>
+                                      <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(attachment.status || '')}}`}>
                                         {attachment.status}
                                       </span>
                                     </div>

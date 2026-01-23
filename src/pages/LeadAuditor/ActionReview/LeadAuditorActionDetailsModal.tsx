@@ -567,7 +567,7 @@ const LeadAuditorActionDetailsModal = ({ isOpen, onClose, actionId, onDataReload
                                   <p className="font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
                                     {att.fileName}
                                   </p>
-                                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(att.status)}`}>
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(att.status || '')}`}>
                                     {att.status}
                                   </span>
                                 </div>
