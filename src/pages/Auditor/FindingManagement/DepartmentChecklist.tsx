@@ -1273,7 +1273,7 @@ const DepartmentChecklist = () => {
       const itemsNeedingStatusDetail = sortedItems.filter(item => {
         const statusLower = (item.status || '').toLowerCase();
         // Include items with return status OR items with compliant records
-        return statusLower.includes('return') || compliantMap[item.auditItemId];
+        return statusLower.includes('return') || compliantIdMap[item.auditItemId];
       });
       
       if (itemsNeedingStatusDetail.length > 0) {
@@ -3211,7 +3211,7 @@ const DepartmentChecklist = () => {
           }}
           checklistItem={selectedItem}
           departmentId={parseInt(deptId, 10)}
-          auditId={auditId}
+          departmentName={departmentName}
         />
       )}
 

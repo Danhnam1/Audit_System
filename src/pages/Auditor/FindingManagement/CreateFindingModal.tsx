@@ -7,6 +7,7 @@ import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { createRootCause } from '../../../api/rootCauses';
 import { type SuggestedRootCause } from '../../../api/chatbot';
+import { createAction } from '../../../api/actions';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
 import {
@@ -27,7 +28,7 @@ interface CreateFindingModalProps {
     auditId: string;
     questionTextSnapshot: string;
   };
-  deptId: number;
+  departmentId: number;
   departmentName?: string; // Department name
   rejectedFinding?: any; // Previous finding that was rejected by witness
 }
@@ -37,7 +38,7 @@ const CreateFindingModal = ({
   onClose,
   onSuccess,
   checklistItem,
-  deptId,
+  departmentId,
   departmentName = '',
   rejectedFinding = null,
 }: CreateFindingModalProps) => {
@@ -177,11 +178,17 @@ const [findingTime, setFindingTime] = useState(() => {
 
 
   const loadDepartmentUsers = async () => {
-    if (!deptId || deptId <= 0) return;
+    console.log('[CreateFindingModal] loadDepartmentUsers called, departmentId:', departmentId);
+    if (!departmentId || departmentId <= 0) {
+      console.log('[CreateFindingModal] Invalid departmentId, returning early');
+      return;
+    }
     
     setLoadingUsers(true);
     try {
-      const users = await getAdminUsersByDepartment(deptId);
+      console.log('[CreateFindingModal] Fetching users for department:', departmentId);
+      const users = await getAdminUsersByDepartment(departmentId);
+      console.log('[CreateFindingModal] Department users:', users);
       // Include both Department Head (AuditeeOwner) and department staff (CAPAOwner) as potential witnesses
       const potentialWitnesses = users.filter(
         (user) => user.roleName === 'AuditeeOwner' || user.roleName === 'CAPAOwner'
@@ -196,6 +203,7 @@ const [findingTime, setFindingTime] = useState(() => {
         setWitnesses(potentialWitnesses[0].userId || '');
       }
     } catch (err: any) {
+      console.error('[CreateFindingModal] Error fetching department users:', err);
     } finally {
       setLoadingUsers(false);
     }
@@ -491,7 +499,7 @@ const [findingTime, setFindingTime] = useState(() => {
         description: description.trim(),
         severity: severity,
         rootCauseId: null, // null is accepted by backend
-        deptId: deptId,
+        deptId: departmentId,
         status: witnesses ? 'Open' : '', // If witness assigned, status = PendingWitnessConfirmation
         deadline: new Date(deadline).toISOString(),
         reviewerId: null, // null is accepted by backend
@@ -528,13 +536,27 @@ const [findingTime, setFindingTime] = useState(() => {
         
         const rootCauseId = rootCause.rootCauseId || (rootCause as any).$id || (rootCause as any).id;
 
+
+
         if (!rootCauseId) {
           throw new Error('Root Cause ID not found in response');
         }
 
+        // Create action (proposed action) for this root cause
+        const actionPayload = {
+          findingId: findingId,
+          title: rc.rootCauseName.trim(), // Use root cause name as title (for backend validation)
+          description: rc.proposedAction.trim(), // Proposed action as description
+          assignedBy: null, // Will be set when department head assigns the action
+          assignedTo: null, // To be assigned by department head
+          assignedDeptId: departmentId,
+          rootCauseId: rootCauseId,
+          progressPercent: 0,
+          dueDate: new Date().toISOString(), // Temporary date, will be updated when assigned
+          reviewFeedback: '',
+        };
 
-
-       
+        await createAction(actionPayload);
       }
       
 

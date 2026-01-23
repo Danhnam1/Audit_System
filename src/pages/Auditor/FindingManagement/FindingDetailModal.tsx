@@ -272,6 +272,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               let actions: Action[] = [];
               try {
                 actions = await getActionsByRootCause(rc.rootCauseId);
+                console.log('Actions loaded for root cause', rc.rootCauseId, actions.length);
               } catch (actionErr) {
               
               }
