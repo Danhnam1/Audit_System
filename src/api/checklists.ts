@@ -439,6 +439,17 @@ export const getCompliantIdByAuditItemId = async (auditItemId: string): Promise<
   }
 };
 
+// Get returned compliant items for an audit
+export const getReturnedCompliantItemsByAudit = async (auditId: string): Promise<any[]> => {
+  try {
+    const res: any = await apiClient.get(`/ChecklistItemNoFinding/audit/${auditId}/return`);
+    return unwrapArray(res);
+  } catch (err: any) {
+    console.error('Failed to get returned compliant items:', err);
+    return [];
+  }
+};
+
 // Get overdue checklist items for an audit
 export const getOverdueChecklistItems = async (auditId: string): Promise<any[]> => {
   const allItems = await getAuditChecklistItems(auditId);
@@ -470,6 +481,7 @@ export default {
   getChecklistItemCompliantDetails,
   getCompliantIdByAuditItemId,
   returnCompliantItem,
+  getReturnedCompliantItemsByAudit,
   updateOverdueToActiveByAuditId,
   toggleMarkChecklistItem,
   markChecklistItemPending,

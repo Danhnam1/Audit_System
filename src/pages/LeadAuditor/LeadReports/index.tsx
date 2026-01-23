@@ -16,7 +16,7 @@ import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getReportRequestFromSubmitAudit, type ViewReportRequest } from '../../../api/reportRequest';
 import { getAuditPlans } from '../../../api/audits';
 import SummaryTab from './components/SummaryTab';
-import { getAuditChecklistItems, markChecklistItemPending, getCompliantIdByAuditItemId, returnCompliantItem } from '../../../api/checklists';
+import { getAuditChecklistItems, markChecklistItemPending, getCompliantIdByAuditItemId, returnCompliantItem, getReturnedCompliantItemsByAudit } from '../../../api/checklists';
 import { getMarkedItemsByRequestId } from '../../../api/auditPlanRevisionRequest';
 import { getRootCausesByFinding } from '../../../api/rootCauses';
 import { getActionsByRootCause } from '../../../api/actions';
@@ -609,51 +609,6 @@ const AuditorLeadReports = () => {
 
   const reportTypeOptions = useMemo(() => ['Internal', 'External'], []);
 
-  // Map of auditId -> hasReturnedFinding (check if any finding has "return" status)
-  // This is populated when summary is loaded for an audit (when View is clicked)
-  const [auditHasReturnedFinding, setAuditHasReturnedFinding] = useState<Record<string, boolean>>({});
-  
-  // Update map when summary is loaded
-  useEffect(() => {
-    if (!summary || !selectedAuditId) return;
-    
-    const findings: any[] = [];
-    // Extract findings from summary (same logic as allFindings)
-    const byAudit = unwrapValues((summary as any).findingsInAudit);
-    byAudit.forEach((m: any) =>
-      unwrapValues(m?.findings).forEach((f: any) => findings.push(f)),
-    );
-    const months = unwrapValues((summary as any).findingsByMonth);
-    months.forEach((m: any) =>
-      unwrapValues(m?.findings).forEach((f: any) => findings.push(f)),
-    );
-    unwrapValues((summary as any).findings).forEach((f: any) => findings.push(f));
-    unwrapValues((summary as any).byDepartment).forEach((d: any) => {
-      unwrapValues(d?.findings).forEach((f: any) => findings.push(f));
-    });
-    
-    // Check if any finding has "return" status
-    const hasReturned = findings.some((f: any) => {
-      const findingStatus = String(f?.status || '').toLowerCase().trim();
-      return findingStatus === 'return' || 
-             findingStatus === 'returned' || 
-             findingStatus.includes('return');
-    });
-    
-    if (hasReturned) {
-      setAuditHasReturnedFinding(prev => ({
-        ...prev,
-        [selectedAuditId]: true
-      }));
-    } else {
-      setAuditHasReturnedFinding(prev => {
-        const next = { ...prev };
-        delete next[selectedAuditId];
-        return next;
-      });
-    }
-  }, [summary, selectedAuditId]);
-
   const filteredRows = useMemo(() => {
     let list = rows;
     if (typeFilter !== 'all') {
@@ -945,52 +900,37 @@ const AuditorLeadReports = () => {
   const handleApprove = async () => {
     if (!approveAuditId) return;
     
-    // Check if audit has any finding with "return" status
-    // First check cached map, then load summary if needed
-    let hasReturnedFinding = auditHasReturnedFinding[approveAuditId];
-    
-    if (hasReturnedFinding === undefined) {
-      // Load summary to check findings if not already cached
-      try {
-        const auditSummary = await getAuditSummary(approveAuditId);
-        const findings: any[] = [];
-        // Extract findings from summary
-        const byAudit = unwrapValues((auditSummary as any).findingsInAudit);
-        byAudit.forEach((m: any) =>
-          unwrapValues(m?.findings).forEach((f: any) => findings.push(f)),
-        );
-        const months = unwrapValues((auditSummary as any).findingsByMonth);
-        months.forEach((m: any) =>
-          unwrapValues(m?.findings).forEach((f: any) => findings.push(f)),
-        );
-        unwrapValues((auditSummary as any).findings).forEach((f: any) => findings.push(f));
-        unwrapValues((auditSummary as any).byDepartment).forEach((d: any) => {
-          unwrapValues(d?.findings).forEach((f: any) => findings.push(f));
-        });
-        
-        // Check if any finding has "return" status
-        hasReturnedFinding = findings.some((f: any) => {
-          const findingStatus = String(f?.status || '').toLowerCase().trim();
-          return findingStatus === 'return' || 
-                 findingStatus === 'returned' || 
-                 findingStatus.includes('return');
-        });
-        
-        // Cache the result
-        setAuditHasReturnedFinding(prev => ({
-          ...prev,
-          [approveAuditId]: hasReturnedFinding
-        }));
-      } catch (err) {
-        console.warn('Failed to load summary to check findings:', err);
-        // Continue with approve if we can't check (fail open)
-        hasReturnedFinding = false;
+    // Check if audit has any finding with "return" status or returned compliant items
+    // Use 2 APIs: getFindingsByAudit and getReturnedCompliantItemsByAudit
+    try {
+      const [findingsRes, returnedCompliantItems] = await Promise.all([
+        getFindingsByAudit(approveAuditId),
+        getReturnedCompliantItemsByAudit(approveAuditId)
+      ]);
+      
+      // Check for findings with return status (but NOT WitnessConfirmReturned which is a different status)
+      const hasReturnedFinding = findingsRes.some((f: any) => {
+        const status = String(f?.status || '').toLowerCase().trim();
+        // Only match exact "return" or "returned", not other statuses containing "return"
+        return status === 'return' || status === 'returned';
+      });
+      
+      // Check for returned compliant items
+      const hasReturnedCompliantItem = returnedCompliantItems.length > 0;
+      
+      if (hasReturnedFinding || hasReturnedCompliantItem) {
+        if (hasReturnedFinding && hasReturnedCompliantItem) {
+          toast.error('Cannot approve audit report when it has findings and compliant items with Return status');
+        } else if (hasReturnedFinding) {
+          toast.error('Cannot approve audit report when it has findings with Return status');
+        } else {
+          toast.error('Cannot approve audit report when it has compliant items with Return status');
+        }
+        return;
       }
-    }
-    
-    if (hasReturnedFinding) {
-      toast.error('Cannot approve audit report when it has findings with Return status');
-      return;
+    } catch (err) {
+      console.warn('Failed to check return status:', err);
+      // Continue with approve if we can't check (fail open)
     }
     
     setActionLoading(`${approveAuditId}:approve`);
