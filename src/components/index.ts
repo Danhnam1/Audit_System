@@ -16,3 +16,4 @@ export { ChatBot } from './ChatBot';
 export { PageTransition, PageSection } from './PageTransition';
 export { default as AuditLogHistoryModal } from './AuditLogHistoryModal';
 export { default as DepartmentItemsModal } from './DepartmentItemsModal';
+export { UserTag } from './UserTag';

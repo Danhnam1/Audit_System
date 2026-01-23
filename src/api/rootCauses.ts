@@ -45,7 +45,7 @@ const toPascalCase = (obj: any): any => {
   if (obj === null || obj === undefined) return obj;
   if (Array.isArray(obj)) return obj.map(toPascalCase);
   if (typeof obj !== 'object') return obj;
-  
+
   return Object.keys(obj).reduce((acc, key) => {
     const pascalKey = key.charAt(0).toUpperCase() + key.slice(1);
     acc[pascalKey] = toPascalCase(obj[key]);
@@ -63,10 +63,10 @@ export const getRootCauseById = async (id: string): Promise<RootCause> => {
 export const getRootCauseByFindingId = async (findingId: string): Promise<RootCause | null> => {
   try {
     const res = await apiClient.get(`/RootCauses/by-finding/${findingId}`);
-    
+
     // API trả về array trong $values
     let rootCauses: RootCause[] = [];
-    
+
     // Kiểm tra cấu trúc response
     if (res.data && res.data.$values) {
       rootCauses = res.data.$values;
@@ -75,13 +75,13 @@ export const getRootCauseByFindingId = async (findingId: string): Promise<RootCa
     } else {
       rootCauses = unwrap<RootCause>(res);
     }
-    
+
     // Lấy root cause mới nhất (phần tử cuối cùng trong mảng)
     if (rootCauses && rootCauses.length > 0) {
       const latest = rootCauses[rootCauses.length - 1];
       return latest;
     }
-    
+
     return null;
   } catch (err) {
     return null;

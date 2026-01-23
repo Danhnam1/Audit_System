@@ -73,7 +73,7 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
     setShowActionsModal(true);
     setLoadingActions(true);
     setSelectedFindingActions([]);
-    
+
     try {
       // Load actions related to this finding
       const actions = await getActionsByFinding(finding.findingId);
@@ -84,7 +84,7 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
       setSelectedFindingActions([]);
     } finally {
       setLoadingActions(false);
-        }
+    }
   };
 
   const handleRejectClick = (action: Action) => {
@@ -103,7 +103,7 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
 
   const handleSubmitFeedback = async () => {
     if (!selectedAction) return;
-    
+
     if (feedbackType === 'reject' && !feedbackText.trim()) {
       toast.error('Please provide a reason for rejection');
       return;
@@ -117,8 +117,8 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
           const attachments = await getAttachments('Action', selectedAction.actionId);
           const openAttachments = attachments.filter(att => att.status?.toLowerCase() === 'open');
           // const rejectedAttachments = attachments.filter(att => att.status?.toLowerCase() === 'rejected'); // Unused
-          
-          
+
+
           if (openAttachments.length > 0) {
             const approvePromises = openAttachments.map(async (attachment) => {
               try {
@@ -131,26 +131,26 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
         } catch (attErr) {
           console.warn('Could not load/approve attachments:', attErr);
         }
-        
+
         await approveFindingActionHigherLevel(selectedAction.actionId, feedbackText || '');
         toast.success('Action approved successfully');
       } else {
         await rejectFindingActionHigherLevel(selectedAction.actionId, feedbackText);
-        
+
         // Reset progress to 0 when action is rejected
         try {
           await updateActionProgressPercent(selectedAction.actionId, 0);
         } catch (progressError: any) {
           // Don't fail the whole operation if progress reset fails
         }
-        
+
         toast.success('Action rejected successfully');
       }
-      
+
       setShowFeedbackModal(false);
       setSelectedAction(null);
       setFeedbackText('');
-      
+
       // Reload actions
       if (selectedFinding) {
         const actions = await getActionsByFinding(selectedFinding.findingId);
@@ -239,7 +239,7 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
         <div>
           <div className="mb-6">
             <p className="text-sm text-gray-600">
-              Total findings: 
+              Total findings:
               <span className="font-semibold text-gray-900 ml-1">{findings.length}</span>
             </p>
           </div>
@@ -274,7 +274,7 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
               className="relative bg-white rounded-xl shadow-xl w-full max-w-4xl mx-auto max-h-[90vh] overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-            {/* Header */}
+              {/* Header */}
               <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">Actions for Finding</h2>
@@ -294,23 +294,23 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
-            </div>
+              </div>
 
               {/* Body */}
               <div className="flex-1 overflow-y-auto p-6">
                 {loadingActions ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-center">
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
                       <p className="text-gray-600">Loading actions...</p>
+                    </div>
                   </div>
-                </div>
                 ) : selectedFindingActions.length === 0 ? (
                   <div className="text-center py-12">
                     <p className="text-gray-500">No actions found for this finding</p>
                   </div>
-              ) : (
-                <div className="space-y-6">
+                ) : (
+                  <div className="space-y-6">
                     {selectedFindingActions.map((action) => (
                       <div
                         key={action.actionId}
@@ -326,41 +326,41 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
                                 <span className={`px-4 py-1.5 rounded-full text-xs font-bold shadow-sm ${getStatusColor(normalizeStatus(action.status || ''))}`}>
                                   {action.status || 'N/A'}
                                 </span>
-                  </div>
+                              </div>
                               {action.description && (
                                 <div className="bg-gray-50 rounded-lg p-4 mb-4 border-l-4 border-primary-500">
                                   <p className="text-sm text-gray-700 leading-relaxed">
                                     {action.description}
-                    </p>
-                  </div>
+                                  </p>
+                                </div>
                               )}
-                        </div>
-                      </div>
+                            </div>
+                          </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t-2 border-gray-200">
                             <div className="bg-blue-50 rounded-lg p-3">
                               <span className="text-xs font-bold text-blue-600 uppercase tracking-wide">Progress</span>
-                        <div className="mt-1">
+                              <div className="mt-1">
                                 <div className="w-full bg-blue-200 rounded-full h-2.5">
-                                  <div 
-                                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                                  <div
+                                    className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
                                     style={{ width: `${action.progressPercent ?? 0}%` }}
                                   ></div>
                                 </div>
                                 <p className="text-sm font-semibold text-gray-900 mt-1">{action.progressPercent ?? 0}%</p>
-                        </div>
-                      </div>
+                              </div>
+                            </div>
                             <div className="bg-purple-50 rounded-lg p-3">
                               <span className="text-xs font-bold text-purple-600 uppercase tracking-wide">Due Date</span>
                               <p className="text-sm font-semibold text-gray-900 mt-1">{action.dueDate ? formatDate(action.dueDate) : 'N/A'}</p>
-                      </div>
+                            </div>
                             {action.reviewFeedback && (
                               <div className="bg-amber-50 rounded-lg p-3 md:col-span-1">
                                 <span className="text-xs font-bold text-amber-600 uppercase tracking-wide">Review Feedback</span>
                                 <p className="text-sm text-gray-900 mt-1 line-clamp-2">{action.reviewFeedback}</p>
-                      </div>
+                              </div>
                             )}
-                      </div>
+                          </div>
 
                           {/* Approve/Reject Buttons - Only show if status is Approved */}
                           {action.status === 'Approved' && (
@@ -377,16 +377,16 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
                               >
                                 ✓ Accept
                               </button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </div>
+                      </div>
                     ))}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
 
-            {/* Footer */}
+              {/* Footer */}
               <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end">
                 <button
                   onClick={() => {
@@ -451,11 +451,10 @@ const FindingsTab: React.FC<FindingsTabProps> = ({ findings, loading }) => {
                   <button
                     onClick={handleSubmitFeedback}
                     disabled={processingAction || (feedbackType === 'reject' && !feedbackText.trim())}
-                    className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg ${
-                      feedbackType === 'approve'
+                    className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg ${feedbackType === 'approve'
                         ? 'bg-green-500 hover:bg-green-600 text-white'
                         : 'bg-red-500 hover:bg-red-600 text-white'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     {processingAction ? 'Processing...' : feedbackType === 'approve' ? '✓ Confirm Approval' : '✕ Confirm Rejection'}
                   </button>
