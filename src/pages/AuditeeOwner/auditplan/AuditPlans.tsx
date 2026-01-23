@@ -31,7 +31,7 @@ const AuditPlans = () => {
 	
 	// Search and filter states
 	const [searchTerm, setSearchTerm] = useState<string>('');
-	const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
+	const [dateFrom, setDateFrom] = useState<string>('');
 	const [dateTo, setDateTo] = useState<string>('');
 
 	const userId = useUserId();
@@ -267,7 +267,7 @@ const AuditPlans = () => {
 									<button
 										onClick={() => {
 											setSearchTerm('');
-											setDateFrom(new Date().toISOString().split('T')[0]);
+											setDateFrom('');
 											setDateTo('');
 										}}
 										className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
