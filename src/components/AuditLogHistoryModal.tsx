@@ -8,7 +8,7 @@ import { UserTag } from './UserTag';
 interface AuditLogHistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  entityType: 'Finding' | 'ChecklistItem' | 'ChecklistItemNoFinding';
+  entityType: 'Finding' | 'ChecklistItem' | 'AuditChecklistItem' | 'ChecklistItemNoFinding';
   entityId: string;
   title?: string;
 }
@@ -45,10 +45,39 @@ export const AuditLogHistoryModal: React.FC<AuditLogHistoryModalProps> = ({
         setUserMap(usersById);
 
         // Then load logs
-        const result = await getAdminAuditLog({
+        let result = await getAdminAuditLog({
           entityType,
           entityId,
         });
+
+        const isChecklistEntity =
+          entityType === 'ChecklistItemNoFinding' || entityType === 'AuditChecklistItem';
+
+        // Fallbacks for checklist entities when entityId is not stored in logs
+        if (isChecklistEntity && result.length === 0) {
+          if (entityType === 'AuditChecklistItem') {
+            const alt = await getAdminAuditLog({
+              entityType: 'ChecklistItem',
+              entityId,
+            });
+            if (alt.length > 0) {
+              result = alt;
+            }
+          }
+
+          if (result.length === 0) {
+            const [primaryLogs, altLogs] = await Promise.all([
+              getAdminAuditLog({ entityType }),
+              entityType === 'AuditChecklistItem'
+                ? getAdminAuditLog({ entityType: 'ChecklistItem' })
+                : Promise.resolve([] as AdminAuditLogEntry[]),
+            ]);
+            const merged = [...primaryLogs, ...altLogs];
+            const filtered = merged.filter((log) => matchesEntityId(log, entityId));
+            result = filtered;
+          }
+        }
+
         setLogs(result);
       } catch (err: any) {
         console.error('Failed to load audit log:', err);
@@ -72,6 +101,30 @@ export const AuditLogHistoryModal: React.FC<AuditLogHistoryModalProps> = ({
     } catch {
       return value;
     }
+  };
+
+  const normalizeId = (value: any): string => String(value ?? '').toLowerCase().trim();
+
+  const matchesEntityId = (log: AdminAuditLogEntry, targetId: string): boolean => {
+    const target = normalizeId(targetId);
+    if (!target) return false;
+    if (normalizeId(log.entityId) === target) return true;
+
+    const oldObj = parseValue(log.oldValue);
+    const newObj = parseValue(log.newValue);
+
+    const candidates = [
+      oldObj?.AuditChecklistItemId,
+      oldObj?.auditChecklistItemId,
+      oldObj?.ChecklistItemId,
+      oldObj?.checklistItemId,
+      newObj?.AuditChecklistItemId,
+      newObj?.auditChecklistItemId,
+      newObj?.ChecklistItemId,
+      newObj?.checklistItemId,
+    ];
+
+    return candidates.some((c) => normalizeId(c) === target);
   };
 
   // Helper function to format field differences
@@ -155,6 +208,12 @@ export const AuditLogHistoryModal: React.FC<AuditLogHistoryModalProps> = ({
 
   const userInfo = extractUserInfo(logs);
 
+  const getEntityLabel = (type: AuditLogHistoryModalProps['entityType']): string => {
+    if (type === 'AuditChecklistItem' || type === 'ChecklistItem') return 'Checklist Item';
+    if (type === 'ChecklistItemNoFinding') return 'No Finding';
+    return type;
+  };
+
   return createPortal(
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001] p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col">
@@ -179,7 +238,7 @@ export const AuditLogHistoryModal: React.FC<AuditLogHistoryModalProps> = ({
             <div>
               <h2 className="text-xl font-bold text-gray-900">{title}</h2>
               <p className="text-sm text-gray-500">
-                {entityType} - {entityId}
+                {getEntityLabel(entityType)} - {entityId}
               </p>
             </div>
           </div>
