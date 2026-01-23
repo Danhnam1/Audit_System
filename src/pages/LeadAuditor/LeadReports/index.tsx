@@ -2268,10 +2268,6 @@ const AuditorLeadReports = () => {
       if (isWitnessConfirmReturned) {
         if (matchesDept) return true;
         // Check if this finding doesn't belong to any department
-        const belongsToAnyDept = variants.some(v => {
-          const otherDept = departmentEntries.find(d => d.key === v && d.key !== 'witnessconfirmreturned');
-          return otherDept != null;
-        }) || (f?.deptId != null && departmentEntries.some(d => d.deptId === f.deptId && d.key !== 'witnessconfirmreturned'));
         // If it doesn't belong to any department, it should be in "Witness Confirm Returned" department, not here
         return false;
       }

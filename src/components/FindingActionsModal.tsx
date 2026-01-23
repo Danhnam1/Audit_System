@@ -403,7 +403,7 @@ export const FindingActionsModal: React.FC<FindingActionsModalProps> = ({
               )}
 
               {/* Actions List */}
-              {actions.map((action, index) => (
+              {actions.map((action) => (
                 <div
                   key={action.actionId}
                   className="border border-gray-200 rounded-xl p-6 bg-gradient-to-br from-white to-gray-50 hover:shadow-lg transition-shadow"

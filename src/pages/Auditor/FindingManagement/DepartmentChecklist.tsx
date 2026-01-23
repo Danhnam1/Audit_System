@@ -104,7 +104,7 @@ const DepartmentChecklist = () => {
   const [selectedCompliantId, setSelectedCompliantId] = useState<string | number | null>(null); // Compliant record ID from API response
   const [loadingCompliantId, setLoadingCompliantId] = useState(false); // Loading state for fetching compliant ID
   const [compliantIdMap, setCompliantIdMap] = useState<Record<string, string | number>>({}); // auditItemId -> compliant record id (persisted to sessionStorage)
-  const [compliantStatusMap, setCompliantStatusMap] = useState<Record<string, { status?: string; returnReason?: string }>>({}); // auditItemId -> { status, returnReason }
+  const [compliantStatusMap] = useState<Record<string, { status?: string; returnReason?: string }>>({}); // auditItemId -> { status, returnReason }
   const [statusDetailMap, setStatusDetailMap] = useState<Record<string, StatusDetail>>({}); // auditItemId -> status detail (for Return items)
   
   // Edit compliant modal state
