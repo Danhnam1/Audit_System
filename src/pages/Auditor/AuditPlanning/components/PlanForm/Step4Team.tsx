@@ -272,7 +272,7 @@ export const Step4Team: React.FC<Step4TeamProps> = ({
                   {loadingAvailableAuditors && (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
                       <p className="text-sm text-blue-700">
-                        🔄 Loading available auditors...
+                        Loading available auditors...
                       </p>
                     </div>
                   )}
