@@ -90,6 +90,9 @@ const AuditorLeadReports = () => {
   const [selectedFindings, setSelectedFindings] = useState<Set<string>>(new Set());
   // Required findings from approved extension requests (must be selected and disabled)
   const [requiredFindings, setRequiredFindings] = useState<Set<string>>(new Set());
+  // Required checklist items from approved extension requests (for No Findings / Checklist Items tabs)
+  const [requiredCompliantItems, setRequiredCompliantItems] = useState<Set<string>>(new Set());
+  const [requiredChecklistItems, setRequiredChecklistItems] = useState<Set<string>>(new Set());
   // Selected compliant items for return or extension request
   const [selectedCompliantItems, setSelectedCompliantItems] = useState<Set<string>>(new Set());
   const [adminUsers, setAdminUsers] = useState<AdminUserDto[]>([]);
@@ -655,8 +658,16 @@ const AuditorLeadReports = () => {
     }
 
     try {
-      setSelectedCompliantAuditItemId(auditChecklistItemId);
-      setSelectedCompliantId(null);
+
+
+      // Get compliant ID from auditChecklistItemId
+      const compliantId = await getCompliantIdByAuditItemId(auditChecklistItemId);
+      if (!compliantId) {
+        toast.error('No compliant details found for this item');
+        return;
+      }
+      setSelectedCompliantId(compliantId);
+
       setShowCompliantDetailModal(true);
     } catch (err: any) {
       console.error('Failed to load compliant details:', err);
@@ -1953,18 +1964,37 @@ const AuditorLeadReports = () => {
 
     setExtensionLoading(true);
     try {
-      // Mark all selected compliant items as Pending (for extension requests)
-      if (selectedCompliantItems.size > 0) {
-        const markPromises = Array.from(selectedCompliantItems).map(auditItemId =>
-          markChecklistItemPending(auditItemId)
+      // Mark all selected checklist items (compliant + selected findings) as Pending
+      const resolveAuditItemId = (rawId: string) => {
+        const match = allChecklistItems.find((item: any) => {
+          const candidateIds = [
+            item.auditItemId,
+            item.auditChecklistItemId,
+            item.itemId,
+            item.id,
+            item.$id,
+          ]
+            .filter(Boolean)
+            .map((v: any) => String(v));
+          return candidateIds.includes(String(rawId));
+        });
+        const resolved = match?.auditItemId || match?.auditChecklistItemId || match?.itemId || match?.id || match?.$id || rawId;
+        return String(resolved);
+      };
+
+      const idsToMark = new Set<string>([...selectedCompliantItems, ...selectedChecklistItems]);
+
+      if (idsToMark.size > 0) {
+        const markPromises = Array.from(idsToMark).map((rawId) =>
+          markChecklistItemPending(resolveAuditItemId(rawId))
         );
 
         try {
           await Promise.all(markPromises);
-          toast.success(`Marked ${selectedCompliantItems.size} compliant item(s) as Pending for extension request.`);
+          toast.success(`Marked ${idsToMark.size} checklist item(s) as Pending for extension request.`);
         } catch (markErr: any) {
-          console.error('Failed to mark some compliant items:', markErr);
-          toast.warning('Some compliant items failed to mark. Continuing with request...');
+          console.error('Failed to mark some checklist items:', markErr);
+          toast.warning('Some checklist items failed to mark. Continuing with request...');
         }
       }
 
@@ -2290,11 +2320,41 @@ const AuditorLeadReports = () => {
     return Array.from(deptSet).sort();
   }, [auditChecklistItems]);
 
+  // Compliant items only (for "No Findings" tab)
+  const compliantItemsOnly = useMemo(() => {
+    if (!auditChecklistItems) return [];
+    let filtered = auditChecklistItems.filter((item: any) => {
+      const rawStatus = String(item.status || '').toLowerCase();
+      // Check noncompliant first (because "noncompliant" contains "compliant")
+      const isNonCompliant = rawStatus === 'noncompliant' || rawStatus === 'non-compliant' || rawStatus.includes('noncompliant') || rawStatus.includes('non-compliant');
+      // Then check compliant (exact match or contains, but not if it's noncompliant)
+      const isCompliant = !isNonCompliant && (rawStatus === 'compliant' || rawStatus.includes('compliant'));
+      return isCompliant;
+    });
+
+    // Filter by department
+    if (nofindingsDeptFilter !== 'all') {
+      filtered = filtered.filter((item: any) => {
+        const deptName =
+          item.section ||
+          item.departmentName ||
+          item.deptName ||
+          item.department ||
+          '';
+        return String(deptName).trim() === nofindingsDeptFilter;
+      });
+    }
+
+    return filtered;
+  }, [auditChecklistItems, nofindingsDeptFilter]);
+
   // Auto-select and disable findings from approved extension requests
   useEffect(() => {
     const loadRequiredFindings = async () => {
       if (!selectedAuditId || !allFindings.length) {
         setRequiredFindings(new Set());
+        setRequiredCompliantItems(new Set());
+        setRequiredChecklistItems(new Set());
         return;
       }
 
@@ -2307,8 +2367,25 @@ const AuditorLeadReports = () => {
 
       if (!approvedRequest) {
         setRequiredFindings(new Set());
+        setRequiredCompliantItems(new Set());
+        setRequiredChecklistItems(new Set());
         return;
       }
+
+      const requiredItemIds = new Set<string>();
+      const collectRequiredItemIds = (items: any[]) => {
+        items.forEach((item: any) => {
+          const id =
+            item.auditItemId ||
+            item.auditChecklistItemId ||
+            item.itemId ||
+            item.id ||
+            item.$id ||
+            item.auditItem?.auditItemId ||
+            item.auditItem?.id;
+          if (id) requiredItemIds.add(String(id));
+        });
+      };
 
       // Get marked items for this approved request (use same logic as Extension Request History)
       let markedItems = markedItemsByRequest[approvedRequest.requestId] || [];
@@ -2321,6 +2398,7 @@ const AuditorLeadReports = () => {
           const markedItemsFromApi = await getMarkedItemsByRequestId(approvedRequest.requestId);
 
           if (markedItemsFromApi && markedItemsFromApi.length > 0) {
+            collectRequiredItemIds(markedItemsFromApi);
             // Store marked items directly (same as Extension Request History)
             // API returns array after unwrap: can contain both checklist items and findings
             setMarkedItemsByRequest(prev => ({
@@ -2361,6 +2439,7 @@ const AuditorLeadReports = () => {
           console.error('Failed to load marked items for required findings:', err);
         }
       } else {
+        collectRequiredItemIds(markedItems);
         // If already in state, extract findings from stored marked items
         const markedItemIds = new Set(markedItems.map((item: any) => String(item.auditItemId || item.id)));
         const findingsFromMarkedItems: any[] = [];
@@ -2401,6 +2480,36 @@ const AuditorLeadReports = () => {
       // Set required findings
       setRequiredFindings(requiredFindingIds);
 
+      // Set required checklist items + compliant items (No Findings)
+      setRequiredChecklistItems(requiredItemIds);
+
+      const compliantIds = new Set(
+        compliantItemsOnly
+          .map((item: any) => String(item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '').trim())
+          .filter(Boolean)
+      );
+      const requiredCompliantIds = new Set<string>();
+      requiredItemIds.forEach((id) => {
+        if (compliantIds.has(id)) requiredCompliantIds.add(id);
+      });
+      setRequiredCompliantItems(requiredCompliantIds);
+
+      // Auto-select required compliant items & checklist items
+      if (requiredCompliantIds.size > 0) {
+        setSelectedCompliantItems(prev => {
+          const next = new Set(prev);
+          requiredCompliantIds.forEach(id => next.add(id));
+          return next;
+        });
+      }
+      if (requiredItemIds.size > 0) {
+        setSelectedChecklistItems(prev => {
+          const next = new Set(prev);
+          requiredItemIds.forEach(id => next.add(id));
+          return next;
+        });
+      }
+
       // Auto-select required findings
       if (requiredFindingIds.size > 0) {
         setSelectedFindings(prev => {
@@ -2412,35 +2521,7 @@ const AuditorLeadReports = () => {
     };
 
     loadRequiredFindings();
-  }, [selectedAuditId, allFindings, revisionRequestsMap, markedItemsByRequest]);
-
-  // Compliant items only (for "No Findings" tab)
-  const compliantItemsOnly = useMemo(() => {
-    if (!auditChecklistItems) return [];
-    let filtered = auditChecklistItems.filter((item: any) => {
-      const rawStatus = String(item.status || '').toLowerCase();
-      // Check noncompliant first (because "noncompliant" contains "compliant")
-      const isNonCompliant = rawStatus === 'noncompliant' || rawStatus === 'non-compliant' || rawStatus.includes('noncompliant') || rawStatus.includes('non-compliant');
-      // Then check compliant (exact match or contains, but not if it's noncompliant)
-      const isCompliant = !isNonCompliant && (rawStatus === 'compliant' || rawStatus.includes('compliant'));
-      return isCompliant;
-    });
-
-    // Filter by department
-    if (nofindingsDeptFilter !== 'all') {
-      filtered = filtered.filter((item: any) => {
-        const deptName =
-          item.section ||
-          item.departmentName ||
-          item.deptName ||
-          item.department ||
-          '';
-        return String(deptName).trim() === nofindingsDeptFilter;
-      });
-    }
-
-    return filtered;
-  }, [auditChecklistItems, nofindingsDeptFilter]);
+  }, [selectedAuditId, allFindings, revisionRequestsMap, markedItemsByRequest, compliantItemsOnly]);
 
   useEffect(() => {
     if (!selectedAuditId) {
@@ -2913,10 +2994,10 @@ const AuditorLeadReports = () => {
                                     <th className="px-3 py-2 text-left text-gray-700 w-12">
                                       <input
                                         type="checkbox"
-                                        checked={compliantItemsOnly.length > 0 && selectedCompliantItems.size === compliantItemsOnly.filter((item: any) => {
-                                          const id = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '';
-                                          return id && id.trim();
-                                        }).length}
+                                        checked={compliantItemsOnly.length > 0 && compliantItemsOnly
+                                          .map((item: any) => String(item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '').trim())
+                                          .filter(Boolean)
+                                          .every((id) => selectedCompliantItems.has(id))}
                                         onChange={(e) => {
                                           if (e.target.checked) {
                                             const allIds = new Set<string>();
@@ -2926,9 +3007,14 @@ const AuditorLeadReports = () => {
                                                 allIds.add(id);
                                               }
                                             });
-                                            setSelectedCompliantItems(allIds);
+                                            setSelectedCompliantItems(prev => {
+                                              const next = new Set(prev);
+                                              allIds.forEach(id => next.add(id));
+                                              requiredCompliantItems.forEach(id => next.add(id));
+                                              return next;
+                                            });
                                           } else {
-                                            setSelectedCompliantItems(new Set());
+                                            setSelectedCompliantItems(new Set(requiredCompliantItems));
                                           }
                                         }}
                                         className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
@@ -2937,6 +3023,7 @@ const AuditorLeadReports = () => {
                                     <th className="px-3 py-2 text-left text-gray-700">#</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Department</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Question</th>
+                                    <th className="px-3 py-2 text-left text-gray-700">NoFinding Title</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Actions</th>
                                   </tr>
                                 </thead>
@@ -2957,9 +3044,15 @@ const AuditorLeadReports = () => {
                                       // Try multiple field names: auditItemId (from backend AuditItemId), auditChecklistItemId, itemId, id, $id
                                       const auditChecklistItemId = item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '';
                                       const nofindingRecord = nofindingRecordMap[auditChecklistItemId];
+                                      const nofindingTitle =
+                                        nofindingRecord?.title ||
+                                        nofindingRecord?.Title ||
+                                        nofindingRecord?.subject ||
+                                        '—';
                                       const status = nofindingRecord?.status || item.status || '—';
                                       const isFixedStatus = String(status).toLowerCase() === 'fixed';
-                                      const isSelected = auditChecklistItemId && selectedCompliantItems.has(auditChecklistItemId);
+                                      const isRequiredCompliant = auditChecklistItemId && requiredCompliantItems.has(auditChecklistItemId);
+                                      const isSelected = auditChecklistItemId && (isRequiredCompliant || selectedCompliantItems.has(auditChecklistItemId));
                                       return (
                                         <tr
                                           key={auditChecklistItemId || idx}
@@ -2992,6 +3085,9 @@ const AuditorLeadReports = () => {
                                           <td className="px-3 py-2">
                                             <span className="line-clamp-2">{question}</span>
                                           </td>
+                                          <td className="px-3 py-2">
+                                            <span className="line-clamp-2">{nofindingTitle}</span>
+                                          </td>
                                           <td className="px-3 py-2 whitespace-nowrap">
                                             {auditChecklistItemId && auditChecklistItemId.trim() ? (
                                               <button
@@ -3014,7 +3110,7 @@ const AuditorLeadReports = () => {
                                     })
                                   ) : (
                                     <tr>
-                                      <td colSpan={5} className="px-3 py-4 text-center text-gray-500">
+                                      <td colSpan={6} className="px-3 py-4 text-center text-gray-500">
                                         No compliant checklist items.
                                       </td>
                                     </tr>
@@ -3065,6 +3161,7 @@ const AuditorLeadReports = () => {
                               <table className="min-w-full text-xs">
                                 <thead className="bg-gray-50">
                                   <tr>
+                                    <th className="px-3 py-2 text-left text-gray-700 w-12">Select</th>
                                     <th className="px-3 py-2 text-left text-gray-700">#</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Department</th>
                                     <th className="px-3 py-2 text-left text-gray-700">Question</th>
@@ -3093,12 +3190,38 @@ const AuditorLeadReports = () => {
                                       // eslint-disable-next-line @typescript-eslint/no-unused-vars
                                       // const _notes = item.comment || item.notes || item.reason || item.response || '—';
                                       const statusColorClass = getStatusColor(status);
+                                      const auditChecklistItemId = String(item.auditItemId || item.auditChecklistItemId || item.itemId || item.id || item.$id || '').trim();
+                                      const hasChecklistId = auditChecklistItemId.length > 0;
+                                      const isRequiredChecklist = hasChecklistId && requiredChecklistItems.has(auditChecklistItemId);
+                                      const isSelectedChecklist = hasChecklistId && (isRequiredChecklist || selectedChecklistItems.has(auditChecklistItemId));
 
                                       return (
                                         <tr
                                           key={item.auditChecklistItemId || item.itemId || idx}
-                                          className="hover:bg-gray-50"
+                                          className={`hover:bg-gray-50 ${isSelectedChecklist ? 'bg-primary-50' : ''}`}
                                         >
+                                          <td className="px-3 py-2 whitespace-nowrap">
+                                            {hasChecklistId ? (
+                                              <input
+                                                type="checkbox"
+                                                checked={Boolean(isSelectedChecklist)}
+                                                onChange={(e) => {
+                                                  setSelectedChecklistItems(prev => {
+                                                    const next = new Set(prev);
+                                                    if (e.target.checked) {
+                                                      next.add(auditChecklistItemId);
+                                                    } else {
+                                                      next.delete(auditChecklistItemId);
+                                                    }
+                                                    return next;
+                                                  });
+                                                }}
+                                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                              />
+                                            ) : (
+                                              <span className="text-gray-300">—</span>
+                                            )}
+                                          </td>
                                           <td className="px-3 py-2 whitespace-nowrap">{idx + 1}</td>
                                           <td className="px-3 py-2 whitespace-nowrap">{deptName}</td>
                                           <td className="px-3 py-2">
@@ -3120,7 +3243,7 @@ const AuditorLeadReports = () => {
                                     })
                                   ) : (
                                     <tr>
-                                      <td colSpan={6} className="px-3 py-4 text-center text-gray-500">
+                                      <td colSpan={5} className="px-3 py-4 text-center text-gray-500">
                                         No overdue or active checklist items.
                                       </td>
                                     </tr>

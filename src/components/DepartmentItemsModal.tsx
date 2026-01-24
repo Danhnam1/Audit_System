@@ -32,7 +32,7 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
   
   // History modal state
   const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [historyEntityType, setHistoryEntityType] = useState<'Finding' | 'ChecklistItem' | 'ChecklistItemNoFinding'>('Finding');
+  const [historyEntityType, setHistoryEntityType] = useState<'Finding' | 'ChecklistItem' | 'AuditChecklistItem' | 'ChecklistItemNoFinding'>('Finding');
   const [historyEntityId, setHistoryEntityId] = useState<string>('');
   const [historyTitle, setHistoryTitle] = useState<string>('');
 
@@ -101,7 +101,11 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleShowHistory = (entityType: 'Finding' | 'ChecklistItem' | 'ChecklistItemNoFinding', entityId: string, title: string) => {
+  const handleShowHistory = (
+    entityType: 'Finding' | 'ChecklistItem' | 'AuditChecklistItem' | 'ChecklistItemNoFinding',
+    entityId: string,
+    title: string
+  ) => {
     setHistoryEntityType(entityType);
     setHistoryEntityId(entityId);
     setHistoryTitle(title);
@@ -401,7 +405,7 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
                         <button
                           onClick={() =>
                             handleShowHistory(
-                              'ChecklistItem',
+                              'AuditChecklistItem',
                               item.auditChecklistItemId || item.id,
                               item.questionTextSnapshot || item.title || 'Checklist Item'
                             )
