@@ -995,7 +995,6 @@ const DepartmentChecklist = () => {
       
       // Delete tracked attachments first
       if (deletedAttachmentIds.length > 0) {
-        console.log(`Deleting ${deletedAttachmentIds.length} attachments:`, deletedAttachmentIds);
         const deletePromises = deletedAttachmentIds.map((id) =>
           deleteAttachment(id)
             .then(() => console.log(`✓ Deleted attachment ${id}`))
@@ -1621,7 +1620,6 @@ const DepartmentChecklist = () => {
 
         // Load checklist items
         const allItems = await getChecklistItemsByDepartment(deptIdNum);
-         console.log('Reloaded checklist items after finding edit:', allItems);
         // Filter by auditId if available (from location state)
         let itemsByAudit: ChecklistItem[] = allItems;
         if (auditId) {
@@ -1698,7 +1696,6 @@ const DepartmentChecklist = () => {
           (item.status || '').toLowerCase().includes('return')
         );
         
-        console.log('[DEBUG] Loading status details for return items:', returnItems.length, returnItems.map(i => ({ order: i.order, status: i.status, id: i.auditItemId.substring(0, 8) })));
         
         if (returnItems.length > 0) {
           await Promise.all(
@@ -2041,7 +2038,6 @@ const DepartmentChecklist = () => {
   const handleVerifyCode = async () => {
     // Guard: Prevent multiple simultaneous calls
     if (verifying) {
-      console.log('[Verify Code] Already verifying, skipping...');
       return;
     }
 
@@ -2052,7 +2048,6 @@ const DepartmentChecklist = () => {
 
     setVerifying(true);
     try {
-      console.log('[Verify Code] Calling verifyCode API...');
       const result = await verifyCode({
         qrToken: qrToken,
         scannerUserId: scannerUserId,
@@ -2073,7 +2068,6 @@ const DepartmentChecklist = () => {
           
           // Mark verification as successful and save to localStorage for persistence
           localStorage.setItem(verificationStatusKey, 'verified');
-          console.log('[Verify Code] Saved verification status: verified');
           
           // Get current verify code from grant
           try {
@@ -2090,7 +2084,6 @@ const DepartmentChecklist = () => {
             
             if (currentGrant?.verifyCode) {
               localStorage.setItem(sessionKey, currentGrant.verifyCode);
-              console.log('[Verify Code] Saved verify code:', currentGrant.verifyCode);
             }
           } catch (error) {
             console.error('Failed to save verify code:', error);
@@ -2516,18 +2509,7 @@ const DepartmentChecklist = () => {
                               
                               // Debug log for all items
                               const isReturnedResult = isReturned(item, itemStatusToCheck);
-                              console.log(`[DEBUG] Item ${item.order} (${item.auditItemId.substring(0, 8)}):`, {
-                                itemStatus: item.status,
-                                itemStatusToCheck,
-                                isReturnedResult,
-                                isFixedStatus,
-                                isWitnessConfirmed,
-                                isEditedInSession,
-                                isWitnessConfirmReturned,
-                                hasStatusDetail: !!statusDetailMap[item.auditItemId],
-                                findingStatus,
-                                compliantStatus
-                              });
+                           
                               
                               // Show Fixed badge with View icon if status is Fixed, WitnessConfirmed, or already edited in this session
                               if (isReturnedResult && (isFixedStatus || isWitnessConfirmed || isEditedInSession || isWitnessConfirmReturned)) {
@@ -2573,15 +2555,7 @@ const DepartmentChecklist = () => {
                                 // Get status detail from API to determine button logic
                                 const statusDetail = statusDetailMap[item.auditItemId];
                                 
-                                // Debug logging - now it should show
-                                console.log(`[DEBUG] ✅ Item PASSED all return checks:`, {
-                                  itemId: item.auditItemId.substring(0, 8),
-                                  order: item.order,
-                                  hasStatusDetail: !!statusDetail,
-                                  hasFinding: statusDetail?.hasFinding,
-                                  hasChecklistItemNoFinding: statusDetail?.hasChecklistItemNoFinding,
-                                  statusDetail: statusDetail
-                                });
+                              
                                 
                                 if (statusDetail) {
                                   // Case 1: hasFinding = true -> Show "Edit Finding" and "Mark as Compliant" buttons
@@ -4001,13 +3975,11 @@ const DepartmentChecklist = () => {
                                     assignedTo: '',
                                     rootCauseId: rc.rootCauseId,
                                   };
-                                  console.log(`Adding new action ${tempId} to root cause ${rcKey}:`, newAction);
                                   setEditActionsMap(prev => {
                                     const updated = {
                                       ...prev,
                                       [rcKey]: [...(prev[rcKey] || []), newAction],
                                     };
-                                    console.log('Updated editActionsMap after adding action:', updated);
                                     return updated;
                                   });
                                 }}

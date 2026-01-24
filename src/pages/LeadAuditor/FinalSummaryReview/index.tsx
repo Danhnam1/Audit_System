@@ -347,7 +347,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
         } else if (submittedInSession === 'true') {
           // If API returns null but we have sessionStorage flag, create a temp object with pending status
           // This handles the case where API hasn't synced yet or status doesn't match filter
-          console.log('[FinalSummaryReview] API returned null but sessionStorage indicates submitted, using temp status');
           setReportRequest({
             auditId: selectedAuditId,
             status: 'PendingFirstApproval', // Default pending status
@@ -392,7 +391,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
     setSubmitFeedback(null);
     try {
       const result = await submitFinalReport(selectedAuditId);
-      console.log('[FinalSummaryReview] Submit result:', result);
       
       // Save to sessionStorage to persist across reloads
       const sessionKey = `final_report_submitted_${selectedAuditId}`;
@@ -403,7 +401,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       if (result) {
         // If result has status, use it directly
         if (result.status) {
-          console.log('[FinalSummaryReview] Using submit result with status:', result.status);
           setReportRequest(result);
           const normalizedStatus = normalizeReportRequestStatus(result.status) || "Submitted";
           setAudits((prev) =>
@@ -415,7 +412,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
           );
         } else if (result.reportRequestId) {
           // If result has reportRequestId but no status, create temp object with pending status
-          console.log('[FinalSummaryReview] Creating temp report request with pending status');
           setReportRequest({
             ...result,
             status: 'PendingFirstApproval', // Default to pending status after submit
@@ -465,7 +461,6 @@ export default function LeadAuditorFinalSummaryReviewPage() {
       if (selectedAuditId) {
         try {
           const rr = await getReportRequestFromFinalSubmit(selectedAuditId);
-          console.log('[FinalSummaryReview] Reloaded report request:', rr);
           if (rr && rr.status) {
             setReportRequest(rr);
             const normalizedStatus = normalizeReportRequestStatus(rr.status);
@@ -524,16 +519,8 @@ export default function LeadAuditorFinalSummaryReviewPage() {
   
   // Debug log
   if (selectedAuditId && reportRequest) {
-    console.log('[FinalSummaryReview] Report status:', {
-      auditId: selectedAuditId,
-      status: reportStatus,
-      statusLower,
-      alreadySubmitted,
-      submitting
-    });
-  }
-
   
+  }
 
   const unwrapArray = <T,>(value: any): T[] => {
     if (Array.isArray(value)) return value as T[];

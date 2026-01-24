@@ -198,17 +198,13 @@ const [findingTime, setFindingTime] = useState(() => {
 
 
   const loadDepartmentUsers = async () => {
-    console.log('[CreateFindingModal] loadDepartmentUsers called, departmentId:', departmentId);
     if (!departmentId || departmentId <= 0) {
-      console.log('[CreateFindingModal] Invalid departmentId, returning early');
       return;
     }
     
     setLoadingUsers(true);
     try {
-      console.log('[CreateFindingModal] Fetching users for department:', departmentId);
       const users = await getAdminUsersByDepartment(departmentId);
-      console.log('[CreateFindingModal] Department users:', users);
       // Include both Department Head (AuditeeOwner) and department staff (CAPAOwner) as potential witnesses
       const potentialWitnesses = users.filter(
         (user) => user.roleName === 'AuditeeOwner' || user.roleName === 'CAPAOwner'

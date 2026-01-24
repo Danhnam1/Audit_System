@@ -358,11 +358,10 @@ export default function AuditAssignment() {
       return;
     }
 
-    // BE mới là nơi ràng buộc validity window (ValidFrom/ValidTo).
-    // FE KHÔNG chặn cấp QR nếu thiếu lịch; chỉ cố gắng gửi giá trị hợp lý nếu có.
+    
     const nowUtc = new Date();
 
-    // Lấy cửa sổ validity từ schedule backend nếu có; fallback sang Audit Period
+   
     let validFromDate: Date = qrValidityFrom || nowUtc;
     let validToDate: Date =
       qrValidityTo || new Date(nowUtc.getTime() + 7 * 24 * 60 * 60 * 1000); // fallback 7 ngày
@@ -584,7 +583,6 @@ export default function AuditAssignment() {
         
         if (shouldCreate) {
           // Log detailed information for debugging
-          console.log('[AuditAssignment] Creating checklist items from template for auditId:', auditIdToUse, 'deptId:', deptIdToUse);
           
           const result = await createAuditChecklistItemsFromTemplate(
             auditIdToUse,

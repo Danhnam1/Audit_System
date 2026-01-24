@@ -823,12 +823,8 @@ const ReviewAuditPlans = () => {
                 // apiClient may return response.data directly or the full response
                 const responseData = response?.data || response;
                 if (responseData) {
-                  const { totalNotifications, sentSuccess, sentFailed } = responseData;
-                  console.log('[Director Approve] Notification results:', {
-                    totalNotifications,
-                    sentSuccess: sentSuccess || [],
-                    sentFailed: sentFailed || []
-                  });
+                  const { totalNotifications: _totalNotifications, sentSuccess: _sentSuccess, sentFailed } = responseData;
+                 
                   
                   if (sentFailed && sentFailed.length > 0) {
                     console.warn('[Director Approve] Some notifications failed to send via SignalR:', sentFailed);
