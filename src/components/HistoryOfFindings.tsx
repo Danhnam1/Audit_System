@@ -388,14 +388,25 @@ export const AuditLogHistoryModal: React.FC<AuditLogHistoryModalProps> = ({
                           {/* Action icon */}
                           <div className="flex-shrink-0">
                             <div
-                              className={`w-10 h-10 rounded-full flex items-center justify-center ${log.action === 'Create'
+                              className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                log.action === 'Create'
                                   ? 'bg-green-100 text-green-600'
                                   : log.action === 'Update'
                                     ? 'bg-blue-100 text-blue-600'
                                     : log.action === 'Delete'
                                       ? 'bg-red-100 text-red-600'
-                                      : 'bg-gray-100 text-gray-600'
-                                }`}
+                                      : log.action === 'Approved' || log.action === 'Approve'
+                                        ? 'bg-emerald-100 text-emerald-600'
+                                        : log.action === 'Rejected' || log.action === 'Reject'
+                                          ? 'bg-red-100 text-red-600'
+                                          : log.action === 'Submitted' || log.action === 'Submit'
+                                            ? 'bg-purple-100 text-purple-600'
+                                            : log.action === 'Returned' || log.action === 'Return'
+                                              ? 'bg-orange-100 text-orange-600'
+                                              : log.action === 'Witness Confirmed' || log.action === 'WitnessConfirmed'
+                                                ? 'bg-teal-100 text-teal-600'
+                                                : 'bg-gray-100 text-gray-600'
+                              }`}
                             >
                               {log.action === 'Create' && (
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -410,6 +421,37 @@ export const AuditLogHistoryModal: React.FC<AuditLogHistoryModalProps> = ({
                               {log.action === 'Delete' && (
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              )}
+                              {(log.action === 'Approved' || log.action === 'Approve') && (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              )}
+                              {(log.action === 'Rejected' || log.action === 'Reject') && (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              )}
+                              {(log.action === 'Submitted' || log.action === 'Submit') && (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                </svg>
+                              )}
+                              {(log.action === 'Returned' || log.action === 'Return') && (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                                </svg>
+                              )}
+                              {(log.action === 'Witness Confirmed' || log.action === 'WitnessConfirmed') && (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                              )}
+                              {!['Create', 'Update', 'Delete', 'Approved', 'Approve', 'Rejected', 'Reject', 'Submitted', 'Submit', 'Returned', 'Return', 'Witness Confirmed', 'WitnessConfirmed'].includes(log.action) && (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                 </svg>
                               )}
                             </div>

@@ -5,7 +5,7 @@ import { getFindingsByAudit } from '../api/findings';
 import { getAdminAuditLog } from '../api/adminAuditLog';
 import { getAdminUsers } from '../api/adminUsers';
 import { getStatusColor, getSeverityColor } from '../constants/statusColors';
-import AuditLogHistoryModal from './AuditLogHistoryModal';
+import AuditLogHistoryModal from './HistoryOfFindings';
 import FindingActionsModal from './FindingActionsModal';
 
 interface DepartmentItemsModalProps {
