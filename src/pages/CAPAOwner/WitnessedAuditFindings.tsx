@@ -23,6 +23,7 @@ const CAPAOwnerWitnessedAuditFindings = () => {
   const [error, setError] = useState<string | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [renderKey, setRenderKey] = useState(0); // Force re-render key
   
   // Witness confirmation states
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -64,6 +65,39 @@ const CAPAOwnerWitnessedAuditFindings = () => {
     }
   }, [auditId]);
 
+  // Refetch findings function that can be called from child components
+  const refetchFindings = async () => {
+    try {
+      console.log('🔄 Refetching findings...');
+      const witnessedFindings = await getMyWitnessedFindings();
+
+      const filteredFindings = witnessedFindings
+        .filter((finding) => {
+          const findingAuditId = finding.audit?.auditId || finding.auditId;
+          return findingAuditId === auditId;
+        })
+        .map((finding) => ({
+          ...finding,
+          auditTitle: finding.audit?.title || 'N/A',
+          auditType: finding.audit?.type || 'N/A',
+        }));
+
+      setFindings(filteredFindings);
+      setRenderKey(prev => prev + 1);
+      console.log('✅ Findings refetched successfully:', filteredFindings.length);
+    } catch (err: any) {
+      console.error('❌ Error refetching findings:', err);
+    }
+  };
+
+  // Debug: Log when findings state changes
+  useEffect(() => {
+    console.log('📊 Findings state changed:', findings.length, 'findings');
+    findings.forEach(f => {
+      console.log(`  - ${f.title}: ${f.status}`);
+    });
+  }, [findings]);
+
   const calculateDaysRemaining = (deadline: string): number => {
     const deadlineDate = new Date(deadline);
     const today = new Date();
@@ -85,30 +119,28 @@ const CAPAOwnerWitnessedAuditFindings = () => {
       setSubmittingAction(true);
       try {
         const findingIdToConfirm = finding.findingId;
+        console.log('🔵 Before confirm - Finding ID:', findingIdToConfirm);
+        console.log('🔵 Current finding status:', finding.status);
+        
         await witnessConfirmFinding(findingIdToConfirm);
         toast.success('Finding confirmed successfully!');
 
-        // Update local state immediately so Approve/Reject buttons disappear without needing a reload
-        setFindings(prev =>
-          prev.map(f =>
-            f.findingId === findingIdToConfirm
-              ? {
-                  ...f,
-                  status: 'Confirmed',
-                }
-              : f
-          )
-        );
+        // Wait a bit for backend to process the update
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // Dispatch event to notify other components (e.g., FindingDetailModal) about root cause changes
-        // Small delay to ensure backend has updated
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
-            detail: { findingId: findingIdToConfirm }
-          }));
-        }, 500);
+        console.log('🟢 Fetching updated data from server...');
+        
+        // Refetch all findings
+        await refetchFindings();
+        
+        console.log('✅ State updated!');
+
+        // Dispatch event to notify other components
+        window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
+          detail: { findingId: findingIdToConfirm }
+        }));
       } catch (err: any) {
-        console.error('Error confirming witness:', err);
+        console.error('❌ Error confirming witness:', err);
         toast.error(getUserFriendlyErrorMessage(err, 'Failed to confirm finding. Please try again.'));
       } finally {
         setSubmittingAction(false);
@@ -133,35 +165,37 @@ const CAPAOwnerWitnessedAuditFindings = () => {
     setSubmittingAction(true);
     try {
       const findingIdToReject = selectedFindingForReject.findingId;
+      console.log('🔴 Before reject - Finding ID:', findingIdToReject);
+      console.log('🔴 Current finding status:', selectedFindingForReject.status);
+      
       await witnessDisagreeFinding(findingIdToReject, rejectReason.trim());
       toast.success('Finding rejected successfully. Auditor will be notified.');
 
-      // Update local state immediately so Approve/Reject buttons disappear without needing a reload
-      setFindings(prev =>
-        prev.map(f =>
-          f.findingId === findingIdToReject
-            ? {
-                ...f,
-                status: 'WitnessDisagreed',
-              }
-            : f
-        )
-      );
+      // Wait a bit for backend to process the update
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Dispatch event to notify other components (e.g., FindingDetailModal) about root cause changes
-      // Small delay to ensure backend has updated
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
-          detail: { findingId: findingIdToReject }
-        }));
-      }, 500);
+      console.log('🟠 Fetching updated data from server...');
       
+      // Refetch all findings
+      await refetchFindings();
+      
+      console.log('✅ State updated!');
+
+      // Dispatch event to notify other components
+      window.dispatchEvent(new CustomEvent('rootCauseUpdated', {
+        detail: { findingId: findingIdToReject }
+      }));
+      
+  console.log('🔄 Render - Current findings state:', findings);
+  console.log('🔄 Render - Filtered findings:', filteredFindings);
+  console.log('🔄 Render - Status filter:', statusFilter);
+
       // Close modal
       setShowRejectModal(false);
       setSelectedFindingForReject(null);
       setRejectReason('');
     } catch (err: any) {
-      console.error('Error rejecting witness:', err);
+      console.error('❌ Error rejecting witness:', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to reject finding. Please try again.'));
     } finally {
       setSubmittingAction(false);
@@ -265,7 +299,7 @@ const CAPAOwnerWitnessedAuditFindings = () => {
                   {filteredFindings.map((finding, idx) => {
                     const daysRemaining = finding.deadline ? calculateDaysRemaining(finding.deadline) : null;
                     return (
-                      <tr key={finding.findingId} className="hover:bg-gray-50 transition-colors">
+                      <tr key={`${finding.findingId}-${finding.status}-${renderKey}`} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm text-gray-700">{idx + 1}</span>
                         </td>
@@ -407,9 +441,12 @@ const CAPAOwnerWitnessedAuditFindings = () => {
         <WitnessedFindingDetailModal
           isOpen={showDetailModal}
           findingId={selectedFindingId}
-          onClose={() => {
+          onClose={async () => {
             setShowDetailModal(false);
             setSelectedFindingId(null);
+            // Refetch data when modal closes in case status changed inside modal
+            console.log('🔵 Modal closed, refetching data...');
+            await refetchFindings();
           }}
         />
       )}
