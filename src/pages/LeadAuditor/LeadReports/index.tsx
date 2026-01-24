@@ -2009,7 +2009,6 @@ const AuditorLeadReports = () => {
         const selectedItemsList = allChecklistItems.filter((item: any) =>
           selectedCompliantItems.has(item.auditItemId || item.id)
         );
-
         selectedItemsList.forEach((item: any) => {
           const itemId = item.auditItemId || item.id;
           allFindings.forEach((finding: any) => {
@@ -2024,7 +2023,6 @@ const AuditorLeadReports = () => {
           });
         });
       }
-
       // Source 2: Add findings directly selected (selectedFindings)
       if (selectedFindings.size > 0) {
         selectedFindings.forEach(findingId => {
@@ -2040,21 +2038,18 @@ const AuditorLeadReports = () => {
           }
         });
       }
-
       console.log(`[Extension Request] Total findings to send: ${findingIds.length}`, {
         fromCompliantItems: selectedCompliantItems.size,
         fromSelectedFindings: selectedFindings.size,
         totalFindings: findingIds.length,
         findingIds
       });
-
       // Create extension request with findings
       const newRequest = await createAuditPlanRevisionRequest({
         auditId: selectedAuditId,
         comment: extensionComment.trim(),
         findingIds: findingIds.length > 0 ? findingIds : undefined,
       });
-
       // Save mapping of request -> findings for later display
       // Store findings directly (not checklist items) so we can display them in Extension Request History
       if (newRequest?.requestId) {

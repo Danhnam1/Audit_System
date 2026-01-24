@@ -1294,17 +1294,8 @@ const SQAStaffReports = () => {
         }
       });
       
-      // Update audits state immediately để UI cập nhật ngay
-      setAudits(prev =>
-        prev.map(a => {
-          const id = String(a.auditId || a.id || a.$id);
-          const targetId = String(selectedAuditId);
-          if (id === targetId) {
-            return { ...a, status: newStatus, state: newStatus, approvalStatus: newStatus };
-          }
-          return a;
-        })
-      );
+      // Do NOT update audit status here.
+      // Audit status controls the In Progress table membership; only reportRequests should change.
       
       // Clear reject note since report has been resubmitted
       setRejectNotes(prev => {
@@ -1333,9 +1324,8 @@ const SQAStaffReports = () => {
         console.warn('[Reports] Failed to dispatch reportSubmitted event:', err);
       }
       
-      // Reload to sync with backend - state has already been updated above for immediate UI feedback
-      // reloadReports will merge with current state, so table won't disappear
-      await reloadReports();
+      // Skip immediate reload to keep In Progress table stable.
+      // Auto-reload will pick up backend state on the next interval/focus.
     } catch (err: any) {
       console.error('Submit to Lead Auditor failed', err);
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to submit to Lead Auditor. Please try again.'));
