@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'react-toastify';
 import { getFindingsByAudit } from '../api/findings';
-import { getAuditChecklistItems } from '../api/checklists';
+import { getAdminAuditLog } from '../api/adminAuditLog';
 import { getAdminUsers } from '../api/adminUsers';
 import { getStatusColor, getSeverityColor } from '../constants/statusColors';
 import AuditLogHistoryModal from './AuditLogHistoryModal';
@@ -49,6 +49,21 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
       return;
     }
 
+    const normalizeText = (value?: string | null) =>
+      String(value || '')
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .trim();
+
+    const parseLogValue = (value?: string | null) => {
+      if (!value) return null;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    };
+
     const loadData = async () => {
       setLoading(true);
       try {
@@ -65,29 +80,69 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
         const deptFindings = allFindings.filter((f: any) => Number(f.deptId) === departmentId);
         setFindings(deptFindings);
 
-        // Load all checklist items for audit
-        const allItems = await getAuditChecklistItems(auditId);
-        
-        // Filter items for this department
-        const deptItems = allItems.filter((item: any) => {
-          // Get deptId from item (could be nested in different structures)
-          const itemDeptId = item.deptId ?? item.department?.deptId ?? item.department?.id;
-          return Number(itemDeptId) === departmentId;
-        });
-        
-        // Separate into findings (non-compliant) and no findings (compliant)
-        const compliantItems = deptItems.filter((item: any) => {
-          const status = String(item.status || '').toLowerCase();
-          return status === 'compliant' || status === 'nofinding';
-        });
-        
-        const allChecklistItems = deptItems.filter((item: any) => {
-          const status = String(item.status || '').toLowerCase();
-          return status !== 'compliant' && status !== 'nofinding';
+        const [noFindingLogs, checklistItemLogs] = await Promise.all([
+          getAdminAuditLog({ entityType: 'ChecklistItemNoFinding', auditId }),
+          getAdminAuditLog({ entityType: 'AuditChecklistItem', auditId }),
+        ]);
+
+        const deptKey = normalizeText(departmentName);
+
+        // Build No Findings from AdminAuditLog (entityType: ChecklistItemNoFinding)
+        const noFindingMap = new Map<string, any>();
+        noFindingLogs.forEach((log) => {
+          const raw = parseLogValue(log.newValue ?? log.oldValue);
+          if (!raw) return;
+
+          const deptValue = normalizeText(raw.Department ?? raw.department ?? raw.Section ?? raw.section);
+          if (deptKey && deptValue && deptValue !== deptKey) return;
+
+          const auditChecklistItemId = raw.AuditChecklistItemId ?? raw.auditChecklistItemId;
+          const id = raw.Id ?? raw.id;
+          const key = `${auditChecklistItemId || 'unknown'}-${id || log.logId}`;
+
+          const existing = noFindingMap.get(key);
+          if (!existing || new Date(log.performedAt).getTime() > new Date(existing._performedAt).getTime()) {
+            noFindingMap.set(key, {
+              ...raw,
+              auditChecklistItemId,
+              id,
+              title: raw.Title ?? raw.title ?? raw.QuestionTextSnapshot ?? raw.questionTextSnapshot,
+              comment: raw.Reason ?? raw.reason ?? raw.Comment ?? raw.comment,
+              status: raw.Status ?? raw.status ?? 'NoFinding',
+              createdBy: raw.CreatedBy ?? raw.createdBy ?? log.performedBy,
+              _performedAt: log.performedAt,
+            });
+          }
         });
 
-        setNoFindings(compliantItems);
-        setChecklistItems(allChecklistItems);
+        // Build Checklist Items from AdminAuditLog (entityType: AuditChecklistItem)
+        const checklistMap = new Map<string, any>();
+        checklistItemLogs.forEach((log) => {
+          const raw = parseLogValue(log.newValue ?? log.oldValue);
+          if (!raw) return;
+
+          const deptValue = normalizeText(raw.Section ?? raw.section);
+          if (deptKey && deptValue && deptValue !== deptKey) return;
+
+          const auditItemId = raw.AuditItemId ?? raw.auditItemId ?? raw.id;
+          const key = String(auditItemId || log.logId);
+
+          const existing = checklistMap.get(key);
+          if (!existing || new Date(log.performedAt).getTime() > new Date(existing._performedAt).getTime()) {
+            checklistMap.set(key, {
+              ...raw,
+              auditChecklistItemId: auditItemId,
+              title: raw.QuestionTextSnapshot ?? raw.questionTextSnapshot ?? raw.Title ?? raw.title,
+              comment: raw.Comment ?? raw.comment,
+              status: raw.Status ?? raw.status ?? 'Active',
+              createdBy: raw.CreatedBy ?? raw.createdBy ?? log.performedBy,
+              _performedAt: log.performedAt,
+            });
+          }
+        });
+
+        setNoFindings(Array.from(noFindingMap.values()));
+        setChecklistItems(Array.from(checklistMap.values()));
       } catch (err: any) {
         console.error('Failed to load department items:', err);
         toast.error('Failed to load items for department');
@@ -351,9 +406,6 @@ export const DepartmentItemsModal: React.FC<DepartmentItemsModalProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mt-3">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(item.status)}`}>
-                          {item.status}
-                        </span>
                         {item.createdBy && (
                           <span className="text-xs text-gray-500">
                             Created by: {userMap.get(item.createdBy)?.fullName || userMap.get(item.createdBy)?.email || item.createdBy}

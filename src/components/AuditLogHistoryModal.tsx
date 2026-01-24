@@ -137,9 +137,11 @@ export const AuditLogHistoryModal: React.FC<AuditLogHistoryModalProps> = ({
     if (!newObj) return ['Deleted'];
 
     const changes: string[] = [];
+    const ignoredKeys = new Set(['rowversion', 'row_version']);
     const allKeys = new Set([...Object.keys(oldObj || {}), ...Object.keys(newObj || {})]);
 
     allKeys.forEach((key) => {
+      if (ignoredKeys.has(String(key).toLowerCase())) return;
       const oldVal = oldObj[key];
       const newVal = newObj[key];
 
