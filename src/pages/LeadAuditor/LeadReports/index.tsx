@@ -655,19 +655,8 @@ const AuditorLeadReports = () => {
     }
 
     try {
-<<<<<<< HEAD
-      // Get compliant ID from auditChecklistItemId
-      const compliantId = await getCompliantIdByAuditItemId(auditChecklistItemId);
-      if (!compliantId) {
-        toast.error('No compliant details found for this item');
-        return;
-      }
-
-      setSelectedCompliantId(compliantId);
-=======
       setSelectedCompliantAuditItemId(auditChecklistItemId);
       setSelectedCompliantId(null);
->>>>>>> 07077bbd6b93c40bf3cf1ecfc87ff2c2a7575049
       setShowCompliantDetailModal(true);
     } catch (err: any) {
       console.error('Failed to load compliant details:', err);

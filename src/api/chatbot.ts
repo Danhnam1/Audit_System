@@ -70,3 +70,67 @@ export const analyzeFinding = async (
   }
 };
 
+/**
+ * Analyze finding description and get suggested root causes (without findingId)
+ * Used when creating a new finding
+ * @param title - The finding title
+ * @param description - The finding description
+ * @param severity - The finding severity
+ * @returns Suggested root causes and analysis summary
+ */
+export const analyzeFindingContent = async (
+  title: string,
+  description: string,
+  severity: string
+): Promise<AnalyzeFindingResponse> => {
+  try {
+    const response = await apiClient.post('/ChatBot/analyze-finding', {
+      title,
+      description,
+      severity,
+    }) as AnalyzeFindingResponse;
+    return response;
+  } catch (error: any) {
+    throw error;
+  }
+};
+
+export interface SuggestedAction {
+  $id?: string;
+  title: string;
+  description: string;
+  implementationSteps: string | null;
+  reasoning: string | null;
+  expectedOutcome: string | null;
+  confidence: number;
+}
+
+export interface SuggestActionResponse {
+  $id?: string;
+  suggestedAction: SuggestedAction;
+  analysisSummary: string;
+  isError: boolean;
+  errorMessage: string | null;
+}
+
+/**
+ * Get suggested action for a root cause
+ * @param rootCauseContent - The root cause description
+ * @param additionalInfo - The root cause name
+ * @returns Suggested action
+ */
+export const suggestAction = async (
+  rootCauseContent: string,
+  additionalInfo: string
+): Promise<SuggestActionResponse> => {
+  try {
+    const response = await apiClient.post('/ChatBot/suggest-action', {
+      rootCauseContent,
+      additionalInfo,
+    }) as SuggestActionResponse;
+    return response;
+  } catch (error: any) {
+    throw error;
+  }
+};
+

@@ -6,7 +6,7 @@ import { markChecklistItemNonCompliant } from '../../../api/checklists';
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { getAdminUsersByDepartment, type AdminUserDto } from '../../../api/adminUsers';
 import { createRootCause } from '../../../api/rootCauses';
-import { type SuggestedRootCause } from '../../../api/chatbot';
+import { type SuggestedRootCause, analyzeFindingContent, suggestAction } from '../../../api/chatbot';
 import { createAction } from '../../../api/actions';
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
@@ -18,6 +18,7 @@ import {
   validateFiles,
   validateSelected,
 } from '../../../helpers/formValidation';
+
 
 interface CreateFindingModalProps {
   isOpen: boolean;
@@ -87,6 +88,19 @@ const CreateFindingModal = ({
   ]);
   const [nextRootCauseId, setNextRootCauseId] = useState(2);
   
+  // Track loading state for each root cause's action suggestion
+  const [loadingActionForRootCause, setLoadingActionForRootCause] = useState<Record<number, boolean>>({});
+  
+  // Action suggestion modal state
+  const [showActionSuggestionModal, setShowActionSuggestionModal] = useState(false);
+  const [currentActionRootCauseId, setCurrentActionRootCauseId] = useState<number | null>(null);
+  
+  // Cache action suggestions for each root cause (so we don't call API again)
+  const [cachedActionSuggestions, setCachedActionSuggestions] = useState<Record<number, {
+    suggestedAction: any;
+    analysisSummary: string;
+  }>>({});
+  
  // Additional fields (Giờ Việt Nam)
 const [findingDate] = useState(() => {
   const now = new Date();
@@ -139,9 +153,12 @@ const [findingTime, setFindingTime] = useState(() => {
   
   // AI Suggestions state
   const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
-  const [aiSuggestions, _setAiSuggestions] = useState<SuggestedRootCause[]>([]);
-  const [aiAnalysisSummary, _setAiAnalysisSummary] = useState<string>('');
-  const [loadingSuggestions, _setLoadingSuggestions] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<SuggestedRootCause[]>([]);
+  const [aiAnalysisSummary, setAiAnalysisSummary] = useState<string>('');
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  
+  // Cache root cause suggestions (so we don't call API again on subsequent clicks)
+  const [hasRootCauseSuggestionsCache, setHasRootCauseSuggestionsCache] = useState(false);
 
   // Get current date and time automatically
   useEffect(() => {
@@ -150,6 +167,8 @@ const [findingTime, setFindingTime] = useState(() => {
       loadSchedule();
       loadDepartmentUsers();
       loadAuditInfo();
+      // Reset root cause suggestions cache when modal opens
+      setHasRootCauseSuggestionsCache(false);
     }
   }, [isOpen]);
 
@@ -382,7 +401,7 @@ const [findingTime, setFindingTime] = useState(() => {
 
     // Validate root causes array
     if (rootCauses.length === 0) {
-      alert('Please add at least one root cause');
+      toast.error('Please add at least one root cause');
       return false;
     }
 
@@ -637,15 +656,39 @@ const [findingTime, setFindingTime] = useState(() => {
       onSuccess?.();
       onClose();
     } catch (err: any) {
-  
+      console.error('[CreateFindingModal] Error creating finding:', err);
       
-      // Show more detailed error message
-      const errorMessage = err?.message || 'Failed to create finding. Please check console for details.';
+      // Extract error message from API response
+      const errorMessage = err?.response?.data?.message || 
+                          err?.response?.data?.errorMessage || 
+                          err?.response?.data?.Message || 
+                          err?.message || 
+                          'Failed to create finding. Please try again.';
       
-      // Show error in a more readable format
-      alert(`Error: ${errorMessage}`);
-    } finally {
-      setSubmitting(false);
+      toast.error(errorMessage);
+      
+      // Close modal after toast duration (3 seconds)
+      setTimeout(() => {
+        setSubmitting(false);
+        // Reset form
+        setDescription('');
+        setSeverity('');
+        setDeadline('');
+        setFiles([]);
+        setErrors({});
+        setWitnesses('');
+        setFieldworkStartDate(null);
+        setEvidenceDueDate(null);
+        setExternalAuditorName('');
+        setRootCauses([{
+          id: 1,
+          rootCauseName: '',
+          rootCauseDescription: '',
+          proposedAction: '',
+        }]);
+        setNextRootCauseId(2);
+        onClose();
+      }, 3000);
     }
   };
 
@@ -706,24 +749,21 @@ const [findingTime, setFindingTime] = useState(() => {
   };
   
   const handleGetSuggestions = async () => {
-    // API analyzeFinding requires an existing findingId
-    // In Create Finding modal, we don't have a findingId yet
-    // Show informative message instead
-    toast.info(
-      '💡 AI Root Cause Analysis is available after creating the finding. ' +
-      'You can access it from the Finding Detail page.',
-      { autoClose: 5000 }
-    );
-    return;
+    // Check if we already have cached suggestions
+    if (hasRootCauseSuggestionsCache && aiSuggestions.length > 0) {
+      // Just show the modal with cached data
+      setShowSuggestionsModal(true);
+      return;
+    }
     
-    // NOTE: The code below is disabled because analyzeFinding API requires findingId
-    // which doesn't exist yet when creating a new finding.
-    // To enable AI suggestions in Create Finding modal, backend needs to provide
-    // an endpoint that accepts finding description/content instead of findingId.
-    
-    /*
+    // Validate required fields
     if (!description.trim()) {
-      toast.error('Vui lòng nhập mô tả finding trước khi phân tích!');
+      toast.error('Please enter finding description before analyzing!');
+      return;
+    }
+    
+    if (!severity) {
+      toast.error('Please select severity before analyzing!');
       return;
     }
     
@@ -731,44 +771,152 @@ const [findingTime, setFindingTime] = useState(() => {
     setShowSuggestionsModal(true);
     
     try {
-      // This will fail because checklistItem.auditItemId is not a valid findingId
-      const response = await analyzeFinding(checklistItem.auditItemId);
+      const title = `Non-compliance: ${checklistItem.questionTextSnapshot}`;
+      const response = await analyzeFindingContent(title, description, severity);
       
       if (response.isError) {
-        toast.error(response.errorMessage || 'Không thể lấy gợi ý từ AI');
+        toast.error(response.errorMessage || 'Unable to get AI suggestions');
         setShowSuggestionsModal(false);
         return;
       }
       
+      // Parse suggested root causes from response
       const suggestedRootCauses = response.suggestedRootCauses;
       const suggestionsList = suggestedRootCauses?.$values || 
                              (Array.isArray(suggestedRootCauses) ? suggestedRootCauses : []);
       
       setAiSuggestions(suggestionsList);
       setAiAnalysisSummary(response.analysisSummary || '');
+      
+      // Mark that we have cached suggestions
+      setHasRootCauseSuggestionsCache(true);
+      
+      if (suggestionsList.length === 0) {
+        toast.info('No root cause suggestions found for this finding.');
+      }
     } catch (error: any) {
       console.error('[CreateFindingModal] Failed to get AI suggestions:', error);
-      toast.error('Không thể kết nối đến AI. Vui lòng thử lại sau.');
+      const errorMessage = error?.response?.data?.errorMessage || 
+                          error?.response?.data?.message || 
+                          error?.message || 
+                          'Cannot connect to AI service. Please try again later.';
+      toast.error(errorMessage);
       setShowSuggestionsModal(false);
     } finally {
       setLoadingSuggestions(false);
     }
-    */
+  };
+  
+  const handleSuggestAction = async (rootCauseId: number, rootCauseName: string, rootCauseDescription: string) => {
+    // Check if we already have cached suggestion for this root cause
+    if (cachedActionSuggestions[rootCauseId]) {
+      // Show modal with cached data
+      setCurrentActionRootCauseId(rootCauseId);
+      setShowActionSuggestionModal(true);
+      return;
+    }
+    
+    // Validate required fields
+    if (!rootCauseName.trim()) {
+      toast.error('Please enter Root Cause Name before getting AI suggestion!');
+      return;
+    }
+    
+    if (!rootCauseDescription.trim()) {
+      toast.error('Please enter Root Cause Description before getting AI suggestion!');
+      return;
+    }
+    
+    // Set loading for this specific root cause
+    setLoadingActionForRootCause(prev => ({ ...prev, [rootCauseId]: true }));
+    
+    try {
+      // API expects rootCauseContent and additionalInfo
+      const response = await suggestAction(rootCauseDescription, rootCauseName);
+      
+      if (response.isError) {
+        toast.error(response.errorMessage || 'Unable to get action suggestion');
+        return;
+      }
+      
+      // Cache the suggestion
+      setCachedActionSuggestions(prev => ({
+        ...prev,
+        [rootCauseId]: {
+          suggestedAction: response.suggestedAction,
+          analysisSummary: response.analysisSummary,
+        },
+      }));
+      
+      // Show modal with the result
+      setCurrentActionRootCauseId(rootCauseId);
+      setShowActionSuggestionModal(true);
+    } catch (error: any) {
+      console.error('[CreateFindingModal] Failed to get action suggestion:', error);
+      const errorMessage = error?.response?.data?.errorMessage || 
+                          error?.response?.data?.message || 
+                          error?.message || 
+                          'Cannot connect to AI service. Please try again later.';
+      toast.error(errorMessage);
+    } finally {
+      setLoadingActionForRootCause(prev => ({ ...prev, [rootCauseId]: false }));
+    }
+  };
+  
+  const handleApplyActionSuggestion = () => {
+    if (currentActionRootCauseId === null) return;
+    
+    const cachedData = cachedActionSuggestions[currentActionRootCauseId];
+    if (!cachedData) return;
+    
+    // Update the proposed action with suggested description
+    const updatedRootCauses = rootCauses.map(rc => {
+      if (rc.id === currentActionRootCauseId) {
+        return {
+          ...rc,
+          proposedAction: cachedData.suggestedAction.description,
+        };
+      }
+      return rc;
+    });
+    
+    setRootCauses(updatedRootCauses);
+    setShowActionSuggestionModal(false);
+    toast.success('AI suggested action applied successfully!');
   };
   
   const handleApplySuggestion = (suggestion: SuggestedRootCause) => {
-    // Thêm suggestion vào danh sách root causes
-    const newRootCause: RootCause = {
-      id: nextRootCauseId,
-      rootCauseName: suggestion.name,
-      rootCauseDescription: suggestion.description,
-      proposedAction: suggestion.reasoning || 'Corrective action to be defined',
-    };
+    // Check if there's an empty root cause slot to fill
+    const emptyRootCauseIndex = rootCauses.findIndex(
+      rc => !rc.rootCauseName.trim() && !rc.rootCauseDescription.trim() && !rc.proposedAction.trim()
+    );
     
-    setRootCauses([...rootCauses, newRootCause]);
-    setNextRootCauseId(nextRootCauseId + 1);
+    if (emptyRootCauseIndex !== -1) {
+      // Fill the first empty slot
+      const updatedRootCauses = [...rootCauses];
+      updatedRootCauses[emptyRootCauseIndex] = {
+        ...updatedRootCauses[emptyRootCauseIndex],
+        rootCauseName: suggestion.name,
+        rootCauseDescription: suggestion.description,
+        proposedAction: '', // Leave empty for user to fill in
+      };
+      setRootCauses(updatedRootCauses);
+      toast.success(`Filled Root Cause #${emptyRootCauseIndex + 1}: ${suggestion.name}`);
+    } else {
+      // Add new root cause if no empty slots
+      const newRootCause: RootCause = {
+        id: nextRootCauseId,
+        rootCauseName: suggestion.name,
+        rootCauseDescription: suggestion.description,
+        proposedAction: '', // Leave empty for user to fill in
+      };
+      
+      setRootCauses([...rootCauses, newRootCause]);
+      setNextRootCauseId(nextRootCauseId + 1);
+      toast.success(`Added Root Cause #${rootCauses.length + 1}: ${suggestion.name}`);
+    }
     
-    toast.success(`Đã thêm root cause: ${suggestion.name}`);
+    // Don't close modal - user can apply multiple suggestions
   };
 
   if (!isOpen) return null;
@@ -1186,22 +1334,27 @@ const [findingTime, setFindingTime] = useState(() => {
                   <p className="text-sm text-gray-600 mt-1">Department head will assign corrective actions later</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* AI Suggestion Button - Info only (requires existing finding) */}
+                  {/* AI Suggestion Button */}
                   <button
                     type="button"
                     onClick={handleGetSuggestions}
-                    className="group relative p-2 hover:bg-yellow-50 rounded-lg transition-colors"
-                    title="AI Root Cause Analysis (Available after creating finding)"
+                    disabled={!description.trim() || !severity || loadingSuggestions}
+                    className="group relative p-2 hover:bg-yellow-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Get AI Root Cause Suggestions"
                   >
-                    <svg 
-                      className="w-6 h-6 text-yellow-500 hover:text-yellow-600 transition-colors"
-                      fill="currentColor" 
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z"/>
-                    </svg>
+                    {loadingSuggestions ? (
+                      <div className="animate-spin rounded-full h-6 w-6 border-2 border-yellow-500 border-t-transparent"></div>
+                    ) : (
+                      <svg 
+                        className="w-6 h-6 text-yellow-500 hover:text-yellow-600 transition-colors"
+                        fill="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z"/>
+                      </svg>
+                    )}
                     <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 w-64 text-center">
-                      💡 AI Analysis available after creating finding
+                      💡 Get AI Root Cause Suggestions (requires description & severity)
                     </span>
                   </button>
                   
@@ -1327,9 +1480,33 @@ const [findingTime, setFindingTime] = useState(() => {
 
                       {/* Proposed Action (Corrective Action Suggestion) */}
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Proposed Corrective Action <span className="text-red-500">*</span>
-                        </label>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-sm font-medium text-gray-700">
+                            Proposed Corrective Action <span className="text-red-500">*</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleSuggestAction(rc.id, rc.rootCauseName, rc.rootCauseDescription)}
+                            disabled={!rc.rootCauseName.trim() || !rc.rootCauseDescription.trim() || loadingActionForRootCause[rc.id]}
+                            className="group relative p-1.5 hover:bg-yellow-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Get AI Action Suggestion"
+                          >
+                            {loadingActionForRootCause[rc.id] ? (
+                              <div className="animate-spin rounded-full h-5 w-5 border-2 border-yellow-500 border-t-transparent"></div>
+                            ) : (
+                              <svg 
+                                className="w-5 h-5 text-yellow-500 hover:text-yellow-600 transition-colors"
+                                fill="currentColor" 
+                                viewBox="0 0 24 24"
+                              >
+                                <path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z"/>
+                              </svg>
+                            )}
+                            <span className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                              💡 AI Action Suggestion
+                            </span>
+                          </button>
+                        </div>
                         <textarea
                           value={rc.proposedAction}
                           onChange={(e) => {
@@ -1662,6 +1839,94 @@ const [findingTime, setFindingTime] = useState(() => {
                 className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Suggestion Modal */}
+      {showActionSuggestionModal && currentActionRootCauseId !== null && cachedActionSuggestions[currentActionRootCauseId] && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-6 h-6 text-yellow-600" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z"/>
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900">AI Suggested Action</h3>
+              </div>
+              <button
+                onClick={() => setShowActionSuggestionModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-gray-100 rounded-lg"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-6">
+                {/* Analysis Summary */}
+                {cachedActionSuggestions[currentActionRootCauseId].analysisSummary && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <div className="flex-1">
+                        <p className="text-sm text-yellow-800 whitespace-pre-wrap">
+                          {cachedActionSuggestions[currentActionRootCauseId].analysisSummary}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Suggested Action */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h5 className="text-base font-semibold text-gray-900 mb-2">
+                        {cachedActionSuggestions[currentActionRootCauseId].suggestedAction.title}
+                      </h5>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                        {cachedActionSuggestions[currentActionRootCauseId].suggestedAction.description}
+                      </p>
+                      
+                    
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+              <button
+                onClick={() => setShowActionSuggestionModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={handleApplyActionSuggestion}
+                className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors font-medium flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Apply This Action
               </button>
             </div>
           </div>

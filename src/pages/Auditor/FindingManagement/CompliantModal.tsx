@@ -295,7 +295,14 @@ const CompliantModal = ({
       onSuccess?.(response);
       onClose();
     } catch (err: any) {
+      console.error('[CompliantModal] Error marking as compliant:', err);
       
+      // Extract error message from API response
+      const errorMessage = err?.response?.data?.message || 
+                          err?.response?.data?.errorMessage || 
+                          err?.response?.data?.Message || 
+                          err?.message || 
+                          'Failed to mark item as compliant';
       
       // Handle validation errors from backend
       const errorData = err?.response?.data;
@@ -317,13 +324,24 @@ const CompliantModal = ({
             setTimeout(() => toast.error(msg), index * 100);
           });
         } else {
-          toast.error(err?.message || 'Failed to mark item as compliant');
+          toast.error(errorMessage);
         }
       } else {
-        toast.error(err?.message || 'Failed to mark item as compliant');
+        toast.error(errorMessage);
       }
-    } finally {
-      setSubmitting(false);
+      
+      // Close modal after toast duration (3 seconds)
+      setTimeout(() => {
+        setSubmitting(false);
+        // Reset form
+        setReason('');
+        setSelectedWitnesses('');
+        const now = new Date();
+        setComplianceTime(now.toTimeString().slice(0, 5));
+        setFiles([]);
+        setFileError('');
+        onClose();
+      }, 3000);
     }
   };
 

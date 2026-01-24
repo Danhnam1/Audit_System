@@ -2364,14 +2364,22 @@ const DepartmentChecklist = () => {
                       let itemStatusToCheck = item.status;
                       if (findingData?.status) {
                         const findingStatus = (findingData.status || '').toLowerCase();
+                        const itemStatusLower = (item.status || '').toLowerCase();
+                        
+                        // DON'T override with finding's "return" status if item is already marked as Compliant
+                        // This handles the case where a new finding was created after compliant was returned
+                        const shouldIgnoreReturnStatus = (findingStatus === 'return' || findingStatus === 'returned') 
+                          && (itemStatusLower === 'compliant');
+                        
                         // Only override with finding status if it's one of these meaningful statuses
-                        if (
+                        // AND we're not in the special case mentioned above
+                        if (!shouldIgnoreReturnStatus && (
                           findingStatus === 'noncompliant' || 
                           findingStatus.includes('non-compliant') ||
                           findingStatus === 'return' || 
                           findingStatus === 'returned' ||
                           findingStatus === 'compliant'
-                        ) {
+                        )) {
                           itemStatusToCheck = findingData.status;
                         }
                       }
