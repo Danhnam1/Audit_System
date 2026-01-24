@@ -1185,7 +1185,7 @@ export default function LeadAuditorFinalSummaryReviewPage() {
                           : "—";
                       const badgeClass = `${getStatusColor(displayText)} border border-gray-200`;
                       return (
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeClass}`}>
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${badgeClass}`}>
                           {displayText}
                         </span>
                       );

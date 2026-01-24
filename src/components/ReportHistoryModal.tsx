@@ -25,12 +25,14 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
   const [userMap, setUserMap] = useState<Map<string, any>>(new Map());
   const [showFindingsHistory, setShowFindingsHistory] = useState(true);
   const [showFinalHistory, setShowFinalHistory] = useState(false);
+  const [reportFilePath, setReportFilePath] = useState<string>('');
 
   useEffect(() => {
     if (!isOpen || !reportRequestId) {
       setReportRequest(null);
       setLogs([]);
       setError(null);
+      setReportFilePath('');
       return;
     }
 
@@ -165,6 +167,22 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
           return timeB - timeA;
         });
 
+        // Resolve latest filePath from logs or report data
+        const fileFromReport = report?.filePath || items.find(i => i.report.filePath)?.report.filePath || '';
+        let fileFromLogs = '';
+        let latestFileTime = 0;
+        combinedLogs.forEach((log) => {
+          const parsed = parseValue(log.newValue) || {};
+          const fp = parsed.FilePath || parsed.filePath || '';
+          if (!fp) return;
+          const curTime = new Date(log.performedAt || 0).getTime();
+          if (!fileFromLogs || curTime >= latestFileTime) {
+            fileFromLogs = fp;
+            latestFileTime = curTime;
+          }
+        });
+        setReportFilePath(String(fileFromReport || fileFromLogs || ''));
+
         // If report request not found via API, derive info from audit logs
         if (!report && items.length > 0) {
           setReportRequest(items[0].report);
@@ -187,6 +205,11 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
     if (!userId) return 'N/A';
     const user = userMap.get(userId);
     return user?.fullName || user?.email || userId;
+  };
+
+  const normalizeFileUrl = (url?: string | null): string => {
+    if (!url) return '';
+    return String(url).replace(/\\u0026/g, '&');
   };
 
   // Helper function to parse JSON string safely
@@ -484,13 +507,26 @@ export const ReportHistoryModal: React.FC<ReportHistoryModalProps> = ({
                       <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide">Report Findings</h3>
                       
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowFindingsHistory((v) => !v)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                    >
-                      {showFindingsHistory ? 'Hide history' : 'View history'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {normalizeFileUrl(reportRequest?.filePath || reportFilePath) && (
+                        <a
+                          href={normalizeFileUrl(reportRequest?.filePath || reportFilePath)}
+                          download
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                        >
+                          View Report
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowFindingsHistory((v) => !v)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                      >
+                        {showFindingsHistory ? 'Hide history' : 'View history'}
+                      </button>
+                    </div>
                   </div>
                   {showFindingsHistory && (
                     <div className="mt-4">

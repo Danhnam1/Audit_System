@@ -342,8 +342,8 @@ const DepartmentChecklist = () => {
             // Check if verify code has been verified before
             const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
             const verificationStatusKey = `qr_verification_status_${auditId}_${deptId}_${scannerUserId}`;
-            const savedVerifyCode = sessionStorage.getItem(sessionKey);
-            const verificationStatus = sessionStorage.getItem(verificationStatusKey); // 'verified' or null
+            const savedVerifyCode = localStorage.getItem(sessionKey);
+            const verificationStatus = localStorage.getItem(verificationStatusKey); // 'verified' or null
             const currentVerifyCode = activeGrant.verifyCode || '';
             
             // First, check if verify code has changed (this takes priority)
@@ -351,7 +351,7 @@ const DepartmentChecklist = () => {
              
               // Clear verification status since verify code changed
               // Don't update savedVerifyCode yet - wait until user verifies successfully
-              sessionStorage.removeItem(verificationStatusKey);
+              localStorage.removeItem(verificationStatusKey);
               // Continue to show modal below to require re-verification
             }
             
@@ -2071,8 +2071,8 @@ const DepartmentChecklist = () => {
           const sessionKey = `qr_verified_${auditId}_${deptId}_${scannerUserId}`;
           const verificationStatusKey = `qr_verification_status_${auditId}_${deptId}_${scannerUserId}`;
           
-          // Mark verification as successful in this session
-          sessionStorage.setItem(verificationStatusKey, 'verified');
+          // Mark verification as successful and save to localStorage for persistence
+          localStorage.setItem(verificationStatusKey, 'verified');
           console.log('[Verify Code] Saved verification status: verified');
           
           // Get current verify code from grant
@@ -2089,7 +2089,7 @@ const DepartmentChecklist = () => {
             );
             
             if (currentGrant?.verifyCode) {
-              sessionStorage.setItem(sessionKey, currentGrant.verifyCode);
+              localStorage.setItem(sessionKey, currentGrant.verifyCode);
               console.log('[Verify Code] Saved verify code:', currentGrant.verifyCode);
             }
           } catch (error) {

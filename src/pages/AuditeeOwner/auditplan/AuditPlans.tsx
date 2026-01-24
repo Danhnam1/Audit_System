@@ -86,7 +86,7 @@ const AuditPlans = () => {
 					return acc;
 				}, {} as Record<string, Array<{deptId: string; deptName?: string}>>);
 
-				const publishedPlans = (Array.isArray(plansList) ? plansList : []).filter((p: any) => p?.isPublished === true);
+				const publishedPlans = (Array.isArray(plansList) ? plansList : []).filter((p: any) => p?.isPublished === true && String(p?.status || '').toLowerCase() !== 'archived');
 				
 				// Filter by user's deptId if available
 				let filteredList = publishedPlans;

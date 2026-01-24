@@ -5,6 +5,7 @@ import { getMyAssignedActions } from '../../api/actions';
 import { getFindingById } from '../../api/findings';
 import { getAuditPlanById } from '../../api/audits';
 import { Pagination } from '../../components/Pagination';
+import { PageHeader } from '../../components/PageHeader';
 import { getStatusBadgeColor, getAuditTypeBadgeColor } from '../../constants';
 
 interface AuditCard {
@@ -267,15 +268,11 @@ const CAPAOwnerAuditList = () => {
 
   return (
     <MainLayout>
-      {/* Header */}
-      <div className="bg-gradient-to-r from-primary-500 to-primary-600 shadow-lg mb-6">
-        <div className="px-4 sm:px-6 py-4 sm:py-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Tasks</h1>
-          <p className="text-primary-100 text-sm sm:text-base mt-2">Select an audit to view assigned tasks</p>
-        </div>
-      </div>
-
-      <div className="px-4 sm:px-6 pb-6 sm:pb-8 space-y-6">
+      <div className="px-4 sm:px-6 py-6 space-y-6">
+        <PageHeader 
+          title="Tasks" 
+          subtitle="Select an audit to view assigned tasks"
+        />
         {/* Loading State */}
         {loading && (
           <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-8 text-center">

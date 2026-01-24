@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
-import { getAuditPlans, getAuditPlanById } from '../../../api/audits';
+import { getAuditPlans, getAuditPlanById, getSensitiveDepartments } from '../../../api/audits';
 import { getAdminUsers, type AdminUserDto } from '../../../api/adminUsers';
 import { getDepartments } from '../../../api/departments';
 import { getAuditChecklistTemplateMapsByAudit } from '../../../api/auditChecklistTemplateMaps';
@@ -199,6 +199,40 @@ const ArchivedHistoryPage = () => {
       // Set audit detail
       if (auditData.status === 'fulfilled') {
         const auditPayload = auditData.value?.audit || auditData.value?.data?.audit || auditData.value;
+        
+        // Load sensitive areas and build sensitiveAreasByDept
+        try {
+          const sensitiveDepts = await getSensitiveDepartments(auditId);
+          
+          if (sensitiveDepts && sensitiveDepts.length > 0) {
+            // Build sensitiveAreasByDept map: { [deptId]: [area1, area2, ...] }
+            const sensitiveAreasByDept: Record<string, string[]> = {};
+            
+            sensitiveDepts.forEach((sd: any) => {
+              const deptId = String(sd.deptId);
+              
+              // Extract areas from various possible structures
+              let areasArray: string[] = [];
+              if (Array.isArray(sd.Areas)) {
+                areasArray = sd.Areas.map((a: any) => a.sensitiveArea || String(a));
+              } else if (sd.areas) {
+                areasArray = Array.isArray(sd.areas) ? sd.areas : [sd.areas];
+              } else if (sd.sensitiveArea) {
+                areasArray = [sd.sensitiveArea];
+              }
+              
+              if (areasArray.length > 0) {
+                sensitiveAreasByDept[deptId] = areasArray;
+              }
+            });
+            
+            // Attach sensitiveAreasByDept to auditPayload
+            auditPayload.sensitiveAreasByDept = sensitiveAreasByDept;
+          }
+        } catch (sensitiveErr) {
+          console.error('Failed to load sensitive areas:', sensitiveErr);
+        }
+        
         setAuditDetail(auditPayload);
       }
 

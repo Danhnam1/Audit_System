@@ -918,7 +918,17 @@ export const PlanDetailsModal: React.FC<PlanDetailsModalProps> = ({
                 );
                 
                 const sensitiveAreasByDept = (selectedPlanDetails as any).sensitiveAreasByDept || {};
-                const deptSensitiveAreas = deptId ? (sensitiveAreasByDept[deptId] || []) : [];
+                const rawAreas = deptId ? (sensitiveAreasByDept[deptId] || []) : [];
+                
+                // Ensure deptSensitiveAreas is always array of strings
+                const deptSensitiveAreas: string[] = Array.isArray(rawAreas)
+                  ? rawAreas.map((area: any) => {
+                      if (typeof area === 'string') return area;
+                      if (area?.sensitiveArea) return String(area.sensitiveArea);
+                      return String(area);
+                    }).filter(Boolean)
+                  : [];
+                
                 const hasSensitiveAreas = deptSensitiveAreas.length > 0;
 
                 // Handler to view department items
