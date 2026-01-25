@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MainLayout } from '../../../layouts';
 import { useAuth } from '../../../contexts';
 import { getAuditorsByAuditId } from '../../../api/auditTeam';
@@ -6,10 +6,10 @@ import { getAuditScopeDepartmentsByAuditId, getAuditPlans, getSensitiveDepartmen
 import { getAuditScheduleByAudit } from '../../../api/auditSchedule';
 import { createAuditAssignment, getAuditAssignments, bulkCreateAuditAssignments, getAllAuditAssignmentRequests, approveAuditAssignmentRequest, rejectAuditAssignmentRequest } from '../../../api/auditAssignments';
 import { getDepartmentById } from '../../../api/departments';
-import { createAuditChecklistItemsFromTemplate, getChecklistItemsByDepartment } from '../../../api/checklists';
+import { createAuditChecklistItemsFromTemplate, getChecklistItemsByDepartment, getChecklistTemplates } from '../../../api/checklists';
 import { issueAccessGrant, getAccessGrants } from '../../../api/accessGrant';
 
-import { getUserById } from '../../../api/adminUsers';
+import { getAdminUsers, getUserById } from '../../../api/adminUsers';
 
 import { unwrap } from '../../../utils/normalize';
 import { toast } from 'react-toastify';
@@ -17,7 +17,10 @@ import { DataTable } from '../../../components/DataTable';
 import { getUserFriendlyErrorMessage } from '../../../utils/errorMessages';
 import { Pagination } from '../../../components/Pagination';
 import { QRCodeSVG } from 'qrcode.react';
-import { getStatusColor } from '../../../constants';
+import { getStatusColor, getBadgeVariant, getAuditTypeBadgeColor } from '../../../constants';
+import { PlanDetailsModal } from '../../Auditor/AuditPlanning/components/PlanDetailsModal';
+import { usePlanDetails } from '../../../hooks/usePlanDetails';
+import { getCriterionName, getDepartmentName } from '../../../helpers/auditPlanHelpers';
 
 interface Department {
   deptId: number;
@@ -138,6 +141,60 @@ export default function AuditAssignment() {
     createdByName?: string;
   } | null>(null);
   const [processingRequest, setProcessingRequest] = useState(false);
+
+  // Plan details modal state (Lead Auditor view)
+  const [planDetailsDepartments, setPlanDetailsDepartments] = useState<
+    Array<{ deptId: number | string; name: string }>
+  >([]);
+  const planDetails = usePlanDetails({
+    departments: planDetailsDepartments,
+    setDepartments: setPlanDetailsDepartments,
+    existingPlans: audits as any[],
+  });
+  const [checklistTemplates, setChecklistTemplates] = useState<any[]>([]);
+  const [auditorOptions, setAuditorOptions] = useState<any[]>([]);
+  const [ownerOptions, setOwnerOptions] = useState<any[]>([]);
+  const [auditTeamsForModal, setAuditTeamsForModal] = useState<any[]>([]);
+
+  const currentUserIdForModal = useMemo(() => {
+    if (!user) return null;
+    const fallbackId =
+      (user as any)?.userId ?? (user as any)?.id ?? (user as any)?.$id ?? null;
+    return fallbackId ? String(fallbackId).trim() : null;
+  }, [user]);
+
+  useEffect(() => {
+    const loadModalLookups = async () => {
+      try {
+        const users = await getAdminUsers();
+        const norm = (s: string) =>
+          String(s || "")
+            .toLowerCase()
+            .replace(/\s+/g, "");
+        const auditors = (users || []).filter(
+          (u: any) =>
+            norm(u.roleName) === "auditor" || norm(u.roleName) === "leadauditor"
+        );
+        const owners = (users || []).filter(
+          (u: any) => norm(u.roleName) === "auditeeowner"
+        );
+        setAuditorOptions(auditors);
+        setOwnerOptions(owners);
+      } catch (err) {
+        setAuditorOptions([]);
+        setOwnerOptions([]);
+      }
+
+      try {
+        const templates = await getChecklistTemplates();
+        setChecklistTemplates(Array.isArray(templates) ? templates : []);
+      } catch (err) {
+        setChecklistTemplates([]);
+      }
+    };
+
+    loadModalLookups();
+  }, []);
 
   // Load audits first
   useEffect(() => {
@@ -803,6 +860,18 @@ export default function AuditAssignment() {
     setSelectedAuditId(auditId);
   };
 
+  const handleViewPlanDetails = async (auditId: string) => {
+    try {
+      const teams = await getAuditorsByAuditId(String(auditId));
+      const teamsArr = Array.isArray(teams) ? teams : [];
+      setAuditTeamsForModal(teamsArr);
+    } catch (err) {
+      setAuditTeamsForModal([]);
+    }
+
+    await planDetails.loadPlanDetails(String(auditId));
+  };
+
   const handleBackToAudits = () => {
     setSelectedAuditId(null);
     setDepartments([]);
@@ -1163,12 +1232,20 @@ export default function AuditAssignment() {
                         align: 'center' as const,
                         cellClassName: 'whitespace-nowrap text-center',
                         render: (audit) => (
-                          <button
-                            onClick={() => handleAuditSelect(audit.auditId)}
-                            className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
-                          >
-                            Select
-                          </button>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleViewPlanDetails(audit.auditId)}
+                              className="px-3 py-1.5 bg-white border border-primary-600 text-primary-600 text-sm rounded-lg hover:bg-primary-50 transition-colors"
+                            >
+                              View Details
+                            </button>
+                            <button
+                              onClick={() => handleAuditSelect(audit.auditId)}
+                              className="px-3 py-1.5 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 transition-colors"
+                            >
+                              Select
+                            </button>
+                          </div>
                         ),
                       },
                     ]}
@@ -1378,6 +1455,61 @@ export default function AuditAssignment() {
           )}
         </div>
       </div>
+
+      {/* Plan Details Modal */}
+      {planDetails.showDetailsModal && planDetails.selectedPlanDetails && (
+        <PlanDetailsModal
+          showModal={planDetails.showDetailsModal}
+          selectedPlanDetails={planDetails.selectedPlanDetails}
+          templatesForPlan={planDetails.templatesForSelectedPlan}
+          onClose={() => {
+            planDetails.closeDetailsModal();
+            setAuditTeamsForModal([]);
+          }}
+          getCriterionName={(id: string) =>
+            getCriterionName(id, []) || String(id)
+          }
+          getDepartmentName={(id: string | number) =>
+            getDepartmentName(
+              id,
+              planDetailsDepartments.length > 0
+                ? planDetailsDepartments
+                : departments
+            )
+          }
+          getStatusColor={getStatusColor}
+          getBadgeVariant={getBadgeVariant}
+          getAuditTypeBadgeColor={getAuditTypeBadgeColor}
+          ownerOptions={ownerOptions}
+          auditorOptions={auditorOptions}
+          getTemplateName={(tid) => {
+            if (!tid) return 'Unknown Template';
+            const template = checklistTemplates.find(
+              (t: any) =>
+                String(t.templateId || t.id || t.$id || '') === String(tid)
+            );
+            return (
+              template?.title || template?.name || `Template ${String(tid)}`
+            );
+          }}
+          getTemplateInfo={(tid) => {
+            if (!tid) return null;
+            const template = checklistTemplates.find(
+              (t: any) =>
+                String(t.templateId || t.id || t.$id || '') === String(tid)
+            );
+            if (!template) return null;
+            return {
+              name:
+                template.title || template.name || `Template ${String(tid)}`,
+              version: template.version,
+              description: template.description,
+            };
+          }}
+          currentUserId={currentUserIdForModal}
+          auditTeamsForPlan={auditTeamsForModal}
+        />
+      )}
 
       {/* Assign Modal */}
       {isAssignModalOpen && selectedDepartment && (
