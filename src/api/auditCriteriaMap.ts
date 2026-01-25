@@ -4,16 +4,22 @@ import { unwrap } from '../utils/normalize'
 export interface AuditCriteriaMapPayload {
   auditId: string
   criteriaId: string
+  deptId?: number // Optional department ID
   status?: string // Optional status field
 }
 
-export const addCriterionToAudit = async (auditId: string, criteriaId: string) => {
+export const addCriterionToAudit = async (auditId: string, criteriaId: string, deptId?: number) => {
   // Based on Swagger, this might be a POST endpoint with auditId and criteriaId
-  const payload: AuditCriteriaMapPayload = { 
-    auditId, 
+  const payload: AuditCriteriaMapPayload = {
+    auditId,
     criteriaId,
     status: 'Active' // Default status if backend requires
   };
+
+  if (deptId !== undefined && deptId !== null) {
+    payload.deptId = deptId;
+  }
+
   return apiClient.post('/AuditCriteriaMap', payload);
 }
 
@@ -31,26 +37,26 @@ export const getCriteriaForAuditByDepartment = async (auditId: string, deptId?: 
     url += `?deptId=${deptId}`;
   }
   const res: any = await apiClient.get(url);
-  
+
   // Unwrap first level to get $values array
   const topLevelValues = unwrap(res);
-  
- 
-  
+
+
+
   // If deptId is provided, find the matching department
   if (deptId !== undefined && deptId !== null) {
     const deptMapping = topLevelValues.find((item: any) => Number(item.deptId) === Number(deptId));
     if (!deptMapping) {
       return [];
     }
-    
+
     // Extract criteriaIds from the matching department
     const criteriaIds = unwrap(deptMapping.criteriaIds);
-    
+
     // Return array of criteria objects with criteriaId field
     return criteriaIds.map((id: string) => ({ criteriaId: id }));
   }
-  
+
   // If no deptId provided, return all mappings (for backward compatibility)
   // Flatten all criteriaIds from all departments
   const allCriteriaIds: string[] = [];
@@ -58,7 +64,7 @@ export const getCriteriaForAuditByDepartment = async (auditId: string, deptId?: 
     const criteriaIds = unwrap(item.criteriaIds);
     allCriteriaIds.push(...criteriaIds);
   });
-  
+
   return allCriteriaIds.map((id: string) => ({ criteriaId: id }));
 }
 

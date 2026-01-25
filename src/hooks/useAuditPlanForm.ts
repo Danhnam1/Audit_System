@@ -8,7 +8,7 @@ export const useAuditPlanForm = () => {
   // Form display state
   const [showForm, setShowForm] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
-  
+
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [editingAuditId, setEditingAuditId] = useState<string | null>(null);
@@ -48,6 +48,7 @@ export const useAuditPlanForm = () => {
   const [evidenceDue, setEvidenceDue] = useState<string>('');
   const [draftReportDue, setDraftReportDue] = useState<string>('');
   const [capaDue, setCapaDue] = useState<string>('');
+  const [scheduleIds, setScheduleIds] = useState<Record<string, string>>({}); // Map: MilestoneName -> ScheduleId
 
   // Reset all form fields
   const resetForm = () => {
@@ -77,6 +78,12 @@ export const useAuditPlanForm = () => {
     setEvidenceDue('');
     setDraftReportDue('');
     setCapaDue('');
+    setIsEditMode(false);
+    setEditingAuditId(null);
+    setShowForm(false);
+    setDraftReportDue('');
+    setCapaDue('');
+    setScheduleIds({});
     setIsEditMode(false);
     setEditingAuditId(null);
     setShowForm(false);
@@ -120,25 +127,25 @@ export const useAuditPlanForm = () => {
   const loadPlanForEdit = (details: any) => {
     // Activate edit mode & initialize edit context
     const auditIdValue = String(details.auditId || details.id || '');
-    
+
     setIsEditMode(true);
     setEditingAuditId(auditIdValue);
     setShowForm(true);
     setCurrentStep(1); // Always start from step 1 when editing
-    
+
 
     // Step 1: Basic info - ensure all values are properly formatted
     const titleValue = details.title || details.audit?.title || '';
     const auditTypeValue = details.type || details.audit?.type || 'Internal';
     const goalValue = details.objective || details.audit?.objective || '';
-    
+
     // Parse dates properly - handle ISO strings and ensure YYYY-MM-DD format
     const startDate = details.startDate || details.audit?.startDate;
     const endDate = details.endDate || details.audit?.endDate;
-    
+
     let periodFromValue = '';
     let periodToValue = '';
-    
+
     if (startDate) {
       try {
         // Handle ISO string format (e.g., "2025-01-15T10:00:00Z")
@@ -157,7 +164,7 @@ export const useAuditPlanForm = () => {
       } catch (e) {
       }
     }
-    
+
     if (endDate) {
       try {
         // Handle ISO string format (e.g., "2025-01-15T10:00:00Z")
@@ -176,7 +183,7 @@ export const useAuditPlanForm = () => {
       } catch (e) {
       }
     }
-    
+
     setTitle(titleValue);
     setAuditType(auditTypeValue);
     setGoal(goalValue);
@@ -184,9 +191,9 @@ export const useAuditPlanForm = () => {
     setPeriodTo(periodToValue);
     setDrlFileName(details.drlFileName || '');
     setDrlFile(null);
-    
-   
-    
+
+
+
     // Debug: Check if dates are valid for validation
     // if (periodFromValue && periodToValue) {
     //   const fromDate = new Date(periodFromValue);
@@ -194,7 +201,7 @@ export const useAuditPlanForm = () => {
     //   // Calculate days difference for validation (currently unused but kept for future use)
     //   const _daysDiff = Math.floor((toDate.getTime() - fromDate.getTime()) / (24 * 60 * 60 * 1000));
     // }
-    
+
     // Step 2: Scope
     const scope = details.scope || details.audit?.scope;
     if (scope === 'Academy' || (!details.scopeDepartments?.values?.length && !scope)) {
@@ -213,7 +220,7 @@ export const useAuditPlanForm = () => {
         setSelectedDeptIds([]);
       }
     }
-    
+
     // Step 3: Template and criteria
     // Template IDs will be loaded by hydrateTemplateSelection in the component
     // But we can set a fallback if templateId exists
@@ -223,7 +230,7 @@ export const useAuditPlanForm = () => {
     } else {
       setSelectedTemplateIds([]);
     }
-    
+
     if (details.criteria?.values?.length > 0) {
       const criteriaIds = details.criteria.values.map((c: any) => {
         if (typeof c === 'object' && c.criterionId) return String(c.criterionId);
@@ -235,43 +242,43 @@ export const useAuditPlanForm = () => {
     } else {
       setSelectedCriteriaIds([]);
     }
-    
+
     // Step 4: Team
-    
+
     // Try multiple ways to get audit teams
-    const auditTeamsData = details.auditTeams?.values || 
-                           details.auditTeams || 
-                           (Array.isArray(details.auditTeams) ? details.auditTeams : []);
-    
-    
+    const auditTeamsData = details.auditTeams?.values ||
+      details.auditTeams ||
+      (Array.isArray(details.auditTeams) ? details.auditTeams : []);
+
+
     if (auditTeamsData && auditTeamsData.length > 0) {
       const auditors: string[] = [];
       let leadId = '';
       let ownerId = '';
-      
+
       auditTeamsData.forEach((member: any) => {
-        
+
         // Try multiple field names for userId
-        const userId = member.userId || 
-                      member.id || 
-                      member.$id || 
-                      member.user?.userId || 
-                      member.user?.id ||
-                      member.user?.$id;
-        
+        const userId = member.userId ||
+          member.id ||
+          member.$id ||
+          member.user?.userId ||
+          member.user?.id ||
+          member.user?.$id;
+
         // Try multiple field names for role
-        const role = member.roleInTeam || 
-                    member.role || 
-                    member.roleName ||
-                    member.user?.role ||
-                    '';
-        
+        const role = member.roleInTeam ||
+          member.role ||
+          member.roleName ||
+          member.user?.role ||
+          '';
+
         const isLead = member.isLead || member.isLeadAuditor || false;
-        
-        
+
+
         // Normalize role comparison (case-insensitive)
         const normalizedRole = String(role || '').toLowerCase().trim();
-        
+
         if (normalizedRole === 'auditor' || normalizedRole === '') {
           // If role is empty or 'auditor', treat as auditor
           if (userId) {
@@ -286,8 +293,8 @@ export const useAuditPlanForm = () => {
           }
         }
       });
-      
-      
+
+
       setSelectedAuditorIds(auditors);
       setSelectedLeadId(leadId);
       setSelectedOwnerId(ownerId);
@@ -296,13 +303,21 @@ export const useAuditPlanForm = () => {
       setSelectedLeadId('');
       setSelectedOwnerId('');
     }
-    
+
     // Step 5: Schedules - match exactly with MILESTONE_NAMES
     if (details.schedules?.values?.length > 0) {
+      const newScheduleIds: Record<string, string> = {};
+
       details.schedules.values.forEach((schedule: any) => {
         const name = schedule.milestoneName || schedule.name || '';
         const date = schedule.dueDate ? schedule.dueDate.split('T')[0] : '';
-        
+        const id = String(schedule.scheduleId || schedule.id || schedule.$id || '');
+
+        // Store ID if available
+        if (id && name) {
+          newScheduleIds[name] = id;
+        }
+
         // Match exactly with MILESTONE_NAMES constants
         if (name === MILESTONE_NAMES.KICKOFF || name === 'Kickoff Meeting') {
           setKickoffMeeting(date);
@@ -316,6 +331,7 @@ export const useAuditPlanForm = () => {
           setCapaDue(date);
         }
       });
+      setScheduleIds(newScheduleIds);
     } else {
       // Reset schedules if no schedules found
       setKickoffMeeting('');
@@ -323,8 +339,9 @@ export const useAuditPlanForm = () => {
       setEvidenceDue('');
       setDraftReportDue('');
       setCapaDue('');
+      setScheduleIds({});
     }
-    
+
     // Load sensitive areas data from details or API
     // Check if details already have sensitive data loaded
     if (details.sensitiveFlag !== undefined || details.sensitiveAreas || details.sensitiveAreasByDept || details.sensitiveDeptIds) {
@@ -332,7 +349,7 @@ export const useAuditPlanForm = () => {
       setSensitiveFlag(details.sensitiveFlag || false);
       const sensitiveAreasArray = Array.isArray(details.sensitiveAreas) ? details.sensitiveAreas : [];
       setSensitiveAreas(sensitiveAreasArray);
-      
+
       // Load sensitiveAreasByDept if available from details
       let areasByDept: Record<number, string[]> = {};
       if (details.sensitiveAreasByDept && typeof details.sensitiveAreasByDept === 'object') {
@@ -346,7 +363,7 @@ export const useAuditPlanForm = () => {
           }
         });
       }
-      
+
       // Always try to parse sensitiveAreas to create sensitiveAreasByDept if sensitiveAreas has data
       // This ensures we have department-specific mapping even if API didn't return it
       // Format: "areaName - deptName" or just "areaName"
@@ -354,19 +371,19 @@ export const useAuditPlanForm = () => {
         // Get departments list to match deptName
         const deptList = details.scopeDepartments?.values || details.scopeDepartments || [];
         const deptNameToIdMap = new Map<string, number>();
-        
+
         deptList.forEach((sd: any) => {
           const deptId = Number(sd.deptId || sd.DeptId || sd.id);
           // Try multiple sources for department name
-          const deptName = sd.departmentName || 
-                          sd.deptName || 
-                          sd.name || 
-                          sd.Name ||
-                          sd.dept?.name ||
-                          sd.dept?.departmentName ||
-                          sd.dept?.deptName ||
-                          '';
-          
+          const deptName = sd.departmentName ||
+            sd.deptName ||
+            sd.name ||
+            sd.Name ||
+            sd.dept?.name ||
+            sd.dept?.departmentName ||
+            sd.dept?.deptName ||
+            '';
+
           if (!isNaN(deptId) && deptName) {
             const normalizedName = deptName.toLowerCase().trim();
             if (!deptNameToIdMap.has(normalizedName)) {
@@ -374,19 +391,19 @@ export const useAuditPlanForm = () => {
             }
           }
         });
-        
+
         sensitiveAreasArray.forEach((areaStr: string) => {
           if (!areaStr || typeof areaStr !== 'string') return;
-          
+
           // Try to parse format "areaName - deptName"
           const parts = areaStr.split(' - ');
-          
+
           if (parts.length >= 2) {
             const areaName = parts[0].trim();
             const deptName = parts.slice(1).join(' - ').trim(); // Handle multiple " - " in deptName
-            
+
             const deptId = deptNameToIdMap.get(deptName.toLowerCase());
-            
+
             if (deptId && areaName) {
               if (!areasByDept[deptId]) {
                 areasByDept[deptId] = [];
@@ -416,11 +433,11 @@ export const useAuditPlanForm = () => {
           }
         });
       }
-      
+
       if (Object.keys(areasByDept).length > 0) {
         setSensitiveAreasByDept(areasByDept);
       }
-      
+
       // Extract sensitiveDeptIds - prioritize from details.sensitiveDeptIds
       if (details.sensitiveDeptIds && Array.isArray(details.sensitiveDeptIds) && details.sensitiveDeptIds.length > 0) {
         setSensitiveDeptIds(details.sensitiveDeptIds.map((id: any) => String(id)));
@@ -441,7 +458,7 @@ export const useAuditPlanForm = () => {
           setSensitiveFlag(true);
         }
       }
-      
+
       if (details.sensitiveNotes) {
         setSensitiveNotes(details.sensitiveNotes);
       }
@@ -454,13 +471,13 @@ export const useAuditPlanForm = () => {
     setShowForm,
     currentStep,
     setCurrentStep,
-    
+
     // Edit mode
     isEditMode,
     setIsEditMode,
     editingAuditId,
     setEditingAuditId,
-    
+
     // Step 1
     title,
     setTitle,
@@ -476,7 +493,7 @@ export const useAuditPlanForm = () => {
     setDrlFile,
     drlFileName,
     setDrlFileName,
-    
+
     // Step 2
     level,
     setLevel,
@@ -494,11 +511,11 @@ export const useAuditPlanForm = () => {
     setSensitiveDeptIds,
     sensitiveAreasByDept,
     setSensitiveAreasByDept,
-    
+
     // Step 3
     selectedTemplateIds,
     setSelectedTemplateIds,
-    
+
     // Step 4
     selectedLeadId,
     setSelectedLeadId,
@@ -510,7 +527,7 @@ export const useAuditPlanForm = () => {
     setPlanCreatorId,
     sendDrlToCreator,
     setSendDrlToCreator,
-    
+
     // Step 5
     kickoffMeeting,
     setKickoffMeeting,
@@ -522,7 +539,9 @@ export const useAuditPlanForm = () => {
     setDraftReportDue,
     capaDue,
     setCapaDue,
-    
+    scheduleIds,
+    setScheduleIds,
+
     // Actions
     resetForm,
     resetFormForCreate,

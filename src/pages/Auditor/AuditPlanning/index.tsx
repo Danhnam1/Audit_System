@@ -8,8 +8,12 @@ import {
   getSensitiveDepartments,
   submitToLeadAuditor,
   deleteAuditPlan,
+  deleteAuditScopeDepartment,
+  getAuditScopeDepartments,
 } from "../../../api/audits";
 import { getAuditChecklistTemplateMapsByAudit } from "../../../api/auditChecklistTemplateMaps";
+import { removeCriterionFromAudit, getCriteriaForAudit } from "../../../api/auditCriteriaMap";
+import { getAuditorsByAuditId } from "../../../api/auditTeam";
 import { unwrap } from "../../../utils/normalize";
 import { useUserId } from "../../../store/useAuthStore";
 import { validateScheduleMilestones } from "../../../helpers/businessRulesValidation";
@@ -76,6 +80,12 @@ const SQAStaffAuditPlanning = () => {
   const [selectedCriteriaByDept, setSelectedCriteriaByDept] = useState<
     Map<string, Set<string>>
   >(new Map());
+
+  // Store original scope mapping (Map<deptId, auditScopeId>) for deferred deletion
+  const [originalScopeMap, setOriginalScopeMap] = useState<Map<string, string>>(new Map());
+
+  // Store original criteria IDs for deferred deletion
+  const [originalCriteriaIds, setOriginalCriteriaIds] = useState<Set<string>>(new Set());
 
   // Conflict warning modal state
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -298,34 +308,34 @@ const SQAStaffAuditPlanning = () => {
     } | null> = [
       formState.kickoffMeeting
         ? {
-            key: "kickoffMeeting" as any,
-            value: formState.kickoffMeeting,
-            label: "Kickoff Meeting",
-          }
+          key: "kickoffMeeting" as any,
+          value: formState.kickoffMeeting,
+          label: "Kickoff Meeting",
+        }
         : null,
       formState.fieldworkStart
         ? {
-            key: "fieldworkStart" as any,
-            value: formState.fieldworkStart,
-            label: "Fieldwork Start",
-          }
+          key: "fieldworkStart" as any,
+          value: formState.fieldworkStart,
+          label: "Fieldwork Start",
+        }
         : null,
       formState.evidenceDue
         ? {
-            key: "evidenceDue" as any,
-            value: formState.evidenceDue,
-            label: "Evidence Due",
-          }
+          key: "evidenceDue" as any,
+          value: formState.evidenceDue,
+          label: "Evidence Due",
+        }
         : null,
       formState.capaDue
         ? { key: "capaDue" as any, value: formState.capaDue, label: "CAPA Due" }
         : null,
       formState.draftReportDue
         ? {
-            key: "draftReportDue" as any,
-            value: formState.draftReportDue,
-            label: "Draft Report Due",
-          }
+          key: "draftReportDue" as any,
+          value: formState.draftReportDue,
+          label: "Draft Report Due",
+        }
         : null,
     ].filter(Boolean) as any[];
 
@@ -476,7 +486,7 @@ const SQAStaffAuditPlanning = () => {
 
       // Check if all selected departments have at least one template
       const missingDepts = Array.from(selectedDeptIdsSet).filter(deptId => !deptIdsWithTemplates.has(deptId));
-      
+
       return missingDepts.length === 0;
     }
 
@@ -590,13 +600,35 @@ const SQAStaffAuditPlanning = () => {
         throw new Error(result.error || "Submission failed");
       }
 
+      const wasEditMode = formState.isEditMode;
+
+      // Handle deferred scope deletions
+      if (wasEditMode && originalScopeMap.size > 0) {
+        const currentDeptIds = new Set(formState.selectedDeptIds.map(id => String(id)));
+        const deletePromises: Promise<any>[] = [];
+
+        originalScopeMap.forEach((scopeId, deptIdKey) => {
+          if (!currentDeptIds.has(deptIdKey)) {
+            // Department was removed, call delete API
+            deletePromises.push(deleteAuditScopeDepartment(scopeId));
+          }
+        });
+
+        if (deletePromises.length > 0) {
+          try {
+            await Promise.all(deletePromises);
+          } catch (delErr) {
+            console.error("Failed to delete some scopes", delErr);
+            toast.warning("Some removed departments could not be deleted from scope.");
+          }
+        }
+      }
+
       // Refresh plans list
       try {
         await refreshPlans();
       } catch (refreshErr) {
       }
-
-      const wasEditMode = formState.isEditMode;
 
       if (
         wasEditMode &&
@@ -610,7 +642,7 @@ const SQAStaffAuditPlanning = () => {
           try {
             await handleViewDetails(String(currentAuditId));
           } catch (refreshErr) {
-           
+
           }
         }
       }
@@ -623,7 +655,7 @@ const SQAStaffAuditPlanning = () => {
         : "Create Audit plan successfully.";
       toast.success(successMsg);
     } catch (err: any) {
-      
+
       toast.error(getUserFriendlyErrorMessage(err, 'Failed to create audit plan. Please try again.'));
     } finally {
       setIsSubmittingPlan(false);
@@ -805,13 +837,78 @@ const SQAStaffAuditPlanning = () => {
       );
       formState.setSelectedDeptIds(deptIds);
 
+      // Populate scope map and selectedIds
+      // We use getAuditScopeDepartments (all) and filter because getAuditScopeDepartmentsByAuditId only returns Dept details without specific ScopeIDs
+      try {
+        const allScopeDepts = await getAuditScopeDepartments();
+        const scopeMap = new Map<string, string>();
+        const validDeptIds: string[] = [];
+
+        const scopeArr = unwrap(allScopeDepts);
+
+        if (Array.isArray(scopeArr)) {
+          // Filter strictly for this audit
+          const currentAuditScopes = scopeArr.filter((sd: any) =>
+            String(sd.auditId || sd.AuditId || sd.id) === String(auditId) ||
+            (sd.audit && String(sd.audit.id) === String(auditId))
+          );
+
+          currentAuditScopes.forEach((sd: any) => {
+            // Filter out Inactive
+            if (sd.status === 'Inactive') return;
+
+            const dId = String(sd.deptId);
+            // AuditScopeDepartment entities usually have 'id' or 'auditScopeId'
+            const sId = sd.auditScopeId || sd.AuditScopeId || sd.id || sd.$id;
+
+            if (sId) {
+              // Determine true ID if sId is just a JSON ref, but usually 'id' or 'auditScopeId' is the PK
+              // If it's a small number like "2", check if it's potentially a key
+              scopeMap.set(dId, String(sId));
+            }
+
+            if (dId && !validDeptIds.includes(dId)) {
+              validDeptIds.push(dId);
+            }
+          });
+        }
+        setOriginalScopeMap(scopeMap);
+
+        // Force update selectedDeptIds to match the fresh valid ones from API
+        if (validDeptIds.length > 0) {
+          formState.setSelectedDeptIds(validDeptIds);
+        } else {
+          // If no valid scopes found from the "All" endpoint, try falling back or clearing
+          // But be careful not to clear if the "All" endpoint just failed to load or returned nothing due to permissions
+          // For now, if we found 0, we assume 0.
+          formState.setSelectedDeptIds([]);
+        }
+      } catch (err) {
+        console.warn("Failed to load scope map for deletion tracking", err);
+        // Fallback or leave as is (from initial load)
+      }
+
       // Ensure sensitive areas are loaded after departments are set
       // This ensures SensitiveAreaForm can properly display the areas
       // The sensitive areas were already loaded above, but we need to ensure
       // the component re-renders with the correct data
 
       // Load criteria
-      const criteriaList = unwrap(detailsWithId.criteria);
+      // Use fresh API call instead of detailsWithId to ensure we get current active criteria
+      // and avoid stale/cached data from the list view
+      let criteriaList: any[] = [];
+      try {
+        const criteriaRes = await getCriteriaForAudit(auditId);
+        const criteriaRaw = unwrap(criteriaRes);
+        if (Array.isArray(criteriaRaw)) {
+          // Filter out Inactive criteria if any are returned
+          criteriaList = criteriaRaw.filter((c: any) => c.status !== 'Inactive');
+        }
+      } catch (critErr) {
+        console.warn("Failed to load fresh criteria, falling back to details", critErr);
+        criteriaList = unwrap(detailsWithId.criteria) || [];
+      }
+
       const criteriaIds = criteriaList.map((c: any) =>
         String(c.criteriaId || c.id || c)
       );
@@ -819,28 +916,24 @@ const SQAStaffAuditPlanning = () => {
 
       // Build selectedCriteriaByDept map
       const criteriaByDeptMap = new Map<string, Set<string>>();
-      scopeDepts.forEach((sd: any) => {
-        const deptId = String(sd.deptId || sd.id || sd);
-        const deptCriteria = criteriaList.filter((c: any) => {
-          // Match criteria to department if they have deptId or are shared
-          return !c.deptId || String(c.deptId) === deptId;
-        });
-        const criteriaSet = new Set(
-          deptCriteria.map((c: any) => String(c.criteriaId || c.id || c))
-        );
-        if (criteriaSet.size > 0) {
-          criteriaByDeptMap.set(deptId, criteriaSet);
-        }
-      });
-      // Also add shared criteria
-      const sharedCriteria = criteriaList.filter((c: any) => !c.deptId);
-      if (sharedCriteria.length > 0) {
-        const sharedSet = new Set(
-          sharedCriteria.map((c: any) => String(c.criteriaId || c.id || c))
-        );
-        criteriaByDeptMap.set("shared", sharedSet);
+      // Track original criteria for deferred deletion
+      const originalCriteriaSet = new Set<string>();
+
+      // Put all loaded criteria into 'shared' key to ensure they are visible in Step2Scope
+      // because Step2Scope currently expects a single shared list for display/editing
+      const allCriteriaIds = new Set(
+        criteriaList.map((c: any) => String(c.criteriaId || c.id || c))
+      );
+      if (allCriteriaIds.size > 0) {
+        criteriaByDeptMap.set("shared", allCriteriaIds);
       }
       setSelectedCriteriaByDept(criteriaByDeptMap);
+
+      // Populate original set from the loaded list (simply all criteria IDs associated with this audit)
+      criteriaList.forEach((c: any) => {
+        originalCriteriaSet.add(String(c.criteriaId || c.id || c));
+      });
+      setOriginalCriteriaIds(originalCriteriaSet);
 
       // Load templates
       try {
@@ -861,36 +954,39 @@ const SQAStaffAuditPlanning = () => {
       }
 
       // Load team - ensure we only get teams for this specific audit
-      const teams = unwrap(detailsWithId.auditTeams);
-      // Filter teams to ensure they belong to this audit (safety check)
-      const teamsForThisAudit = teams.filter((t: any) => {
-        const teamAuditId = String(t.auditId || t.$auditId || t.AuditId || '');
-        return teamAuditId === String(auditId);
-      });
-      
-      const leadAuditor = teamsForThisAudit.find(
-        (t: any) => t.isLead === true || t.isLeadAuditor === true
-      );
-      const auditors = teamsForThisAudit
-        .filter((t: any) => {
-          const role = String(t.roleInTeam || "")
-            .toLowerCase()
-            .replace(/\s+/g, "");
-          const isLead = t.isLead === true || t.isLeadAuditor === true;
-          return !isLead && role !== "auditeeowner";
-        })
-        .map((t: any) => String(t.userId || t.id || t.$id));
+      // Load team using specific API as requested
+      // GET /api/AuditTeam/auditors/{auditId}
+      try {
+        const teamMembersRaw = await getAuditorsByAuditId(auditId); // ensure this is imported from api/auditTeam
+        const teamMembers = unwrap(teamMembersRaw);
+        const teamsForThisAudit = Array.isArray(teamMembers) ? teamMembers : [];
 
-      // Note: Auditee Owners are loaded per department in Step4Team component
-      // They are automatically populated based on selectedDeptIds
-      // So we don't need to explicitly load them here
-
-      if (leadAuditor) {
-        formState.setSelectedLeadId(
-          String(leadAuditor.userId || leadAuditor.id || leadAuditor.$id)
+        const leadAuditor = teamsForThisAudit.find(
+          (t: any) => t.isLead === true || t.isLeadAuditor === true
         );
+
+        const auditors = teamsForThisAudit
+          .filter((t: any) => {
+            const role = String(t.roleInTeam || "")
+              .toLowerCase()
+              .replace(/\s+/g, "");
+            const isLead = t.isLead === true || t.isLeadAuditor === true;
+            // Filter: Must not be Lead, Must not be AuditeeOwner
+            return !isLead && role !== "auditeeowner";
+          })
+          .map((t: any) => String(t.userId || t.id || t.$id));
+
+        if (leadAuditor) {
+          formState.setSelectedLeadId(
+            String(leadAuditor.userId || leadAuditor.id || leadAuditor.$id)
+          );
+        }
+        formState.setSelectedAuditorIds(auditors);
+      } catch (teamErr) {
+        console.error("Failed to load team from specific API", teamErr);
+        // Fallback or empty
+        formState.setSelectedAuditorIds([]);
       }
-      formState.setSelectedAuditorIds(auditors);
 
       // Note: Auditee Owners are loaded per department in Step4Team component
       // They are automatically populated based on selectedDeptIds
@@ -931,13 +1027,13 @@ const SQAStaffAuditPlanning = () => {
 
       formState.setKickoffMeeting(
         getScheduleDate("kickoffmeeting") ||
-          getScheduleDate("kickoff meeting") ||
-          ""
+        getScheduleDate("kickoff meeting") ||
+        ""
       );
       formState.setFieldworkStart(
         getScheduleDate("fieldworkstart") ||
-          getScheduleDate("fieldwork start") ||
-          ""
+        getScheduleDate("fieldwork start") ||
+        ""
       );
       formState.setEvidenceDue(
         getScheduleDate("evidencedue") || getScheduleDate("evidence due") || ""
@@ -947,8 +1043,8 @@ const SQAStaffAuditPlanning = () => {
       );
       formState.setDraftReportDue(
         getScheduleDate("draftreportdue") ||
-          getScheduleDate("draft report due") ||
-          ""
+        getScheduleDate("draft report due") ||
+        ""
       );
 
       // Set edit mode
@@ -1066,11 +1162,10 @@ const SQAStaffAuditPlanning = () => {
                 }
               }}
               disabled={isSubmittingPlan}
-              className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-md ${
-                isSubmittingPlan
-                  ? "bg-gray-400 cursor-not-allowed text-gray-200"
-                  : "bg-gradient-to-r from-primary-600 to-primary-700 hover:shadow-lg text-white"
-              }`}
+              className={`px-6 py-2.5 rounded-lg font-medium transition-all duration-150 shadow-md ${isSubmittingPlan
+                ? "bg-gray-400 cursor-not-allowed text-gray-200"
+                : "bg-gradient-to-r from-primary-600 to-primary-700 hover:shadow-lg text-white"
+                }`}
             >
               {isSubmittingPlan ? "Creating..." : "+ Create New Plan"}
             </button>
@@ -1198,35 +1293,32 @@ const SQAStaffAuditPlanning = () => {
                     <div key={step.num} className="flex items-center flex-1">
                       <div className="flex flex-col items-center">
                         <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
-                            formState.currentStep === step.num
-                              ? "bg-primary-600 text-white ring-4 ring-primary-100"
-                              : formState.currentStep > step.num
+                          className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${formState.currentStep === step.num
+                            ? "bg-primary-600 text-white ring-4 ring-primary-100"
+                            : formState.currentStep > step.num
                               ? "bg-green-500 text-white"
                               : "bg-gray-200 text-gray-600"
-                          }`}
+                            }`}
                         >
                           {formState.currentStep > step.num ? "✓" : step.num}
                         </div>
                         <span
-                          className={`text-xs mt-1 font-medium ${
-                            formState.currentStep === step.num
-                              ? "text-primary-600"
-                              : formState.currentStep > step.num
+                          className={`text-xs mt-1 font-medium ${formState.currentStep === step.num
+                            ? "text-primary-600"
+                            : formState.currentStep > step.num
                               ? "text-green-600"
                               : "text-gray-500"
-                          }`}
+                            }`}
                         >
                           {step.label}
                         </span>
                       </div>
                       {idx < 4 && (
                         <div
-                          className={`h-1 flex-1 mx-2 rounded transition-all ${
-                            formState.currentStep > step.num
-                              ? "bg-green-500"
-                              : "bg-gray-200"
-                          }`}
+                          className={`h-1 flex-1 mx-2 rounded transition-all ${formState.currentStep > step.num
+                            ? "bg-green-500"
+                            : "bg-gray-200"
+                            }`}
                         ></div>
                       )}
                     </div>
@@ -1266,7 +1358,7 @@ const SQAStaffAuditPlanning = () => {
                         const fromDate = new Date(formState.periodFrom);
                         const toDate = new Date(formState.periodTo);
                         let errorMessage = null;
-                        
+
                         if (
                           isNaN(fromDate.getTime()) ||
                           isNaN(toDate.getTime())
@@ -1287,7 +1379,7 @@ const SQAStaffAuditPlanning = () => {
                           const MS_PER_DAY = 24 * 60 * 60 * 1000;
                           const daysDiff = Math.floor(
                             (toDate.getTime() - fromDate.getTime()) /
-                              MS_PER_DAY
+                            MS_PER_DAY
                           );
                           const MIN_PERIOD_DAYS = 16;
                           if (daysDiff < MIN_PERIOD_DAYS) {
@@ -1300,7 +1392,7 @@ const SQAStaffAuditPlanning = () => {
                             );
                           }
                         }
-                        
+
                         return errorMessage ? (
                           <div className="mt-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
                             {errorMessage}
@@ -1346,6 +1438,23 @@ const SQAStaffAuditPlanning = () => {
                         formState.setSelectedCriteriaIds(Array.from(union));
                       }}
                       selectedCriteriaByDeptMap={selectedCriteriaByDept}
+                      onCriteriaRemove={async (criteriaId) => {
+                        if (formState.isEditMode && formState.editingAuditId) {
+                          if (!window.confirm("Are you sure you want to delete this standard permanently?")) {
+                            return false;
+                          }
+                          try {
+                            await removeCriterionFromAudit(formState.editingAuditId, criteriaId);
+                            toast.success("Standard removed successfully");
+                            return true;
+                          } catch (err) {
+                            console.error(err);
+                            toast.error("Failed to remove standard");
+                            return false;
+                          }
+                        }
+                        return true;
+                      }}
                     />
                     <SensitiveAreaForm
                       sensitiveFlag={formState.sensitiveFlag}
@@ -1365,7 +1474,7 @@ const SQAStaffAuditPlanning = () => {
                       departments={departments}
                       level={formState.level}
                     />
-                    
+
                   </div>
                 )}
 
@@ -1443,11 +1552,10 @@ const SQAStaffAuditPlanning = () => {
                     }
                   }}
                   disabled={formState.currentStep === 1}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    formState.currentStep === 1
-                      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                  }`}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${formState.currentStep === 1
+                    ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                    }`}
                 >
                   Previous
                 </button>
@@ -1461,11 +1569,10 @@ const SQAStaffAuditPlanning = () => {
                         }
                       }}
                       disabled={!canContinue}
-                      className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                        canContinue
-                          ? "bg-primary-600 text-white hover:bg-primary-700"
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      }`}
+                      className={`px-6 py-2 rounded-lg font-medium transition-colors ${canContinue
+                        ? "bg-primary-600 text-white hover:bg-primary-700"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        }`}
                     >
                       Next
                     </button>
@@ -1473,17 +1580,16 @@ const SQAStaffAuditPlanning = () => {
                     <button
                       onClick={handleSubmitPlan}
                       disabled={!canContinue || isSubmittingPlan}
-                      className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                        canContinue && !isSubmittingPlan
-                          ? "bg-primary-600 text-white hover:bg-primary-700"
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      }`}
+                      className={`px-6 py-2 rounded-lg font-medium transition-colors ${canContinue && !isSubmittingPlan
+                        ? "bg-primary-600 text-white hover:bg-primary-700"
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        }`}
                     >
                       {isSubmittingPlan
                         ? "Submitting..."
                         : formState.isEditMode
-                        ? "Update Plan"
-                        : "Create Plan"}
+                          ? "Update Plan"
+                          : "Create Plan"}
                     </button>
                   )}
                 </div>

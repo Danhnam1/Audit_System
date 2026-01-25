@@ -1,5 +1,5 @@
 import { toast } from "react-toastify";
-import { createAudit, updateAuditPlan, setSensitiveFlag, getAuditScopeDepartments, addAuditScopeDepartment, deleteAuditScopeDepartment } from "../api/audits";
+import { createAudit, updateAuditPlan, setSensitiveFlag, getAuditScopeDepartments, addAuditScopeDepartment, deleteAuditScopeDepartment, getAuditScopeDepartmentsByAuditId } from "../api/audits";
 // import { createAuditChecklistItemsFromTemplate } from "../api/checklists";
 import { addCriterionToAudit, getCriteriaForAudit, removeCriterionFromAudit } from "../api/auditCriteriaMap";
 import { addTeamMember, deleteTeamMember, getAuditTeam } from "../api/auditTeam";
@@ -112,7 +112,7 @@ export const validatePlanSubmission = (
 
     // Check if all selected departments have at least one template
     const missingDepts = Array.from(selectedDeptIdsSet).filter(deptId => !deptIdsWithTemplates.has(deptId));
-    
+
     if (missingDepts.length > 0) {
       toast.warning(`Please select at least one Checklist Template for each selected department (Step 3).`);
       return { isValid: false, step: 3 };
@@ -503,22 +503,35 @@ export const attachCriteriaToAudit = async (
   formState: FormState,
   selectedCriteriaByDept: Map<string, Set<string>>
 ): Promise<void> => {
-  const criteriaSet = new Set<string>();
+  const promises: Promise<any>[] = [];
+
+  // Fallback department: use the first selected department if available, otherwise 0
+  const fallbackDeptId = formState.selectedDeptIds.length > 0 ? Number(formState.selectedDeptIds[0]) : 0;
 
   if (selectedCriteriaByDept.size > 0) {
-    selectedCriteriaByDept.forEach((criteriaIds) => {
-      criteriaIds.forEach((id) => criteriaSet.add(String(id)));
+    selectedCriteriaByDept.forEach((criteriaIds, deptIdKey) => {
+      // If key is 'shared', used 0 (or undefined if backend prefers)
+      // Per user request: pass deptId.
+      let deptId = deptIdKey === 'shared' ? 0 : Number(deptIdKey);
+
+      // If deptId is 0 or NaN, use fallback
+      if (deptId === 0 || isNaN(deptId)) {
+        deptId = fallbackDeptId;
+      }
+
+      criteriaIds.forEach((criteriaId) => {
+        promises.push(addCriterionToAudit(auditId, String(criteriaId), deptId));
+      });
     });
   } else if (formState.selectedCriteriaIds.length > 0) {
-    formState.selectedCriteriaIds.forEach((id) => criteriaSet.add(String(id)));
+    // Fallback if map is empty but selectedCriteriaIds has items (legacy or simple mode)
+    formState.selectedCriteriaIds.forEach((id) => {
+      promises.push(addCriterionToAudit(auditId, String(id), fallbackDeptId));
+    });
   }
 
-  if (criteriaSet.size > 0) {
-    await Promise.allSettled(
-      Array.from(criteriaSet).map((criteriaId) =>
-        addCriterionToAudit(auditId, String(criteriaId))
-      )
-    );
+  if (promises.length > 0) {
+    await Promise.allSettled(promises);
   } else {
     toast.warning("No criteria selected to attach to audit.");
   }
@@ -765,65 +778,61 @@ export const submitAuditPlan = async (
     }
 
     try {
-      // 4.2: Update Audit Scope Departments - DELETE by ID then POST (no PUT)
-      // Strategy: Delete all existing departments first, then POST new ones
-      const allScopeDepts = await getAuditScopeDepartments();
-      const existingScopeDepts = (Array.isArray(allScopeDepts) ? allScopeDepts : [])
-        .filter((sd: any) => String(sd.auditId || sd.$auditId || sd.AuditId) === String(auditId))
-        .filter((sd: any) => {
-          const status = String(sd.status || sd.Status || '').toLowerCase();
-          return status === 'active';
-        });
+      // 4.2: Update Audit Scope Departments - Differential Update
+      // Strategy: Only add NEW departments. Deletions are handled by deferred logic in index.tsx
 
-      // Step 1: DELETE all existing departments by ID
-      const deleteDeptResults = await Promise.allSettled(
-        existingScopeDepts.map((scopeDept: any) => {
-          const scopeId = scopeDept.auditScopeId || scopeDept.AuditScopeId || scopeDept.id || scopeDept.$id;
-          if (scopeId) {
-            return deleteAuditScopeDepartment(scopeId);
-          }
-          return Promise.resolve();
-        })
-      );
-
-      // Check for DELETE failures
-      const deleteDeptFailures = deleteDeptResults.filter((r) => r.status === "rejected");
-      if (deleteDeptFailures.length > 0) {
-        console.warn("[Update Departments] Some DELETE operations failed:", deleteDeptFailures);
+      // Get currently active scope departments for this audit
+      let existingDeptIds = new Set<string>();
+      try {
+        const fullScopeDepts = await getAuditScopeDepartmentsByAuditId(auditId);
+        const scopeArr = unwrap(fullScopeDepts);
+        if (Array.isArray(scopeArr)) {
+          scopeArr.forEach((sd: any) => {
+            if (sd.status === 'Inactive') return;
+            existingDeptIds.add(String(sd.deptId));
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to fetch existing scopes for diff, falling back to add all safe mode", err);
       }
-
-      // Add a small delay to ensure backend has committed DELETE operations
-      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Determine target dept IDs
       let targetDeptIds: string[] = [];
       if (formState.level === "academy" || formState.level.toLowerCase() === "academy") {
         targetDeptIds = departments.map((d) => String(d.deptId));
-      } else if (formState.selectedDeptIds.length > 0) {
+      } else if ((formState.level === "department" || formState.level.toLowerCase() === "department") && formState.selectedDeptIds.length > 0) {
         targetDeptIds = formState.selectedDeptIds;
       }
 
-      // Step 2: POST all new departments (after DELETE completes)
-      const successfulDepts = await Promise.allSettled(
-        targetDeptIds.map((deptIdStr) => addAuditScopeDepartment(auditId, Number(deptIdStr)))
-      ).then((results) =>
-        results
-          .filter((r) => r.status === "fulfilled")
-          .map((r) => (r as PromiseFulfilledResult<any>).value)
-          .filter(Boolean)
-      );
+      // Identify NEW departments to add
+      const deptsToAdd = targetDeptIds.filter(id => !existingDeptIds.has(String(id)));
 
-      // Set sensitive flags for all departments
-      if (successfulDepts.length > 0) {
-        await setSensitiveFlagsForDepartments(auditId, formState, successfulDepts, departments);
+      if (deptsToAdd.length > 0) {
+        await Promise.allSettled(
+          deptsToAdd.map(async (deptId) => {
+            // Validation before add is good practice
+            const startDate = formState.periodFrom;
+            const endDate = formState.periodTo;
+            if (startDate && endDate) {
+              const deptValidation = await validateBeforeAddDepartment(
+                auditId,
+                Number(deptId),
+                startDate,
+                endDate
+              );
+              if (!deptValidation.isValid) return Promise.reject(deptValidation.message);
+            }
+            return addAuditScopeDepartment(auditId, Number(deptId));
+          })
+        );
       }
+    } catch (deptErr) {
+      console.error("Failed to update scope departments", deptErr);
+      toast.warning("Some department updates failed. Please check the plan.");
 
-      // Trigger refresh in modal by dispatching event and updating localStorage
-      // Do this after all department operations complete
-      // Add a small delay to ensure database has committed the changes
+      // Trigger refresh in modal
       setTimeout(() => {
         try {
-          console.log(`[Update Departments] Dispatching refresh event for auditId: ${auditId}`);
           const event = new CustomEvent('auditPlanUpdated', {
             detail: { auditId },
             bubbles: true,
@@ -831,7 +840,7 @@ export const submitAuditPlan = async (
           });
           window.dispatchEvent(event);
           document.dispatchEvent(event);
-          
+
           // Also update localStorage for cross-tab communication
           localStorage.setItem(
             'auditPlanUpdated',
@@ -845,45 +854,70 @@ export const submitAuditPlan = async (
           console.error('[Update Departments] Failed to dispatch refresh event', eventErr);
         }
       }, 500); // 500ms delay to ensure database commit
-    } catch (scopeErr) {
-      console.error("Update departments failed", scopeErr);
-      toast.error("Failed to update departments. Please try again.");
     }
 
     try {
-      // 4.2.1: Update Audit Criteria Map - DELETE by ID then POST (no PUT)
-      // Strategy: Delete all existing criteria first, then POST new ones
+      // 4.2.1: Update Audit Criteria Map - Differential Update
+      // Strategy: Determine what to delete and what to add/update.
       const existingCriteria = await getCriteriaForAudit(auditId);
-      const existingCriteriaIds = (Array.isArray(existingCriteria) ? existingCriteria : [])
-        .map((c: any) => c.criteriaId || c.id || c)
-        .filter((id: any) => id != null)
-        .map((id: any) => String(id).trim());
-
-      // Step 1: DELETE all existing criteria by ID
-      const deleteCriteriaResults = await Promise.allSettled(
-        existingCriteriaIds.map((criteriaId: string) =>
-          removeCriterionFromAudit(auditId, criteriaId)
-        )
+      const existingCriteriaIds = new Set(
+        (Array.isArray(existingCriteria) ? existingCriteria : [])
+          .map((c: any) => String(c.criteriaId || c.id || c).trim())
+          .filter(Boolean)
       );
 
-      // Check for DELETE failures
-      const deleteCriteriaFailures = deleteCriteriaResults.filter((r) => r.status === "rejected");
-      if (deleteCriteriaFailures.length > 0) {
-        console.warn("[Update Criteria] Some DELETE operations failed:", deleteCriteriaFailures);
+      // Determine target criteria map (ID -> DeptID)
+      const targetCriteriaMap = new Map<string, number>();
+
+      // Fallback department: use the first selected department if available, otherwise 0
+      const fallbackDeptId = formState.selectedDeptIds.length > 0 ? Number(formState.selectedDeptIds[0]) : 0;
+
+      if (selectedCriteriaByDept.size > 0) {
+        selectedCriteriaByDept.forEach((criteriaIds, deptIdKey) => {
+          let deptId = deptIdKey === 'shared' ? 0 : Number(deptIdKey);
+          if (deptId === 0 || isNaN(deptId)) {
+            deptId = fallbackDeptId;
+          }
+          criteriaIds.forEach(cId => {
+            targetCriteriaMap.set(String(cId).trim(), deptId);
+          });
+        });
+      } else {
+        // Fallback
+        const uniqueCriteriaIds = new Set(
+          formState.selectedCriteriaIds.map((id) => String(id).trim()).filter(Boolean)
+        );
+        uniqueCriteriaIds.forEach(cId => {
+          targetCriteriaMap.set(cId, fallbackDeptId);
+        });
       }
 
-      // Add a small delay to ensure backend has committed DELETE operations
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      const targetCriteriaIds = new Set(targetCriteriaMap.keys());
 
-      // Step 2: POST all new criteria (after DELETE completes and delay)
-      const uniqueCriteriaIds = Array.from(
-        new Set(formState.selectedCriteriaIds.map((id) => String(id).trim()).filter(Boolean))
-      );
-      await Promise.allSettled(
-        uniqueCriteriaIds.map((criteriaId: string) =>
-          addCriterionToAudit(auditId, criteriaId)
-        )
-      );
+      // Identify items to delete: present in existing but NOT in target
+      const toDelete = Array.from(existingCriteriaIds).filter(id => !targetCriteriaIds.has(id));
+
+      // Execute Deletions
+      if (toDelete.length > 0) {
+        const deleteResults = await Promise.allSettled(
+          toDelete.map((criteriaId) => removeCriterionFromAudit(auditId, criteriaId))
+        );
+        const failures = deleteResults.filter((r) => r.status === "rejected");
+        if (failures.length > 0) {
+          console.warn(`[Update Criteria] Failed to delete ${failures.length} items.`, failures);
+        }
+        // Small delay to ensure consistency
+        await new Promise(r => setTimeout(r, 200));
+      }
+
+      // Execute Additions/Updates (Upsert)
+      // We upsert ALL target items to ensure Department ID is updated/correct
+      const toUpsert = Array.from(targetCriteriaMap.entries());
+      if (toUpsert.length > 0) {
+        await Promise.allSettled(
+          toUpsert.map(([cId, deptId]) => addCriterionToAudit(auditId, cId, deptId))
+        );
+      }
     } catch (criteriaErr) {
       console.error("Update criteria failed", criteriaErr);
       toast.error("Failed to update criteria. Please try again.");
@@ -974,59 +1008,73 @@ export const submitAuditPlan = async (
     }
 
     try {
-      // 4.4: Update Schedule - Use PUT only (no DELETE or POST)
+      // 4.4: Update Schedule - Use PUT for existing, POST for new
       const existingSchedules = await getAuditSchedules(auditId);
+
+      // Normalize helper
+      const normalize = (s: string) => s ? s.toLowerCase().replace(/\s+/g, '') : '';
+
       const schedulePairs = [
         { name: MILESTONE_NAMES.KICKOFF, date: formState.kickoffMeeting },
         { name: MILESTONE_NAMES.FIELDWORK, date: formState.fieldworkStart },
         { name: MILESTONE_NAMES.EVIDENCE, date: formState.evidenceDue },
         { name: MILESTONE_NAMES.CAPA, date: formState.capaDue },
         { name: MILESTONE_NAMES.DRAFT, date: formState.draftReportDue },
-      ].filter((pair) => pair.date);
+      ].filter((pair) => pair.date); // Only process if date is set
 
       const existingSchedulesArray = Array.isArray(existingSchedules) ? existingSchedules : [];
-      const existingSchedulesMap = new Map(
-        existingSchedulesArray.map((s: any) => [
-          s.milestoneName || s.MilestoneName,
-          s,
-        ])
-      );
+      // Map existing schedules by normalized name for robust matching
+      const existingSchedulesMap = new Map();
+      existingSchedulesArray.forEach((s: any) => {
+        const name = s.milestoneName || s.MilestoneName || s.name;
+        if (name) existingSchedulesMap.set(normalize(name), s);
+      });
 
       // Create new schedules or update existing ones
       const scheduleResults = await Promise.allSettled(
         schedulePairs.map(async (pair) => {
-          const existing = existingSchedulesMap.get(pair.name);
+          const pairNameNorm = normalize(pair.name);
+          const existing = existingSchedulesMap.get(pairNameNorm);
+
           if (existing) {
-            // Update existing schedule using PUT
-            const scheduleId = existing.scheduleId || existing.ScheduleId || existing.id;
+            // Update existing schedule using PUT /api/AuditSchedule/{scheduleId}
+            const scheduleId = existing.scheduleId || existing.ScheduleId || existing.id || existing.$id;
+
             if (scheduleId) {
-              const result = await updateAuditSchedule(scheduleId, {
-                milestoneName: pair.name,
-                dueDate: new Date(pair.date!).toISOString(),
-                notes: "",
-                status: 'Active',
-              });
-              console.log(`[Update Schedule] Updated ${pair.name} (${scheduleId}):`, result);
-              return result;
-            }
-          } else {
-            // Create new schedule using POST
-            try {
-              const result = await addAuditSchedule({
-                auditId: auditId,
-                milestoneName: pair.name,
-                dueDate: new Date(pair.date!).toISOString(),
-                notes: "",
-                status: 'Active',
-              });
-              console.log(`[Update Schedule] Created ${pair.name} using POST:`, result);
-              return result;
-            } catch (error) {
-              console.error(`[Update Schedule] Failed to create ${pair.name}:`, error);
-              throw error;
+              try {
+                // Ensure date is ISO format
+                const isoDate = new Date(pair.date!).toISOString();
+
+                const result = await updateAuditSchedule(scheduleId, {
+                  milestoneName: pair.name, // Use the canonical name
+                  dueDate: isoDate,
+                  notes: existing.notes || existing.Notes || "",
+                  status: existing.status || existing.Status || 'Active',
+                });
+                console.log(`[Update Schedule] Updated ${pair.name} (${scheduleId}):`, result);
+                return result;
+              } catch (err) {
+                console.error(`[Update Schedule] Failed to update ${pair.name}:`, err);
+                throw err;
+              }
             }
           }
-          return null;
+
+          // Create new schedule using POST
+          try {
+            const result = await addAuditSchedule({
+              auditId: auditId,
+              milestoneName: pair.name,
+              dueDate: new Date(pair.date!).toISOString(),
+              notes: "",
+              status: 'Active',
+            });
+            console.log(`[Update Schedule] Created ${pair.name} using POST:`, result);
+            return result;
+          } catch (error) {
+            console.error(`[Update Schedule] Failed to create ${pair.name}:`, error);
+            throw error;
+          }
         })
       );
 
@@ -1034,9 +1082,6 @@ export const submitAuditPlan = async (
       const scheduleFailures = scheduleResults.filter((r) => r.status === "rejected");
       if (scheduleFailures.length > 0) {
         console.error("[Update Schedule] Some schedules failed:", scheduleFailures);
-        scheduleFailures.forEach((failure) => {
-          console.error("[Update Schedule] Failure:", failure);
-        });
       }
 
       // Note: No DELETE operations - schedules not in form are left as-is
@@ -1054,7 +1099,7 @@ export const submitAuditPlan = async (
           });
           window.dispatchEvent(event);
           document.dispatchEvent(event);
-          
+
           // Also update localStorage for cross-tab communication
           localStorage.setItem(
             'auditPlanUpdated',
@@ -1135,7 +1180,7 @@ export const submitAuditPlan = async (
         });
         window.dispatchEvent(event);
         document.dispatchEvent(event);
-        
+
         // Also update localStorage for cross-tab communication
         localStorage.setItem(
           'auditPlanUpdated',
