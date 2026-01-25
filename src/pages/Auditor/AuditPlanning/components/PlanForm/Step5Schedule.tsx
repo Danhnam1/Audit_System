@@ -64,6 +64,7 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Kickoff Meeting
+            <span className="ml-1 text-red-500">*</span>
             <InfoHint text="Kickoff meeting to align objectives, scope, and audit schedule with all stakeholders." />
           </label>
           <input
@@ -72,13 +73,14 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             onChange={(e) => onKickoffChange(e.target.value)}
             placeholder="dd/mm/yyyy"
             {...dateAttrs}
-            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.kickoffMeeting ? 'border-red-500' : 'border-gray-300'}`}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
           {errors.kickoffMeeting && <p className="text-xs text-red-600 mt-1">{errors.kickoffMeeting}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Fieldwork Start
+            <span className="ml-1 text-red-500">*</span>
             <InfoHint text="The date when auditors start fieldwork activities (interviews, reviews, evidence collection)." />
           </label>
           <input
@@ -87,13 +89,14 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             onChange={(e) => onFieldworkChange(e.target.value)}
             placeholder="dd/mm/yyyy"
             {...dateAttrs}
-            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.fieldworkStart ? 'border-red-500' : 'border-gray-300'}`}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
           {errors.fieldworkStart && <p className="text-xs text-red-600 mt-1">{errors.fieldworkStart}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Evidence Due
+            <span className="ml-1 text-red-500">*</span>
             <InfoHint text="Deadline for auditees to provide all required evidence to the audit team." />
           </label>
           <input
@@ -102,13 +105,14 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             onChange={(e) => onEvidenceChange(e.target.value)}
             placeholder="dd/mm/yyyy"
             {...dateAttrs}
-            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.evidenceDue ? 'border-red-500' : 'border-gray-300'}`}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
           {errors.evidenceDue && <p className="text-xs text-red-600 mt-1">{errors.evidenceDue}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             CAPA Due
+            <span className="ml-1 text-red-500">*</span>
             <InfoHint text="Deadline to complete corrective and preventive actions (CAPA) for the audit findings." />
           </label>
           <input
@@ -117,13 +121,14 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             onChange={(e) => onCapaChange(e.target.value)}
             placeholder="dd/mm/yyyy"
             {...dateAttrs}
-            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.capaDue ? 'border-red-500' : 'border-gray-300'}`}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
           {errors.capaDue && <p className="text-xs text-red-600 mt-1">{errors.capaDue}</p>}
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Report Due
+            <span className="ml-1 text-red-500">*</span>
             <InfoHint text="Deadline for auditors to complete the report and submit it to the Lead Auditor for review. This milestone is used to track reporting progress." />
           </label>
           <input
@@ -132,7 +137,7 @@ export const Step5Schedule: React.FC<Step5ScheduleProps> = ({
             onChange={(e) => onDraftReportChange(e.target.value)}
             placeholder="dd/mm/yyyy"
             {...dateAttrs}
-            className={`w-full border rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500 ${errors.draftReportDue ? 'border-red-500' : 'border-gray-300'}`}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm placeholder:font-normal focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
           {errors.draftReportDue && <p className="text-xs text-red-600 mt-1">{errors.draftReportDue}</p>}
         </div>

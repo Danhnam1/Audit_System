@@ -503,9 +503,22 @@ const SQAStaffAuditPlanning = () => {
   }, [formState.selectedLeadId, formState.selectedAuditorIds]);
 
   const validateStep5 = useMemo(() => {
+    const requiredFilled =
+      !!formState.kickoffMeeting &&
+      !!formState.fieldworkStart &&
+      !!formState.evidenceDue &&
+      !!formState.capaDue &&
+      !!formState.draftReportDue;
     const scheduleErrorMessages = Object.values(scheduleErrors).filter(Boolean);
-    return scheduleErrorMessages.length === 0;
-  }, [scheduleErrors]);
+    return requiredFilled && scheduleErrorMessages.length === 0;
+  }, [
+    scheduleErrors,
+    formState.kickoffMeeting,
+    formState.fieldworkStart,
+    formState.evidenceDue,
+    formState.capaDue,
+    formState.draftReportDue,
+  ]);
 
   const canContinue = useMemo(() => {
     switch (formState.currentStep) {

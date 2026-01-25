@@ -141,6 +141,21 @@ export const validatePlanSubmission = (
   }
 
   // Schedule validation
+  const missingScheduleFields: string[] = [];
+  if (!formState.kickoffMeeting) missingScheduleFields.push("Kickoff Meeting");
+  if (!formState.fieldworkStart) missingScheduleFields.push("Fieldwork Start");
+  if (!formState.evidenceDue) missingScheduleFields.push("Evidence Due");
+  if (!formState.capaDue) missingScheduleFields.push("CAPA Due");
+  if (!formState.draftReportDue) missingScheduleFields.push("Draft Report Due");
+
+  if (missingScheduleFields.length > 0) {
+    toast.warning(
+      "Please complete all schedule dates (Step 5):\n\n" +
+        missingScheduleFields.join("\n")
+    );
+    return { isValid: false, step: 5 };
+  }
+
   const scheduleErrorMessages = Object.values(scheduleErrors).filter(Boolean);
   if (scheduleErrorMessages.length > 0) {
     toast.error("Invalid schedule:\n\n" + scheduleErrorMessages.join("\n"));
