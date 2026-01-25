@@ -1426,7 +1426,7 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
                     {/* Suggestions List */}
                     {suggestions.length > 0 ? (
                       <div className="space-y-4">
-                        <h4 className="text-lg font-semibold text-gray-900">Các gợi ý Root Cause:</h4>
+                        <h4 className="text-lg font-semibold text-gray-900">Root Cause suggestions:</h4>
                         {suggestions.map((suggestion: SuggestedRootCause, index: number) => (
                         <div
                           key={index}

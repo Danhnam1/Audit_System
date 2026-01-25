@@ -1787,7 +1787,7 @@ const [findingTime, setFindingTime] = useState(() => {
                   {/* Suggestions List */}
                   {aiSuggestions.length > 0 ? (
                     <div className="space-y-4">
-                      <h4 className="text-lg font-semibold text-gray-900">Các gợi ý Root Cause:</h4>
+                      <h4 className="text-lg font-semibold text-gray-900">Root Cause suggestions:</h4>
                       {aiSuggestions.map((suggestion: SuggestedRootCause, index: number) => (
                         <div
                           key={index}
