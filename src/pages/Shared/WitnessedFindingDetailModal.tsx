@@ -38,12 +38,10 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
 
   useEffect(() => {
     if (isOpen && findingId) {
-      console.log('[WitnessedFindingDetailModal] 🚀 Modal opened with findingId:', findingId);
       loadFinding();
       loadAttachments();
       loadRootCauses();
     } else {
-      console.log('[WitnessedFindingDetailModal] ⏸️ Modal closed or no findingId');
     }
   }, [isOpen, findingId]);
 
@@ -125,82 +123,64 @@ const WitnessedFindingDetailModal = ({ isOpen, onClose, findingId }: WitnessedFi
   };
 
   const loadRootCauses = async () => {
-    console.log('[WitnessedFindingDetailModal] 🔍 Loading root causes for finding:', findingId);
     try {
       const res = await apiClient.get(`/RootCauses/by-finding/${findingId}?_t=${Date.now()}`);
-      console.log('[WitnessedFindingDetailModal] 📦 API Response:', res);
       
       // API client returns data directly (not in res.data)
       const responseData = res.data || res;
-      console.log('[WitnessedFindingDetailModal] 📦 Response data:', responseData);
       
       // Try multiple ways to extract the array
       let rootCausesList: any[] = [];
       try {
         if (Array.isArray(responseData)) {
-          console.log('[WitnessedFindingDetailModal] 🔍 Format: Array');
           rootCausesList = responseData;
         } else if (responseData?.$values && Array.isArray(responseData.$values)) {
-          console.log('[WitnessedFindingDetailModal] 🔍 Format: $values');
           rootCausesList = responseData.$values;
         } else if (responseData?.data && Array.isArray(responseData.data)) {
-          console.log('[WitnessedFindingDetailModal] 🔍 Format: data');
           rootCausesList = responseData.data;
         } else if (responseData?.value && Array.isArray(responseData.value)) {
-          console.log('[WitnessedFindingDetailModal] 🔍 Format: value');
           rootCausesList = responseData.value;
         } else {
-          console.warn('[WitnessedFindingDetailModal] ⚠️ Unknown response format:', responseData);
+          console.warn('[WitnessedFindingDetailModal]  Unknown response format:', responseData);
         }
       } catch (parseErr) {
-        console.error('[WitnessedFindingDetailModal] ❌ Error parsing response:', parseErr);
+        console.error('[WitnessedFindingDetailModal]  Error parsing response:', parseErr);
       }
       
-      console.log('[WitnessedFindingDetailModal] 📋 Root causes list:', rootCausesList);
-      console.log('[WitnessedFindingDetailModal] 📊 Root causes count:', rootCausesList.length);
       
       if (!Array.isArray(rootCausesList) || rootCausesList.length === 0) {
-        console.log('[WitnessedFindingDetailModal] ⚠️ No root causes found for this finding');
         setRootCauses([]);
         return;
       }
       
-      console.log('[WitnessedFindingDetailModal] 🔄 Starting to process root causes...');
       
       // Fetch history and actions for each root cause
       const rootCausesWithHistory = await Promise.all(
-        rootCausesList.map(async (rc: any, index: number) => {
-          console.log(`[WitnessedFindingDetailModal] 🔄 Processing root cause ${index + 1}/${rootCausesList.length}:`, rc);
+        rootCausesList.map(async (rc: any, _index: number) => {
           try {
-            console.log(`[WitnessedFindingDetailModal] 📜 Fetching logs for ${rc.rootCauseId}...`);
             const logs = await getRootCauseLogs(rc.rootCauseId);
-            console.log(`[WitnessedFindingDetailModal] ✅ Logs loaded for ${rc.rootCauseId}:`, logs.length);
             
             // Fetch actions (remediation proposals) for this root cause
             let actions: Action[] = [];
             try {
-              console.log(`[WitnessedFindingDetailModal] 🎯 Fetching actions for ${rc.rootCauseId}...`);
               actions = await getActionsByRootCause(rc.rootCauseId);
-              console.log(`[WitnessedFindingDetailModal] ✅ Actions loaded for ${rc.rootCauseId}:`, actions.length);
             } catch (actionErr) {
-              console.error('[WitnessedFindingDetailModal] ❌ Error loading actions:', rc.rootCauseId, actionErr);
+              console.error('[WitnessedFindingDetailModal]  Error loading actions:', rc.rootCauseId, actionErr);
             }
             return { ...rc, history: logs, actions: actions };
           } catch (err) {
-            console.error('[WitnessedFindingDetailModal] ❌ Error loading history for root cause:', rc.rootCauseId, err);
+            console.error('[WitnessedFindingDetailModal]  Error loading history for root cause:', rc.rootCauseId, err);
             return { ...rc, history: [], actions: [] };
           }
         })
       );
       
-      console.log('[WitnessedFindingDetailModal] 🎉 Final root causes with history:', rootCausesWithHistory);
-      console.log('[WitnessedFindingDetailModal] 💾 Setting state with', rootCausesWithHistory.length, 'root causes');
       setRootCauses(rootCausesWithHistory);
-      console.log('[WitnessedFindingDetailModal] ✅ State updated successfully');
+      console.log('[WitnessedFindingDetailModal]  State updated successfully');
     } catch (err: any) {
-      console.error('[WitnessedFindingDetailModal] ❌ Error loading root causes:', err);
-      console.error('[WitnessedFindingDetailModal] ❌ Error details:', err?.response?.data || err?.message);
-      console.error('[WitnessedFindingDetailModal] ❌ Stack trace:', err?.stack);
+      console.error('[WitnessedFindingDetailModal] Error loading root causes:', err);
+      console.error('[WitnessedFindingDetailModal] Error details:', err?.response?.data || err?.message);
+      console.error('[WitnessedFindingDetailModal]  Stack trace:', err?.stack);
       setRootCauses([]);
     }
   };

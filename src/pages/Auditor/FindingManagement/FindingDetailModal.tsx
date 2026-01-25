@@ -177,14 +177,11 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
           const rootCausesWithHistory = await Promise.all(
             rootCausesList.map(async (rc: any) => {
               try {
-                console.log('[handleRootCauseUpdated] 🔄 Processing root cause:', rc.rootCauseId, rc.name);
                 const logs = await getRootCauseLogs(rc.rootCauseId);
                 // Fetch actions (remediation proposals) for this root cause
                 let actions: Action[] = [];
                 try {
-                  console.log('[handleRootCauseUpdated] 🎯 Calling getActionsByRootCause for:', rc.rootCauseId);
                   actions = await getActionsByRootCause(rc.rootCauseId);
-                  console.log('[handleRootCauseUpdated] ✅ Actions loaded:', actions.length);
                 } catch (actionErr) {
                   console.error('[handleRootCauseUpdated] ❌ Error loading actions:', rc.rootCauseId, actionErr);
                 }
@@ -272,7 +269,6 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
               let actions: Action[] = [];
               try {
                 actions = await getActionsByRootCause(rc.rootCauseId);
-                console.log('Actions loaded for root cause', rc.rootCauseId, actions.length);
               } catch (actionErr) {
               
               }
@@ -451,14 +447,11 @@ const FindingDetailModal = ({ isOpen, onClose, findingId }: FindingDetailModalPr
       const rootCausesWithHistory = await Promise.all(
         rootCausesList.map(async (rc: any) => {
           try {
-            console.log('[handleSubmitAllRootCauses] 🔄 Processing root cause:', rc.rootCauseId, rc.name);
             const logs = await getRootCauseLogs(rc.rootCauseId);
             // Fetch actions (remediation proposals) for this root cause
             let actions: Action[] = [];
             try {
-              console.log('[handleSubmitAllRootCauses] 🎯 Calling getActionsByRootCause for:', rc.rootCauseId);
               actions = await getActionsByRootCause(rc.rootCauseId);
-              console.log('[handleSubmitAllRootCauses] ✅ Actions loaded:', actions.length);
             } catch (actionErr) {
               console.error('[handleSubmitAllRootCauses] ❌ Error loading actions:', rc.rootCauseId, actionErr);
             }

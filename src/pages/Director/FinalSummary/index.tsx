@@ -634,7 +634,6 @@ export default function DirectorFinalSummaryPage() {
     setCalculatingEffectiveness(true);
     try {
       const result: any = await calculateAuditResult(selectedAuditId);
-      console.log('[Auto-calculate] API response:', result);
       
       // Normalize response: handle both PascalCase and camelCase field names
       const normalizedResult: any = result ? {
@@ -646,7 +645,6 @@ export default function DirectorFinalSummaryPage() {
         auditId: result.auditId ?? result.AuditId ?? selectedAuditId,
       } : null;
       
-      console.log('[Auto-calculate] Normalized result:', normalizedResult);
       
       // When director clicks "Auto-calculate", populate the fields with calculated values
       // Director can then review and modify if needed before saving

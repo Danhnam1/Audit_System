@@ -196,12 +196,7 @@ const AssignedTasks = () => {
         // Filter actions with status "Rejected", "LeadRejected", or "Declined" (case-insensitive)
         const isRejected = statusLower === 'rejected' || statusLower === 'leadrejected' || statusLower === 'declined';
         if (isRejected) {
-          console.log('[REJECT TAB] Found rejected/declined action:', {
-            actionId: task.actionId,
-            status: task.originalStatus,
-            statusLower,
-            title: task.title
-          });
+          
         }
         return isRejected;
       })
