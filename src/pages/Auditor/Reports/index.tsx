@@ -148,11 +148,11 @@ const SQAStaffReports = () => {
       });
     });
     
-    // Get WitnessConfirmReturned findings that are not in summary
+    // Get WitnessConfirmReturned and Closed findings that are not in summary
     const witnessConfirmReturnedFindings = allFindingsFromAPI.filter((f: any) => {
       const findingId = String(f?.findingId || f?.id || '');
       const status = String(f?.status || '').toLowerCase();
-      return findingId && status === 'witnessconfirmreturned' && !summaryFindingIds.has(findingId);
+      return findingId && (status === 'witnessconfirmreturned' || status === 'closed') && !summaryFindingIds.has(findingId);
     });
     
     // If no months in summary but we have WitnessConfirmReturned findings, create a single entry

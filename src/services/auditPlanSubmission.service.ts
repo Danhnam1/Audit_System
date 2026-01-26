@@ -1,5 +1,5 @@
 import { toast } from "react-toastify";
-import { createAudit, updateAuditPlan, setSensitiveFlag, getAuditScopeDepartments, addAuditScopeDepartment, deleteAuditScopeDepartment, getAuditScopeDepartmentsByAuditId } from "../api/audits";
+import { createAudit, updateAuditPlan, setSensitiveFlag, addAuditScopeDepartment, getAuditScopeDepartmentsByAuditId } from "../api/audits";
 // import { createAuditChecklistItemsFromTemplate } from "../api/checklists";
 import { addCriterionToAudit, getCriteriaForAudit, removeCriterionFromAudit } from "../api/auditCriteriaMap";
 import { addTeamMember, deleteTeamMember, getAuditTeam } from "../api/auditTeam";

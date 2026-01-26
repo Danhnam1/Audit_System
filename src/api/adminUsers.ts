@@ -68,7 +68,7 @@ export const updateUserProfile = async (
   
   // Note: Backend requires all fields, but we only send what user can update
   // Backend should preserve other fields (roleName, deptId, isActive, status)
-  const response = await apiClient.put(`/admin/AdminUsers/${userId}`, formData, {
+  const response = await apiClient.put(`/admin/AdminUsers/${userId}/basic`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },

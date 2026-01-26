@@ -11,6 +11,8 @@ import {
   deleteAuditScopeDepartment,
   getAuditScopeDepartments,
 } from "../../../api/audits";
+import { updateAuditSchedule } from "../../../api/auditSchedule";
+import { MILESTONE_NAMES } from "../../../constants/audit";
 import { getAuditChecklistTemplateMapsByAudit } from "../../../api/auditChecklistTemplateMaps";
 import { removeCriterionFromAudit, getCriteriaForAudit } from "../../../api/auditCriteriaMap";
 import { getAuditorsByAuditId } from "../../../api/auditTeam";
@@ -83,9 +85,6 @@ const SQAStaffAuditPlanning = () => {
 
   // Store original scope mapping (Map<deptId, auditScopeId>) for deferred deletion
   const [originalScopeMap, setOriginalScopeMap] = useState<Map<string, string>>(new Map());
-
-  // Store original criteria IDs for deferred deletion
-  const [originalCriteriaIds, setOriginalCriteriaIds] = useState<Set<string>>(new Set());
 
   // Conflict warning modal state
   const [showConflictModal, setShowConflictModal] = useState(false);
@@ -929,8 +928,6 @@ const SQAStaffAuditPlanning = () => {
 
       // Build selectedCriteriaByDept map
       const criteriaByDeptMap = new Map<string, Set<string>>();
-      // Track original criteria for deferred deletion
-      const originalCriteriaSet = new Set<string>();
 
       // Put all loaded criteria into 'shared' key to ensure they are visible in Step2Scope
       // because Step2Scope currently expects a single shared list for display/editing
@@ -941,12 +938,6 @@ const SQAStaffAuditPlanning = () => {
         criteriaByDeptMap.set("shared", allCriteriaIds);
       }
       setSelectedCriteriaByDept(criteriaByDeptMap);
-
-      // Populate original set from the loaded list (simply all criteria IDs associated with this audit)
-      criteriaList.forEach((c: any) => {
-        originalCriteriaSet.add(String(c.criteriaId || c.id || c));
-      });
-      setOriginalCriteriaIds(originalCriteriaSet);
 
       // Load templates
       try {
@@ -1059,6 +1050,17 @@ const SQAStaffAuditPlanning = () => {
         getScheduleDate("draft report due") ||
         ""
       );
+
+      // Populate scheduleIds for immediate updates in Step 5
+      const scheduleIdMap: Record<string, string> = {};
+      schedulesArray.forEach((s: any) => {
+        const name = s.milestoneName || s.name || s.MilestoneName;
+        const id = s.scheduleId || s.id || s.ScheduleId;
+        if (name && id) {
+          scheduleIdMap[name] = String(id);
+        }
+      });
+      formState.setScheduleIds(scheduleIdMap);
 
       // Set edit mode
       formState.setIsEditMode(true);
@@ -1415,145 +1417,219 @@ const SQAStaffAuditPlanning = () => {
                   </>
                 )}
 
-                {formState.currentStep === 2 && (
-                  <div className="space-y-4">
-                    <Step2Scope
-                      level={formState.level}
-                      selectedDeptIds={formState.selectedDeptIds}
-                      departments={departments}
-                      criteria={
-                        filteredCriteria.length > 0 && conflictData
-                          ? filteredCriteria
-                          : criteria
+                {/* Handler for immediate schedule update in Edit Mode */}
+                {(() => {
+                  const handleScheduleChange = async (
+                    milestoneName: string,
+                    newValue: string,
+                    setter: (val: string) => void
+                  ) => {
+                    // Always update local state first for UI responsiveness
+                    setter(newValue);
+
+                    // Only trigger API call if in Edit Mode and we have a schedule ID
+                    if (formState.isEditMode && formState.scheduleIds) {
+                      const scheduleId =
+                        formState.scheduleIds[milestoneName];
+
+                      if (scheduleId) {
+                        try {
+                          await updateAuditSchedule(scheduleId, {
+                            milestoneName: milestoneName,
+                            dueDate: newValue,
+                            notes: "",
+                            status: "Active",
+                          });
+                          // Optional: Toast success or silent update
+                        } catch (err) {
+                          console.error(
+                            `Failed to auto-update schedule ${milestoneName}`,
+                            err
+                          );
+                          toast.error(
+                            `Failed to update ${milestoneName} date. Please try again.`
+                          );
+                        }
                       }
-                      selectedCriteriaIds={formState.selectedCriteriaIds}
-                      onLevelChange={(value) => {
-                        formState.setLevel(value);
-                        if (value === "academy" && formState.sensitiveFlag) {
-                          formState.setSensitiveFlag(false);
-                          formState.setSensitiveAreas([]);
-                          formState.setSensitiveNotes("");
-                        }
-                      }}
-                      onSelectedDeptIdsChange={(value) => {
-                        formState.setSelectedDeptIds(value);
-                        setFilteredCriteria([]);
-                        setConflictData(null);
-                        setShowConflictModal(false);
-                      }}
-                      onSelectedCriteriaByDeptChange={(map) => {
-                        setSelectedCriteriaByDept(map);
-                        // Update selectedCriteriaIds from the Map
-                        const union = new Set<string>();
-                        map.forEach((set) =>
-                          set.forEach((id) => union.add(String(id)))
-                        );
-                        formState.setSelectedCriteriaIds(Array.from(union));
-                      }}
-                      selectedCriteriaByDeptMap={selectedCriteriaByDept}
-                      onCriteriaRemove={async (criteriaId) => {
-                        if (formState.isEditMode && formState.editingAuditId) {
-                          if (!window.confirm("Are you sure you want to delete this standard permanently?")) {
-                            return false;
-                          }
-                          try {
-                            await removeCriterionFromAudit(formState.editingAuditId, criteriaId);
-                            toast.success("Standard removed successfully");
-                            return true;
-                          } catch (err) {
-                            console.error(err);
-                            toast.error("Failed to remove standard");
-                            return false;
-                          }
-                        }
-                        return true;
-                      }}
-                    />
-                    <SensitiveAreaForm
-                      sensitiveFlag={formState.sensitiveFlag}
-                      sensitiveAreas={formState.sensitiveAreas}
-                      sensitiveNotes={formState.sensitiveNotes}
-                      onFlagChange={(flag) => {
-                        formState.setSensitiveFlag(flag);
-                        // Don't auto-change level - let user see warning message instead
-                        if (!flag) {
-                          formState.setSensitiveAreas([]);
-                          formState.setSensitiveNotes("");
-                        }
-                      }}
-                      onAreasChange={formState.setSensitiveAreas}
-                      onNotesChange={formState.setSensitiveNotes}
-                      selectedDeptIds={formState.selectedDeptIds}
-                      departments={departments}
-                      level={formState.level}
-                    />
+                    }
+                  };
 
-                  </div>
-                )}
+                  return (
+                    <>
 
-                {formState.currentStep === 3 && (
-                  <Step3Checklist
-                    checklistTemplates={checklistTemplates}
-                    selectedTemplateIds={formState.selectedTemplateIds}
-                    onSelectionChange={formState.setSelectedTemplateIds}
-                    level={formState.level}
-                    selectedDeptIds={formState.selectedDeptIds}
-                    departments={departments}
-                    periodFrom={formState.periodFrom}
-                    periodTo={formState.periodTo}
-                    editingAuditId={formState.editingAuditId}
-                  />
-                )}
 
-                {formState.currentStep === 4 && (
-                  <div className="space-y-4">
-                    <Step4Team
-                      level={formState.level}
-                      selectedDeptIds={formState.selectedDeptIds}
-                      selectedAuditorIds={formState.selectedAuditorIds}
-                      selectedLeadId={formState.selectedLeadId}
-                      auditorOptions={auditorOptions}
-                      ownerOptions={ownerOptions}
-                      departments={departments}
-                      onAuditorsChange={formState.setSelectedAuditorIds}
-                      onLeadChange={undefined} // Disable Lead Auditor selection - auto-set to current user
-                      periodFrom={formState.periodFrom}
-                      periodTo={formState.periodTo}
-                      editingAuditId={formState.editingAuditId}
-                      isAuditorRole={true} // Flag to indicate this is Auditor role (not Lead Auditor)
-                      currentUserId={currentUserId} // Pass current user ID to filter out from auditors list
-                    />
-                    {/* Show validation error for Step 4 if exists
-                      {!validateStep4 && (
-                        <div className="mt-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
-                          <p className="text-sm font-medium text-red-800">
-                            You need to select the time again.
-                          </p>
-                          <p className="text-sm text-red-700 mt-1">
-                            Please select at least 1 auditor (excluding the Lead Auditor).
-                          </p>
+                      {/* Step 2 (Sensitive Area Form) is inside Step2Scope wrapper or separated? 
+                          Wait, in the original code Step2Scope and SensitiveAreaForm were inside a div for step 2. 
+                          I need to be careful to match the original structure. 
+                          The original code had:
+                          {formState.currentStep === 2 && (
+                            <div className="space-y-4">
+                              <Step2Scope ... />
+                              <SensitiveAreaForm ... />
+                            </div>
+                          )}
+                          
+                          I will reconstruct that exactly.
+                      */}
+
+                      {formState.currentStep === 2 && (
+                        <div className="space-y-4">
+                          <Step2Scope
+                            level={formState.level}
+                            departments={departments}
+                            criteria={
+                              filteredCriteria.length > 0 && conflictData
+                                ? filteredCriteria
+                                : criteria
+                            }
+                            selectedDeptIds={formState.selectedDeptIds}
+                            selectedCriteriaIds={formState.selectedCriteriaIds}
+                            onLevelChange={(value) => {
+                              formState.setLevel(value);
+                              if (value === "academy" && formState.sensitiveFlag) {
+                                formState.setSensitiveFlag(false);
+                                formState.setSensitiveAreas([]);
+                                formState.setSensitiveNotes("");
+                              }
+                            }}
+                            onSelectedDeptIdsChange={(value) => {
+                              formState.setSelectedDeptIds(value);
+                              setFilteredCriteria([]);
+                              setConflictData(null);
+                              setShowConflictModal(false);
+                            }}
+                            onSelectedCriteriaByDeptChange={(map) => {
+                              setSelectedCriteriaByDept(map);
+                              const union = new Set<string>();
+                              map.forEach((set) =>
+                                set.forEach((id) => union.add(String(id)))
+                              );
+                              formState.setSelectedCriteriaIds(Array.from(union));
+                            }}
+                            selectedCriteriaByDeptMap={selectedCriteriaByDept}
+                            onCriteriaRemove={async (criteriaId) => {
+                              if (formState.isEditMode && formState.editingAuditId) {
+                                if (!window.confirm("Are you sure you want to delete this standard permanently?")) {
+                                  return false;
+                                }
+                                try {
+                                  await removeCriterionFromAudit(formState.editingAuditId, criteriaId);
+                                  toast.success("Standard removed successfully");
+                                  return true;
+                                } catch (err) {
+                                  console.error(err);
+                                  toast.error("Failed to remove standard");
+                                  return false;
+                                }
+                              }
+                              return true;
+                            }}
+                          />
+                          <SensitiveAreaForm
+                            sensitiveFlag={formState.sensitiveFlag}
+                            sensitiveAreas={formState.sensitiveAreas}
+                            sensitiveNotes={formState.sensitiveNotes}
+                            onFlagChange={(flag) => {
+                              formState.setSensitiveFlag(flag);
+                              if (!flag) {
+                                formState.setSensitiveAreas([]);
+                                formState.setSensitiveNotes("");
+                              }
+                            }}
+                            onAreasChange={formState.setSensitiveAreas}
+                            onNotesChange={formState.setSensitiveNotes}
+                            selectedDeptIds={formState.selectedDeptIds}
+                            departments={departments}
+                            level={formState.level}
+                          />
                         </div>
-                      )} */}
-                  </div>
-                )}
+                      )}
 
-                {formState.currentStep === 5 && (
-                  <Step5Schedule
-                    kickoffMeeting={formState.kickoffMeeting}
-                    fieldworkStart={formState.fieldworkStart}
-                    evidenceDue={formState.evidenceDue}
-                    draftReportDue={formState.draftReportDue}
-                    capaDue={formState.capaDue}
-                    onKickoffChange={formState.setKickoffMeeting}
-                    onFieldworkChange={formState.setFieldworkStart}
-                    onEvidenceChange={formState.setEvidenceDue}
-                    onDraftReportChange={formState.setDraftReportDue}
-                    onCapaChange={formState.setCapaDue}
-                    errors={scheduleErrors}
-                    periodFrom={formState.periodFrom}
-                    periodTo={formState.periodTo}
-                  />
-                )}
+                      {formState.currentStep === 3 && (
+                        <Step3Checklist
+                          checklistTemplates={checklistTemplates}
+                          selectedTemplateIds={formState.selectedTemplateIds}
+                          onSelectionChange={formState.setSelectedTemplateIds}
+                          level={formState.level}
+                          selectedDeptIds={formState.selectedDeptIds}
+                          departments={departments}
+                          periodFrom={formState.periodFrom}
+                          periodTo={formState.periodTo}
+                          editingAuditId={formState.editingAuditId}
+                        />
+                      )}
+
+                      {formState.currentStep === 4 && (
+                        <div className="space-y-4">
+                          <Step4Team
+                            level={formState.level}
+                            selectedDeptIds={formState.selectedDeptIds}
+                            selectedAuditorIds={formState.selectedAuditorIds}
+                            selectedLeadId={formState.selectedLeadId}
+                            auditorOptions={auditorOptions}
+                            ownerOptions={ownerOptions}
+                            departments={departments}
+                            onAuditorsChange={formState.setSelectedAuditorIds}
+                            onLeadChange={undefined}
+                            periodFrom={formState.periodFrom}
+                            periodTo={formState.periodTo}
+                            editingAuditId={formState.editingAuditId}
+                            isAuditorRole={true}
+                            currentUserId={currentUserId}
+                          />
+                        </div>
+                      )}
+
+                      {formState.currentStep === 5 && (
+                        <Step5Schedule
+                          kickoffMeeting={formState.kickoffMeeting}
+                          fieldworkStart={formState.fieldworkStart}
+                          evidenceDue={formState.evidenceDue}
+                          draftReportDue={formState.draftReportDue}
+                          capaDue={formState.capaDue}
+                          onKickoffChange={(val) =>
+                            handleScheduleChange(
+                              MILESTONE_NAMES.KICKOFF,
+                              val,
+                              formState.setKickoffMeeting
+                            )
+                          }
+                          onFieldworkChange={(val) =>
+                            handleScheduleChange(
+                              MILESTONE_NAMES.FIELDWORK,
+                              val,
+                              formState.setFieldworkStart
+                            )
+                          }
+                          onEvidenceChange={(val) =>
+                            handleScheduleChange(
+                              MILESTONE_NAMES.EVIDENCE,
+                              val,
+                              formState.setEvidenceDue
+                            )
+                          }
+                          onDraftReportChange={(val) =>
+                            handleScheduleChange(
+                              MILESTONE_NAMES.DRAFT,
+                              val,
+                              formState.setDraftReportDue
+                            )
+                          }
+                          onCapaChange={(val) =>
+                            handleScheduleChange(
+                              MILESTONE_NAMES.CAPA,
+                              val,
+                              formState.setCapaDue
+                            )
+                          }
+                          errors={scheduleErrors}
+                          periodFrom={formState.periodFrom}
+                          periodTo={formState.periodTo}
+                        />
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Footer */}

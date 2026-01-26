@@ -37,8 +37,6 @@ const AuditeeOwnerAuditList = () => {
   
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [dateFrom, setDateFrom] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [dateTo, setDateTo] = useState<string>('');
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -269,23 +267,8 @@ const AuditeeOwnerAuditList = () => {
         const auditResults = await Promise.all(auditPromises);
         const validAudits: AuditCard[] = auditResults.filter((audit): audit is AuditCard => audit !== null);
 
-        // Filter audits to show only those within Evidence Due and CAPA Due period
-        const now = new Date();
-        const auditsInActivePeriod = validAudits.filter((audit) => {
-          // If audit doesn't have Evidence Due or CAPA Due dates, exclude it
-          if (!audit.evidenceDueDate || !audit.capaDueDate) {
-            return false;
-          }
-          
-          const evidenceDue = new Date(audit.evidenceDueDate);
-          const capaDue = new Date(audit.capaDueDate);
-          
-          // Check if current date is between Evidence Due and CAPA Due (inclusive)
-          return now >= evidenceDue && now <= capaDue;
-        });
-
         // Filter out audits with status "Archived" or "Inactive"
-        const nonArchivedAudits = auditsInActivePeriod.filter((audit) => {
+        const nonArchivedAudits = validAudits.filter((audit) => {
           const status = audit.status || '';
           const statusLower = String(status).toLowerCase().trim();
 
@@ -327,21 +310,6 @@ const AuditeeOwnerAuditList = () => {
       if (!matchesSearch) return false;
     }
     
-    // Date range filter (filter by startDate) - only apply if dates are provided
-    if (dateFrom && audit.startDate) {
-      const auditDate = new Date(audit.startDate);
-      const fromDate = new Date(dateFrom);
-      fromDate.setHours(0, 0, 0, 0);
-      auditDate.setHours(0, 0, 0, 0);
-      if (auditDate < fromDate) return false;
-    }
-    
-    if (dateTo && audit.startDate) {
-      const auditDate = new Date(audit.startDate);
-      const toDate = new Date(dateTo);
-      toDate.setHours(23, 59, 59, 999);
-      if (auditDate > toDate) return false;
-    }
     
     return true;
   });
@@ -355,7 +323,7 @@ const AuditeeOwnerAuditList = () => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, dateFrom, dateTo]);
+  }, [searchTerm]);
 
   const handleAuditClick = (audit: AuditCard) => {
     navigate(`/auditee-owner/findings/audit/${audit.auditId}`, {
@@ -441,35 +409,11 @@ const AuditeeOwnerAuditList = () => {
                     </div>
                   </div>
                   
-                  {/* Date From */}
-                  <div className="w-full sm:w-48">
-                    <input
-                      type="date"
-                      value={dateFrom}
-                      onChange={(e) => setDateFrom(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      placeholder="From Date"
-                    />
-                  </div>
-                  
-                  {/* Date To */}
-                  <div className="w-full sm:w-48">
-                    <input
-                      type="date"
-                      value={dateTo}
-                      onChange={(e) => setDateTo(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                      placeholder="To Date"
-                    />
-                  </div>
-                  
                   {/* Clear Filters */}
-                  {(searchTerm || dateFrom || dateTo) && (
+                  {searchTerm && (
                     <button
                       onClick={() => {
                         setSearchTerm('');
-                        setDateFrom(new Date().toISOString().split('T')[0]);
-                        setDateTo('');
                       }}
                       className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
                     >
